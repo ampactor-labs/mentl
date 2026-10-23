@@ -10,7 +10,7 @@
 ONE home, `ide/tokens.css`; this document is the rationale behind them and the
 record of what was decided against. The interaction architecture is
 `docs/MENTL_SPACE.md`, which assumes this file. Both are design artifacts of the
-felt aspect (PLAN §5.2, band M), not read-path: interrogate them, never absorb.
+felt aspect (PLAN §5, FELT), not read-path: interrogate them, never absorb.
 
 ---
 

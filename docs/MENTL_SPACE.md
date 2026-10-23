@@ -7,7 +7,7 @@
 > answers how Mentl looks. This one answers the prior question: what is an IDE
 > when the program is a graph, text is one projection among many, and the
 > compiler is the intelligence? It is the design artifact of the felt aspect
-> (PLAN §5.2, band M), not read-path. Interrogate it; do not absorb it.
+> (PLAN §5, FELT), not read-path. Interrogate it; do not absorb it.
 >
 > How to read the tags. Ground rule 1 of this design: no view earns a place
 > unless it names *which cursor mode* it runs in (PLAN §2's subsystem table) and
@@ -71,8 +71,8 @@ reach the network unseen (`!Network` is checkable) and cannot lie about what it
 touches. VS
 Code's extension market is a trust problem; Mentl Space's is a theorem.
 
-**And the form that makes the sentence literal (decided 2026-10-05, PLAN §11
-the Space pivot): THE VIEW IS A PROJECTION — the page is a host, the wheel
+**And the form that makes the sentence literal (decided 2026-10-05): THE VIEW
+IS A PROJECTION — the page is a host, the wheel
 renders the IDE.** One resident session per page (`ide/wheel-worker.js`'s
 session role over a shared-memory channel, `ide/session-client.js`). Each
 input event — a project opened, the caret moved, the text changed, an accept,

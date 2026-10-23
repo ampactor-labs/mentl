@@ -25,7 +25,7 @@
 // frontier keeps a twin that fetches one parameter inside the frame refusing
 // (E_EffectMismatch, the chain naming the call). The live sources, a host
 // that applies a key the program never holds, and the page that plays it
-// are what Wasatch still owes (PLAN §11.13).
+// are what Wasatch still owes (PLAN §11, Wasatch's live half).
 import audio/wav
 
 import dsp/clock

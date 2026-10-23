@@ -82,7 +82,7 @@ handler arm_state_ctx(fields, disc, hd) {
 // edge the judgment drew when it resolved the install (infer.mn's
 // `install_decl`). None for a handler held by a value — a let, a parameter
 // — which the judgment reads as absorbing nothing, so its install lowers to
-// its body (a value carrying its handler's record is PLAN §11.9).
+// its body (a value carrying its handler's record is PLAN §11, the keystone).
 fn installed_handler(right) = match tee_handler_decl(right) {
   Some(d) => match handler_shape_at(d) {
     Some(_) => Some(d),

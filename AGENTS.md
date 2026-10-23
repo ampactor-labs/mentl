@@ -7,7 +7,7 @@ before proposing any edit:
   acceptance test, the medium asked before any edit, the loop.
 - **`PLAN.md`** — the substance: the thesis, the kernel, the resolved
   decisions, what the artifact has not reached (§7) and the one ordered list of
-  open work (§11).
+  open work (§11), in the dependency order of the five mechanisms (§4⑧).
 - **`docs/SYNTAX.md`** — the surface: the authoritative language form. It
   supersedes any syntactic claim made anywhere else, including here.
 

@@ -9,8 +9,8 @@
 Native is not "lower to assembly." **The graph image is the machine; the cursor
 is execution; native code is the cursor's cached projection.** Ten layers were
 designed from that thesis and each adversarially refuted, and the refutations
-converged — unanimously — on one correction. By PLAN §7's own law (N independent
-proposals collapsing onto one attractor *is* the truth signal), that unanimity
+converged — unanimously — on one correction. By PLAN §0's convergence law (N
+independent proposals collapsing onto one attractor *is* the truth signal), that unanimity
 is the design, not a setback:
 
 > **The addressing/projection substrate is right and sharper than first stated;

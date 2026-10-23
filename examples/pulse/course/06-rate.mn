@@ -24,9 +24,9 @@
 // engine does not yet read — so the board counts this lesson among the
 // programs the medium owes (`mentl verify`), and the count only falls.
 //
-// The handler at the root answers whichever instance asks: an install does
-// not yet pin the instance it serves (PLAN §11.9), so the negation is where
-// the rule is written.
+// The install at the root serves `Sample(48000)` alone, the instance its
+// config names, so a 44.1 kHz stage would pass it and reach the root
+// unhandled; the negation on `frame` states the rule where the frame is.
 import audio/wav
 
 import dsp/clock

@@ -14,7 +14,7 @@ fs_impl_bypass_max: 0
 
 # The one declared red frontier leg, judged by name in both directions: a
 # Why chain's coordinate carries no file, because a Located Reason holds a
-# span and no handle. §11.17's Reason face, where Located gains the handle,
+# span and no handle. The keystone's Reason edge (PLAN §11), where Located gains the handle,
 # turns it green and deletes this line.
 frontier_expected_red: why-coordinates
 

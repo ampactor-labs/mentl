@@ -19,6 +19,11 @@ less code. A reader holding a node follows the node's edges; a name is looked
 up once, at the writer, where it resolves in its scope — or at the text
 boundary, where a person typed it.
 
+**Five mechanisms carry the law** (PLAN §4⑧): a declaration's face, the
+reach, the fork, the whole-truth row and two projections. A new summary, walk,
+trial, unreported exit or backend is a reader of one of them; a sixth built
+beside them is the drift.
+
 ## The thesis is the acceptance test
 
 Mentl closes the gap between what a person means and what they are forced to
@@ -90,7 +95,7 @@ the changed source produces:
 ```
 source tools/wt-env.sh; C=$(wt_m2_ensure) && wt_m2_place "$C" .build/probe
 MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl check src/main.mn
-MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl test tests/micros
+wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
 ```
 
 - A failed build empties `.build/m2cache/key` and leaves `.build/probe` STALE:
@@ -101,7 +106,9 @@ MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl test tests/micros
   a compiler effect nobody handles at the root is found by checking
   `src/main.mn`, never only by building.
 - A fixture's `// expect: N` is an exit code below 126 (134 is a trap), or its
-  refusal class on the first line. `tests/micros` through `mentl test`;
+  refusal class on the first line. Every battery runs through `wt_battery
+  <compiler> <dir>` (micros, syntax, proposals, teach): `mentl test` judges a
+  directory and prints each fixture's RUN line, and the host runs it;
   `tests/crown` leak-*/sound-* by `E_EffectMismatch` count
   (`tools/crown-gate.sh`); `tests/proposals` and `tests/teach` carry their
   contract on the first line; `tests/frontier` legs live in
@@ -116,31 +123,40 @@ MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl test tests/micros
 
 ## The loop
 
-1. **Ground.** `bash tools/state.sh --quick`, then ask the medium about every
+1. **Choose and ground.** The work is PLAN §11's first step unless a measured
+   false proof or a red gate preempts it. `bash tools/state.sh --quick`, then
+   ask the medium about every
    file the landing touches: `mentl check <file>`, `mentl <file>:<line>`,
    `mentl query src/main.mn "refs of NAME"`, `mentl where src/main.mn NAME`,
    `mentl why <file> <fn> [<Effect>]`, `mentl query src/main.mn "census
    <shape>"`, `"provider of OP"`, `"writes of FIELD"`, `"text NEEDLE"`,
    `"prose NEEDLE"`, `unreachable`, `heads`, `env`, `reports`.
 2. **RED first.** The fixture or bound is measured failing on the pinned boot
-   before the change; its output goes in the commit message.
+   before the change; its output goes in the commit message. A claim about
+   behaviour bound for a document, a comment or a commit is a probe's output
+   (a scratch `.mn` through `mentl check` and `mentl run`), never memory.
 3. **Build the whole landing in `.mn`**, hardest piece first; a dependency the
    form needs is built in the same arc, never handed back as a question.
-4. **Prove it.** `mentl check src/main.mn` 0 through the candidate;
-   `mentl fmt --check src lib` (through the candidate when the parse or render
-   moved: the boot's check once passed a formatter that lost every handler
-   arm's prose, 2026-10-16); the new fixtures through the candidate; then
-   `bash tools/state.sh` — verify, the march, frontier, proof-exactness, crown,
-   effect identity, threads, ide — one scoreboard, about seven minutes. A
+4. **Prove it**, through the candidate, cheapest first: `mentl check
+   src/main.mn` 0; `mentl fmt --check src lib examples` (the boot's check once
+   passed a formatter that lost every handler arm's prose, 2026-10-16); the
+   batteries through `wt_battery`; crown, proof-exactness and frontier as
+   `fresh`; `mentl verify`; then `bash tools/state.sh` — verify, the march,
+   frontier, proof-exactness, crown, effect identity, threads, ide — one
+   scoreboard, about seven minutes. Runs that long go in the background, one
+   wheel-scale run at a time, and their output is read, never predicted. A
    count that fell lowers its ceiling (`src/board.mn`, with a dated reason;
    `tools/verify-baseline.txt` for the cost keys); a count that would rise
    means the landing is reshaped.
 5. **Repin when the wheel moved.** `MARCH_REPIN=1 bash tools/march.sh`, then
    the one narrative line replacing the march's placeholder in
-   `boot/PROVENANCE.md`. The march rules TRANSITION (m3 == m4, repin from m3)
-   or BROKEN; on a trap, diff the two emits first (PLAN §8, forensics).
-6. **Record.** PLAN §11's paragraph deleted, §7 trued, SYNTAX where the surface
-   moved, every changed claim checked against the artifact with a verb.
+   `boot/PROVENANCE.md`. The march rules CLEAN (m2 == m3, repin from m2),
+   TRANSITION (m3 == m4, repin from m3) or BROKEN, and holds the candidate's
+   image line peak and wall against the boot on the same wheel; on a trap,
+   diff the two emits first (PLAN §8, forensics).
+6. **Record.** The landed text leaves PLAN §11 and §7 is trued; SYNTAX where
+   the surface moved; every changed claim checked against the artifact with a
+   verb; a file outside PLAN cites a §11 step by its name, never its number.
 7. **Commit on main through the hooks and push** (`git push -u origin main`).
    No branches, no pull requests unless asked. The tree is clean when the
    session ends, and the last message says what changed and what measured.

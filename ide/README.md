@@ -90,7 +90,8 @@ is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
 
 What does not exist yet, each named: RUNNING the compiled program in the page
 — `mentl asm` assembles the wheel's own output, and the worker instantiating
-those bytes so a lesson plays to the speaker is PLAN §11's course item; until
+those bytes so a lesson plays to the speaker is PLAN §11, the page plays the
+course, where the graph's evaluator runs a lesson at once; until
 then a lesson renders in the terminal (`mentl run … > lesson.wav`); the
 row-flow tint and the sealed `!E` wall over the
 canvas (docs/MENTL_SPACE.md §8, named next); fill-and-resume and reality

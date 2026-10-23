@@ -122,8 +122,8 @@ if [ "${1:-}" != "--quick" ]; then
   gate "INSTRUMENT (can the board go RED?)"                              bash tools/instrument-gate.sh
   gate "THREADS (is the concurrency width what the source says?)"        bash tools/thread-gate.sh
   # THE STANDING CURSOR'S OWN TERMINAL GATE, and it was not on this board.
-  # PLAN §11 Arc E names `ide-gate green Node + headless Chrome` as the bar the
-  # whole Space spine is measured against, and §11.2 asserts the resident
+  # PLAN named `ide-gate green Node + headless Chrome` as the bar the whole
+  # Space spine is measured against, and asserted the resident
   # session is "verified green across Node and headless Chrome
   # (tools/ide-gate.sh)" — while NOTHING invoked the script: not this file,
   # not a hook. Tripwire 4 exactly ("a gate that stops

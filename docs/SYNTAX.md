@@ -756,7 +756,7 @@ applications independent, which is the whole difference between them. Simd
 and Gpu pack a fixed lane count and run a sequence fanout sequentially. The
 race rule reads the function a sequence fanout applies as every branch's, so a
 `~> parallel_compose` over a fanout whose function writes through a stateful
-handler refuses — the deterministic partition (`PLAN.md §11.15`) stated as a
+handler refuses — the deterministic partition (`PLAN.md` §11, forks on every core) stated as a
 gate (tests/micros/mn-race-sequence-fanout-store.mn,
 mn-race-sequence-fanout-stateful.mn).
 
@@ -2521,6 +2521,18 @@ The graph **refuses** two edges into one name rather than papering over it with 
 
 **One-separator law:** `/` appears ONLY in import position (transport-honest — the module path maps to the file transport). Everywhere in expressions, `.` is the one access operator — fields and qualified names alike. There is no third separator; `::` is not a token.
 
+### Capabilities and versions at the import edge
+
+```
+import vendor/json with !Network + !Filesystem
+```
+
+**An import states what the module it draws may never do.** The negation is the row algebra's own, proven over everything the imported module exports by the same walk that proves a declaration's `!E`, so a dependency whose exports reach the network refuses at the import (`E_EffectMismatch`, the chain naming the export and the call). A dependency is then trusted for exactly what its edge says, and the claim survives every upgrade because it is judged again at every link.
+
+**An import performs `resolve(path)`, and the handler over the link answers.** The project's folder and the library answer today; a content-addressed store or a registry is one more handler beside them. So a version is that handler's configuration, the lock is the hashes the link's import edges resolved to, and there is no package manager beside the medium. **Compatibility is computed, never declared**: every declaration publishes a face — its type, its row, its contract — and an upgrade whose exported faces are unchanged, or only widen what callers may rely on, is admitted, while one that breaks a caller's use refuses at that call. A package carries its judgment, its faces checked by the kernel wherever it does not trust them.
+
+The parser reads `import path` alone today (`ImportStmt` carries the path), so the negation, the selective set and the resolve handler are the lathe's next turn (`PLAN.md` §11, a module is a scope).
+
 ---
 
 ## Comments
@@ -2708,6 +2720,14 @@ a sequence length-then-element, a product field-wise, and a sum by its
 variants' DECLARATION order first and its payloads second — so over `type T =
 B(Int) | A`, `B(5) < A` holds.
 
+**Inside the structural folds a Float is totally ordered.** `==`, compare and
+hash over a sequence or a product order a Float by IEEE total order, so
+`[nan] == [nan]` agrees with `a == a` and `sort` places a NaN; `<` on a Float
+itself stays IEEE for arithmetic. And a fold's depth is never its value's
+size: each derived fold iterates, so comparing two lists costs a loop, never a
+call per element (`PLAN.md` §11, the derived folds are loops — today they
+recurse, and two lists of forty thousand pairs exhaust the stack).
+
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
 pointer-eq lying as structural equality is the silent fallback `PLAN.md §9.2`
 deletes. The derivation is **total over the five node-kinds** — this general
@@ -2887,6 +2907,16 @@ that law one form over: the shape it asserts is its precondition, decided by
 the same walk (§«Exhaustiveness»). Non-termination is not a trap and not in
 the row (`Hβ.effects.divergence-is-a-row-fact`).
 
+**Depth is memory, never a hidden trap.** A row tells every way a computation
+can stop, so running out of stack cannot be the one way it does not: a
+recursion deeper than its stack spills its remainder to the heap and resumes
+on a fresh stack — a continuation, captured as any held perform's is — so its
+depth costs `Alloc`, `!Trap` holds over any recursion, and `!Alloc` keeps a
+real-time stage to the recursion it bounds. Today the stack runs out with
+nothing in the row: `fn same(a, b) with !Trap = a == b` checks clean and traps
+on two lists of forty thousand pairs, and so does a `!Trap` recursion a
+million calls deep (`PLAN.md` §7; §11, the keystone).
+
 ---
 
 ## Canonical layout (formatter canon)
@@ -3012,7 +3042,7 @@ else today, so a module-scope `let _ = e`, `let 5 = e` or `let (w, h) = e`
 refuses where the program is emitted (`E_InternalInvariant`), never runs
 without the value it was written for
 (tests/micros/mn-module-let-discard-refuses.mn,
-mn-module-let-destructure-refuses.mn; PLAN §11.17).
+mn-module-let-destructure-refuses.mn; PLAN §11, the keystone).
 
 ---
 
@@ -3219,7 +3249,11 @@ column** (drift-7 avoided): **severity** (error vs narration) and **applicabilit
 `MaybeIncorrect` confirms, `HasPlaceholders` fills in, `Unspecified` is text-only). A
 **Quick Fix is a draw-an-edge** the medium applies to the shared graph image, then
 the IC cursor re-projects to show the resolved state and any newly-surfaced
-downstream Reason — the same `<~ accumulate(graph)` loop the formatter uses. The
+downstream Reason — the same `<~ accumulate(graph)` loop the formatter uses.
+**A refusal is a hole**: a fix is offered only once it is proven — the refusal
+site forks each candidate edit, judges it in an instance of its own, and shows
+the survivors or asks the one question that separates them, the loop a `??`
+runs (§«Partial application», `PLAN.md` §11, a refusal is a hole). The
 diagnostic surface IS a `~>` handler re-projecting the graph, exactly like
 `format_default`. Identity already lives on the ADT: `report` takes one
 `DiagKind`, and its source, severity, applicability and message are its

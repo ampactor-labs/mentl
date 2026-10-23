@@ -75,8 +75,8 @@ holds every reader-facing door to §0's first sentence.
 medium is already inside it. It does NOT close the **intent space** (specs are
 born in the human's head) nor the **capability space** (Rice:
 sound-and-incomplete, accruing honest `V_Pending` debt). One named residual
-Outside: the internal correctness oracle (§11's frontier). An external solver is
-not one — Verify's search is the medium's own (§11), and a solver outside it is
+Outside: the internal correctness oracle (§11.3, the evaluator). An external solver is
+not one — Verify's search is the medium's own (§11.9), and a solver outside it is
 a proposer whose certificate the kernel checks, as a model behind `Synth` is.
 
 `!Outside` is not a runtime effect beside `Alloc`, `Thread`, or `Flow`. It is
@@ -179,6 +179,10 @@ mechanism:
 | infer / lower / emit / native / GPU | projected cursor ("the handler IS the backend") |
 | the felt surface / propose / reactivity | proposing cursor (gradient at `??`) |
 
+Five mechanisms carry the table into code — the face, the reach, the fork,
+the whole-truth row and two projections (§4⑧) — so a subsystem is a reader of
+them, never a sixth mechanism beside them.
+
 **The three deepest capabilities are the three AXES of the one read**, and every
 primitive is interrogated against them (the generative audit, run alongside the
 reductive one):
@@ -199,7 +203,7 @@ reductive one):
 The cursor projected through {substrate, time, space} IS the subsystem table;
 **the oracle FUSES all three** — N forked cursors on N threads over one shared
 graph, each fork a version of its own. The version, the threads and
-continuation reification are built; their fusion is §11's frontier.
+continuation reification are built; their fusion is §11.9.
 
 **The eight arms** (project all eight at every cursor before a line): **Graph?**
 (handle/edge/Reason) · **Handler?** (which projects this, with what resume
@@ -305,6 +309,41 @@ what a model does inside its window.
 cursor re-projecting on graph delta at the human boundary IS fine-grained
 reactivity, incremental compilation and collaboration.
 
+**⑧ Five mechanisms carry the one read into every subsystem** (decided
+2026-10-23). Every open item reaches for the same five, so each is built once
+and the items become its readers (§11 is their dependency order):
+
+- **The face.** Every declaration publishes one summary where its judgment
+  ends — its scheme as edges, its row with each effect at the install that
+  answers it, its contract (preconditions stated and learned,
+  postconditions), its store claim, its flow summary, its resume grades, its
+  latency — and every caller reads it instead of deriving it again. The edit
+  cutoff is face equality; a module's interface is its exports' faces;
+  compatibility between versions is computed by comparing faces; a library
+  ships its faces judged.
+- **The reach.** One walk over the edges inference drew, `reach(from, edge
+  kinds, stop)`: absence (`!E`), import capabilities, the Severance Map, the
+  effect-enters chain, the race rule, the edit cone, `refs of`, `unreachable`
+  and the schedule's demand are its queries. Its answers are exact because the
+  one writer drew every edge (§1's soundiness ceiling, made one function).
+- **The fork.** One speculative primitive — a version in O(1), an instance
+  over it, kept or dropped — on every core: the ??-fan, a diagnostic's fixes,
+  accept, tighten, teach, the solver's case splits, the judgment's rounds,
+  undo and time travel. **A refusal is a hole**: where the program lacks a
+  proof, the medium forks candidate edits, judges them, and shows the proven
+  ones or asks the one question that separates them.
+- **The whole-truth row.** Every way a computation can stop or reach outward
+  is a row fact the crown can negate: a trap, a failure, divergence,
+  allocation and its exhaustion, a store into older memory, a host resource, a
+  secret. A recursion deeper than its stack spills its remainder to the heap,
+  so depth costs `Alloc`, never an unreported trap.
+- **Two projections.** Lowering is a column on the program's own handles, and
+  every backend is a handler over it: the WAT emit, the native emit, and an
+  evaluator that is the graph's reference meaning — the correctness oracle,
+  the second path of diverse double compilation, the runtime witness of every
+  static `!E`, the instant run in the page. The value walk and the derivative
+  reading are its abstract and tangent instances.
+
 ---
 
 ## §5 · real · felt · unsurpassable — three aspects of one ultimate form
@@ -385,9 +424,9 @@ same wheel in the same march, so each ratchet measures the compiler and never
 the wheel's size or the machine's load; a ceiling never rises
 (a landing whose cost breaches one pays it down). The build order, each layer making the next O(1): (1) a name is a
 handle from the lexer on; (2) every read an O(1) chase — the environment, the
-reach walks (§11.17), instantiation shared rather than cloned; (3) the arena —
+reach walks (§11.2), instantiation shared rather than cloned (§11.4); (3) the arena —
 every extent reclaims at its exit what its publication does not reach (built);
-(4) parallel cursors on deterministic `{arena, offset}` handles (§11.15).
+(4) parallel cursors on deterministic `{arena, offset}` handles (§11.9).
 
 ---
 
@@ -439,6 +478,13 @@ compiler (§7).
 where they disagree this section is the arbiter. Each line points at the §11
 landing that closes it. A gate that did not run is UNKNOWN, never green.
 
+- **`!Trap` is false under deep recursion** (§11.1, §11.3): running out of
+  stack is a trap no row shows. `fn same(a, b) with !Trap = a == b` checks
+  clean and traps with "call stack exhausted" comparing two 40,000-pair
+  lists, and a `!Trap` recursion a million calls deep traps the same way
+  (measured 2026-10-23): the derived folds (`==`, compare, hash, show) and
+  the prelude's `sort` and `merge` recurse once per element, and a
+  recursion a person writes once per level.
 - **The program is the graph, and its one-write operations are not all built.**
   A node is its handle (`type Node = Int`), a body holds its children as handles,
   and everything the judgment learns about a node is a column at that handle;
@@ -459,7 +505,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   declaration's row or a function type's row names, the op a handler arm
   serves and a sugar that calls a primitive (`xs[i]`, `++`, an interpolation's
   seams, a list rest), so `refs of` reaches every one of them. A type, a
-  Reason and the lowered program are still value trees (§11.17), so a name
+  Reason and the lowered program are still value trees (§11.3, §11.4), so a name
   written inside a type renders from the type's value. Three one-write
   operations are built: a named handler chain's install becomes its members'
   installs (SYNTAX §«Handler chains»); a rename is one write at the
@@ -469,8 +515,8 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   grain it was made — the statements it rewrote or moved are read again from
   their own lines into the module's node, the declarations whose judgment
   read them are judged again with them, and every other statement keeps its
-  nodes and its judgment. A proposal's accept is not (§11.2).
-- **Names are still read where an edge exists** (§11.2, §11.3, §11.17): the
+  nodes and its judgment. A proposal's accept is not (§11.6).
+- **Names are still read where an edge exists** (§11.3, §11.4, §11.5): the
   lowered program's identity is its symbol, so the emit's reach walks key their
   units by it; an arm's resume grade is settled before the judgment draws
   any edge, so it reads the functions its body declares, and the parameters a
@@ -480,34 +526,31 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   arm's kind holds its op's spelling, and the performs the lowering writes for
   a schedule (`spawn`, `thread_join`, `persist_branch`, `join_persist`) name
   their ops, the compiler's own vocabulary.
-- **A module sees its whole import closure** (§11.3): visibility is the closure,
+- **A module sees its whole import closure** (§11.5): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
   spelling. The layer half is closed: a library never imports the compiler and
   a user program cannot.
-- **A dropped value is silent** outside the stage of `each` (§11.5).
-- **Early exit cannot be said and every cycle is hand recursion** (§11.6):
+- **A dropped value is silent** outside the stage of `each` (§11.6).
+- **Early exit cannot be said and every cycle is hand recursion** (§11.8):
   `any`, `all`, `find` and `take` visit every element.
-- **A derived fold over a sequence is one call per element** (§11.10): `==`
-  over two lists of twenty thousand pairs exhausts the stack, where five
-  thousand compare, and compare, hash and show recurse the same way.
-- **Teach answers locks and preconditions, and little else** (§11.7): no
+- **Teach answers locks and preconditions, and little else** (§11.6): no
   refinement at a part, no call with argument holes, no record proposed for a
   positional product.
 - **The course and the scores are owed** (`mentl verify`, the `QOwed` bounds;
-  §11's verification whole): a Nyquist bound that reads the installed rate
+  §11.4): a Nyquist bound that reads the installed rate
   inside its predicate is left pending (lesson 6), a division by a value
   nothing bounds charges `Trap` (lesson 7, Pulse), and a frequency computed
   from a sine or a product is a claim the interval fragment has not grown
-  (Pulse, Wasatch). The page cannot yet play a lesson (§11.12).
-- **Effect names lie about their ops** (§11.8): GraphRead holds writes,
+  (Pulse, Wasatch). The page cannot yet play a lesson (§11.7).
+- **Effect names lie about their ops** (§11.2): GraphRead holds writes,
   GraphWrite holds reads, and `Memory` holds pure word arithmetic, so a
   function doing only arithmetic on words is not `Pure`.
 - **Effect-op parameters are nameless, and a filesystem failure is silent**
-  (§11.4): every filesystem operation is a `Filesystem` op whose implementation
+  (§11.6, §11.2): every filesystem operation is a `Filesystem` op whose implementation
   is its handler's arm, but a path that does not read answers an empty string
   and one that does not open answers fd 0.
-- **A module's init stores what one binder names** (§11.17): a module-scope
+- **A module's init stores what one binder names** (§11.3): a module-scope
   let whose pattern is a discard, a literal or a destructure refuses where the
   program is emitted (`E_InternalInvariant`).
 - **Regions are runtime**: every extent runs in an arena — each module's
@@ -517,7 +560,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` gates on the build key, `mentl resume <image>` re-enters it.
   Host resources (descriptors, sockets) do not restore; cross-machine resume and
-  a session that outlives its process are open (§11.17).
+  a session that outlives its process are open (§11.7).
 - **A continuation answers to the world it is resumed in, and a row names
   effects, not installs**: a continuation carries its own segment of the world
   it was captured in and reaches the installs around its resume past it, and
@@ -526,7 +569,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   which effects a computation performs, each at the instance it performs, and
   never which install answers one: an install answers the instance it serves,
   so two installs of one instance are one fact to a negation, and absence is
-  proven per instance, not per install (the modal crown, §11).
+  proven per instance, not per install (the modal crown, §11.2).
 - **Threads are real**: `~> parallel_compose` runs branches on host threads over
   the shared image, a branch runs in the world it was spawned in, and
   `E_ThreadedBranchEffect` refuses a stateful handler a branch reaches, a store
@@ -540,14 +583,14 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   memory it reaches is older than the caller's frame; a call's answer read
   off a tee (a fold's accumulator, a handler's answer) is memory the
   store-age walk cannot place, so a function threading a table through a
-  fold's result owes `Mutate` it could prove (§11.17). A wide
+  fold's result owes `Mutate` it could prove (§11.4). A wide
   answer does not cross a thread's join: `parallel_compose`'s arms are
   emitted once at the word face, so a Float-answering branch traps where its
-  join is read at the site's face (§11.15).
-- **The judgment is one pass; schemes are still values** (§11.17): a candidate
+  join is read at the site's face (§11.3).
+- **The judgment is one pass; schemes are still values** (§11.4): a candidate
   is judged against a version of the one live graph, and a declaration's type
   is frozen at its exit.
-- **Incrementality is not a cached cursor** (§11.17): the delta between two
+- **Incrementality is not a cached cursor** (§11.7): the delta between two
   versions of the graph costs what moved (`graph_written_since` reads it for
   the tie-break), and nothing re-projects on it. An edit's cone has no
   cutoff: every declaration whose judgment read a
@@ -558,7 +601,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   judges seventeen; and every edit's judgment stays in the image. The warm
   start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
-  once per open, and a fresh process derives cold (§11.17).
+  once per open, and a fresh process derives cold (§11.7).
 - **Speculation is a choice, and a fork is an instance, one speculation at a
   time**: every judgment the medium tries and may undo performs `choose`
   (lib/choice.mn), and the forking handlers run each resumption under the
@@ -579,16 +622,25 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   fork mints no word: the intern table is written at the text boundary and
   born holding the medium's own vocabulary, and a word first seen inside a
   fork is refused by name. The options run one after another, so two never
-  run at once; forks on threads are the fused oracle's one pin left (§11).
+  run at once; forks on threads are the fused oracle's one pin left (§11.9).
   A continuation is captured at any position, by a copy of its frame's
-  lowered tail (§11.17).
-- **The compile is sequential by construction** (§11.15).
+  lowered tail (§11.3).
+- **The compile is sequential by construction** (§11.9).
+- **Each mechanism is built more than once** (§11.2, §11.3, §11.4): every
+  interprocedural fact keeps a ledger of its own — a scheme, a store claim, a
+  flow summary, a learned precondition, a resume grade, some keyed by
+  spelling — so no one comparison says whether what a declaration publishes
+  changed; absence, the effect-enters chain, the race rule, the schedule's
+  demand, the edit cone, `refs of` and `unreachable` each walk the drawn
+  edges their own way; and the graph has one projection, the WAT emit, the
+  value walk and the derivative reading evaluators of their own and no
+  reference meaning to check the emit against.
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text, and forward
   pointers (`Hβ.*` labels) in the wheel's comments that no §11 paragraph
   names — the documents carry none, held by `tools/doc-truth.sh`. Each
   module's comments are trued in the landing that touches it; fmt strips the
-  decoration (§11.11).
+  decoration (§11.6).
 
 ---
 
@@ -611,6 +663,7 @@ bash tools/ide-gate.sh              # the resident session: the node twin, then 
 bash tools/verify.sh                # what no verb has absorbed: micros through the host, the sha chain, doc-truth
 mentl test tests/proposals          # each fixture's first line is its contract at the hole
 mentl test tests/teach              # each fixture's first line is its contract at the declaration
+source tools/wt-env.sh; wt_battery C.wasm tests/micros   # a battery compiled, run and judged by compiler C; `mentl test` judges and lists the RUN lines, the host runs them
 mentl space                         # the page, localhost:7397
 python3 tools/emit-diff.py A.wat B.wat [--trap]   # the divergence pinner — first on any m3 trap
 bash tools/profile-self.sh          # the self-compile under the guest profiler; tools/guest-profile.py names callers
@@ -693,550 +746,489 @@ type) · a blind token-walk absorber eating comma-less siblings.
 
 ## §11 · The program — the one list of open work
 
-The order is biggest moves first (Morgan, 2026-10-16): the frontier leads, in
-the order it is written below, and the standing cursor follows it, the native
-backend last. Two rules preempt both: a false proof a user can hit (§0's
-property 2 failing at a shape a real program writes) is closed before anything
-else, and the net that verifies every landing stays trustworthy. A landing is
-committed whole; a gap found inside it is fixed inside it; when it lands its
-paragraph leaves this list. Each `Hβ.*` label names the landing's design as git
-keeps it. The DSP arc runs before the fused oracle's last landing (Morgan,
-2026-10-21), in this order: a predicate decided as written (verification
-whole), a delay sized from the rate (§11.6) and the prelude's stage order
-(§11.10).
+The order is the dependency order of the five mechanisms (§4⑧; Morgan,
+2026-10-23): each step reads only what an earlier step built, so each lands
+whole. Two rules preempt the order: a false proof a user can hit (§0's
+property 2 failing at a shape a real program writes) is closed before
+anything else, and the net that verifies every landing stays trustworthy. The
+DSP arc runs before the fused oracle's last pin (Morgan, 2026-10-21), so step
+8 precedes step 9. A landing is committed whole; a gap found inside it is
+fixed inside it; when it lands its text leaves this list and §7 is trued.
+Each `Hβ.*` label names a design as git keeps it. A file outside PLAN cites a
+step by its name (`PLAN §11, the keystone`), never by its number, so the
+order can move without leaving a citation stale.
 
 **THE DEFINITION OF DONE** — one statement per §0 property, each a terminal
-gate: (1) *proof beats review* — the crown sound under polymorphism, Verify
-deciding its fragment with honest `V_Pending`, its search the medium's own,
-every diagnostic class refusing; (2) *the negative is provable* — an `Untrusted`
-value reaching a `Trusted` sink refused, implicit flows included; (3) *intent is
-lossless* — the Why walk total, provenance projected at every surface, the
-formatter's fixed point canonical; (4) *computation is durable* — persist
-generalized to cross-machine resume, the session a value; (5) *systems explain
-themselves* — `mentl audit` live, the docs a projection, the ??-fan with its
-teaching tie-break as the daily loop; (6) *the oracle at its limits* — the fused
-multi-cursor multi-shot search as the default judge; (7) *`!Outside` closed* —
-the native backend, diverse double compilation, and the correctness oracle
-absorbed into the wheel's own Verify; (8) *nothing owed* — every ceiling on
-the board at zero or at a decision the author made, the course and the two
+gate: (1) *proof beats review* — the crown sound under polymorphism, the row
+telling every way a computation stops, Verify deciding its fragment with
+honest `V_Pending`, its search the medium's own, every diagnostic class
+refusing; (2) *the negative is provable* — an `Untrusted` value reaching a
+`Trusted` sink refused, implicit flows included; (3) *intent is lossless* —
+the Why walk total, provenance projected at every surface, the formatter's
+fixed point canonical; (4) *computation is durable* — persist generalized to
+cross-machine resume, the session a value; (5) *systems explain themselves* —
+`mentl audit` live, the docs a projection, a refusal answered by the same
+proposer loop as a `??`; (6) *the oracle at its limits* — the fused
+multi-cursor multi-shot search as the default judge; (7) *`!Outside` closed*
+— the native backend, diverse double compilation, and the correctness oracle
+absorbed into the wheel's own evaluator; (8) *nothing owed* — every ceiling
+on the board at zero or at a decision the author made, the course and the two
 scores judged clean (the `QOwed` bounds at zero), no expected red, no
 silencer, no diagnostic class named and unborn, no landing named outside this
 list. The terminus is §1's closed loop: the person and the medium, nothing
 else needed at any scope.
 
 **ONE LAW, FIVE FACES.** The largest open items are one violation — a
-materialized view stored where an edge belonged: STRUCTURE (cut: a node is its
-handle), REFERENCES (cut: a name is a node linked to what it names, and a
-binder is declared where it is written), SCHEMES
-(a declaration's type frozen at its exit), PROVENANCE (a `Reason` is a value
-tree copying handles, structure, types and spans into every node) and the
-LOWERED PROGRAM (`LowExpr`, a second tree whose walks read names). The oracle is
-their sum: a fan that judges context once and reads it live, a tie-break that is
-a provenance diff, a search over live shared cells.
+materialized view stored where an edge belonged: STRUCTURE (cut: a node is
+its handle), REFERENCES (cut: a name is a node linked to what it names, and a
+binder is declared where it is written), SCHEMES (a declaration's type frozen
+at its exit), PROVENANCE (a `Reason` is a value tree copying handles,
+structure, types and spans into every node) and the LOWERED PROGRAM
+(`LowExpr`, a second tree whose walks read names). The keystone (step 3) and
+the face (step 4) cut the last three.
 
-**THE FRONTIER LEADS** — each a move inside the medium, in the order work
-runs, its design written here whole so a session starts from this paragraph
-and the artifact:
+**THE STANDING CURSOR** — the order work runs in:
 
-- **The fused oracle** — the graph is a VALUE, and a fork is an instance of
-  the graph handler seeded with a version of it. `choose` (lib/choice.mn)
-  is caught by `speculate` and `first_held` (src/infer.mn). Landed
-  2026-10-20: every per-handle fact is a column keyed by the handle itself
-  (lib/imap.mn's persistent trie, four levels of 64 under a root that grows
-  with the mint); an instance's columns hold the cells it wrote and a read
-  falls through to the version it was seeded with and the versions below
-  that (`col_get`); a version is taken in O(1) (`graph_version`: the
-  instance's columns and the version below them). Each resumption of a
-  `choose` runs under the judgment's whole chain over an instance of its
-  own (`forked`: the row gate, the mint, the ledgers, an env view over the
-  entries below, a diagnostic collector, the graph instance), so every
-  write of the option lands in its instances and the instances below are
-  untouched by construction; `speculate` drops each instance with its arena
-  and `first_held` merges the kept instance's cells into the instance below
-  (`graph_keep`, lib/imap.mn's `pt_merge`, O(what it wrote)) and adopts its
-  ledger facts — the env entries, the decided and the open claims, the
-  consumes, the held reports (`branch_join`). The trail, the checkpoint stack, the restore and
-  the heap mark are deleted; nothing is journaled. A handler standing
-  outside every fork — the frame stack, the store ages — reads no graph in
-  its arms, because an arm's perform resolves to the instance below the
-  fork (the frame exit hands the body its facts and the body computes the
-  published row). The tie-break is computed: each survivor is sealed with
-  the context cells its judgment bound, read inside its instance as the
-  cells that instance wrote (`graph_written_since`), the first cell two
-  survivors bound differently is the question (`DivType` with the cell's
-  own Reason, `DivRow`), and survivors the e-graph extracts to one class
-  are one meaning shown once. The compiler is still emitted as a
-  thread-free module (a defined memory, a bump allocator, no spawn import),
-  and that is the one pin left, taken in three landings. (a) A fork owns
-  every ledger it writes — landed 2026-10-21: `forked` installs, beside the
-  instances above, a store-ages and a frame-stack instance seeded with the
-  state of the instances below (`AgesSeed`, `CtxSeed`) and a view of the
-  intern table as the fork found it (`intern_view`), so every ledger an
-  option's judgment writes is the option's own; the keep adopts the kept
-  option's frame stack and store ages (`inf_adopt`, `ages_adopt`) as it
-  merges its graph cells; the collector filters a forget on its own list;
-  every option of one choice mints its handles from the version's own
-  `next`, so a handle is the same under any schedule; a word is interned at
-  the text boundary or born in every table (`medium_vocabulary`, `Mutate`
-  among them), so a fork mints no word and one first seen inside a fork is
-  refused by name — nothing is banded, since nothing in a fork mints; and
-  the judgment's core is named once (`judgment_core`) and stands under the
-  module judgment, the fan and the facets. `mentl why src/infer.mn forked`
-  names the substrate's effects, `StateWalk` (the root's stateless walk),
-  `Mutate` (the graph instance's own trie store) and the view's refusal,
-  and nothing else. (b) A store claim travels with the function — landed
-  2026-10-21: every function's claim is written where its judgment ends, a
-  lambda's and a nested fn's at their own node, and names what the body
-  writes — its parameters by position, the captures it writes, its own
-  record (a closure's feedback line), the parameters it applies with what it
-  hands each slot (a parameter of its own, a loop's accumulator, or nothing
-  it can name), the functions its result can be, and whether it writes
-  beyond all of these; a call through a value reads the claims of every
-  function the value can be (`fn_leaves`), a partial's through its product,
-  a maker's answer through the maker's `returned`, and charges each write
-  by the age of what it reaches in the calling frame, so `Mutate` leaves
-  the callee's row where every write is accounted for, leaves its names
-  where the callee applies a function of the caller's own (the tail carries
-  it to the caller's callers, who read the caller's `applies`), and stands
-  where a write is unaccounted (`mutation_masked`, `charge_leaf`); a
-  closure inside a binding group calling a co-member hands the call to the
-  declaring function to settle. The race rule reads a branch's `Mutate` off
-  the rows so judged, so a voice minted in the branch and ticked there is
-  the branch's own construction and runs. The tenth lesson renders
-  (`mentl run examples/pulse/course/10-voices.mn`), the course's owed count
-  fell 6 → 5, and the boot's silent strip of a callback's `Mutate` from a
-  masked callee row — a false proof a fold writing its accumulator could
-  hit — is closed (tests/micros/mn-mutate-closure-line-is-the-value.mn,
-  mn-mutate-capture-fresh.mn, mn-mutate-capture-param-refuses.mn,
-  mn-mutate-through-callback-param.mn,
-  mn-race-store-into-branch-memory.mn). (c) The compiler spawns
-  (`Hβ.oracle.forks-on-threads`): the demand walk that twins a direct
-  callee by the install's schedule follows a `~> h` in the demanded reach
-  into `h`'s arms, the arm twins keyed by the schedule letter and minted
-  only where the schedule changes the lowering; `parallel_compose` is a
-  POOL sized to the cores — a fanout enqueues its branches as task records
-  in the image's shared queue, a nested fanout inside a worker enqueues
-  instead of spawning, and the join reads results by option index — and
-  stands over the judgment at every verb entry; `sequential_compose`
-  stands at one site, `mentl march`'s determinism leg, which compiles the
-  wheel twice in-process, once under each schedule, asserts the two WATs
-  byte-identical and prints both wall times, its spawn arm running the
-  task in the performer's world as the task record does; the emit sees
-  `spawn_task` reached and emits the spawning module; the page's resident
-  session arms the pool its run role has. Gates: m3 under
-  `sequential_compose` byte-identical to m3 under `parallel_compose`
-  (§11.15's statement made real), the two wall times on the board, every
-  battery green at every pin.
-- **The crown, modal** (`Hβ.effects.modal-world-index`): a row names
-  EFFECTS — `EffName` carries a name and its arguments, a `RowEdge`'s mask
-  names effects, `inf_mark_install_frame` drops the handler the install
-  judgment holds in hand — so absence is proven per effect, never per install.
-  The form: an effect in a row is indexed by the install that answers it
-  (`E@h`, the install node the judgment resolves when it draws the op edge;
-  `E@?` where a caller's install answers), a mask names the installs it
-  subtracts, and a row variable bound at a `~>` edge is that install's lexical
-  capability — the Tang–Lindley synthesis with the negation half carried.
-  The facts that need an install's identity fall out: a handler held as a
-  value (its record IS the install's identity), two installs of one instance
-  with a negation between them, a closure minted under one install and called
-  under another. An install's instance is already its own: a perform reaches
-  the innermost install serving its instance, and an install subtracts only
-  the instance it serves (SYNTAX §«Installation in `with` clauses»), so the
-  index refines what the instance distinguishes. Written once,
-  where the op edge is drawn; read by `row_subsumes`, `diff_row`, the gate's
-  mask, the Why walk and `mentl where`. `inter_row`'s silent arm deletes, a
-  world mismatch names its two worlds, and a persisted continuation's world is
-  checked where the image is resumed. One crucible per modal rule, RED first,
-  with its sound twin; the page's hop-by-hop unroll of a `!E` under
-  polymorphism rides it (`Hβ.effects.sound-neg-under-poly`).
-- **Verification whole**: the verifier decides a predicate's EXPRESSION — the
-  `Predicate` projection, `node_to_predicate` and the copy frozen into
-  `TRefined` delete, the value walk reading the predicate's nodes and a
-  called function's contract and body — so a predicate that calls a function
-  is decided; a parameter is what its calls hand it, so a bound every call
-  establishes — `0 <= i` where each call hands `0` or `i + 1`, read under the
-  path at each call and the body's own hypothesis at the recursive one — is
-  a hypothesis of the body, and the wheel's index loops are proven
-  (`Hβ.verify.parameter-is-what-its-calls-hand`); a slice past its sequence
-  is the row fact `Trap` as an index out of range is
-  (`Hβ.effects.index-partiality-is-a-row-fact`); a bug trap performs `Trap`
-  carrying the node, and the root answers it with the node's aspects and
-  Reason chain, never a bare `unreachable`; a label's claim on a part read off
-  a call's answer is read through the callee's return tails, proven where
-  the callee built the part in sight and owed, naming the site, where it did
-  not (`Hβ.verify.part-of-a-call-answer`); a refinement a callback demands of
-  the values a callee hands it is judged where the callee passes them
-  (`Hβ.verify.higher-order-refinement`) — its first face landed 2026-10-21: a
-stage completed in place, a pipe's or a `<|` branch's, is one application
-of its callee with the whole product, so a learning parameter learns every
-slot and a filter's cutoff handed through a record field is decided where
-the record crosses; a learned contract reads an open record to the end of
-its row; a parameter a recursive call hands back to itself teaches
-nothing; and the `<|` branch, which owed nothing, owes what a stage owes
-(lessons 2, 5 and 9; tests/micros/mn-refine-stage-through-field.mn,
-mn-refine-fanout-branch-owes.mn); a state
-  write is read as the claim's own hypothesis, an inductive invariant
-  (`Hβ.verify.state-reads-its-invariant`); a handler is a judgment unit: a
-  claim an arm makes about its own state's parts is decided once every arm
-  is judged, its row fact with it, where today an arm's claim over the
-  state's memory is owed and the `Trap` it guards charged at the install,
-  since a later arm could hand the memory away
-  (`Hβ.verify.handler-is-a-judgment-unit`); non-termination is a row fact
-  beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); then the solver is the search
-  (§11.16), the fragment growing in the order the wheel's own debt names it,
-  the debt ceiling falling with each step.
-- **`!Outside` closes**, last: the keystone — lowering is a column on the
-  program's own handles and a continuation is its frame's record in the image
-  (§11.17, `Hβ.lower.lowering-is-a-column`); the native backend
-  (`docs/NATIVE.md`, the deterministic band its second keystone); diverse
-  double compilation (`Hβ.closure.diverse-double-compilation`); the
-  correctness oracle absorbed into the wheel's own Verify
-  (`Hβ.closure.correctness-oracle-internal`); and every scaffold under tools/
-  absorbed into a verb — the march is `mentl march` and the board
-  `mentl verify` already; the state script is next, and the loop then names
-  no script.
+1. **The derived folds are loops** (`Hβ.lower.derived-folds-are-loops`). A
+   false proof a user can hit: `fn same(a, b) with !Trap = a == b` checks
+   clean and traps with "call stack exhausted" comparing two 40,000-pair
+   lists (measured 2026-10-23). The structural folds the emitter derives —
+   `==`, compare, hash and show — iterate: a sequence loops, a product walks
+   its fields, a sum tests its tag, and nesting deeper than a bound keeps its
+   pending work on an arena stack, never the call stack. The prelude's `sort`
+   and its `merge` loop the same way, where today they exhaust the stack at
+   twenty thousand elements. A Float compares, equals and hashes in IEEE
+   total order inside those folds, so `[nan] == [nan]` agrees with `a == a`
+   and `sort` places a NaN, where it answers `[0.0, 0.0, 2.0, NaN, 1.0]` for
+   `[1.0, NaN, -0.0, 0.0, 2.0]` today; `<` on a Float stays IEEE for
+   arithmetic. The measurement above is the RED fixture. Recursion a person
+   writes stays exposed until step 3's spill.
 
-**THE STANDING CURSOR** — the order work runs in once the frontier has moved:
+2. **The soundness core: the crown modal, the row whole, the reach one
+   walk.** (a) The crown, modal (`Hβ.effects.modal-world-index`): a row names
+   EFFECTS — `EffName` carries a name and its arguments, a `RowEdge`'s mask
+   names effects, `inf_mark_install_frame` drops the handler the install
+   judgment holds in hand — so absence is proven per effect, never per
+   install. The form: an effect in a row is indexed by the install that
+   answers it (`E@h`, the install node the judgment resolves when it draws the
+   op edge; `E@?` where a caller's install answers), a mask names the
+   installs it subtracts, and a row variable bound at a `~>` edge is that
+   install's lexical capability — the Tang–Lindley synthesis with the negation
+   half carried. The facts that need an install's identity fall out: a handler
+   held as a value (its record IS the install's identity), two installs of one
+   instance with a negation between them, a closure minted under one install
+   and called under another. Written once, where the op edge is drawn; read by
+   `row_subsumes`, `diff_row`, the gate's mask, the Why walk and `mentl
+   where`. `inter_row`'s silent arm deletes, a world mismatch names its two
+   worlds, and a persisted continuation's world is checked where the image is
+   resumed. A generic op is quantified per perform, so two instantiations of
+   one effect do not join at an install
+   (`Hβ.effects.two-instances-of-one-effect-do-not-join`). One crucible per
+   modal rule, RED first, with its sound twin; the page's hop-by-hop unroll of
+   a `!E` under polymorphism rides it (`Hβ.effects.sound-neg-under-poly`).
+   (b) The row tells the whole truth — every way a computation can stop or
+   reach outward is a row fact the crown can negate. Every filesystem failure
+   performs `Fail` (`Hβ.io.filesystem-failure-is-said`), where an unreadable
+   path answers an empty string and one that does not open answers fd 0; a
+   slice past its sequence is `Trap` as an index out of range is
+   (`Hβ.effects.index-partiality-is-a-row-fact`); non-termination is a row
+   fact beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); a bug trap
+   performs `Trap` carrying the node, and the root answers it with the node's
+   aspects and Reason chain, never a bare `unreachable`; an executable's row
+   is `main`'s and its inits' (`Hβ.effects.executable-row-includes-inits`).
+   An op lives where its behaviour belongs
+   (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
+   `Hβ.memory.word-arithmetic-is-memory`): a `*Write` effect's ops write and a
+   `*Read` effect's read, held by a census at zero read through the published
+   write fact (`graph_version` and `graph_attach_comment_ref` move into
+   GraphWrite); word arithmetic leaves `Memory` in two pins at the bootstrap
+   seam (registered as primitives the library shadows, then the library's
+   declarations deleted), so a function doing only arithmetic on words is
+   `Pure`; and Memory's stores become an effect of their own, so the store-age
+   judgment reads a raw store off the op's edge, where it reads the op's
+   spelling today (`raw_store_target`). (c) The reach is one walk
+   (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
+   columns, answers absence, the effect-enters chain, the race rule, the
+   schedule's demand, the edit cone, `refs of`, `unreachable` and the
+   Severance Map's bands, each keyed by edge and none by spelling. Each query
+   first answers what its own walk answers on the wheel and the batteries;
+   then the separate walks delete.
 
-1. **The judgment costs what it answers** — the cost law (§5.O) paid where
-   it is measured red, four pieces in one arc, each RED first. (a) A
-   recursive group is judged in time linear in the group
-   (`Hβ.infer.update-relations-multiply`). Landed 2026-10-19: a reference
-   to a co-member shares the edges of its row whose chains reach no
-   quantified root, where it copied the group's whole edge closure along
-   every path (`subst_edge_build_into`); the free-leaf walk reads each cell
-   once (`free_in_row`); an update's relation (`DemandCopy`) is written once
-   per pair of row cells, whatever handles spell it (`row_copy_carry`); the
-   rows a generalization closes over are walked once as a set
-   (`rows_related_closure`); and the lowering reads a declaration's
-   judgment once (`ls_judgment_memo`). Twenty, forty and eighty members
-   threading `{...ctx, install: n, self: i}` judge in 0.6, 0.7 and 0.9 s,
-   where boot 8b3c3374 judged forty for 33.5 s and exhausted the image on
-   eighty (tests/micros/mn-record-update-group.mn). What remains is the edge
-   itself: the relation is still a demand copied onto the fresh cells at
-   every instantiation (`relation_copy_one`) and read by chasing, where an
-   edge between the two row cells, kept by the copy of a cell, is the form
-   §11.17's schemes-as-edges names; a reference still substitutes a row's
-   edges (`subst_row_build`) where a correspondence edge would share them
-   all; and the flow walk builds its context as a record literal
-   (`ctx_at`), where the update form is the one SYNTAX asks a person to
-   write. (b) An arm's resume grade is the column §11.17 names, written
-   once where the op edge is drawn, and the tail facts a column on the
-   declaration the callee's edge reaches, where `arm_grade` re-runs the
-   arm's fixpoint per reader and the tail facts are an smap keyed by spelling
-   (`Hβ.cost.arm-grade-is-a-column`). (c) The hot path, measured
-   (`bash tools/profile-self.sh`, `tools/guest-profile.py`), each top caller
-   removed by the law it breaks, never by a number. Landed 2026-10-19 (pin
-   8b3c3374): the dispatch walk memoized per instance, and the emit's index
-   loops over pushed and concatenated lists read flat, fold or ask an smap
-   — 13 s to 8 s for the self-compile. Still measured and named, for the
-   profile to rank: the memo answers from a hashed table where a dense
-   index per (effect, op) would answer inline from two loads; `fold` and
-   `each` index their flat list through the typed bounds check per element;
-   `instantiate(Live(h))` re-generalizes the declaration at every use;
-   `env_snapshot` fills an index per call and each `??` segment installs a
-   fresh env; `row_of_subtree` is an unmemoized whole-subtree fold called per
-   node; `reach_units` and `plan_reached` key their walks by symbol;
-   `set_canonicalize` re-sorts a growing accumulator in the
-   `effects_of_edges` loop; the `wmap` columns have fixed bucket counts, so a
-   graph read scans a bucket of hundreds; `ls_find_str_local` and
-   `name_set_prefix_contains` scan per lookup; and a handler's state commit
-   journals its slot at every write, where once per extent holds what the
-   exit reads, so the parse of src/infer.mn writes past the arena journal's
-   262,144 entries and its exit keeps every temporary the parse built
-   (measured 2026-10-22, a probe trapping at the overflow)
-   (`Hβ.cost.hot-path-by-law`).
-   The self-compile's wall and peak ratchet down; the wall is read as a share
-   of the boot's on the same wheel, since a lone wall reading is the machine's
-   load as much as the compiler's. (d) The edit's cone has a cutoff: a
-   declaration whose rewritten dependency publishes the same scheme, row and
-   claims is not judged again (`Hβ.session.edit-cone-cutoff`), where today
-   every declaration whose judgment read a rewritten one is judged again
-   transitively (§7).
-2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
-   write the structure cut was for that is not yet built: accepting a
-   proposal rewrites the hole's node in place, the position-keyed accept
-   column (`Hβ.synth.accepted-edge-keyed-by-position`) deleted.
-3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
-   `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,
+3. **The keystone: lowering is a column, and the graph gains its evaluator**
+   (`Hβ.lower.lowering-is-a-column`, `Hβ.lower.the-evaluator-is-a-projection`).
+   Lowering is columns on the program's own handles, the `LowExpr` tree and
+   its walkers deleted: a lowered unit is a column on its declaration's
+   handle, where its identity is the symbol `LFn(String, …)` carries and the
+   emit's and the reading's reach walks (`plan_reached`, `reach_units`) key
+   their units by it; the gate is m3 == m4 with the symbol-keyed walks
+   deleted. A `Reason` is an edge to the node it names, never a copied tree.
+   A continuation is its frame's record in the image and the node it stopped
+   at, captured by a copy and resumed by entering the frame's one function at
+   that node, where the lowering copies the frame's tail into a function of
+   its own at each place the frame can suspend (`capture_frame`), so a block
+   with n such places writes its tail n times. A module value is a column on
+   its binder, so a module-scope let binds every binder its pattern writes,
+   each at a global of its own, and runs its value for effect when it binds
+   none, where any pattern but one binder refuses today.
+   **The stack spills** (`Hβ.lower.deep-stack-spills-to-heap`): a recursive
+   call is a place its frame may suspend, and past a depth bound the
+   remainder moves to the heap and resumes on a fresh stack — so depth is
+   bounded by memory, which `Alloc` shows; `!Trap` holds over any recursion,
+   and `!Alloc` keeps real-time code to recursion it bounds. RED: a `!Trap`
+   recursion a million calls deep traps today.
+   **The evaluator** is a handler over the lowering column, the graph's
+   reference meaning beside the WAT emit: the correctness oracle absorbed into
+   the medium (`Hβ.closure.correctness-oracle-internal`) — every fixture runs
+   through both projections and they agree; a trace handler records every
+   perform, so a run that performs an effect its declaration negates fails the
+   battery; the page runs straight from the session's graph; the value walk
+   and the derivative reading become its abstract and tangent instances, and
+   arithmetic on a user type arrives as a numeric projection's rules
+   (`Hβ.lower.ad-is-a-demanded-projection`).
+   **Every value crosses at its own width, and every record lives where its
+   extent does** (`Hβ.lower.install-record-in-the-frame`,
+   `Hβ.lower.captureless-nested-fn-is-static`,
+   `Hβ.lower.held-resume-record-is-not-reclaimed`,
+   `Hβ.arena.closure-evac-face`, `Hβ.arena.extent-spanning-a-spawn-keeps`,
+   `Hβ.value.seq-element-stride-carrier`,
+   `Hβ.lower.parameter-product-calling-convention`,
+   `Hβ.effects.handler-value-is-its-record`). An install whose record never
+   outlives its extent lives in the frame and costs nothing; a nested fn that
+   captures nothing is the module's static record; a held resume's record is
+   dropped after its one call; an arena's exit moves a value whose type the
+   store cannot see, and reclaims across a spawn its instance makes; a list's
+   element crosses its slot at its own width, so a Float is never boxed to
+   cross a word slot; a thread's task record holds a Float answer as a double
+   and the schedule's arms are twinned at the install's answer, where a
+   Float-answering `fanout` under `parallel_compose` traps at its join today;
+   a pair handed to a one-parameter literal and two arguments handed to a
+   two-parameter function are one calling convention; and a handler named as
+   a value is its record — `let h = one` binds it, a parameter holds it, and
+   an install of a value pushes the record it holds and absorbs the effect its
+   `Handler(P, A)` type names, where today the value's emit names a global
+   nothing defines. Each charge follows the representation the day the
+   lowering builds it, so `!Alloc` accepts what allocates nothing.
+
+4. **The face: every declaration publishes one, and verification reads it**
+   (`Hβ.graph.every-declaration-publishes-a-face`). A declaration's face is
+   one column written where its judgment ends — its scheme, its row with each
+   effect at its install, its contract (preconditions stated and learned,
+   postconditions), its store claim, its flow summary, its resume grades, its
+   latency — and every caller reads it. Schemes are edges
+   (`Hβ.infer.schemes-are-edges`): instantiation is a correspondence edge,
+   never a clone, which pays the rest of a recursive group's cost
+   (`Hβ.infer.update-relations-multiply`) — the relation copied onto fresh
+   cells at every instantiation (`relation_copy_one`), a reference
+   substituting a row's edges (`subst_row_build`) and the flow walk building
+   its context as a record literal (`ctx_at`), where the update form is the
+   one SYNTAX asks a person to write. An arm's resume grade is a column on the
+   arm, written once where its op edge is drawn, and a callee's tail facts a
+   column on the declaration its edge reaches
+   (`Hβ.cost.arm-grade-is-a-column`), where `arm_grade` re-runs the arm's
+   fixpoint for every reader (the op edge, the never-returning op's check,
+   the continuation's discipline, the session's comparison) and the tail
+   facts are an smap keyed by spelling. A substrate primitive's face lives on
+   its declaration (`Hβ.infer.seq-op-signature-driven`): the faces are a table
+   in the judgment (`seq_op_sig`) today, and each becomes the primitive's own
+   signature, its body typed through it, once a list's element crosses its
+   slot at its own width (step 3). A call's answer read off a tee — a fold's
+   accumulator, a handler's answer — is placed by the install's arms, as the
+   value walk already reads them (`Hβ.effects.tee-answer-is-the-arms`), where
+   today a function threading a table through a fold's result owes `Mutate`
+   it could prove.
+   **Verification reads the face.** The verifier decides a predicate's
+   expression — the `Predicate` projection, `node_to_predicate` and the copy
+   frozen into `TRefined` delete, the value walk reading the predicate's
+   nodes and a called function's contract and body — so a predicate that
+   calls a function, or performs and is answered by an install in sight
+   (lesson 6's Nyquist bound), is decided. A parameter is what its calls hand
+   it (`Hβ.verify.parameter-is-what-its-calls-hand`): each call's hand-off is
+   recorded where its edge is drawn and read under that call's path, the
+   recursive call under the body's own hypothesis, so `0 <= i` where every
+   call hands `0` or `i + 1` is a hypothesis of the body and the wheel's
+   index loops are proven. A label's claim on a part read off a call's answer
+   is read through the callee's return tails, proven where the callee built
+   the part in sight and owed, naming the site, where it did not
+   (`Hβ.verify.part-of-a-call-answer`). A refinement a callback demands of
+   the values a callee hands it is judged where the callee passes them
+   (`Hβ.verify.higher-order-refinement`), its stage face built. A state write
+   is read as the claim's own hypothesis, an inductive invariant
+   (`Hβ.verify.state-reads-its-invariant`). A handler is a judgment unit: a
+   claim an arm makes about its own state's parts is decided once every arm is
+   judged, its row fact with it, where today the claim is owed and the `Trap`
+   it guards charged at the install (`Hβ.verify.handler-is-a-judgment-unit`).
+   A Float carries its range — a sine's [-1, 1], affine combinations, a clamp
+   — so a frequency computed from a sine or a product is decided (Pulse,
+   Wasatch). The gate is the course and the two scores judged clean, the
+   `QOwed` bounds falling to zero, and the wheel's open obligations falling
+   with each piece.
+
+5. **A module is a scope, and a package carries its judgment**
+   (`Hβ.driver.per-module-env-overlay`, `Hβ.query.facets-read-the-link`,
+   `Hβ.modules.import-block-is-maintained`,
    `Hβ.modules.vocabulary-held-by-declaration`,
    `Hβ.effects.unperformed-effects-delete`, `Hβ.space.nothing-is-collapsed`,
-   `Hβ.modules.capability-units-by-clusters`). A name resolves through its
-   module's own declarations, its direct imports' and the prelude's — never the
-   newest entry of one flat environment — so a user's `count` beside lib/lists is
-   legal, a library's own reference never rebinds to a user's declaration of the
-   same name, and a collision is settled at the import edge by a selective set
-   (`E_ImportNameCollision`, born armed). Two declarations of one name inside a
-   module refuse at the second, naming the first, whatever their kinds: today a
-   constructor sharing an effect's name shadows the effect and every row naming
-   it refuses as no effect, two effects of one name merge their ops, and two
-   types' constructors of one name surface as type mismatches at the uses
-   (measured 2026-10-15). The medium proposes a missing edge at
-   the reference, writes a conduit as a direct import and narrates a dead one
-   (`T_DeadImport`); fmt dedups and orders the block. The facets follow:
-   `imports` prints what crosses each edge and `conduit`, `DEAD` or `DUPLICATE`;
-   `importers of <module>`; `where` and `query` exit nonzero on "not found"; two
-   facets may not disagree. The compiler's vocabulary is held by declaration:
-   the effects a schedule, a derivative reading or an arena reads resolve to
-   handles once, so a user's own `effect Thread` is an ordinary effect, and no
-   string literal in src spells an effect. An install that absorbs nothing is
-   narrated (`T_InstallAbsorbsNothing`) and an op nothing performs is deleted
-   with its arms. A module splits along its reference clusters (a `clusters`
-   facet; lib/strings and src/types first), its prefixes becoming module names.
-   The page's "reports in linked modules" collapse deletes, since a library
+   `Hβ.modules.capability-units-by-clusters`,
+   `Hβ.modules.compatibility-is-computed`,
+   `Hβ.modules.a-package-carries-its-judgment`). A name resolves through its
+   module's own declarations, its direct imports' and the prelude's — never
+   the newest entry of one flat environment — so a user's `count` beside
+   lib/lists is legal, a library's own reference never rebinds to a user's
+   declaration of the same name, and a collision is settled at the import
+   edge by a selective set (`E_ImportNameCollision`, born armed). Two
+   declarations of one name inside a module refuse at the second, naming the
+   first, whatever their kinds: today a constructor sharing an effect's name
+   shadows the effect and every row naming it refuses as no effect, two
+   effects of one name merge their ops, and two types' constructors of one
+   name surface as type mismatches at the uses (measured 2026-10-15). The
+   medium proposes a missing edge at the reference, writes a conduit as a
+   direct import and narrates a dead one (`T_DeadImport`); fmt dedups and
+   orders the block. The facets follow: `imports` prints what crosses each
+   edge and `conduit`, `DEAD` or `DUPLICATE`; `importers of <module>`;
+   `where` and `query` exit nonzero on "not found"; two facets may not
+   disagree. The compiler's vocabulary is held by declaration: the effects a
+   schedule, a derivative reading or an arena reads resolve to handles once,
+   so a user's own `effect Thread` is an ordinary effect, no string literal in
+   src spells an effect, and the performs the lowering writes for a schedule
+   name their ops by edge. An install that absorbs nothing is narrated
+   (`T_InstallAbsorbsNothing`) and an op nothing performs is deleted with its
+   arms. A module splits along its reference clusters (a `clusters` facet;
+   lib/strings and src/types first), its prefixes becoming module names. The
+   page's "reports in linked modules" collapse deletes, since a library
    judged clean at its own boundary produces nothing in a user's link.
    Handlers are package management, so there is no package manager: an
    `import` performs `resolve(path)`, and the handler installed over the link
    answers — the project's folder and the library today, a content-addressed
    store or a registry beside them — so a version is that handler's config,
    the lock is the hashes the link's import edges resolved to (kept in the
-   image, so a build is reproduced by its handler and its lock), and a
-   dependency's capabilities are a negation its import edge states (`import
-   vendor/json with !Network`), proven over everything the module exports.
-   The root table (`module_roots`) deletes into the handler, and a module's
-   layer is what the handler answers about where it found the module.
-4. **Names, the host boundary, and the catalog**
-   (`Hβ.syntax.parameter-product-has-identity`,
-   `Hβ.io.filesystem-failure-is-said`,
-   `Hβ.diag.catalog-as-projection`). An effect op's parameters are named as a
-   function's are: the medium proposes each name from what its handlers' arms
-   bind and asks where they disagree, `mentl tighten` writes the sweep, and the
-   positional form then refuses (`E_UnnamedParameter`). Every filesystem
-   failure is said — an unreadable path performs `Fail`, never answers an empty
-   string or a sentinel handle. A type name that resolves nowhere refuses
-`E_MissingVariable` at the name, where `fn f(x: Nope) = x + 1` refuses as
-arithmetic on `Nope` (measured 2026-10-21). `mentl diagnostics` projects the catalog
-   from the `DiagKind` constructors, SYNTAX's tables become its text, and each
-   class the docs name that no constructor declares is born with its fixture or
-   struck.
-5. **A dropped value is said** (`Hβ.infer.statement-value-is-dropped-silently`).
-   A block's non-final statement whose value is a function refuses
-   (`E_DroppedValue`); a non-unit word or aggregate narrates until the wheel's
-   census is zero, then refuses; `let _ = e` is the explicit discard.
-6. **The verbs are whole** (`Hβ.verbs.the-verbs-are-whole`). V1: early exit is a
-   resume grade, so `any`, `all`, `find`, `take` and `position` stop at the first
-   hit and `iterate` yields lazily — `any` over five elements under a counting
-   handler counts 3. V3: every cycle has a driver — an input loop is a fold over
-   an `Iterate` source with quitting the abandon (`mcp_loop` and
-   `session_line_loop` become one; `cursor_session` folds over its actions), and
-   a fixpoint is a `<~` on a convergence clock that refuses rather than answer a
-   non-fixpoint. V4: list pipelines are `~>` stage chains that re-yield outward
-   in one pass; deforestation is an `Iterate`-algebra e-graph rewrite. V5: a
-   `<~` cycle's clock is inferred, so a cycle nothing advances is refused as
-   a measurement (`Hβ.dataflow.clock-calculus-sample-rate`); its depth may be
-   a value the ring reads at run time (`Hβ.dataflow.delay-line-runtime-depth`);
-   and the delay spec is the static depth the emit already treats it as,
-   never an expression judged in a dropped frame
-   (`Hβ.effects.feedback-row-substitutes`). The line is read at a moving,
-   fractional tap — a chorus, a flanger, a pitch shift — as well as at its
-   oldest slot; a decaying line flushes a denormal in its tick, since wasm
-   has no flush-to-zero mode; a stage's coefficient is computed when its
-   input moves, never once per sample (`compute_alpha`'s `exp` runs per tick
-   in every filter today); and a `<|` or `><` join aligns branches of known
-   latency or refuses the misaligned merge (measured 2026-10-21, after a
-   survey of Sonido).
-7. **Teach says what the program owes**
-   (`Hβ.teach.teaches-what-the-program-owes`). A refinement proposed at a part
-   (walked back through `PartFact` to its producer, ranked by the obligations it
-   discharges); a declaration with an authored clause still offered the further
-   locks its dependents stand on; a lexical ring read up the parent edge, calls
-   built with argument holes, a record proposed for a positional product; one
-   obligation value rendered once for the caret, teach, audit and smt (smt
-   asserting the negation with its declarations); a declaration's Why its
-   signature's, and a module a lede of its own; the self-proposal benchmark;
-   topology proposed under the race rule's proof; and a base-type pin equal to
-   what inference derives narrated as the inventory it is. The voice absorbs
-   the comment mass that states mechanism
-   (`Hβ.voice.comment-mass-absorbs-into-projections`), and the Why's thin
-   hops name a call argument's flow (`Hβ.why.flow-naming-at-call`) and a
-   refined alias's provenance (`Hβ.why.refinement-provenance`) and elide the
-   trivial ones (`Hβ.viz.why-walk-elides-trivial-hops`).
-8. **An op lives where its behaviour belongs**
-   (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
-   `Hβ.memory.word-arithmetic-is-memory`). A `*Write` effect's ops write and a
-   `*Read` effect's read, held by a census at zero read through the published
-   write fact: `graph_version` and `graph_attach_comment_ref` move into
-   GraphWrite. Word
-   arithmetic leaves `Memory` in two pins at the bootstrap seam (registered as
-   primitives the library shadows, then the library's declarations deleted), so a
-   function doing only arithmetic on words is `Pure`. Memory's stores become an
-   effect of their own, so the store-age judgment reads a raw store off the op's
-   edge, where it reads the op's spelling today (`raw_store_target`). A
-   substrate primitive's face lives on its declaration
-   (`Hβ.infer.seq-op-signature-driven`): the faces are a table in the judgment
-   (`seq_op_sig`), read along the edge a reference draws to the primitive, and
-   they become each primitive's own signature, its body typed through it, once
-   a list's element crosses its slot at its own width — `list_set`'s journal of
-   the value it stores is the face's today.
-9. **Handlers installed once.** One install per extent; a handler's start
-    state its own; a chain named once; nothing installed only to swallow an op
-    nobody reads. A handler named as a value is its record
-    (`Hβ.effects.handler-value-is-its-record`): `let h = one` binds it, a
-    parameter holds it, and an install of a value pushes the record it holds
-    and absorbs the effect its `Handler(P, A)` type names — today the value's
-    emit names a global nothing defines, and the module does not assemble. A
-    generic op is quantified per perform, so two instantiations of one effect
-    do not join at an install
-    (`Hβ.effects.two-instances-of-one-effect-do-not-join`).
-10. **The medium authors the migration — iteration is topology**
-    (`Hβ.wheel.iteration-is-topology`). The costume detector convicts index flow
-    (a parameter threaded ±k into an index read), with let-chains, nested-call
-    pipes, `<|`/`><` invitations, repeated install suffixes and partial eta
-    (`(row) => dot(row, x)`) as shapes, the multi-parameter lambda retiring
-    into a reference (`Hβ.syntax.multi-param-lambda-is-a-reference`); tighten
-    rewrites by edge, the prelude's
-    datum-first signatures (`reduce`, `scanl`, `nth`, `clamp`) among them; a
-    speculation's cursor is an arena with an overlay. Recursion that survives
-    is priced by a signature. The structural folds the
-    emitter derives over a sequence — `==`, compare, hash and show — are loops,
-    where each is emitted today as one call per element, so two lists of
-    twenty thousand pairs exhaust the stack where they are compared (measured
-    2026-10-16, first by the rename's edge lists), and the prelude's `sort`
-    exhausts it at twenty thousand elements, its `merge` one call per
-    element. A Float compares, equals and hashes in IEEE total order inside
-    those folds, so `[nan] == [nan]` agrees with `a == a` and `sort` places
-    a NaN, where it answers `[0.0, 0.0, 2.0, NaN, 1.0]` for `[1.0, NaN,
-    -0.0, 0.0, 2.0]` today; `<` on a Float stays IEEE for arithmetic
-    (measured 2026-10-21, after a survey of Turbosort).
-11. **The project is canonical, and a render that changes the tree is not
-    written** (`Hβ.fmt.the-project-is-canonical`,
-    `Hβ.fmt.render-must-parse-to-the-same-tree`). fmt lifts every
-    graph-preserving redundancy — `-> ()`, box-drawing decoration in comments,
-    `0 - <literal>` where exact, the sole-parameter binder as an arm list once
-    the parser builds one `LambdaExpr` for both, the ownership marker before the
-    name — and the silencer markers go with the drift-audit scaffold they
-    silence, its modes absorbed into the census. A render whose re-parse is a
-    different tree (a structural fingerprint over both parses) is refused, and
-    the heads round trip falls to zero as the parser grows the rules it misses.
-    A comment inside an expression attaches by the span rule the gate measures
-    (`Hβ.parser.expr-interior-comment-attach`).
-    The batteries address a hole and a declaration by identity, never by
-    `L:C`, so every fixture can be canonical; `mentl fmt --check` at zero over
-    src, lib, examples and tests is a board line.
-12. **The page plays the course** (`Hβ.space.the-canvas`,
-    `Hβ.emit.the-medium-assembles-its-output`, `Hβ.viz.severance-map`). The
-    course is written — `examples/pulse/course`, ten lessons on one growing
-    chain a developer hears, each a program `mentl run` renders, the page
-    opening the folder as a project, and `mentl verify` counting the lessons
-    the medium cannot yet judge clean (the `QOwed` bounds, src/board.mn). The
-    canvas paints the wheel's own tokens at their spans, the aspect strip and
-    the ambient-world glyphs, obligation marks, the ownership trace, fmt on
-    idle and a version as undo. The page runs what it compiles: the worker
-    instantiates the bytes `mentl asm` writes, a lesson plays to the speaker,
-    and the fixpoint seal runs in the page. The page's remaining faces are
-    named: the View as graph content (`Hβ.space.view-is-graph-content`), a
-    folder pick outside Chromium (`Hβ.felt.project-picker-outside-chromium`),
-    the run in the page (`Hβ.felt.ide-run-in-page`), the ambient-world gutter
-    (`Hβ.viz.ambient-world-gutter`), the living runtime's render loop
-    (`Hβ.felt.mentl-edit-runtime`), typed demand-driven reactivity
-    (`Hβ.felt.reactivity-typed-demand-driven`), time travel over the forks
-    (`Hβ.felt.time-travel-debug-forked-cursor`), and the terminal session
-    reading more than one action (`Hβ.felt.edit-session-reads-one-action`).
-    The Severance Map bands the module
-    and declaration tree in three colours — provably absent, present, not yet
-    provable — the third counted and falling; it ships after its known false
-    greens close or counts them in the third colour, and its demo is
-    Wasatch's network twin turning a green band red with the refusal naming
-    the call. Then the stranger test: someone who has never seen the
-    repository finishes lesson 1 from the README alone.
-13. **Wasatch "Inversion" — the sources and the player**
-    (`Hβ.wasatch.keyed-sources`, `Hβ.env.configuration-is-an-effect`). The
-    score is written and renders from its snapshot (`examples/wasatch`: every
-    parameter a reading of Salt Lake on the evening of 2026-10-20, each with
-    its source and its time; the per-sample path `!Network + !Filesystem +
-    !Alloc + !Sample(44100)`; the frontier's twin fetching one parameter on
-    that path refused). What remains is the live half: the keyed sources
-    (UTA's real-time TRAX first, then the gauges and the observation the
-    snapshot was read from) through a host-applied key the guest never holds
-    — the open half of configuration as an effect — and the score played in
-    the page as the readings change.
-14. **The reading's remaining faces** (`Hβ.derive.vector-forward`,
-    `Hβ.derive.gradient-as-a-value`, `Hβ.derive.transpose-through-iteration`,
-    `Hβ.derive.transpose-through-the-record`,
-    `Hβ.derive.bptt-priced-by-the-row`, `Hβ.derive.closure-line-tangent`,
-    `Hβ.lower.ad-is-a-demanded-projection`). A product seed is answered
-    through a call made through a value, a perform, a `<~` line, a record
-    carrying a tangent, an install, an early return, a query inside a callee
-    and a recursion, where the reverse projection refuses today naming the
-    vector-forward reading; a gradient held as a value is a record the row
-    sees; the transpose crosses iteration and the record; a `<~` line's
-    history is priced by the row; a line a closure record owns carries its
-    tangent; and arithmetic on a user type arrives as a numeric projection's
-    rules, the same mechanism that makes a chain differentiable.
-15. **The compile runs on every core** (`Hβ.driver.level-set-par-walk`,
-    `Hβ.native.deterministic-handle-partition`). A handle becomes an
-    `{arena, offset}` product (one word by a repr pin), deterministic under any
-    order; the schedule is a pool; emission, the classifier rounds and the
-    judgment's binding-group levels are fanouts; the battery judges its library
-    once; Pulse renders by block under `parallel_compose`. A branch's answer
-    crosses the join at its own width — the task record holds a Float as a
-    double and the schedule's arms are twinned at the install's answer, where
-    today they are emitted once at the word face and a Float-answering
-    `fanout` under `parallel_compose` traps at its join. A schedule reaches a
-    fanout through a function value minted under it
-    (`Hβ.lower.schedule-through-a-value`). Two branches writing disjoint
-    ranges of one buffer run, each owning its slice of the memory the fanout
-    hands it, where today they refuse as one buffer written from every
-    instance, and the refusal's advice names a stateless handler for an
-    effect with no ops. Every step is gated by
-    m3 under `Seq` byte-identical to m3 under `parallel_compose`.
-16. **Verify's own solver** (`Hβ.verify.the-solver-is-the-search`). The
-    proposer's search is the solver: union-find and the e-graph as congruence
-    closure, the chain of forked instances as the assignment stack, a fork as a case split,
-    the first divergence of two forks' write sets as conflict analysis. The fragment, in the order the
-    wheel's own debt names it: overflow-aware intervals, linear arithmetic
-    beyond the difference bounds the path is read in, equality from the
-    e-graph. An external solver plugs in only as a proposer
-    whose certificate the kernel checks.
-17. **The remaining faces of the one law.** Schemes are edges
-    (`Hβ.infer.schemes-are-edges`: instantiation a correspondence edge, never a
-    clone); a `Reason` is an edge to the node it names, never a copied tree;
-    lowering is columns on the program's own handles, the `LowExpr` tree and its
-    walkers deleted (`Hβ.lower.lowering-is-a-column`) — a lowered unit is a
-    column on its declaration's handle, where its identity is the symbol
-    `LFn(String, …)` carries and the emit's and the reading's reach walks
-    (`plan_reached`, `reach_units`) key their units by it; the gate is m3 ==
-    m4 with the symbol-keyed walks deleted; a continuation is
-    its frame's record in the image and the node it stopped at, captured by a
-    copy and resumed by entering the frame's one function at that node, where
-    the lowering copies the frame's tail into a function of its own at each
-    place the frame can suspend (`capture_frame`), so a block with n such
-    places writes its tail n times; a module value is a
-    column on its binder, so a module-scope let binds every binder its pattern
-    writes, each at a global of its own, and runs its value for effect when it
-    binds none, where any pattern but one binder refuses today; an
-    executable's row is `main`'s and its inits'
-    (`Hβ.effects.executable-row-includes-inits`); an arm's resume
-    grade is a column on the arm, written once where its op edge is drawn, and
-    a nested fn's grade a column on its declaration, where every reader of an
-    arm's discipline grades the arm again (`arm_grade`: the op edge, the
-    never-returning op's check, the continuation's discipline, the session's
-    comparison), each re-running the arm's fixpoint and scanning its
-    declarations per reference; incrementality reads an edit's delta as two
-    versions compared (`Hβ.graph.delta-is-two-versions`), the
-    session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
-    and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist
-    resumes across machines (`Hβ.persist.cross-machine-resume`); and a call's
-    answer read off a tee — a fold's accumulator, a handler's answer — is
-    memory the store-age walk cannot place, where the install's arms say what
-    the body's answer can be, as the value walk already reads them
-    (`Hβ.effects.tee-answer-is-the-arms`).
-18. **Every record lives where its extent does**
-    (`Hβ.lower.install-record-in-the-frame`,
-    `Hβ.lower.captureless-nested-fn-is-static`,
-    `Hβ.lower.held-resume-record-is-not-reclaimed`,
-    `Hβ.arena.closure-evac-face`, `Hβ.arena.extent-spanning-a-spawn-keeps`,
-    `Hβ.value.seq-element-stride-carrier`,
-    `Hβ.lower.parameter-product-calling-convention`). An install whose record
-    never outlives its extent lives in the frame and costs nothing; a nested
-    fn that captures nothing is the module's static record; a held resume's
-    record is dropped after its one call; an arena's exit moves a value whose
-    type the store cannot see, and reclaims across a spawn its instance makes;
-    a list's element crosses its slot at its own width, so a Float is never
-    boxed to cross a word slot; and a pair handed to a one-parameter literal
-    and two arguments handed to a two-parameter function are one calling
-    convention. Each charge follows the representation the day the lowering
-    builds it, so `!Alloc` accepts what allocates nothing.
+   image), and a dependency's capabilities are a negation its import edge
+   states (`import vendor/json with !Network`), proven over everything the
+   module exports by step 2's reach. Compatibility is computed, never
+   declared: a version whose exported faces equal the last is a patch, one
+   whose faces only widen what callers may rely on is compatible, and any
+   other is breaking — the resolve handler refuses an upgrade that breaks a
+   caller's use and names the call. A package carries its judgment: its faces
+   and lowering columns are a content-addressed segment of image, judged once
+   by its author and read by every link that resolves to it, which the kernel
+   re-checks wherever it does not trust the segment — a certificate checked,
+   never believed. The root table (`module_roots`) deletes into the handler,
+   and a module's layer is what the handler answers about where it found the
+   module.
+
+6. **A refusal is a hole** (`Hβ.diag.a-refusal-is-a-hole`). One proposer loop
+   stands under the diagnostics, Teach, accept, tighten and fmt: where the
+   program lacks a proof, the medium forks candidate edits, judges each in its
+   own instance, and shows the proven ones or asks the one question that
+   separates them — so `mentl check` runs the loop a `??` runs. The catalog is
+   a projection (`Hβ.diag.catalog-as-projection`): `mentl diagnostics`
+   projects it from the `DiagKind` constructors, SYNTAX's tables become its
+   text, each class the docs name that no constructor declares is born with
+   its fixture or struck, and each class proves itself — its fixture refuses,
+   and its fix, applied in a fork, passes. Accepting a proposal rewrites the
+   hole's node in place (`Hβ.graph.positions-are-cells`), the position-keyed
+   accept column (`Hβ.synth.accepted-edge-keyed-by-position`) deleted.
+   An effect op's parameters are named as a function's are
+   (`Hβ.syntax.parameter-product-has-identity`): the medium proposes each name
+   from what its handlers' arms bind and asks where they disagree, `mentl
+   tighten` writes the sweep, and the positional form then refuses
+   (`E_UnnamedParameter`). A type name that resolves nowhere refuses
+   `E_MissingVariable` at the name, where `fn f(x: Nope) = x + 1` refuses as
+   arithmetic on `Nope` (measured 2026-10-21). A dropped value is said
+   (`Hβ.infer.statement-value-is-dropped-silently`): a block's non-final
+   statement whose value is a function refuses (`E_DroppedValue`), a non-unit
+   word or aggregate narrates until the wheel's census is zero and then
+   refuses, and `let _ = e` is the explicit discard.
+   Teach says what the program owes
+   (`Hβ.teach.teaches-what-the-program-owes`): a refinement proposed at a part
+   (walked back through `PartFact` to its producer, ranked by the obligations
+   it discharges); a declaration with an authored clause still offered the
+   further locks its dependents stand on; a lexical ring read up the parent
+   edge, calls built with argument holes, a record proposed for a positional
+   product; one obligation value rendered once for the caret, teach, audit and
+   smt (smt asserting the negation with its declarations); a declaration's Why
+   its signature's, and a module a lede of its own; the self-proposal
+   benchmark; topology proposed under the race rule's proof; and a base-type
+   pin equal to what inference derives narrated as the inventory it is. The
+   voice absorbs the comment mass that states mechanism
+   (`Hβ.voice.comment-mass-absorbs-into-projections`), and the Why's thin hops
+   name a call argument's flow (`Hβ.why.flow-naming-at-call`) and a refined
+   alias's provenance (`Hβ.why.refinement-provenance`) and elide the trivial
+   ones (`Hβ.viz.why-walk-elides-trivial-hops`).
+   The medium authors the wheel's migration
+   (`Hβ.wheel.iteration-is-topology`): the costume detector convicts index
+   flow (a parameter threaded ±k into an index read), with let-chains,
+   nested-call pipes, `<|`/`><` invitations, repeated install suffixes and
+   partial eta (`(row) => dot(row, x)`) as shapes, the multi-parameter lambda
+   retiring into a reference (`Hβ.syntax.multi-param-lambda-is-a-reference`);
+   tighten rewrites by edge, each rewrite a candidate kept only when every
+   declaration it touches publishes the face it published, the prelude's
+   datum-first signatures (`reduce`, `scanl`, `nth`, `clamp`) among them.
+   Recursion that survives is priced by a signature. Handlers are installed
+   once: one install per extent, a handler's start state its own, a chain
+   named once, nothing installed only to swallow an op nobody reads.
+   The project is canonical, and a render that changes the tree is not
+   written (`Hβ.fmt.the-project-is-canonical`,
+   `Hβ.fmt.render-must-parse-to-the-same-tree`): fmt lifts every
+   graph-preserving redundancy — `-> ()`, box-drawing decoration in comments,
+   `0 - <literal>` where exact, the sole-parameter binder as an arm list once
+   the parser builds one `LambdaExpr` for both, the ownership marker before
+   the name — and the silencer markers go with the drift-audit scaffold they
+   silence, its modes absorbed into the census. A render whose re-parse is a
+   different tree (a structural fingerprint over both parses) is refused, and
+   the heads round trip falls to zero as the parser grows the rules it
+   misses. A comment inside an expression attaches by the span rule the gate
+   measures (`Hβ.parser.expr-interior-comment-attach`). The batteries address
+   a hole and a declaration by identity, never by `L:C`, so every fixture can
+   be canonical; `mentl fmt --check` at zero over src, lib, examples and tests
+   is a board line.
+
+7. **Edits cost what they change, and the page plays the course.** The
+   edit's cone has a cutoff (`Hβ.session.edit-cone-cutoff`): a declaration
+   whose rewritten dependency publishes the same face is not judged again,
+   where today an edit to `chain_spelling` judges 1,767 declarations (§7).
+   The delta between two versions is read as two versions compared
+   (`Hβ.graph.delta-is-two-versions`), the session paying for what an edit
+   moved (`Hβ.session.edit-pays-for-the-program`) and outliving its process
+   (`Hβ.felt.accept-outlives-the-process`); persist resumes across machines
+   (`Hβ.persist.cross-machine-resume`), so the session is a value.
+   The hot path is measured (`bash tools/profile-self.sh`,
+   `tools/guest-profile.py`) and each top caller removed by the law it
+   breaks, never by a number (`Hβ.cost.hot-path-by-law`). Measured and named,
+   for the profile to rank: the dispatch memo answers from a hashed table
+   where a dense index per (effect, op) would answer inline from two loads;
+   `fold` and `each` index their flat list through the typed bounds check per
+   element; `instantiate(Live(h))` re-generalizes the declaration at every use;
+   `env_snapshot` fills an index per call and each `??` segment installs a
+   fresh env; `row_of_subtree` is an unmemoized whole-subtree fold called per
+   node; `set_canonicalize` re-sorts a growing accumulator in the
+   `effects_of_edges` loop; the `wmap` columns have fixed bucket counts, so a
+   graph read scans a bucket of hundreds; `ls_find_str_local` and
+   `name_set_prefix_contains` scan per lookup; and a handler's state commit
+   journals its slot at every write, where once per extent holds what the
+   exit reads, so the parse of src/infer.mn writes past the arena journal's
+   262,144 entries and its exit keeps every temporary the parse built
+   (measured 2026-10-22, a probe trapping at the overflow). The self-compile's
+   wall and peak ratchet down; the wall is read as a share of the boot's on
+   the same wheel, since a lone wall reading is the machine's load as much as
+   the compiler's.
+   The page plays the course (`Hβ.space.the-canvas`,
+   `Hβ.emit.the-medium-assembles-its-output`, `Hβ.viz.severance-map`). The
+   course is written — `examples/pulse/course`, ten lessons on one growing
+   chain a developer hears, each a program `mentl run` renders, the page
+   opening the folder as a project, and `mentl verify` counting the lessons
+   the medium cannot yet judge clean (the `QOwed` bounds, src/board.mn). The
+   canvas paints the wheel's own tokens at their spans, the aspect strip and
+   the ambient-world glyphs, obligation marks, the ownership trace, fmt on
+   idle and a version as undo. The page runs what it compiles — through step
+   3's evaluator at once, and through the bytes `mentl asm` writes for speed
+   — a lesson plays to the speaker, and the fixpoint seal runs in the page.
+   The page's remaining faces are named: the View as graph content
+   (`Hβ.space.view-is-graph-content`), a folder pick outside Chromium
+   (`Hβ.felt.project-picker-outside-chromium`), the run in the page
+   (`Hβ.felt.ide-run-in-page`), the ambient-world gutter
+   (`Hβ.viz.ambient-world-gutter`), the living runtime's render loop
+   (`Hβ.felt.mentl-edit-runtime`), typed demand-driven reactivity
+   (`Hβ.felt.reactivity-typed-demand-driven`), time travel over the forks
+   (`Hβ.felt.time-travel-debug-forked-cursor`), and the terminal session
+   reading more than one action (`Hβ.felt.edit-session-reads-one-action`).
+   The Severance Map is step 2's reach projected over the module and
+   declaration tree in three colours — provably absent, present, not yet
+   provable — the third counted and falling; it ships after its known false
+   greens close or counts them in the third colour, and its demo is Wasatch's
+   network twin turning a green band red with the refusal naming the call.
+   Then the stranger test: someone who has never seen the repository installs
+   the medium and finishes lesson 1 from the README alone.
+
+8. **The verbs are whole, and the DSP arc** (`Hβ.verbs.the-verbs-are-whole`).
+   Early exit is a resume grade, so `any`, `all`, `find`, `take` and
+   `position` stop at the first hit and `iterate` yields lazily — `any` over
+   five elements under a counting handler counts 3. Every cycle has a driver:
+   an input loop is a fold over an `Iterate` source with quitting the abandon
+   (`mcp_loop` and `session_line_loop` become one; `cursor_session` folds over
+   its actions), and a fixpoint is a `<~` on a convergence clock that refuses
+   rather than answer a non-fixpoint. List pipelines are `~>` stage chains
+   that re-yield outward in one pass; deforestation is an `Iterate`-algebra
+   e-graph rewrite, legal where the rows allow. A `<~` cycle's clock is
+   inferred, so a cycle nothing advances is refused as a measurement
+   (`Hβ.dataflow.clock-calculus-sample-rate`); its depth may be a value the
+   ring reads at run time (`Hβ.dataflow.delay-line-runtime-depth`); and the
+   delay spec is the static depth the emit already treats it as, never an
+   expression judged in a dropped frame (`Hβ.effects.feedback-row-substitutes`).
+   The line is read at a moving, fractional tap — a chorus, a flanger, a pitch
+   shift — as well as at its oldest slot; a decaying line flushes a denormal
+   in its tick, since wasm has no flush-to-zero mode; a stage's coefficient is
+   computed when its input moves, never once per sample (`compute_alpha`'s
+   `exp` runs per tick in every filter today); and a `<|` or `><` join aligns
+   branches of known latency, latency a component of each stage's face, or
+   refuses the misaligned merge (measured 2026-10-21, after a survey of
+   Sonido). The prelude takes the datum last at every stage-shaped signature,
+   through step 6's reorder.
+   The reading's remaining faces (`Hβ.derive.vector-forward`,
+   `Hβ.derive.gradient-as-a-value`, `Hβ.derive.transpose-through-iteration`,
+   `Hβ.derive.transpose-through-the-record`,
+   `Hβ.derive.bptt-priced-by-the-row`, `Hβ.derive.closure-line-tangent`): a
+   product seed is answered through a call made through a value, a perform, a
+   `<~` line, a record carrying a tangent, an install, an early return, a
+   query inside a callee and a recursion, where the reverse projection refuses
+   today naming the vector-forward reading; a gradient held as a value is a
+   record the row sees; the transpose crosses iteration and the record; a
+   `<~` line's history is priced by the row; and a line a closure record owns
+   carries its tangent.
+   Wasatch "Inversion"'s live half (`Hβ.wasatch.keyed-sources`,
+   `Hβ.env.configuration-is-an-effect`): the score renders from its snapshot
+   today (`examples/wasatch`, every parameter a reading of Salt Lake on the
+   evening of 2026-10-20, the per-sample path `!Network + !Filesystem +
+   !Alloc + !Sample(44100)`); what remains is the keyed sources (UTA's
+   real-time TRAX first, then the gauges and the observation the snapshot was
+   read from) through a key the host applies and the guest never holds — a
+   secret is a label on an opaque host handle, the flow walk proving it never
+   reaches output and an import's negation proving a dependency never touches
+   it — and the score played in the page as the readings change.
+
+9. **Forks on every core** (`Hβ.oracle.forks-on-threads`,
+   `Hβ.driver.level-set-par-walk`, `Hβ.native.deterministic-handle-partition`,
+   `Hβ.lower.schedule-through-a-value`, `Hβ.verify.the-solver-is-the-search`).
+   The compiler is still emitted as a thread-free module (a defined memory, a
+   bump allocator, no spawn import), and this is the fused oracle's one pin
+   left. A handle becomes an `{arena, offset}` product (one word by a repr
+   pin), deterministic under any order. The demand walk that twins a direct
+   callee by the install's schedule follows a `~> h` in the demanded reach
+   into `h`'s arms, the arm twins keyed by the schedule letter and minted only
+   where the schedule changes the lowering. `parallel_compose` is a POOL sized
+   to the cores — a fanout enqueues its branches as task records in the
+   image's shared queue, a nested fanout inside a worker enqueues instead of
+   spawning, and the join reads results by option index — and stands over the
+   judgment at every verb entry; `sequential_compose` stands at one site,
+   `mentl march`'s determinism leg, which compiles the wheel twice
+   in-process, once under each schedule, asserts the two WATs byte-identical
+   and prints both wall times; the emit sees `spawn_task` reached and emits
+   the spawning module; the page's resident session arms the pool its run
+   role has. Emission, the classifier rounds and the judgment's binding-group
+   levels are fanouts; the battery judges its library once; Pulse renders by
+   block under `parallel_compose`. A schedule reaches a fanout through a
+   function value minted under it. Two branches writing disjoint ranges of
+   one buffer run, each owning its slice of the memory the fanout hands it,
+   where today they refuse as one buffer written from every instance, and the
+   refusal's advice names a stateless handler for an effect with no ops.
+   Verify's own solver is the search: union-find and the e-graph as
+   congruence closure, the chain of forked instances as the assignment stack,
+   a fork as a case split, the first divergence of two forks' write sets as
+   conflict analysis; the fragment grows in the order the wheel's own debt
+   names it — overflow-aware intervals, linear arithmetic beyond the
+   difference bounds the path is read in, equality from the e-graph. An
+   external solver plugs in only as a proposer whose certificate the kernel
+   checks. Every step is gated by m3 under `sequential_compose`
+   byte-identical to m3 under `parallel_compose`, the two wall times on the
+   board.
+
+10. **`!Outside` closes.** The native backend (`docs/NATIVE.md`, the
+    deterministic band its second keystone) is one more projection of step
+    3's lowering column; diverse double compilation
+    (`Hβ.closure.diverse-double-compilation`) compiles the wheel through two
+    independent projections and compares them; and every scaffold under
+    tools/ is absorbed into a verb — the march is `mentl march` and the board
+    `mentl verify` already; the state script is next, and the loop then names
+    no script.
 
 ---
 

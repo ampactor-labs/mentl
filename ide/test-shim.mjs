@@ -137,7 +137,7 @@ const spawnWorker = () => {
   return { post: (m) => w.postMessage(m), terminate: () => w.terminate(), onError: (fn) => w.on('error', fn) };
 };
 const ms = (r) => `${r.ms.toFixed(1)} ms ${r.resident ? 'resident' : 'cold' + (r.why ? ' (' + r.why.trim().split('\n')[0] + ')' : '')}`;
-const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than asserted
+const READ_BAR_MS = 50;   // PLAN §1's felt loop, its bar measured here rather than asserted
 {
   const prog = 'fn double(x) = x * 2\n\nfn main() with Memory + Alloc =\n  [1, 2, 3]\n    |> map(double)\n    |> fold(0, (acc, x) => acc + x)\n';
   const sess = new Session({ spawn: spawnWorker, module: MODULE, vfs: Object.assign({}, VFS, { 'main.mn': te.encode(prog) }), runCold: (req) => runWheel(req) });
