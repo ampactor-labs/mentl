@@ -635,12 +635,26 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   edges their own way; and the graph has one projection, the WAT emit, the
   value walk and the derivative reading evaluators of their own and no
   reference meaning to check the emit against.
-- **The prose still asserts machinery that is not there**: decoration banners,
-  coordinates in prose, ledes that are another comment's text, and forward
-  pointers (`Hβ.*` labels) in the wheel's comments that no §11 paragraph
-  names — the documents carry none, held by `tools/doc-truth.sh`. Each
-  module's comments are trued in the landing that touches it; fmt strips the
-  decoration (§11.6).
+- **Code in a comment is not judged, and the wheel's prose breaks the comment
+  law** (§11.6, §11.5, §11.2). SYNTAX says a comment's code compiles, and it
+  does not: a fenced block holding `fn broken( = = 3` checks clean, and a
+  `mentl rename` of a function the block calls leaves it calling a name that
+  no longer exists (measured 2026-10-23), so an example in a comment, or in
+  SYNTAX's own fences, goes stale unseen. A backticked name is an edge a
+  rename follows, but an `Hβ.*` label is text, and most labels in the wheel's
+  comments name no §11 paragraph — the documents carry none, held by
+  `tools/doc-truth.sh`, and nothing holds the source. A comment still
+  silences a gate (`drift-audit: ignore`), which SYNTAX says a comment never
+  does; decoration banners group code its module has not split along its
+  clusters; ledes are another comment's text; and archaeology, lifecycle
+  prose, commit hashes and coordinates stand capped on the board, none
+  falling. A claim in prose is checked by nothing: `row_subsumes`'s comment
+  says a gate check only reads the graph, which `!GraphWrite` would prove and
+  cannot while GraphRead holds writes. And three faces are thin: an
+  unresolved mention is reported across its comment's first line rather than
+  at the backticked word, a declaration's Why does not walk its comment (the
+  Lede shows it), and fmt lifts a trailing comment onto a line of its own
+  where it would fit beside its code.
 
 ---
 
@@ -765,7 +779,8 @@ honest `V_Pending`, its search the medium's own, every diagnostic class
 refusing; (2) *the negative is provable* — an `Untrusted` value reaching a
 `Trusted` sink refused, implicit flows included; (3) *intent is lossless* —
 the Why walk total, provenance projected at every surface, the formatter's
-fixed point canonical; (4) *computation is durable* — persist generalized to
+fixed point canonical, every comment's code judged and every mention in it an
+edge; (4) *computation is durable* — persist generalized to
 cross-machine resume, the session a value; (5) *systems explain themselves* —
 `mentl audit` live, the docs a projection, a refusal answered by the same
 proposer loop as a `??`; (6) *the oracle at its limits* — the fused
@@ -841,7 +856,9 @@ the face (step 4) cut the last three.
    `Hβ.memory.word-arithmetic-is-memory`): a `*Write` effect's ops write and a
    `*Read` effect's read, held by a census at zero read through the published
    write fact (`graph_version` and `graph_attach_comment_ref` move into
-   GraphWrite); word arithmetic leaves `Memory` in two pins at the bootstrap
+   GraphWrite), so a comment that says a function only reads the graph
+   (`row_subsumes`'s) becomes the negation it states, `with !GraphWrite`, and
+   leaves; word arithmetic leaves `Memory` in two pins at the bootstrap
    seam (registered as primitives the library shadows, then the library's
    declarations deleted), so a function doing only arithmetic on words is
    `Pure`; and Memory's stores become an effect of their own, so the store-age
@@ -993,7 +1010,10 @@ the face (step 4) cut the last three.
    name their ops by edge. An install that absorbs nothing is narrated
    (`T_InstallAbsorbsNothing`) and an op nothing performs is deleted with its
    arms. A module splits along its reference clusters (a `clusters` facet;
-   lib/strings and src/types first), its prefixes becoming module names. The
+   lib/strings and src/types first), its prefixes becoming module names, and
+   a decoration banner an author drew by hand is read as the cluster it
+   marks: the facet proposes the split the banner names, and the banner
+   leaves with the split, never before it, so the grouping is kept. The
    page's "reports in linked modules" collapse deletes, since a library
    judged clean at its own boundary produces nothing in a user's link.
    Handlers are package management, so there is no package manager: an
@@ -1049,11 +1069,31 @@ the face (step 4) cut the last three.
    its signature's, and a module a lede of its own; the self-proposal
    benchmark; topology proposed under the race rule's proof; and a base-type
    pin equal to what inference derives narrated as the inventory it is. The
-   voice absorbs the comment mass that states mechanism
-   (`Hβ.voice.comment-mass-absorbs-into-projections`), and the Why's thin hops
-   name a call argument's flow (`Hβ.why.flow-naming-at-call`) and a refined
-   alias's provenance (`Hβ.why.refinement-provenance`) and elide the trivial
-   ones (`Hβ.viz.why-walk-elides-trivial-hops`).
+   Why's thin hops name a call argument's flow (`Hβ.why.flow-naming-at-call`)
+   and a refined alias's provenance (`Hβ.why.refinement-provenance`) and elide
+   the trivial ones (`Hβ.viz.why-walk-elides-trivial-hops`).
+   A comment is held to what it says (`Hβ.comment.a-fence-is-judged`,
+   `Hβ.comment.a-label-is-a-mention`,
+   `Hβ.voice.comment-mass-absorbs-into-projections`). A fenced block in a
+   comment is judged as a module of its own inside its comment's module's
+   reach: a refusal there is reported at the fence, and its names are mention
+   edges, so a rename rewrites them. SYNTAX's fences are judged by the same
+   reading, each tagged with the contract it holds, so the surface's examples
+   are compiled. An `Hβ.*` label is a mention of the §11 paragraph that names
+   it, resolved or `W_CommentRefUnresolved` as a backticked name is, so one
+   rule holds the documents and the source and doc-truth's label check
+   deletes into it. The silencer markers go with the drift-audit scaffold
+   they silence, its modes absorbed into the census, so no comment changes a
+   verdict. The voice absorbs the comment mass that states mechanism, and no
+   counter can tell mechanism from intent, so the rule is the landing's: each
+   landing applies SYNTAX's deletion test to the comments of every module it
+   touches, and its commit names the projection that now answers each comment
+   it deleted, while archaeology, lifecycle prose, commit hashes, coordinates
+   and the ledes that are another comment's text fall to zero. A comment
+   inside an expression attaches by the span rule the gate measures
+   (`Hβ.parser.expr-interior-comment-attach`); an unresolved mention is
+   reported at its backticked word; a declaration's Why walks its comment;
+   and fmt keeps a trailing comment beside its code where it fits.
    The medium authors the wheel's migration
    (`Hβ.wheel.iteration-is-topology`): the costume detector convicts index
    flow (a parameter threaded ±k into an index read), with let-chains,
@@ -1069,15 +1109,13 @@ the face (step 4) cut the last three.
    The project is canonical, and a render that changes the tree is not
    written (`Hβ.fmt.the-project-is-canonical`,
    `Hβ.fmt.render-must-parse-to-the-same-tree`): fmt lifts every
-   graph-preserving redundancy — `-> ()`, box-drawing decoration in comments,
+   graph-preserving redundancy — `-> ()`, box-drawing decoration in comments
+   (a banner once its module has split along the cluster it marks, step 5),
    `0 - <literal>` where exact, the sole-parameter binder as an arm list once
    the parser builds one `LambdaExpr` for both, the ownership marker before
-   the name — and the silencer markers go with the drift-audit scaffold they
-   silence, its modes absorbed into the census. A render whose re-parse is a
-   different tree (a structural fingerprint over both parses) is refused, and
-   the heads round trip falls to zero as the parser grows the rules it
-   misses. A comment inside an expression attaches by the span rule the gate
-   measures (`Hβ.parser.expr-interior-comment-attach`). The batteries address
+   the name. A render whose re-parse is a different tree (a structural
+   fingerprint over both parses) is refused, and the heads round trip falls
+   to zero as the parser grows the rules it misses. The batteries address
    a hole and a declaration by identity, never by `L:C`, so every fixture can
    be canonical; `mentl fmt --check` at zero over src, lib, examples and tests
    is a board line.
