@@ -639,8 +639,8 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   law** (§11.6, §11.5, §11.2). SYNTAX says a comment's code compiles, and it
   does not: a fenced block holding `fn broken( = = 3` checks clean, and a
   `mentl rename` of a function the block calls leaves it calling a name that
-  no longer exists (measured 2026-10-23), so an example in a comment, or in
-  SYNTAX's own fences, goes stale unseen. A backticked name is an edge a
+  no longer exists (measured 2026-10-23), so an example in a comment goes
+  stale unseen. A backticked name is an edge a
   rename follows, but an `Hβ.*` label is text, and most labels in the wheel's
   comments name no §11 paragraph — the documents carry none, held by
   `tools/doc-truth.sh`, and nothing holds the source. A comment still
@@ -655,6 +655,18 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   at the backticked word, a declaration's Why does not walk its comment (the
   Lede shows it), and fmt lifts a trailing comment onto a line of its own
   where it would fit beside its code.
+- **The documents are held to the artifact by a script, and in part**
+  (§11.6). `tools/doc-truth.sh` checks the pin, the verbs and scripts the
+  documents name, their labels and the token enumeration's count. Nothing
+  checks SYNTAX's precedence table against `binop_prec` and `pipe_prec`,
+  whose literal integers it says it is; none of SYNTAX's fences is tagged or
+  judged; and a backticked name in a document resolves nowhere, so a rename
+  leaves it stale. SYNTAX writes the present state beside the surface, in
+  sentences that say "today" and "not yet", where this section is the
+  arbiter. And the read-path loads all three documents whole into every
+  session and every agent, about 357 KB (measured 2026-10-23), against the
+  guidance of the tools that load it: a context file costs every task, and
+  pays only where it says what a reader could not find.
 
 ---
 
@@ -1094,6 +1106,32 @@ the face (step 4) cut the last three.
    (`Hβ.parser.expr-interior-comment-attach`); an unresolved mention is
    reported at its backticked word; a declaration's Why walks its comment;
    and fmt keeps a trailing comment beside its code where it fits.
+   The documents are projections the medium holds to the artifact
+   (`Hβ.docs.tables-are-projections`, `Hβ.docs.a-rule-has-an-id`,
+   `Hβ.docs.a-name-in-a-document-is-an-edge`,
+   `Hβ.docs.the-read-path-is-a-map`), each the medium's own reading, never a
+   documentation tool beside it — no site generator (the page and `mentl doc`
+   render) and no decision-record directory (§4 is the register). SYNTAX's
+   tables are rendered from what they describe, as the catalog is from the
+   `DiagKind` constructors (above), each class there also carrying its
+   explanation and a site that constructs it, a constructor nothing
+   constructs struck: the precedence table from `binop_prec` and `pipe_prec`,
+   and the token enumeration from `TokenKind`, whose hand-kept checksum
+   deletes. Each normative sentence of SYNTAX carries an id, a fixture names
+   the ids it witnesses, and `mentl verify` bounds the sentences no fixture
+   witnesses, a ceiling that only falls; a §4 decision carries an id a
+   comment or a commit cites as a mention. A backticked name in the three documents is a mention
+   resolved against the wheel and the library, so `mentl rename` rewrites
+   the documents with the source and a name nothing declares warns. SYNTAX
+   states the surface and §7 the state: each "today" and "not yet" in SYNTAX
+   moves to the §7 line it describes, leaving its label where the form will
+   stand. The read-path is a map: CLAUDE.md stays loaded whole, and PLAN and
+   SYNTAX are reached through a dense index of their sections the medium
+   projects from their headings and §11's steps, each section served by
+   name over the command line and `mentl mcp`; CLAUDE.md's prose restating
+   each hook shrinks to the hook's own refusal; and a breadth agent starts
+   from the map alone. The map is kept only where real landings measured
+   before and after it spend less context and land as well.
    The medium authors the wheel's migration
    (`Hβ.wheel.iteration-is-topology`): the costume detector convicts index
    flow (a parameter threaded ±k into an index read), with let-chains,
