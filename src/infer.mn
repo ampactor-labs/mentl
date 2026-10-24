@@ -72,6 +72,7 @@ type FrameExit = {
   raw: EffRow,
   row_handle: Int,
   sig_cells: [Int],
+  spills: [(Int, Int)],
 }
 
 effect InferCtx {
@@ -92,6 +93,10 @@ effect InferCtx {
   inf_keep_open([Int])
   inf_keep_close()
   inf_add_row(EffRow)
+  // A fold over a type still free where it stands: the site and its
+  // operand, decided where the frame's judgment ends (`spills_decided`).
+  // False where no frame is open.
+  inf_note_spill(Int, Int) -> Bool
   // A frame that owns no record of its own: a fanout branch's thunk, and a
   // literal a verb applies in place. A feedback line's tick charges the
   // nearest frame that does (`inf_add_row_owner`), since the line is the
@@ -158,7 +163,7 @@ type CtxSeed = {
   kept: [[Int]],
   mint_ceiling: Int,
   reach: [[(Int, [Int])]],
-  stack: [{accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int}],
+  stack: [{accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int, spills: [(Int, Int)]}],
 }
 
 // The root's seed: no frame, no mark, no ceiling, no declaration open, the
@@ -188,8 +193,15 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
     // The frame is BORN with its declaration: `effs` = the FnStmt's authored
     // [(EffName, negated)] list (empty for lambdas / tee bodies / arm scopes).
     // No ambient declared-scalar to clobber — a nested fn gets its own.
-    let frame =
-      {accumulated_row: mk_ef_pure(), declared: effs, fn_span, owner: true, params: [], row_handle: h}
+    let frame = {
+      accumulated_row: mk_ef_pure(),
+      declared: effs,
+      fn_span,
+      owner: true,
+      params: [],
+      row_handle: h,
+      spills: [],
+    }
     // drift-audit: ignore — bounded-depth frame PUSH (one per fn nesting level, popped at exit; §9 push-at-END), not a loop accumulator
     resume() with stack = stack ++ [frame]
   },
@@ -215,6 +227,7 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
       raw: mk_ef_pure(),
       row_handle: -1,
       sig_cells: [],
+      spills: [],
     })
   } else {
     let frame = last(stack)
@@ -278,6 +291,7 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
       raw: frame.accumulated_row,
       row_handle: frame.row_handle,
       sig_cells,
+      spills: frame.spills,
     }) with stack = drop_last(stack), install_marks = marks2
   },
   inf_mark_install_frame(handled) => // drift-audit: ignore — bounded-depth mark PUSH paired with the exit's pop (§9 push-at-END), not a loop accumulator
@@ -329,6 +343,12 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
   } else {
     resume() with stack = push(drop_last(stack), {...last(stack), accumulated_row: row})
   },
+  inf_note_spill(site, operand) => if len(stack) == 0 {
+    resume(false)
+  } else {
+    let frame = last(stack)
+    resume(true) with stack = push(drop_last(stack), {...frame, spills: push(frame.spills, (site, operand))})
+  },
   inf_current_row() => if len(stack) == 0 {
     resume(mk_ef_pure())
   } else {
@@ -374,8 +394,15 @@ fn exit_frame() = {
   if x.row_handle < 0 {
     ()
   } else {
-    let keep = signature_free_roots(x.sig_cells) ++ x.enclosing
-    let published = row_keep_completion(row_without_self(x.raw, x.row_handle), x.ceiling, keep)
+    // The frame's undecided folds are decided first, and a row a signature
+    // variable's spill waits in escapes with the variable, which every
+    // instantiation copies with it, so the prune keeps it — unless the
+    // frame already pays all the row can come to hold.
+    let raw = spills_decided(x.raw, x.spills, x.fn_span)
+    let roots = signature_free_roots(x.sig_cells)
+    let held = if pays_construction(raw) { [] } else { spill_rows_held(roots) }
+    let keep = roots ++ held ++ x.enclosing
+    let published = row_keep_completion(row_without_self(raw, x.row_handle), x.ceiling, keep)
     // The decl-exit REPLACE is judged by `row_gate`, the install every
     // judgment runs under: a cell a caller's gate reached before this
     // declaration finalized (the co-member `run(a)` shape — `a`'s
@@ -4931,10 +4958,7 @@ fn infer_field_access_record(rec, field, handle, span: ValidSpan) = {
   infer_borrowed_read(rec)
   let field_h = mint(Inferred("field type"))
   let row_h = graph_fresh_row(Inferred("record row"))
-  let expected = mk_record_open([(field, TVar(field_h))], row_h)
-  let expected_h = mint(Inferred("record access"))
-  graph_bind(expected_h, expected, Located(span, Inferred("expected record")))
-  unify(rec, expected_h, span, Inferred("field access"))
+  meet_ty(rec, mk_record_open([(field, TVar(field_h))], row_h), span, Inferred("field access"))
   // The load's offset reads which fields the receiver's row holds.
   shape_demand(rec, OuterShape)
   graph_bind(handle, TVar(field_h), Located(span, Inferred("field type")))
@@ -4944,12 +4968,14 @@ fn infer_field_access_record(rec, field, handle, span: ValidSpan) = {
 // if the binding is an `own` parameter. The affine-ledger handler
 // in `own.mn` decides which names are own-marked; `check_consume_at_use`
 // performs unconditionally and lets the handler decide.
-// How a reference is used: as a call's callee, or as a value. A
+// How a reference is used: as a call's callee, as a stage, or as a value. A
 // constructor or op name in VALUE position is the parameter product with
 // every field unsupplied (SYNTAX §«Partial application» — a bare name IS the
-// name applied to nothing), so its judgment writes that product; a callee
+// name applied to nothing), so its judgment writes that product, and the
+// partial the frame mints for it is a closure record it pays for; a stage
+// is that product applied where it stands, minting nothing; a callee
 // reference writes nothing, the call's product being the call node's.
-type RefUse = RefCalled | RefValued
+type RefUse = RefCalled | RefStaged | RefValued
 
 // A call's callee, judged as the reference it is (`RefCalled`); every other
 // callee expression is judged as the value it is.
@@ -4959,12 +4985,20 @@ fn infer_callee(func) = match graph_node_body(func) {
   | NRow(_) | NParam(_) => infer_expr(func),
 }
 
-// A bare constructor, op or primitive reference's product: no arguments, one
-// cell per slot, so the partial the lowering mints for it reads each open
-// slot at its own width. A nullary constructor's reference is the value
-// itself, not an arrow, and writes none.
-fn bare_reference_product(handle, ty, span: ValidSpan) = match ty {
-  TFun(ps, _, _) => graph_product_note(handle, [], open_slot_cells(ps, 0, span), CallSuspended),
+// A bare constructor, op, primitive or fold face reference's product: no
+// arguments, one cell per slot, so the partial the lowering mints for it
+// reads each open slot at its own width. Held as a value, the partial is a
+// closure record the frame builds, so the reference charges what building
+// one costs; a stage applies it where it stands and builds none. A nullary
+// constructor's reference is the value itself, not an arrow, and writes none.
+fn bare_reference_product(handle, ty, span: ValidSpan, use) = match ty {
+  TFun(ps, _, _) => {
+    graph_product_note(handle, [], open_slot_cells(ps, 0, span), CallSuspended)
+    match use {
+      RefValued => inf_add_row_at(handle, construction_row()),
+      RefStaged | RefCalled => (),
+    }
+  },
   TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
   | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
 }
@@ -5026,29 +5060,44 @@ fn judge_reference(name: String, handle, span: ValidSpan, use, scheme, reason, k
   // measured as `xs |> len` unifying List against Int while emitting
   // correctly, the 3.3 false-diagnostic drift). The row stays the callee's
   // own declared row.
-  let ty = if reaches_substrate(handle) { seq_face_ty(name, scheme) } else { instantiate(scheme) }
+  let ty =
+    if reaches_substrate(handle) { seq_face_ty(name, scheme, use) } else { instantiate(scheme) }
   graph_bind(handle, ty, Located(span, VarLookup(name, reason)))
   // Carry parameter ownership from the declaration into Consume. No
   // recovery lookup: SchemeKind names the binding's construction origin.
   check_consume_at_use(name, kind, span)
   match use {
     RefCalled => (),
-    RefValued => match kind {
-      ConstructorScheme(_, _) => bare_reference_product(handle, ty, span),
-      EffectOpScheme(_, _, _) => bare_reference_product(handle, ty, span),
-      PrimitiveKind(_) => bare_reference_product(handle, ty, span),
-      FnScheme | RecordSchemeKind(_) | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _)
-      | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_) | ValueScheme => (),
+    RefStaged | RefValued => match kind {
+      ConstructorScheme(_, _) => bare_reference_product(handle, ty, span, use),
+      EffectOpScheme(_, _, _) => bare_reference_product(handle, ty, span, use),
+      PrimitiveKind(_) => bare_reference_product(handle, ty, span, use),
+      FnScheme => if reaches_substrate(handle) && is_fold_face(name) {
+        bare_reference_product(handle, ty, span, use)
+      } else {
+        ()
+      },
+      RecordSchemeKind(_) | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _) | ParamScheme(_)
+      | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_) | ValueScheme => (),
     },
   }
 }
 
-fn seq_face_ty(name: String, scheme) = {
+// A callee's fold is charged by its call (`infer_seq_op`), so only a face
+// held or staged carries the fold's cost in its row.
+fn seq_face_ty(name: String, scheme, use) = {
   let elem = TVar(mint(Inferred("sequence element")))
   match seq_op_sig(name, elem) {
     Some(sig) => match sig {
       (ptys, ret) => match instantiate(scheme) {
-        TFun(_, _, crow) => TFun(build_ctor_params(ptys, 0), ret, crow),
+        TFun(_, _, crow) => TFun(
+          build_ctor_params(ptys, 0),
+          ret,
+          match use {
+            RefCalled => crow,
+            RefStaged | RefValued => union_row(crow, fold_face_value_row(name, ptys)),
+          }
+        ),
         // a seq-op whose scheme is not fn-shaped keeps its own read
         other @ (
           TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
@@ -5135,9 +5184,7 @@ fn seq_force(ah, i, ty, span: ValidSpan) = if len(ah) > i {
   // force unifies through the peel and `len(name)` on a String is
   // canonical with no receiver probe — the sentinel special-case this
   // replaces guarded a nullary Ty that no longer exists.
-  let expected = mint(Inferred("sequence operand"))
-  graph_bind(expected, ty, Located(span, Inferred("sequence operand")))
-  unify(list_index(ah, i), expected, span, Inferred("sequence operand"))
+  meet_ty(list_index(ah, i), ty, span, Inferred("sequence operand"))
 } else {
   ()
 }
@@ -5177,6 +5224,21 @@ fn seq_read_whole() = {
   TVar(h)
 }
 
+// `hash` taken as a value folds wherever it is applied, so its function type
+// carries what the fold over its operand costs; a call charges where it
+// stands (`fold_spill_charge`). The show builds the string it answers, which
+// its declared row says.
+fn fold_face_value_row(cname: String, ptys) = match ptys {
+  [operand] => if cname == "hash" { spill_value_row(operand) } else { mk_ef_pure() },
+  [] | [_, _, ..._] => mk_ef_pure(),
+}
+
+fn spill_value_row(ty) = match fold_spill(ty) {
+  SpillNever => mk_ef_pure(),
+  SpillAlways => construction_row(),
+  SpillOpen(vars) => mk_ef_open([], spill_wait(vars, span_zero())),
+}
+
 fn seq_force_list(ah, ptys, i, span: ValidSpan) = if i >= len(ptys) {
   ()
 } else {
@@ -5191,6 +5253,12 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
       (ptys, ret) => {
         seq_force_list(args, ptys, 0, span)
         graph_bind(handle, ret, Located(span, Inferred("substrate face of '{cname}'")))
+        // A hash folds its argument, which pays for a type that nests.
+        if cname == "hash" && len(args) == 1 {
+          fold_spill_charge(handle, list_index(args, 0), span)
+        } else {
+          ()
+        }
         // An in-place store: its claim is on the buffer it writes.
         if cname == "list_set" && len(args) == 3 {
           ages_store(list_index(args, 0), [list_index(args, 2)])
@@ -5350,7 +5418,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
           args,
           build_ctor_params(ptys, 0),
           ret,
-          mk_ef_closed([ENamed(intern_str("Memory"))]),
+          union_row(mk_ef_closed([ENamed(intern_str("Memory"))]), fold_face_value_row(cname, ptys)),
           handle,
           span,
           cname
@@ -6260,6 +6328,8 @@ fn infer_stage(stage, arity) = match graph_node_body(stage) {
     CallSaturated => (),
     CallSubstrateHoled(_) => (),
   },
+  // A bare name standing as a stage is its call (SYNTAX §«|> — converge»).
+  NExpr(VarRef(name)) => infer_var_ref(name, stage, graph_span_of(stage), RefStaged),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => match inlinable_lambda_arity(stage, arity) {
     Some((params, body)) => infer_lambda(params, body, stage, graph_span_of(stage), BoundByCallers, AppliedInPlace),
@@ -6850,7 +6920,7 @@ fn mark_depth(mark) = match mark {
 // shape — the Intent Boundary an INTERIOR field read needs: an element of the
 // frame stack arrives at emit with its row unresolved, and an unprovable
 // offset is a refusal (E_FieldOffsetUnprovable), never a read.
-fn frame_owns(frame: {accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int}) =
+fn frame_owns(frame: {accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int, spills: [(Int, Int)]}) =
   frame.owner
 
 // The effect an op name performs; None for a name that is not an op (a
@@ -7711,6 +7781,14 @@ fn unify(h_a, h_b, span: ValidSpan, reason) = {
   }
 }
 
+// A cell meets a type the judgment states, as a unification with a cell
+// holding that type would, with no cell minted to hold it; a hole stays the
+// hole it is, and a row is no type's to meet.
+fn meet_ty(h, ty, span: ValidSpan, reason) = match graph_chase(graph_chase_handle(h)) {
+  GNode(NFree(_) | NBound(_), _) => unify_types(TVar(h), ty, span, reason),
+  GNode(NErrorHole(_) | NRowFree(_) | NRowBound(_) | NRecordRowBound(_, _), _) => (),
+}
+
 // Type-name equality with the String proof pinned at the boundary (the sibling
 // of effects.mn's field_name_eq). A bare `==` on two nominal type names emits
 // pointer-eq under the seed, so names interned in different passes never match;
@@ -8489,7 +8567,7 @@ fn numeric_gates_of(cell) = flat_map(demand_number, graph_demands_of(cell))
 
 fn demand_number(d) = match d {
   DemandNumber(g) => [g],
-  DemandShape(_) | DemandLacks(_) | DemandCopy(_, _, _) => [],
+  DemandShape(_) | DemandLacks(_) | DemandCopy(_, _, _) | DemandSpill(_) => [],
 }
 
 fn numeric_demand(lh, op, span: ValidSpan) = {
@@ -8608,6 +8686,7 @@ fn demands_ride(ra, rb, span: ValidSpan) = {
         NBound(tb) => demands_push(ds, tb, span),
         NRecordRowBound(fields, tail) => {
           each(shape_push_row(??, fields, tail), flat_map(demand_shape, ds))
+          each(spill_push_row(??, fields, tail, span), flat_map(demand_spill, ds))
           rows_reach(ds, rb, span)
         },
         NRowBound(_) | NErrorHole(_) => (),
@@ -8637,10 +8716,11 @@ fn rows_reach(ds, rb, span: ValidSpan) = match record_row_full([], rb) {
 }
 
 // A type entering a cell that carries demands: each number judges it, each
-// shape pushes into the variables it holds.
+// shape pushes into the variables it holds, each spill is decided by it.
 fn demands_push(ds: [TypeDemand], ty, span: ValidSpan) = {
   numeric_judge_push(flat_map(demand_number, ds), ty, span)
   each(shape_push(??, ty), flat_map(demand_shape, ds))
+  each(spill_push(??, ty, span), flat_map(demand_spill, ds))
 }
 
 fn demands_install(ds: [TypeDemand], cell, span: ValidSpan) =
@@ -8651,16 +8731,22 @@ fn demand_install(cell, d, span: ValidSpan) = match d {
   DemandShape(read) => shape_install(cell, read),
   DemandLacks(_) => graph_demand_add(cell, d),
   DemandCopy(_, _, _) => row_copy_carry(cell, d),
+  DemandSpill(row) => spill_install(cell, row, span),
 }
 
 fn demand_shape(d) = match d {
   DemandShape(read) => [read],
-  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => [],
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) | DemandSpill(_) => [],
 }
 
 fn demand_lacks(d) = match d {
   DemandLacks(names) => names,
-  DemandNumber(_) | DemandShape(_) | DemandCopy(_, _, _) => [],
+  DemandNumber(_) | DemandShape(_) | DemandCopy(_, _, _) | DemandSpill(_) => [],
+}
+
+fn demand_spill(d) = match d {
+  DemandSpill(row) => [row],
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandCopy(_, _, _) => [],
 }
 
 // Instantiation's copy: the fresh var carries every demand its root does
@@ -8668,14 +8754,14 @@ fn demand_lacks(d) = match d {
 // the variable — the row gate's gates_copy, one sort over). For a shape it
 // is the whole propagation: a callee's read, copied onto the instance, meets
 // the caller's own variable at the argument edge and marks it. An update's
-// relation names another cell, so it is copied once every quantified cell
-// has its copy (`relations_copy`).
+// relation and a spill each name another cell, so each is copied once every
+// quantified cell has its copy (`relations_copy`).
 fn demands_copy(ds: [TypeDemand], fresh) = match ds {
   [] => (),
   [d, ...rest] => {
     match d {
       DemandNumber(_) | DemandShape(_) | DemandLacks(_) => graph_demand_add(fresh, d),
-      DemandCopy(_, _, _) => (),
+      DemandCopy(_, _, _) | DemandSpill(_) => (),
     }
     demands_copy(rest, fresh)
   },
@@ -8695,6 +8781,12 @@ fn relation_copy(mapping, pair) = match pair {
 
 fn relation_copy_one(mapping, fresh, d) = match d {
   DemandCopy(base, copy, names) => row_copy_carry(fresh, DemandCopy(mapped_end(mapping, base), mapped_end(mapping, copy), names)),
+  // The instance's spill lands in the instance's copy of the row, which the
+  // instantiated signature's row carries to the caller that took it; a row
+  // the scheme did not quantify was paid by the declaration's own row.
+  DemandSpill(row) => match find_mapping(mapping, graph_chase_handle(row)) {
+    m => if m >= 0 { spill_install(fresh, m, span_zero()) } else { () },
+  },
   DemandNumber(_) | DemandShape(_) | DemandLacks(_) => (),
 }
 
@@ -8781,7 +8873,7 @@ fn shape_reach(cell, read) = match graph_instances_of(cell) {
 // far but keys coarser, and an outer read keys as fine but reaches less, so
 // neither covers the other. The dedup is also what ends the walk on a cycle.
 fn shape_covers(read, d) = match d {
-  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => false,
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) | DemandSpill(_) => false,
   DemandShape(have) => match have {
     WholeShape => true,
     OuterShape => match read {
@@ -8889,6 +8981,178 @@ fn row_end_roots(end) = match end {
   RowEndClosed => [],
 }
 
+// THE SPILL, a fold's demand on a type cell. A comparison or a hash folds
+// its operand's whole structure, and
+// over a type whose own type recurs through a field the fold does not reach
+// last, the work each level leaves pending lives in memory (fold_spill,
+// types.mn), so the frame that folds it pays `Memory + Alloc` wherever the
+// type is known at the site. Over a variable the charge waits in a row cell
+// of its own, which the frame's row carries and the variable's demand names
+// (DemandSpill), and the one writer decides it from the type the variable
+// is bound to: one that can spill binds the cell to `Memory + Alloc`, judged
+// there by every gate the cell carries; one that cannot leaves it free, for
+// the declaration's exit to drop; one holding variables hands the demand on.
+// A signature variable takes its row into the signature, so each
+// instantiation pays in a row of its own, and a function value's row carries
+// the cell its body's folds wait in, so the gate on a callback refuses a
+// lambda whose parameter turns out to be a tree.
+// A fold over a type still free where it stands is decided where its
+// frame's judgment ends (`spills_decided`), when the frame has learned all
+// it will; where no frame is open, a module value's init, it waits in a row
+// at once.
+fn fold_spill_charge(handle, operand, span) = match fold_spill(TVar(operand)) {
+  SpillNever => (),
+  SpillAlways => inf_add_row_at(handle, construction_row()),
+  SpillOpen(vars) => if inf_note_spill(handle, operand) {
+    ()
+  } else {
+    inf_add_row_at(handle, mk_ef_open([], spill_wait(vars, span)))
+  },
+}
+
+// The frame's undecided folds, decided where its judgment ends: a type that
+// can spill charges the frame, one that cannot charges nothing, and the
+// variables still free wait in one row the frame carries — unless the frame
+// already pays all a spill can come to cost, when they owe nothing more.
+fn spills_decided(raw, spills, span) = {
+  let decided = map(spill_verdict, spills)
+  let always = filter(spill_charges, decided)
+  let opens = flat_map(spill_waits, decided)
+  each({ (site, _) => graph_row_note(site, construction_row()) }, always)
+  let charged = if len(always) == 0 { raw } else { union_row(raw, construction_row()) }
+  match opens {
+    [] => charged,
+    [_, ..._] => if pays_construction(charged) {
+      charged
+    } else {
+      let edge = mk_ef_open([], spill_wait(flat_map({ (_, vars) => vars }, opens), span))
+      each({ (site, _) => graph_row_note(site, edge) }, opens)
+      union_row(charged, edge)
+    },
+  }
+}
+
+fn pays_construction(row) = match (row, construction_row()) {
+  (EfRow(names, _, _), EfRow(cap, _, _)) => all({ n => any({ m => m == n }, names) }, cap),
+}
+
+fn spill_verdict(spill) = match spill {
+  (site, operand) => (site, fold_spill(TVar(operand))),
+}
+
+fn spill_charges(decided) = match decided {
+  (_, verdict) => match verdict {
+    SpillAlways => true,
+    SpillNever | SpillOpen(_) => false,
+  },
+}
+
+fn spill_waits(decided) = match decided {
+  (site, verdict) => match verdict {
+    SpillOpen(vars) => [(site, vars)],
+    SpillNever | SpillAlways => [],
+  },
+}
+
+// The row free variables' folds wait in: one a variable already waits in,
+// since a second fold over it owes what the first owes, or one minted here.
+fn spill_wait(vars, span) = {
+  let row = match vars |> flat_map(spill_rows_free) {
+    [] => spill_row(Located(span, Inferred("a fold's pending work")), span),
+    [held, ..._] => held,
+  }
+  each(spill_install(??, row, span), vars)
+  row
+}
+
+fn spill_rows_free(cell) = spill_rows_held([cell])
+
+// The row a fold's pending work waits in: free until the type it reads is
+// known, and capped at `Memory + Alloc`, all it can come to hold, so a
+// reader of a row carrying it knows how little it performs before it is
+// decided.
+fn spill_row(reason, span) = {
+  let row = mint_row(reason)
+  gate_install(row, mk_gate(construction_row(), reason), span)
+  row
+}
+
+// A spill reaching a cell lands on its root: a free root carries it, a bound
+// one decides it by what it is bound to, and the copies instantiation minted
+// from the cell while it was a root are reached through the instance column.
+fn spill_install(cell, row, span) = {
+  let r = graph_chase_handle(cell)
+  match graph_chase(r) {
+    GNode(kind, _) => match kind {
+      NBound(ty) => {
+        spill_push(row, ty, span)
+        spill_reach(r, row, span)
+      },
+      NRecordRowBound(fields, tail) => {
+        spill_push_row(row, fields, tail, span)
+        spill_reach(r, row, span)
+      },
+      NFree(_) | NRowFree(_) => spill_mark(r, row, span),
+      NRowBound(_) | NErrorHole(_) => (),
+    },
+  }
+  if r == cell { () } else { spill_reach(cell, row, span) }
+}
+
+fn spill_mark(r, row, span) = if spill_held(row, r) {
+  ()
+} else {
+  graph_demand_add(r, DemandSpill(row))
+  each(spill_install(??, row, span), graph_instances_of(r))
+}
+
+// A bound cell's instances, reached once: the cell keeps the spill as the
+// visit, since an instance can alias back to the cell it was copied from.
+fn spill_reach(cell, row, span) = match graph_instances_of(cell) {
+  [] => (),
+  is => if spill_held(row, cell) {
+    ()
+  } else {
+    graph_demand_add(cell, DemandSpill(row))
+    each(spill_install(??, row, span), is)
+  },
+}
+
+fn spill_held(row, cell) =
+  flat_map(demand_spill, graph_demands_of(cell)) |> any({ h => graph_chase_handle(h) == graph_chase_handle(row) })
+
+// A type entering a spilling cell decides its row: a type that can spill
+// charges it, a type that cannot leaves it free, and a type holding
+// variables hands the spill to each.
+fn spill_push(row, ty, span) = match fold_spill(ty) {
+  SpillNever => (),
+  SpillAlways => spill_charge(row, span),
+  SpillOpen(vars) => each(spill_install(??, row, span), vars),
+}
+
+// A record row variable bound to more fields and what follows them: each
+// field is a part the fold reads, and the rest of the row holds the spill.
+fn spill_push_row(row, fields, tail, span) = {
+  each({ (_, ft) => spill_push(row, ft, span) }, fields)
+  match tail {
+    RowClosed => (),
+    RowContinues(v) => spill_install(v, row, span),
+  }
+}
+
+fn spill_charge(row, span) = {
+  let r = graph_chase_handle(row)
+  if row_var_is_free(r) {
+    graph_bind_row(
+      r,
+      construction_row(),
+      Located(span, Inferred("a fold over a type that nests keeps its pending work in memory"))
+    )
+  } else {
+    ()
+  }
+}
+
 // A record row variable's write: what it is bound to learns the reads the
 // variable carries, then the bind. Every row writer goes through here. A
 // field the row lacks refuses, since a record holds one field of each name.
@@ -8908,6 +9172,7 @@ fn record_row_write(t, fields, tail, span: ValidSpan, reason) = {
   } else {
     let copies = flat_map(demand_copy, ds)
     each(shape_push_row(??, fields, tail), flat_map(demand_shape, ds))
+    each(spill_push_row(??, fields, tail, span), flat_map(demand_spill, ds))
     graph_bind_record_row(t, fields, tail, Located(span, reason))
     match tail {
       RowContinues(next) => {
@@ -8922,7 +9187,7 @@ fn record_row_write(t, fields, tail, span: ValidSpan, reason) = {
 
 fn demand_copy(d) = match d {
   DemandCopy(_, _, _) => [d],
-  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => [],
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => [],
 }
 
 // A row's free end carries a relation once. Two spellings of one relation —
@@ -8939,20 +9204,20 @@ fn row_copy_carry(end, d) = {
 
 fn relation_canonical(d) = match d {
   DemandCopy(base, copy, names) => DemandCopy(graph_chase_handle(base), graph_chase_handle(copy), names),
-  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => d,
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => d,
 }
 
 fn relation_same(a, b) = match a {
   DemandCopy(ab, ac, an) => match b {
     DemandCopy(bb, bc, bn) => graph_chase_handle(ab) == graph_chase_handle(bb) && graph_chase_handle(ac) == graph_chase_handle(bc) && an == bn,
-    DemandNumber(_) | DemandShape(_) | DemandLacks(_) => false,
+    DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => false,
   },
-  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => a == b,
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => a == b,
 }
 
 fn rows_in_step(d, span: ValidSpan, reason) = match d {
   DemandCopy(base, copy, names) => rows_copy(base, copy, names, span, reason),
-  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => (),
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => (),
 }
 
 // An update's relation drawn: carried by the free end of both rows, then the
@@ -10602,8 +10867,10 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
     BKCmp => {
       unify(lh, rh, span, OpConstraint(lbl, Inferred("left"), Inferred("right")))
       // A comparison is structural over its operands' whole type, so it
-      // reads the structure of every variable in it.
+      // reads the structure of every variable in it, and pays for the work
+      // a type that nests leaves pending.
       shape_demand(lh, WholeShape)
+      fold_spill_charge(handle, lh, span)
       graph_bind(
         handle,
         TName("Bool", []),
@@ -11831,16 +12098,38 @@ fn generalize_signature(handle) = {
 // a: 1}, b: 2}` relates the parameter's row to the result's through the
 // inner update's — so the closure is what an instance needs, never a
 // courtesy.
+//
+// And every row a quantified variable's spill waits in that the signature's
+// row carries: a fold over the variable costs what the type it is bound to
+// costs, so each instance pays in a row of its own, never in one every
+// caller shares. A row the declaration's own row does not carry was paid
+// where the declaration already pays all it can come to hold.
 fn generalize_pair(handle) = match generalize_signature(handle) {
-  (qs, ty) => if any(row_carries_copy, qs) { (rows_related_closure(qs), ty) } else { (qs, ty) },
+  (qs, ty) => {
+    let related = if any(row_carries_copy, qs) { rows_related_closure(qs) } else { qs }
+    match spill_rows_held(qs) |> filter(row_carried_by(ty, ??)) {
+      [] => (related, ty),
+      held => (related ++ filter({ r => !any({ q => q == r }, related) }, held), ty),
+    }
+  },
 }
+
+fn row_carried_by(ty, r) = match ty {
+  TFun(_, _, frow) => free_in_row(frow) |> any({ h => graph_chase_handle(h) == r }),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
+}
+
+// The free rows the spills the cells carry wait in, each once.
+fn spill_rows_held(cells) =
+  cells |> flat_map({ c => flat_map(demand_spill, graph_demands_of(graph_chase_handle(c))) }) |> map(graph_chase_handle) |> filter(row_var_is_free) |> unique
 
 fn row_carries_copy(q) =
   is_row_handle(q) && any(is_copy_demand, graph_demands_of(graph_chase_handle(q)))
 
 fn is_copy_demand(d) = match d {
   DemandCopy(_, _, _) => true,
-  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => false,
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => false,
 }
 
 // The closure is walked level by level, the rows seen so far a handle-keyed
@@ -11877,7 +12166,7 @@ fn row_relatives(q) = flat_map(demand_relative, graph_demands_of(graph_chase_han
 
 fn demand_relative(d) = match d {
   DemandCopy(base, copy, _) => filter(row_var_is_free, row_free_ends(base) ++ row_free_ends(copy)),
-  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => [],
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => [],
 }
 
 fn generalize(handle) = match generalize_pair(handle) {

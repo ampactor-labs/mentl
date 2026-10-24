@@ -723,6 +723,229 @@ fn sig_field(var_sig: String, acc: String, field) = match field {
   (name, ty) => "{acc}_{name}{sig_of(ty, var_sig)}",
 }
 
+// A RECORD ROW READ TO ITS END: every field its chain has learned, and what
+// lies past them — nothing, proven, or the one free row variable the rest
+// still is. Unify writes the chain and every reader walks it here (the
+// offset, the twin key, the substitution, the free-variable collection, the
+// fold's parts), so no reader can stop one link short and call a partial
+// set the whole.
+type RowEnd = RowEndClosed | RowEndFree(Int)
+
+fn record_row_full(fields, v) = match graph_chase(v) {
+  GNode(kind, _) => match kind {
+    NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
+    NRecordRowBound(residual, RowContinues(next)) => record_row_full(fields ++ residual, next),
+    NBound(t) => match t {
+      TRecordOpen(more, next) => record_row_full(fields ++ more, next),
+      TRecord(more) => (fields ++ more, RowEndClosed),
+      // A row cell bound to any other type is ill-sorted; its rest is not
+      // known, and a reader that needs it floors.
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+      | TName(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    },
+    NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NErrorHole(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NRowBound(_) => (fields, RowEndFree(graph_chase_handle(v))),
+  },
+}
+
+// THE STRUCTURAL FOLD'S GRAPH. A derived fold (`==`, compare, hash, show) descends a value by its type: a
+// product's fields in order, a variant's payloads at its instantiation, a
+// sequence's elements. A part whose type is an aggregate is a fold of its
+// own, and the last field of a product or of a variant is the one a fold
+// continues into with nothing left to do at the level it leaves — its TAIL.
+// So where a fold keeps work pending in memory is a property of this graph:
+// a part that is not a tail and leads back to the type it was taken from,
+// anywhere the type reaches. The judgment reads it to charge that memory to
+// the row, and the emitter to build one machine per cycle of it.
+type FoldSpill = SpillNever | SpillAlways | SpillOpen([Int])
+
+// A type with its aliases, refinements and pins stripped and its bound
+// variables followed; a variable nothing binds is its root.
+fn fold_resolve(ty) = match fold_strip(ty) {
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(t), _) => fold_resolve(t),
+    GNode(_, _) => TVar(graph_chase_handle(h)),
+  },
+  t @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_)
+  ) => t,
+}
+
+// The parts a fold descends from a type, each with whether it is the tail.
+// An open record's fields are laid out once its row closes, so none is known
+// to be its last, and the rest of its row is a part the fold will read.
+fn fold_parts(ty) = match fold_resolve(ty) {
+  TRecord(fields) => tail_marked(map({ (_, t) => t }, fields)),
+  TRecordOpen(fields, v) => match record_row_full(fields, v) {
+    (all, end) => {
+      let parts = map({ (_, t) => (t, false) }, all)
+      match end {
+        RowEndFree(rest) => push(parts, (TVar(rest), false)),
+        RowEndClosed => parts,
+      }
+    },
+  },
+  TTuple(elems) => tail_marked(elems),
+  t @ TName(_, _) => flat_map({ (_, payloads) => tail_marked(payloads) }, variant_specs_at(t)),
+  TList(elem) => [(elem, false)],
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
+}
+
+fn tail_marked(tys) = enumerate(tys) |> map({ (i, t) => (t, i + 1 == len(tys)) })
+
+// Whether a resolved type is a node of the graph: an aggregate whose fold
+// can reach another aggregate. A sum with no payload is its tag word, and a
+// sequence of words or bytes reaches nothing.
+fn fold_node(t) = match t {
+  TRecord(_) | TRecordOpen(_, _) | TTuple(_) => true,
+  TName(_, _) => !sum_is_tag(t) && len(variant_specs_at(t)) > 0,
+  TList(elem) => match fold_resolve(elem) {
+    TVar(_) => true,
+    e @ (
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_)
+    ) => fold_node(e),
+  },
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
+}
+
+// What a fold over a type keeps pending: nothing, work in memory wherever the
+// value nests deep enough, or what the types its free variables are bound to
+// decide. The graph a type reaches is a declaration's own, so a walk past
+// any declared type's size is a type growing with every level, and is read
+// as pending work.
+fn fold_spill(ty) = match fold_resolve(ty) {
+  TVar(h) => SpillOpen([h]),
+  t @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_)
+  ) => if fold_node(t) {
+    match fold_discover([t], 0, [t], smap_add(smap_new(), sig_of(t, "v"), 0), wmap_new(64), []) {
+      (nodes, adj, vars) => if len(nodes) > 256 || fold_graph_spills(adj, len(nodes)) {
+        SpillAlways
+      } else if len(vars) == 0 {
+        SpillNever
+      } else {
+        SpillOpen(unique(vars))
+      },
+    }
+  } else {
+    SpillNever
+  },
+}
+
+// The graph a type reaches, walked from it in the order its nodes are found:
+// each node's parts enter it by their signature, the node's edges are keyed
+// by its place in that order, a free variable a part reaches is collected,
+// and the walk ends when no node is left unread.
+fn fold_discover(queue, k, nodes, keys, adj, vars) = match queue {
+  [] => (nodes, adj, vars),
+  [n, ...rest] => if len(nodes) > 256 {
+    (nodes, adj, vars)
+  } else {
+    match fold(([], vars, nodes, keys), fold_part_edge, fold_parts(n)) {
+      (out, vars2, nodes2, keys2) => fold_discover(rest ++ drop(len(nodes), nodes2), k + 1, nodes2, keys2, wmap_add(adj, k, out), vars2),
+    }
+  },
+}
+
+fn fold_part_edge(acc, part) = match acc {
+  (out, vars, nodes, keys) => match part {
+    (pt, tail) => match fold_resolve(pt) {
+      TVar(h) => (out, push(vars, h), nodes, keys),
+      r @ (
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
+      ) => if fold_node(r) {
+        let k = sig_of(r, "v")
+        match smap_get(keys, k) {
+          Some(j) => (push(out, (j, tail)), vars, nodes, keys),
+          None => (push(out, (len(nodes), tail)), vars, push(nodes, r), smap_add(keys, k, len(nodes))),
+        }
+      } else {
+        acc
+      },
+    },
+  },
+}
+
+// The graph over a given set of types — one emitted fold family — keyed by
+// their fold signatures: a part outside the set is a leaf of it.
+fn fold_adjacency(tys) = {
+  let keys = smap_build(enumerate(tys) |> map({ (i, t) => (fold_sig(t), i) }))
+  enumerate(tys) |> fold(wmap_new(64), adjacency_entry(keys, ??, ??))
+}
+
+fn adjacency_entry(keys, adj, member) = match member {
+  (i, t) => wmap_add(adj, i, fold_member_edges(keys, t)),
+}
+
+// A node's edges, each its target and whether it is the tail.
+fn part_edges(adj, u) = match wmap_get(adj, u) {
+  Some(edges) => edges,
+  None => [],
+}
+
+fn fold_member_edges(keys, t) = fold_parts(t) |> flat_map({
+  (pt, tail) => match smap_get(keys, fold_sig(pt)) {
+    Some(j) => [(j, tail)],
+    None => [],
+  },
+})
+
+// Whether some part that is not a tail leads back to the type it was taken
+// from: the fold keeps that type's remaining parts in memory while it walks
+// the part, as deep as the value nests.
+fn fold_graph_spills(adj, n) = {
+  let reach = fold_reach_sets(adj, n)
+  range(0, n) |> any({ u => part_edges(adj, u) |> any({ (v, tail) => !tail && fold_reaches(reach, v, u) }) })
+}
+
+// Every node's reach, keyed by the node: the nodes a walk along its parts
+// arrives at, itself among them only through a cycle.
+fn fold_reach_sets(adj, n) = range(0, n) |> fold(wmap_new(64), reach_entry(adj, ??, ??))
+
+fn reach_entry(adj, reach, u) =
+  wmap_add(reach, u, fold_reach_from(adj, part_edges(adj, u) |> map({ (v, _) => v }), wmap_new(64)))
+
+// Whether node `u` is in node `v`'s reach.
+fn fold_reaches(reach, v, u) = match wmap_get(reach, v) {
+  Some(set) => fold_reached(set, u),
+  None => false,
+}
+
+fn fold_reach_from(adj, stack, seen) = if len(stack) == 0 {
+  seen
+} else {
+  let u = last(stack)
+  match wmap_get(seen, u) {
+    Some(_) => fold_reach_from(adj, drop_last(stack), seen),
+    None => fold_reach_from(
+      adj,
+      fold(drop_last(stack), push_part_target, part_edges(adj, u)),
+      wmap_add(seen, u, 1)
+    ),
+  }
+}
+
+fn push_part_target(stack, edge) = match edge {
+  (v, _) => push(stack, v),
+}
+
+fn fold_reached(set, u) = match wmap_get(set, u) {
+  Some(_) => true,
+  None => false,
+}
+
 // ─── Ownership (spec 02 · spec 07) ─────────────────────────────────
 // Every function parameter wraps Ty with an Ownership marker.
 // Inference fills unmarked parameters; Own/Ref are explicit commitments.
@@ -1852,11 +2075,21 @@ type ShapeRead = WholeShape | OuterShape | MovedShape
 // copy leaves out — carried by the free end of each, so a field either one
 // learns reaches the other whichever is known first, and whatever the base
 // holds under a written name stays its own.
+//
+// A SPILL is a fold's demand: a comparison or a hash over a type whose own
+// type recurs through a field the fold does not reach last keeps
+// the work each level leaves pending in memory, so the frame that folds it
+// pays `Memory + Alloc` (fold_spill). Over a variable the cost waits in the
+// row cell the demand names, which that frame's row carries, and the type
+// the variable is bound to decides it: one that can spill binds the cell to
+// `Memory + Alloc`, one that cannot leaves it free for the exit to drop, and
+// one holding variables hands the demand on to them.
 type TypeDemand
   = DemandNumber(NumericGate)
   | DemandShape(ShapeRead)
   | DemandLacks([String])
   | DemandCopy(Int, Int, [String])
+  | DemandSpill(Int)
 
 // Every graph node and every unification records a Reason. Mentl's
 // teach_why (spec 09) walks this DAG. Full provenance falls out.
@@ -6163,21 +6396,13 @@ fn show_pipe_kind(pk) with Pure = match pk {
   PFeedback => "<~",
 }
 
-// Renders FIRST-first: the last/drop_last walk (O(1) on snoc) rendered
-// every list REVERSED — function params, tuple elements, and record
-// fields in show_type all spoke backwards (measured live: map's
-// declared (f, xs) rendered as (xs, f...)). Declaration order is the
-// truth; the index walk pays O(depth) per element on snoc-built lists,
-// immaterial at render scale.
-fn show_list(ref items, ref render, ref sep) with !Mutate =
-  show_list_from(items, render, sep, 0, len(items))
-
-fn show_list_from(ref items, ref render, ref sep, i, n) with !Mutate = if i >= n {
-  ""
-} else if i + 1 >= n {
-  render(items[i])
-} else {
-  render(items[i]) ++ sep ++ show_list_from(items, render, sep, i + 1, n)
+// Renders in declaration order, first item first, so a function's
+// parameters, a tuple's elements and a record's fields read as their author
+// wrote them.
+fn show_list(ref items, ref render, ref sep) with !Mutate = match items {
+  [] => "",
+  [only] => render(only),
+  [first, ...rest] => render(first) ++ sep ++ show_list(rest, render, sep),
 }
 
 // Resolve every `TVar` transitively through the graph. Every query

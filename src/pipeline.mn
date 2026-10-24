@@ -906,13 +906,14 @@ fn module_severance(entries) = match entries {
   [first, ...more] => more |> fold(audit_severable(first), intersect_severance),
 }
 
-fn intersect_severance(acc, entry) = acc |> filter({ e => name_in_list(audit_severable(entry), e) })
+fn intersect_severance(acc, entry) =
+  acc |> filter({ e => name_set_contains(audit_severable(entry), e) })
 
 // A function's own severance ABOVE its module's — the delta, which is the
 // only part of its candidate set that is news.
 fn severance_beyond(module_sev, sev) = sev |> filter({ e => not_in_names(module_sev, e) })
 
-fn not_in_names(names, target: EffName) = !name_in_list(names, target)
+fn not_in_names(names, target: EffName) = !name_set_contains(names, target)
 
 // The candidates whose absence buys a NAMED capability — the teaching half.
 // The rest are true and carry nothing to act on, so they ride as one count
@@ -940,7 +941,7 @@ fn severance_vocabulary() = match env_snapshot() {
         // The flat env carries a decl at several layers (pre_register +
         // the main walk); each effect names itself once.
         let e = ENamed(intern_str(name))
-        if name_in_list(acc, e) { acc } else { acc ++ [e] }
+        if name_set_contains(acc, e) { acc } else { acc ++ [e] }
       },
       _ => acc,
     }
@@ -949,22 +950,9 @@ fn severance_vocabulary() = match env_snapshot() {
 
 fn severance_candidates(reached) = severance_vocabulary() |> absent_from(reached)
 
-// absent_from — the candidates not present in `present` (a filter over
-// the vocabulary; structural == is the membership — the fold-eq, never
-// the hand-rolled twin). Iteration-is-topology's first migrated family:
-// five index-threaded loops in this section dissolved into
-// filter/any/fold, the audit's own tier the ratchet.
-fn absent_from(present, candidates) = candidates |> filter((c) => !name_in_list(present, c))
-
-// The pin is load-bearing (the migration's own first red): under the
-// Stage Law the datum infers LAST, so the lambda's `x` is free when it
-// compiles and a bare `==` word-floors to pointer-eq — EffName records
-// mint per call, membership read always-false, and Alloc was offered
-// severable on allocating rows (the severance-honest leg caught it).
-// One typed operand restores the structural dispatch (either-operand
-// law). The migration recipe carries this: a datum-last lambda doing
-// ==/arith on the element states the element's type.
-fn name_in_list(names, target: EffName) = names |> any((x) => x == target)
+// The candidates not present in `present`: a filter over the vocabulary,
+// each name a member as the negation gate reads one (`name_set_contains`).
+fn absent_from(present, candidates) = candidates |> filter((c) => !name_set_contains(present, c))
 
 // A capability enters ONCE across the whole severed set: IO and
 // Network both unlock CSandbox, and the undeduped concat rendered

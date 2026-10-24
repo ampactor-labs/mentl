@@ -1036,14 +1036,16 @@ fn open_slot_handle(open, k, handle) = if k < len(open) {
 // The callee shapes a partial can synthesize a body for, as a VALUE rather
 // than as a returned closure: fn name · variant tag · the singleton-tier
 // perform's (handler, op, stateful) triple · a local callee's value · a
-// primitive's instruction. Each carries exactly what apply_callee_form needs
-// and nothing the site could re-derive.
+// primitive's instruction · the structural show and hash. Each carries
+// exactly what apply_callee_form needs and nothing the site could re-derive.
 type PartialCalleeForm
   = PcfCall(Callee)
   | PcfVariant(TagId)
   | PcfPerform(PerformDispatch)
   | PcfLocal(LowExpr)
   | PcfPrim(Primitive)
+  | PcfShow
+  | PcfHash
 
 // The callee is resolved ONCE, by scope, exactly as the saturated call's
 // dispatch resolves it (`lower_call_dispatch`): a binding the lowering's
@@ -1068,11 +1070,15 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
 // A module-scope callee's form, by what its declaration was published as —
 // the declaration the reference's edge reaches. A primitive is a function
 // like any other, so a reference to one as a value is the closure whose body
-// applies its instruction. The name-keyed intrinsic projections (the
-// show/hash fold leaves) and the substrate/wasi instruction ops have no
-// global fn to LCall — a partial over one floors typed with the rest of the
-// unbuilt shapes, never a call past the projection.
-fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" {
+// applies its instruction, and so is the show or the hash a fold face's
+// call is (its raw body never runs). The substrate/wasi instruction ops have
+// no global fn to LCall — a partial over one floors typed with the rest of
+// the unbuilt shapes, never a call past the projection.
+fn partial_global_callee_form(fh, name) = if name == "to_string" {
+  Some(PcfShow)
+} else if name == "hash" {
+  Some(PcfHash)
+} else if is_substrate_mem_op(name) || is_wasi_import_op(name) {
   None
 } else {
   let decl = graph_ref_decl(fh)
@@ -1119,6 +1125,8 @@ fn apply_callee_form(form, handle, fh, bargs, n_caps) = match form {
   // capture ordinal the supplied slots leave free; the body calls it.
   PcfLocal(v) => LCall(handle, LUpval(lexpr_handle(v), n_caps), bargs),
   PcfPrim(p) => LPrim(handle, p, bargs),
+  PcfShow => LShow(handle, last(bargs)),
+  PcfHash => LHash(handle, last(bargs)),
 }
 
 // What the callee form adds to the partial's record: a local callee's
@@ -1130,6 +1138,8 @@ fn partial_callee_capture(form) = match form {
   PcfVariant(_) => [],
   PcfPerform(_) => [],
   PcfPrim(_) => [],
+  PcfShow => [],
+  PcfHash => [],
 }
 
 // PARTIAL APPLICATION AS A VALUE — the mint. The record is LambdaExpr's
@@ -1386,12 +1396,25 @@ fn edges_may_yield_by(ref vs: [RowEdge], effect_pred) = match vs {
     let here = match graph_chase(edge_cell(e)) {
       GNode(kind, _) => match edge_row_of(kind) {
         Some(inner) => row_may_yield_by(inner, effect_pred),
-        None => true,
+        None => !capped_without(edge_cell(e), effect_pred),
       },
     }
     if here { true } else { edges_may_yield_by(rest, effect_pred) }
   },
 }
+
+// A free row holds only what its gates admit, so a closed cap among them
+// bounds every row it can come to hold: one naming no effect the predicate
+// holds of keeps the row out of it, as a fold's pending work is capped at
+// `Memory + Alloc` (infer.mn's `spill_row`).
+fn capped_without(cell, effect_pred) = gates_at(cell) |> any({
+  g => match gate_row(g) {
+    EfRow(names, _, t) => match t {
+      EtClosed => !any(effect_pred, eff_names_of(names)),
+      EtOpen(_) | EtAll => false,
+    },
+  },
+})
 
 // An effect yields when any of its ops suspends the perform — a multi-shot
 // op (a live continuation) or an abandoning one (a dead continuation: the
@@ -2326,10 +2349,15 @@ fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
     ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
   },
   // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
-  // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
-  // fn's static closure record; the fn's performs dispatch through the
-  // live world chain when the consumer (`each(f, xs)`) calls it.
-  Some(FnScheme) => LGlobal(handle, DeclaredAt(d)),
+  // the PTee guard): the bare LGlobal — emit resolves it to the fn's static
+  // closure record; the fn's performs dispatch through the live world chain
+  // when the consumer (`each(f, xs)`) calls it. A fold face's raw body never
+  // runs, so its judgment wrote the product a primitive's value has, and the
+  // reference is the partial whose body folds.
+  Some(FnScheme) => match graph_product_at(handle) {
+    NoProduct => LGlobal(handle, DeclaredAt(d)),
+    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+  },
   // Found, some other kind (a value binding, a record) — the global read
   // is the right projection.
   Some(_) => LGlobal(handle, DeclaredAt(d)),
@@ -7753,7 +7781,7 @@ fn is_structure_demand(d) = match d {
     OuterShape => true,
     MovedShape => false,
   },
-  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => false,
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) | DemandSpill(_) => false,
 }
 
 fn is_move_demand(d) = match d {
@@ -7762,7 +7790,7 @@ fn is_move_demand(d) = match d {
     WholeShape => false,
     OuterShape => false,
   },
-  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => false,
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) | DemandSpill(_) => false,
 }
 
 // Whether the program opens an arena. An arena's install charges `Arena` to

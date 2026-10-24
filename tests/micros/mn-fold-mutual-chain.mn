@@ -1,0 +1,24 @@
+// expect: 31
+// Two types each ending in the other are one chain: `==` under `!Alloc +
+// !Trap`, `<`, hash and show cross 100,000 links alternating between them in
+// one frame and allocate nothing, where each type's helper called the
+// other's once per link and exhausted the stack.
+type Ping = PEnd | Ping(Int, Pong)
+
+type Pong = Pong(Int, Ping)
+
+fn chain(n, acc) = if n == 0 { acc } else { chain(n - 1, Ping(n, Pong(n, acc))) }
+
+fn same(a, b) with !Alloc + !Trap = a == b
+
+fn main() = {
+  let a = chain(50000, PEnd)
+  let b = chain(50000, PEnd)
+  let c = chain(50000, Ping(0, Pong(0, PEnd)))
+  let eq = if same(a, b) && !same(a, c) { 1 } else { 0 }
+  let lt = if a < c && !(c < a) { 2 } else { 0 }
+  let hs = if hash(a) == hash(b) { 4 } else { 0 }
+  let sh = if len("{a}") > 1000000 { 8 } else { 0 }
+  let exact = if "{chain(1, PEnd)}" == "Ping(1, Pong(1, PEnd))" { 16 } else { 0 }
+  eq + lt + hs + sh + exact
+}

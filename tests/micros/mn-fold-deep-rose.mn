@@ -1,0 +1,20 @@
+// expect: 31
+// A sequence of the type it sits in is walked by the same fold that walks the
+// type: two rose trees nested 100,000 deep through the first element of each
+// level's children compare, order, hash and render, where the element walk
+// called the tree's helper once per level and exhausted the stack.
+type Rose = Rose(Int, [Rose])
+
+fn deep(n, acc) = if n == 0 { acc } else { deep(n - 1, Rose(n, [acc, Rose(0, [])])) }
+
+fn main() = {
+  let a = deep(100000, Rose(0, []))
+  let b = deep(100000, Rose(0, []))
+  let c = deep(100000, Rose(1, []))
+  let eq = if a == b && a != c { 1 } else { 0 }
+  let lt = if a < c && !(c < a) { 2 } else { 0 }
+  let hs = if hash(a) == hash(b) { 4 } else { 0 }
+  let sh = if len("{a}") > 1000000 { 8 } else { 0 }
+  let exact = if "{deep(1, Rose(0, []))}" == "Rose(1, [Rose(0, []), Rose(0, [])])" { 16 } else { 0 }
+  eq + lt + hs + sh + exact
+}

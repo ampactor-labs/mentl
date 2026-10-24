@@ -1,0 +1,35 @@
+// expect: 31
+// A fold that never keeps pending work allocates nothing, so `!Alloc` holds
+// over it: words, a chain whose own type is only its last field, and a
+// generic comparison or hash instantiated at either, `hash` handed in as a
+// value among them, and a record whose fields a generic comparison learns
+// from its caller.
+type Chain = End | Link(Int, Chain)
+
+fn eq2(a, b) = a == b
+
+fn hash2(x) = hash(x)
+
+fn field_eq(r) = {
+  let n = r.n
+  n == n && r == r
+}
+
+fn run(h, c: Chain) with !Alloc = h(c)
+
+fn ints(n: Int) with !Alloc = eq2(n, n)
+
+fn chains(c: Chain) with !Alloc = c == c && eq2(c, c)
+
+fn pairs(p: (Int, Chain)) with !Alloc = eq2(p, p)
+
+fn hashed(c: Chain) with !Alloc = hash2(c) == hash(c)
+
+fn opened(r: {n: Int, c: Chain}) with !Alloc = field_eq(r)
+
+fn main() = {
+  let c = Link(2, End)
+  let hs = if hashed(c) && run(hash, c) == hash(c) { 8 } else { 0 }
+  let rs = if opened({n: 1, c: c}) { 16 } else { 0 }
+  (if ints(3) { 1 } else { 0 }) + (if chains(Link(1, End)) { 2 } else { 0 }) + (if pairs((1, End)) { 4 } else { 0 }) + hs + rs
+}

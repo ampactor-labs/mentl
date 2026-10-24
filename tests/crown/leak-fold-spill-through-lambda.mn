@@ -1,0 +1,13 @@
+// CROWN: a fold's spill reaches the function value that makes it. The
+// lambda compares its parameter through a generic function, and `run`
+// applies it to a tree under `!Alloc`: the comparison keeps its pending work
+// in memory, so the lambda's row carries `Alloc` once its parameter is known
+// to be the tree, and the gate on run's callback refuses at the argument.
+// Expect E_EffectMismatch.
+type Tree = Leaf | Node(Tree, Int, Tree)
+
+fn eq2(a, b) = a == b
+
+fn run(h, t: Tree) with !Alloc = h(t)
+
+fn main() = if run({ x => eq2(x, x) }, Leaf) { 1 } else { 0 }

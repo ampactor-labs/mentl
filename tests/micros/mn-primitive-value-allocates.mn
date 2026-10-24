@@ -1,0 +1,10 @@
+// expect: refuse E_EffectMismatch
+// A primitive named as a value is the partial with every slot open, a closure
+// record the frame builds, so the frame's row says `Alloc` and `!Alloc`
+// refuses where `mentl check` reads it — the judgment never charged it, and
+// only the emit's allocation audit refused it.
+fn apply(f, x) = f(x)
+
+fn floored(x: Float) with !Alloc = apply(floor, x)
+
+fn main() = float_to_int(floored(2.5))

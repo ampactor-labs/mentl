@@ -54,4 +54,4 @@ head_round_trip_max: 0
 
 # The nodes the medium mints to judge `fn main() = 7` — the prelude a trivial
 # program links, never its layout (tools/frontier-gate.sh, the cost facet).
-prelude_floor_nodes_max: 12552
+prelude_floor_nodes_max: 12154

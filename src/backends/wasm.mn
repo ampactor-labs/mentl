@@ -2423,6 +2423,10 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // the floor's word-element leaf — both generated, each named where used).
   let fold_closures =
     spec_fold_collect(spec_recs, collect_fold_tys_list(lowered, fold_closures_empty())) ~> arena
+  // Each family's helpers and machines, read off the fold's graph once: the
+  // emission writes them, and whether any machine keeps work pending decides
+  // the spill stack every instance carries.
+  let fold_families = fold_family_plan(fold_closures) ~> arena
   // Single-walk multi-projection pre-pass. project_emit_state walks the
   // LowExpr tree ONCE; four visitor-handlers chained via `~>` accumulate
   // their projections in encounter order; the wrapper drains all four at
@@ -2480,6 +2484,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         env_roster: roster,
         fn_records,
         fold_closures,
+        fold_families,
         jvp_faces: jvp_face_map(derived.faces),
         jvp_names,
         jvp_recs,
@@ -2516,8 +2521,9 @@ fn k_helper_names(yields, arena_on) =
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, line_owners, lowered, redrives, spec_names, spec_recs, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, yield_arity, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, fold_families, jvp_faces, jvp_names, jvp_recs, line_owners, lowered, redrives, spec_names, spec_recs, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
+    let fold_stack = fold_families_spill(fold_families)
     // Each step of the module's head is an extent of its own (lib/arena.mn),
     // as each function's emission is: the text it streams dies at its exit,
     // so the module's text never stands on the heap.
@@ -2554,6 +2560,7 @@ fn emit_planned(plan) = match plan {
       arena_on && yield_seen > 0
     )
     if arena_on { emit_arena_runtime(spawns) ~> arena } else { () }
+    if fold_stack { emit_fold_stack_runtime(spawns) ~> arena }
     emit_line_globals(line_owners) ~> arena
     emit_tangent_ring_globals(tangent_rings) ~> arena
     // The register a twin hands its result's tangent back through: one f64
@@ -2590,6 +2597,7 @@ fn emit_planned(plan) = match plan {
       line_globals ++ tangent_ring_slots(tangent_rings),
       value_lets,
       yield_seen,
+      fold_stack,
       table_all,
       string_entries
     ) ~> arena
@@ -2632,7 +2640,7 @@ fn emit_planned(plan) = match plan {
     // whole-compile install that used to stand in emit_context wrote past
     // every sink installed inside a compile — the row carried WasmOut to the
     // executable root and the root gate refused the wheel (2026-09-27).
-    emit_fold_leaf_helpers(fold_closures) ~> emit_memory_bump
+    emit_fold_leaf_helpers(fold_families) ~> emit_memory_bump
     // band B M1.2 — the composer pair + world reader: $__k_compose (the
     // self-re-composing junction k, table-resident above), $__k_extend (the one
     // bubble op), $__k_world (the frozen-world read). Dormant until a k2
@@ -2654,6 +2662,7 @@ fn emit_planned(plan) = match plan {
       yield_slots,
       spawns,
       arena_on,
+      fold_stack,
       env_roster
     )
     emit_footer()
@@ -4250,7 +4259,7 @@ fn top_let_width(init) = {
 //     memory.copy has memmove semantics — the overlapping self-copy is
 //     exact by spec — so no staging buffer exists; wasm call frames live
 //     engine-side, so the executing stack survives its own image swap.
-fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_all, string_entries) = {
+fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, fold_stack, table_all, string_entries) = {
   let used =
     ls_find_str_local(wasi_ops, "image_key", 0) >= 0 || ls_find_str_local(wasi_ops, "globals_area", 0) >= 0 || ls_find_str_local(wasi_ops, "globals_save", 0) >= 0 || ls_find_str_local(wasi_ops, "image_restore", 0) >= 0
   if used {
@@ -4264,7 +4273,7 @@ fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_al
     } else {
       ""
     }
-    let slots = image_global_slots(line_globals, value_lets, yield_seen)
+    let slots = image_global_slots(line_globals, value_lets, yield_seen, fold_stack)
     emit_build_key(table_all, string_entries, slots)
     wat_emit("  (func $globals_area_impl (result i32)(i32.const ")
     wat_emit(int_to_str(8 * len(slots)))
@@ -4288,27 +4297,30 @@ fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_al
 }
 
 // The census: the mutable globals an image carries, in the record's slot
-// order — the substrate trio, the yield quartet when the module yields, one
-// address word per static `<~` line (the ring itself is an image record the
-// copy carries), one word per top-level let (their globals are word-faced by
-// construction). An arena's globals are not among them: its depth, mark and
-// journal length describe extents open on the writer's stack, which no image
-// carries, so a resumed process runs outside every arena its writer had
-// open, and what the image holds of an open arena's region is ordinary heap
-// there, which no exit reclaims.
-fn image_global_slots(line_globals, value_lets, yield_seen) = {
+// order — the substrate trio, the yield quartet when the module yields, the
+// spill stack's home when a fold machine keeps work pending (its top is zero
+// and its base the home whenever a program can write an image, since no fold
+// performs), one address word per static `<~` line (the ring itself is an
+// image record the copy carries), one word per top-level let (their globals
+// are word-faced by construction). An arena's globals are not among them:
+// its depth, mark and journal length describe extents open on the writer's
+// stack, which no image carries, so a resumed process runs outside every
+// arena its writer had open, and what the image holds of an open arena's
+// region is ordinary heap there, which no exit reclaims.
+fn image_global_slots(line_globals, value_lets, yield_seen, fold_stack) = {
   let yq = if yield_seen > 0 {
     [("yield_flag", "i32"), ("yield_op", "i32"), ("yield_k", "i32"), ("yield_args", "i32")]
   } else {
     []
   }
+  let fs = if fold_stack { [("fs_home", "i32"), ("fs_base", "i32")] } else { [] }
   [
     ("heap_ptr", "i32"),
     ("world_g", "i32"),
     ("tid_g", "i32"),
     ("world_gen", "i32"),
     ("ev_cache_g", "i32")
-  ] ++ yq ++ line_globals ++ map({ (name, _) => (name, "i32") }, value_lets)
+  ] ++ yq ++ fs ++ line_globals ++ map({ (name, _) => (name, "i32") }, value_lets)
 }
 
 fn emit_globals_pair(slots) = {
@@ -6635,7 +6647,7 @@ fn lexpr_leaves_value(e) = match e {
 // where every perform is argless, so the area is a record of its own.
 fn yield_area_slots(arity) = if arity > 1 { arity } else { 1 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on, env_roster: String) = {
+fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on, fold_stack, env_roster: String) = {
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -6656,6 +6668,8 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   }
   // The dispatch memo's table, before anything performs (`emit_memory_decl`).
   wat_emit("    (global.set $ev_cache_g (call $alloc (i32.const 1536)))\n")
+  // The spill stack's home, before any fold can run (`emit_fold_stack_runtime`).
+  if fold_stack { emit_fold_stack_home() }
   // The arenas' journal, before anything else is allocated
   // (`emit_arena_runtime`).
   if arena_on { wat_emit("    (global.set $ar_jb (call $alloc (i32.const 2097152)))\n") }
@@ -6742,7 +6756,8 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
     emit_wasi_thread_start(
       map({ (name, init) => (name, top_let_width(init)) }, value_lets),
       has_lines,
-      yield_slots
+      yield_slots,
+      fold_stack
     )
   }
 }
@@ -6769,13 +6784,15 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
 //   5. releases the completion word (atomic store AFTER the plain result
 //      store — the flag's seq_cst publish orders the result before it)
 //      and notifies the joiner.
-fn emit_wasi_thread_start(let_names, has_lines, yield_slots) = {
+fn emit_wasi_thread_start(let_names, has_lines, yield_slots, fold_stack) = {
   wat_emit("  (func $wasi_thread_start (param $tid i32) (param $start_arg i32)\n")
   wat_emit("    (local $clo i32)\n")
   wat_emit("    (global.set $tid_g (local.get $tid))\n")
   wat_emit("    (global.set $world_g (i32.load offset=12 (local.get $start_arg)))\n")
   // The instance's own dispatch memo, as the root's (`emit_start`).
   wat_emit("    (global.set $ev_cache_g (call $alloc (i32.const 1536)))\n")
+  // The instance's own spill stack, as the root's.
+  if fold_stack { emit_fold_stack_home() }
   // The instance's own argument area, as the root's (`emit_start`).
   if yield_slots > 0 {
     wat_emit("    (global.set $yield_args (call $alloc (i32.const {int_to_str(8 * yield_slots)})))\n")
@@ -8957,37 +8974,586 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LInvariantFailure(_, _) => acc,
 }
 
-// The one dedup walk: emit each distinct fold_sig's helper ONCE, the leaf
-// generator selected by the op.
-fn emit_distinct_fold_leaves(op, tys, seen) = if len(tys) == 0 {
-  ()
-} else {
-  let ty = last(tys)
-  let sig = fold_sig(ty)
-  if ls_find_str_local(seen, sig, 0) >= 0 {
-    emit_distinct_fold_leaves(op, drop_last(tys), seen)
-  } else {
-    // Each helper is one emitted unit, so its scratch dies at its own exit.
-    match op {
-      FoldEq => emit_one_eq_helper(sig, ty),
-      FoldCompare => emit_one_compare_helper(sig, ty),
-      FoldHash => emit_one_hash_helper(sig, ty),
-      FoldShow => emit_one_show_helper(sig, ty),
-    } ~> arena
-    emit_distinct_fold_leaves(op, drop_last(tys), [sig] ++ seen)
-  }
+// One fold family's emission, read off the fold's graph over its closure
+// (src/types.mn): a type no cycle of the graph reaches through itself is a
+// helper of its own, and the types of one cycle are one machine, which
+// keeps work pending in memory when a part of the cycle that is not a tail
+// leads back into it.
+type FoldGroup = FoldAlone(String, Ty) | FoldCycle([(String, Ty)], Bool)
+
+fn fold_family_plan(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
+  cmp: fold_family_groups(closures.cmp),
+  eq: fold_family_groups(closures.eq),
+  hash: fold_family_groups(closures.hash),
+  show: fold_family_groups(closures.show),
 }
 
-// The four leaves behind the one walk. Emission order (eq, compare, hash,
+// Whether any family's machine keeps work pending, so the instances carry
+// the spill stack.
+fn fold_families_spill(families: {cmp: [FoldGroup], eq: [FoldGroup], hash: [FoldGroup], show: [FoldGroup]}) =
+  any(group_spills, families.cmp ++ families.eq ++ families.hash ++ families.show)
+
+fn group_spills(g) = match g {
+  FoldCycle(_, pushes) => pushes,
+  FoldAlone(_, _) => false,
+}
+
+fn fold_family_groups(tys) = match fold(([], smap_new()), distinct_by_sig, tys) {
+  (members, _) => {
+    let adj = fold_adjacency(map(member_ty, members))
+    fold_groups_from(enumerate(members), adj, fold_reach_sets(adj, len(members)), wmap_new(64), [])
+  },
+}
+
+fn distinct_by_sig(acc, ty) = match acc {
+  (out, seen) => {
+    let sig = fold_sig(ty)
+    if smap_has(seen, sig) { acc } else { (push(out, (sig, ty)), smap_add(seen, sig, 1)) }
+  },
+}
+
+fn member_ty(m) = match m {
+  (_, ty) => ty,
+}
+
+fn member_sig(m) = match m {
+  (sig, _) => sig,
+}
+
+// Each member, numbered by its place, is placed once: alone when the graph
+// never leads back to it, or with every later member it and its parts reach
+// and are reached by, the first of them naming the cycle.
+fn fold_groups_from(members, adj, reach, placed, out) = match members {
+  [] => out,
+  [(i, m), ...rest] => if fold_reached(placed, i) {
+    fold_groups_from(rest, adj, reach, placed, out)
+  } else if fold_reaches(reach, i, i) {
+    let cycle =
+      [(i, m)] ++ filter({ (j, _) => fold_reaches(reach, i, j) && fold_reaches(reach, j, i) }, rest)
+    let places = map({ (j, _) => j }, cycle)
+    let inside = fold(wmap_new(64), wmap_mark, places)
+    let pushes =
+      places |> any({ u => part_edges(adj, u) |> any({ (v, tail) => !tail && fold_reached(inside, v) }) })
+    fold_groups_from(
+      rest,
+      adj,
+      reach,
+      fold(placed, wmap_mark, places),
+      push(out, FoldCycle(map({ (_, member) => member }, cycle), pushes))
+    )
+  } else {
+    fold_groups_from(rest, adj, reach, placed, push(out, FoldAlone(member_sig(m), member_ty(m))))
+  },
+}
+
+fn wmap_mark(set, j) = wmap_add(set, j, 1)
+
+// The four families behind the one walk. Emission order (eq, compare, hash,
 // show) preserves the module layout the four separate entry fns produced.
-fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
-  emit_distinct_fold_leaves(FoldEq, closures.eq, [])
-  emit_distinct_fold_leaves(FoldCompare, closures.cmp, [])
-  emit_distinct_fold_leaves(FoldHash, closures.hash, [])
-  emit_distinct_fold_leaves(FoldShow, closures.show, [])
+fn emit_fold_leaf_helpers(families: {cmp: [FoldGroup], eq: [FoldGroup], hash: [FoldGroup], show: [FoldGroup]}) = {
+  each(emit_fold_group(FoldEq, ??), families.eq)
+  each(emit_fold_group(FoldCompare, ??), families.cmp)
+  each(emit_fold_group(FoldHash, ??), families.hash)
+  each(emit_fold_group(FoldShow, ??), families.show)
   // The arena's leaves were settled with the plan (their indices ride the
   // journal), so they are read back rather than collected again.
   if arena_live() { emit_evac_leaves(arena_leaves()) } else { () }
+}
+
+// Each group is one emitted unit, so its scratch dies at its own exit.
+fn emit_fold_group(op, g) = match g {
+  FoldAlone(sig, ty) => match op {
+    FoldEq => emit_one_eq_helper(sig, ty),
+    FoldCompare => emit_one_compare_helper(sig, ty),
+    FoldHash => emit_one_hash_helper(sig, ty),
+    FoldShow => emit_one_show_helper(sig, ty),
+  } ~> arena,
+  FoldCycle(members, pushes) => emit_fold_machine(op, members, pushes) ~> arena,
+}
+
+// THE FOLD MACHINES: a cycle of the fold's graph folded in one frame. A
+// machine folds every type of one cycle, an ITEM at a time: its kind
+// (which type of the cycle), its operands, and the part it resumes at. A
+// part outside the cycle is folded where it stands, by its own leaf; a part
+// inside it is the next item. A tail is entered at once, nothing left
+// behind, so a chain of any length is one frame; any other part first pushes
+// the item it interrupts onto the instance's spill stack, so a value of any
+// depth is one frame and the pending work is memory, which the fold's row
+// says (types.mn's `fold_spill`). Each type of the cycle keeps its helper's
+// name as an entry into the machine, so every caller calls what it called;
+// the machine is named for the first.
+fn emit_fold_machine(op, members, pushes) = match members {
+  [] => (),
+  [lead, ..._] => emit_fold_machine_named(op, member_sig(lead), members, pushes),
+}
+
+fn emit_fold_machine_named(op, rep, members, pushes) = {
+  let kinds = smap_build(enumerate(members) |> map({ (k, m) => (member_sig(m), k) }))
+  let n = fold_op_name(op)
+  enumerate(members) |> each({ (k, m) => emit_machine_entry(op, rep, k, member_sig(m)) })
+  wat_emit("  (func ${n}m_{rep} (param $__state i32) (param $k i32) (param $a i32)")
+  wat_emit(if fold_op_binary(op) { " (param $b i32)" } else { "" })
+  wat_emit(" (result i32) (local $i i32) (local $t i32) (local $top0 i32) (local $r i32)")
+  wat_emit(" (local $ta i32) (local $tb i32) (local $n i32) (local $na i32) (local $nb i32) (local $c i32)")
+  wat_emit(" (local $h i32) (local $s i32) (local $owed i32)")
+  wat_emit(if fold_op_binary(op) { "" } else { " (local $b i32)" })
+  wat_emit(" {fold_float_locals()} (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  match op {
+    FoldHash => wat_emit("    (local.set $h (i32.const 2166136261))\n"),
+    FoldShow => {
+      wat_emit("    (local.set $s ")
+      emit_show_str_literal_inline("")
+      wat_emit(")\n")
+    },
+    FoldEq | FoldCompare => (),
+  }
+  if pushes { wat_emit("    (local.set $top0 (global.get $fs_top))\n") }
+  wat_emit("    (local.set $r (block $out (result i32)\n    (loop $step\n    (block $pop\n")
+  if len(members) == 1 {
+    emit_machine_kind(op, kinds, 0, member_ty(members[0]))
+  } else {
+    range(0, len(members)) |> reverse |> each({ k => wat_emit("    (block $kd{int_to_str(k)}\n") })
+    wat_emit("    (br_table {range(0, len(members)) |> map({ k => "$kd{int_to_str(k)}" }) |> join(" ")} (local.get $k))\n")
+    enumerate(members) |> each({
+      (k, m) => {
+        wat_emit("    )\n")
+        emit_machine_kind(op, kinds, k, member_ty(m))
+      },
+    })
+  }
+  wat_emit("    )\n")
+  emit_machine_pop(op, pushes)
+  wat_emit("    )\n    (unreachable)))\n")
+  if pushes { wat_emit("    (call $fs_leave (local.get $top0))\n") }
+  wat_emit("    (local.get $r)\n  )\n")
+}
+
+fn fold_op_name(op) = match op {
+  FoldEq => "eq",
+  FoldCompare => "compare",
+  FoldHash => "hash",
+  FoldShow => "show",
+}
+
+// `==` and compare read two operands; hash and show one.
+fn fold_op_binary(op) = match op {
+  FoldEq | FoldCompare => true,
+  FoldHash | FoldShow => false,
+}
+
+// A cycle member's helper, entering the machine at its kind.
+fn emit_machine_entry(op, rep, k, sig) = {
+  let n = fold_op_name(op)
+  if fold_op_binary(op) {
+    wat_emit("  (func ${n}_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32) (call ${n}m_{rep} (local.get $__state) (i32.const {int_to_str(k)}) (local.get $a) (local.get $b)))\n")
+  } else {
+    wat_emit("  (func ${n}_{sig} (param $__state i32) (param $a i32) (result i32) (call ${n}m_{rep} (local.get $__state) (i32.const {int_to_str(k)}) (local.get $a)))\n")
+  }
+}
+
+// What a part is to the machine: folded where it stands, or the next item,
+// of the kind it is in the cycle.
+type MachinePart = PartLeaf | PartChild(Int)
+
+fn machine_part(kinds, pty) = match smap_get(kinds, fold_sig(pty)) {
+  Some(kc) => PartChild(kc),
+  None => PartLeaf,
+}
+
+fn emit_machine_kind(op, kinds, k, ty) = match fold_strip(ty) {
+  TName(_, _) => emit_machine_sum(op, kinds, k, fold_strip(ty)),
+  TList(elem) => emit_machine_list(op, kinds, k, elem),
+  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_machine_product(op, kinds, k, fold_strip(ty)),
+}
+
+// A switch over the part an item resumes at: `count` parts and the point
+// past the last, each entered by falling out of its block into the code that
+// follows the block's close (`emit_resume_case`), in order.
+fn emit_resume_switch(label: String, count, index: String) = {
+  range(0, count + 1) |> reverse |> each({ j => wat_emit("    (block ${label}_{int_to_str(j)}\n") })
+  wat_emit("    (br_table {range(0, count + 1) |> map({ j => "${label}_{int_to_str(j)}" }) |> join(" ")} {index})\n")
+}
+
+fn emit_resume_case() = wat_emit("    )\n")
+
+// A product's fields at their width-summed offsets (the store's layout).
+fn product_layout(ty) = match fold(([], 0), layout_field, product_field_tys(ty)) {
+  (fields, _) => fields,
+}
+
+fn layout_field(acc, fty) = match acc {
+  (out, off) => {
+    let r = repr_of(fty)
+    let here = align_for(off, r)
+    (push(out, (fty, here, r)), here + repr_width(r))
+  },
+}
+
+// A product's fields, each beside the name a rendering prints for it.
+fn emit_machine_product(op, kinds, k, ty) = {
+  let fields = product_layout(ty)
+  let n = len(fields)
+  let record = ty_is_record(ty)
+  emit_resume_switch("$p{int_to_str(k)}", n, "(local.get $i)")
+  enumerate(zip(fields, show_named_fields(ty))) |> each(emit_machine_product_field(op, kinds, k, n, record, ??))
+  emit_resume_case()
+  if n == 0 { machine_item_open(op, record) }
+  machine_item_close(op, if record { "\}" } else { ")" })
+  wat_emit("    (br $pop)\n")
+}
+
+// What an item does before its first part: two operands that are one value
+// are equal and in order, and a rendering opens its delimiter.
+fn machine_item_open(op, record) = match op {
+  FoldEq | FoldCompare => wat_emit("    (if (i32.eq (local.get $a) (local.get $b)) (then (br $pop)))\n"),
+  FoldHash => (),
+  FoldShow => emit_show_append_literal(if record { "\{" } else { "(" }),
+}
+
+fn machine_item_close(op, closer: String) = match op {
+  FoldShow => emit_show_append_literal(closer),
+  FoldEq | FoldCompare | FoldHash => (),
+}
+
+fn emit_machine_product_field(op, kinds, k, n, record, case) = match case {
+  (j, ((fty, off, r), (fname, _))) => {
+    emit_resume_case()
+    if j == 0 { machine_item_open(op, record) }
+    let pty = fold_strip(fty)
+    match op {
+      FoldShow => {
+        let prefix = "{show_field_sep(j)}{show_field_name(fname, record)}"
+        if len(prefix) > 0 { emit_show_append_literal(prefix) }
+      },
+      FoldEq | FoldCompare | FoldHash => (),
+    }
+    match machine_part(kinds, pty) {
+      PartLeaf => match op {
+        FoldShow => {
+          emit_show_append_open()
+          emit_show_field_render(off, r, pty)
+          emit_show_append_close()
+        },
+        FoldEq | FoldCompare | FoldHash => emit_machine_leaf(op, off, r, pty),
+      },
+      PartChild(kc) => emit_machine_child(op, k, j + 1, j + 1 == n && fold_op_tails(op), kc, off),
+    }
+  },
+}
+
+// Whether the op enters a tail with nothing left at the level it leaves: a
+// rendering always owes its closer after a product's last field, so only
+// the walks that answer a word continue into it.
+fn fold_op_tails(op) = match op {
+  FoldEq | FoldCompare | FoldHash => true,
+  FoldShow => false,
+}
+
+// A part folded where it stands, its pair (or its one operand) loaded at
+// the offset at its width: unequal answers the machine, a nonzero order
+// answers it, a hash mixes in.
+fn emit_machine_leaf(op, off, r, pty) = match op {
+  FoldEq => {
+    wat_emit("    (if (i32.eqz\n")
+    emit_field_load_pair(off, r)
+    emit_field_eq(pty)
+    wat_emit("    ) (then (br $out (i32.const 0))))\n")
+  },
+  FoldCompare => {
+    wat_emit("    (local.set $c\n")
+    emit_field_load_pair(off, r)
+    emit_field_cmp(pty)
+    wat_emit("    )\n    (if (local.get $c) (then (br $out (local.get $c))))\n")
+  },
+  FoldHash => {
+    wat_emit("    (local.set $h (i32.mul (i32.xor (local.get $h) ")
+    emit_field_hash(off, r, pty)
+    wat_emit(") (i32.const 16777619)))\n")
+  },
+  FoldShow => (),
+}
+
+// A part inside the cycle is the next item: unless the op continues into it
+// as a tail, the item it interrupts is pushed to resume at part `next`; then
+// the operands become the part's, at the offset the store wrote.
+fn emit_machine_child(op, k, next, continues, kc, off) = {
+  if continues { () } else { emit_machine_push(op, k, "(i32.const {int_to_str(next)})") }
+  let o = int_to_str(off)
+  if fold_op_binary(op) {
+    wat_emit("    (local.set $t (i32.load offset={o} (local.get $a)))\n")
+    wat_emit("    (local.set $b (i32.load offset={o} (local.get $b)))\n")
+    wat_emit("    (local.set $a (local.get $t))\n")
+  } else {
+    wat_emit("    (local.set $a (i32.load offset={o} (local.get $a)))\n")
+  }
+  emit_machine_enter(kc)
+}
+
+fn emit_machine_enter(kc) = {
+  wat_emit("    (local.set $k (i32.const {int_to_str(kc)}))\n")
+  wat_emit("    (local.set $i (i32.const 0))\n")
+  wat_emit("    (br $step)\n")
+}
+
+// The interrupted item onto the spill stack: its kind, its operands, and
+// the part it resumes at. A rendering keeps the closers its chain owes in
+// the second operand's slot, and the part it enters owes none yet.
+fn emit_machine_push(op, k, next: String) = {
+  let second = match op {
+    FoldEq | FoldCompare => "(local.get $b)",
+    FoldHash => "(i32.const 0)",
+    FoldShow => "(local.get $owed)",
+  }
+  wat_emit("    (call $fs_push (i32.const {int_to_str(k)}) (local.get $a) {second} {next})\n")
+  match op {
+    FoldShow => wat_emit("    (local.set $owed (i32.const 0))\n"),
+    FoldEq | FoldCompare | FoldHash => (),
+  }
+}
+
+// A sum: a nullary variant is a sentinel word below the heap, a fielded one
+// a record whose first word is its tag. The item's start settles the tags —
+// one value, two sentinels, two tags — and every fielded variant's payloads
+// follow, resumed past the start at the payload after the one pushed.
+fn emit_machine_sum(op, kinds, k, applied) = {
+  let specs = variant_named_specs_at(applied)
+  let hb = int_to_str(heap_base())
+  match op {
+    FoldEq => {
+      wat_emit("    (if (i32.eqz (local.get $i)) (then\n")
+      wat_emit("      (if (i32.eq (local.get $a) (local.get $b)) (then (br $pop)))\n")
+      wat_emit("      (if (i32.or (i32.lt_u (local.get $a) (i32.const {hb})) (i32.lt_u (local.get $b) (i32.const {hb}))) (then (br $out (i32.const 0))))\n")
+      wat_emit("      (if (i32.ne (i32.load (local.get $a)) (i32.load (local.get $b))) (then (br $out (i32.const 0))))\n")
+      wat_emit("      (local.set $i (i32.const 1))))\n")
+    },
+    FoldCompare => {
+      wat_emit("    (if (i32.eqz (local.get $i)) (then\n")
+      wat_emit("      (if (i32.eq (local.get $a) (local.get $b)) (then (br $pop)))\n")
+      wat_emit("      (local.set $ta (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.get $a)) (else (i32.load (local.get $a)))))\n")
+      wat_emit("      (local.set $tb (if (result i32) (i32.lt_u (local.get $b) (i32.const {hb})) (then (local.get $b)) (else (i32.load (local.get $b)))))\n")
+      wat_emit("      (if (i32.ne (local.get $ta) (local.get $tb)) (then (br $out ")
+      emit_word_sign_compare(Signed, "(local.get $ta)", "(local.get $tb)")
+      wat_emit(")))\n")
+      wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {hb})) (then (br $pop)))\n")
+      wat_emit("      (local.set $i (i32.const 1))))\n")
+    },
+    FoldHash => {
+      wat_emit("    (if (i32.eqz (local.get $i)) (then\n")
+      wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $a)) (i32.const 16777619))) (br $pop)))\n")
+      wat_emit("      (local.set $h (i32.mul (i32.xor (local.get $h) (i32.load (local.get $a))) (i32.const 16777619)))\n")
+      wat_emit("      (local.set $i (i32.const 1))))\n")
+    },
+    FoldShow => {
+      wat_emit("    (if (i32.and (i32.eqz (local.get $i)) (i32.lt_u (local.get $a) (i32.const {hb}))) (then\n")
+      emit_show_append_open()
+      emit_show_nullary_name(specs, 0, len(specs))
+      emit_show_append_close()
+      wat_emit("      (br $pop)))\n")
+    },
+  }
+  wat_emit("    (local.set $ta (i32.load (local.get $a)))\n")
+  each(emit_machine_variant(op, kinds, k, ??), specs)
+  wat_emit("    (br $pop)\n")
+}
+
+fn emit_machine_variant(op, kinds, k, spec) = match spec {
+  (tag_id, cname, payloads) => if len(payloads) == 0 {
+    ()
+  } else {
+    let t = int_to_str(tag_id)
+    let m = len(payloads)
+    wat_emit("    (if (i32.eq (local.get $ta) (i32.const {t})) (then\n")
+    match op {
+      FoldShow => {
+        wat_emit("    (if (i32.eqz (local.get $i)) (then\n")
+        emit_show_append_literal("{cname}(")
+        wat_emit("      (local.set $i (i32.const 1))))\n")
+      },
+      FoldEq | FoldCompare | FoldHash => (),
+    }
+    emit_resume_switch("$v{int_to_str(k)}_{t}", m, "(i32.sub (local.get $i) (i32.const 1))")
+    enumerate(payloads) |> each(emit_machine_payload(op, kinds, k, payloads, ??))
+    emit_resume_case()
+    machine_item_close(op, ")")
+    wat_emit("    (br $pop)\n")
+    wat_emit("    ))\n")
+  },
+}
+
+// Payload j of a variant at the offset the store wrote. A rendering's last
+// payload inside the cycle owes the variant's closer rather than pushing for
+// it, so a chain renders in one frame.
+fn emit_machine_payload(op, kinds, k, payloads, case) = match case {
+  (j, payload) => emit_machine_payload_at(
+    op,
+    kinds,
+    k,
+    j,
+    fold_strip(payload),
+    variant_payload_offset(payloads, j, 0, 4),
+    j + 1 == len(payloads)
+  ),
+}
+
+fn emit_machine_payload_at(op, kinds, k, j, pty, off, last_one) = {
+  emit_resume_case()
+  match op {
+    FoldShow => if j > 0 { emit_show_append_literal(show_field_sep(j)) },
+    FoldEq | FoldCompare | FoldHash => (),
+  }
+  match machine_part(kinds, pty) {
+    PartLeaf => match op {
+      FoldShow => {
+        emit_show_append_open()
+        emit_show_variant_payload_render(off, pty)
+        emit_show_append_close()
+      },
+      FoldEq | FoldCompare | FoldHash => emit_machine_leaf(op, off, repr_of(pty), pty),
+    },
+    PartChild(kc) => match op {
+      FoldShow => if last_one {
+        wat_emit("    (local.set $owed (i32.add (local.get $owed) (i32.const 1)))\n")
+        emit_machine_child(op, k, 0, true, kc, off)
+      } else {
+        emit_machine_child(op, k, j + 2, false, kc, off)
+      },
+      FoldEq | FoldCompare | FoldHash => emit_machine_child(op, k, j + 2, last_one, kc, off),
+    },
+  }
+}
+
+// A sequence of a cycle's type: the item walks its elements by index, each
+// one the next item, pushed to resume at the element after it while one
+// remains — and, for an order, while a length is left to compare; a
+// rendering pushes for every element, since its closer follows the last.
+fn emit_machine_list(op, kinds, k, elem) = {
+  let len_sym = vocab_symbol("len")
+  let kc = match machine_part(kinds, fold_strip(elem)) {
+    PartChild(c) => c,
+  }
+  match op {
+    FoldEq => {
+      wat_emit("    (local.set $n (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+      wat_emit("    (if (i32.eqz (local.get $i)) (then\n")
+      wat_emit("      (if (i32.eq (local.get $a) (local.get $b)) (then (br $pop)))\n")
+      wat_emit("      (if (i32.ne (local.get $n) (call ${len_sym} (local.get $__state) (local.get $b))) (then (br $out (i32.const 0))))))\n")
+      wat_emit("    (if (i32.ge_s (local.get $i) (local.get $n)) (then (br $pop)))\n")
+      wat_emit("    (if (i32.lt_s (i32.add (local.get $i) (i32.const 1)) (local.get $n)) (then\n")
+      emit_machine_push(op, k, "(i32.add (local.get $i) (i32.const 1))")
+      wat_emit("    ))\n")
+    },
+    FoldCompare => {
+      wat_emit("    (local.set $na (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+      wat_emit("    (local.set $nb (call ${len_sym} (local.get $__state) (local.get $b)))\n")
+      wat_emit("    (if (i32.and (i32.eqz (local.get $i)) (i32.eq (local.get $a) (local.get $b))) (then (br $pop)))\n")
+      wat_emit("    (if (i32.or (i32.ge_s (local.get $i) (local.get $na)) (i32.ge_s (local.get $i) (local.get $nb))) (then\n")
+      wat_emit("      (local.set $c ")
+      emit_word_sign_compare(Signed, "(local.get $na)", "(local.get $nb)")
+      wat_emit(")\n      (if (local.get $c) (then (br $out (local.get $c))))\n      (br $pop)))\n")
+      wat_emit("    (if (i32.or (i32.ne (local.get $na) (local.get $nb)) (i32.lt_s (i32.add (local.get $i) (i32.const 1)) (local.get $na))) (then\n")
+      emit_machine_push(op, k, "(i32.add (local.get $i) (i32.const 1))")
+      wat_emit("    ))\n")
+    },
+    FoldHash => {
+      wat_emit("    (local.set $n (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+      wat_emit("    (if (i32.eqz (local.get $i)) (then (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $n)) (i32.const 16777619)))))\n")
+      wat_emit("    (if (i32.ge_s (local.get $i) (local.get $n)) (then (br $pop)))\n")
+      wat_emit("    (if (i32.lt_s (i32.add (local.get $i) (i32.const 1)) (local.get $n)) (then\n")
+      emit_machine_push(op, k, "(i32.add (local.get $i) (i32.const 1))")
+      wat_emit("    ))\n")
+    },
+    FoldShow => {
+      wat_emit("    (local.set $n (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+      wat_emit("    (if (i32.eqz (local.get $i)) (then\n")
+      emit_show_append_literal("[")
+      wat_emit("    ))\n")
+      wat_emit("    (if (i32.ge_s (local.get $i) (local.get $n)) (then\n")
+      emit_show_append_literal("]")
+      wat_emit("      (br $pop)))\n")
+      wat_emit("    (if (i32.gt_s (local.get $i) (i32.const 0)) (then\n")
+      emit_show_append_literal(", ")
+      wat_emit("    ))\n")
+      emit_machine_push(op, k, "(i32.add (local.get $i) (i32.const 1))")
+    },
+  }
+  let index =
+    "(call ${vocab_symbol("list_index")} (local.get $__state) (local.get $a) (local.get $i))"
+  if fold_op_binary(op) {
+    wat_emit("    (local.set $t {index})\n")
+    wat_emit("    (local.set $b (call ${vocab_symbol("list_index")} (local.get $__state) (local.get $b) (local.get $i)))\n")
+    wat_emit("    (local.set $a (local.get $t))\n")
+  } else {
+    wat_emit("    (local.set $a {index})\n")
+  }
+  emit_machine_enter(kc)
+}
+
+// The item is done. A rendering first pays the closers its chain owes. The
+// machine answers when the stack holds nothing it pushed — two values found
+// equal, in order, or hashed or rendered whole — and otherwise resumes the
+// item on top.
+fn emit_machine_pop(op, pushes) = {
+  match op {
+    FoldShow => {
+      wat_emit("    (block $paid (loop $owing\n")
+      wat_emit("      (br_if $paid (i32.eqz (local.get $owed)))\n")
+      emit_show_append_literal(")")
+      wat_emit("      (local.set $owed (i32.sub (local.get $owed) (i32.const 1)))\n")
+      wat_emit("      (br $owing)))\n")
+    },
+    FoldEq | FoldCompare | FoldHash => (),
+  }
+  let answer = match op {
+    FoldEq => "(i32.const 1)",
+    FoldCompare => "(i32.const 0)",
+    FoldHash => "(local.get $h)",
+    FoldShow => "(local.get $s)",
+  }
+  if pushes {
+    wat_emit("    (if (i32.eq (global.get $fs_top) (local.get $top0)) (then (br $out {answer})))\n")
+    wat_emit("    (local.set $t (call $fs_pop))\n")
+    wat_emit("    (local.set $k (i32.load (local.get $t)))\n")
+    wat_emit("    (local.set $a (i32.load offset=4 (local.get $t)))\n")
+    wat_emit("    (local.set $b (i32.load offset=8 (local.get $t)))\n")
+    wat_emit("    (local.set $i (i32.load offset=12 (local.get $t)))\n")
+    match op {
+      FoldShow => wat_emit("    (local.set $owed (local.get $b))\n"),
+      FoldEq | FoldCompare | FoldHash => (),
+    }
+    wat_emit("    (br $step)\n")
+  } else {
+    wat_emit("    (br $out {answer})\n")
+  }
+}
+
+// THE SPILL STACK — the work a fold machine leaves pending, in memory the
+// instance owns. Each entry is four words: the item's kind, its operands
+// and the part it resumes at. Every instance's home area is allocated where
+// its life starts, below every mark an arena can take, so no extent ever
+// reclaims it under a fold. A value nested deeper than the home holds grows
+// the stack into the heap, doubling; when the outermost machine returns the
+// stack goes home, and the grown blocks are reclaimed — the memory zero
+// again behind them — where nothing was allocated past them, which a walk
+// that answers a word never does.
+fn emit_fold_stack_runtime(spawns) = {
+  wat_emit("  (global $fs_home (mut i32) (i32.const 0))\n  (global $fs_base (mut i32) (i32.const 0))\n  (global $fs_cap (mut i32) (i32.const 0))\n  (global $fs_top (mut i32) (i32.const 0))\n  (global $fs_lo (mut i32) (i32.const 0))\n")
+  wat_emit("  (func $fs_push (param $k i32) (param $a i32) (param $b i32) (param $i i32) (local $e i32) (if (i32.ge_u (global.get $fs_top) (global.get $fs_cap)) (then (call $fs_grow))) (local.set $e (i32.add (global.get $fs_base) (i32.shl (global.get $fs_top) (i32.const 4)))) (i32.store (local.get $e) (local.get $k)) (i32.store offset=4 (local.get $e) (local.get $a)) (i32.store offset=8 (local.get $e) (local.get $b)) (i32.store offset=12 (local.get $e) (local.get $i)) (global.set $fs_top (i32.add (global.get $fs_top) (i32.const 1))))\n")
+  wat_emit("  (func $fs_pop (result i32) (global.set $fs_top (i32.sub (global.get $fs_top) (i32.const 1))) (i32.add (global.get $fs_base) (i32.shl (global.get $fs_top) (i32.const 4))))\n")
+  wat_emit("  (func $fs_grow (local $n i32) (local.set $n (call $alloc (i32.shl (global.get $fs_cap) (i32.const 5)))) (memory.copy (local.get $n) (global.get $fs_base) (i32.shl (global.get $fs_top) (i32.const 4))) (if (i32.eqz (global.get $fs_lo)) (then (global.set $fs_lo (local.get $n)))) (global.set $fs_base (local.get $n)) (global.set $fs_cap (i32.shl (global.get $fs_cap) (i32.const 1))))\n")
+  let same_run =
+    if spawns { " (i32.ge_u (global.get $fs_lo) (global.get $seg_base))" } else { " (i32.const 1)" }
+  wat_emit("  (func $fs_leave (param $top0 i32) (local $hi i32) (global.set $fs_top (local.get $top0)) (if (i32.and (i32.eqz (local.get $top0)) (i32.ne (global.get $fs_lo) (i32.const 0))) (then (local.set $hi (i32.add (global.get $fs_base) (i32.shl (global.get $fs_cap) (i32.const 4)))) (if (i32.and (i32.eq (global.get $heap_ptr) (local.get $hi)){same_run}) (then (memory.fill (global.get $fs_lo) (i32.const 0) (i32.sub (local.get $hi) (global.get $fs_lo))) (global.set $heap_ptr (global.get $fs_lo)))) (global.set $fs_base (global.get $fs_home)) (global.set $fs_cap (i32.const {int_to_str(fold_stack_home_entries())})) (global.set $fs_lo (i32.const 0)))))\n")
+}
+
+// The entries an instance's home area holds before the stack grows.
+fn fold_stack_home_entries() = 256
+
+// An instance's home area, where its life starts.
+fn emit_fold_stack_home() = {
+  wat_emit("    (global.set $fs_home (call $alloc (i32.const {int_to_str(16 * fold_stack_home_entries())})))\n")
+  wat_emit("    (global.set $fs_base (global.get $fs_home))\n")
+  wat_emit("    (global.set $fs_cap (i32.const {int_to_str(fold_stack_home_entries())}))\n")
 }
 
 // ─── The sequence walkers — the fold leaves' SEQUENCE arm ────
@@ -9131,40 +9697,37 @@ fn emit_one_eq_helper(sig, ty) = match fold_strip(ty) {
   },
 }
 
-// emit_eq_leaf_sum — the $eq_n<Name> sum helper. A nullary variant is a bare
-// sentinel WORD (< heap_base) and a fielded variant a heap record
-// [tag@0][f0@4][f1@8]…, so two values that are not the same word are equal
-// only as two records of one tag whose payloads are equal field by field,
-// the first unequal field answering. A last field of the helper's own type
-// is not a call but the next round of the loop, so a chain of any length is
-// walked in one frame; every other field calls its own helper. The env's
-// variant specs are read LIVE.
+// emit_eq_leaf_sum — the $eq_n<Name> sum helper of a sum no cycle of the
+// fold's graph reaches back through (a cycle is a machine's). A nullary
+// variant is a bare sentinel WORD (< heap_base) and a fielded variant a heap
+// record [tag@0][f0@4][f1@8]…, so two values that are not the same word are
+// equal only as two records of one tag whose payloads are equal field by
+// field, the first unequal field answering, each through its own leaf. The
+// env's variant specs are read LIVE.
 fn emit_eq_leaf_sum(sig, applied) = {
   let specs = variant_specs_at(applied)
   let hb = int_to_str(heap_base())
   wat_emit("  (func $eq_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32)")
   wat_emit(" (local $ta i32) (local $tb i32) {fold_float_locals()}")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (loop $again\n")
-  wat_emit("      (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 1))))\n")
-  wat_emit("      (if (i32.or (i32.lt_u (local.get $a) (i32.const {hb})) (i32.lt_u (local.get $b) (i32.const {hb}))) (then (return (i32.const 0))))\n")
-  wat_emit("      (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  wat_emit("      (local.set $tb (i32.load offset=0 (local.get $b)))\n")
-  wat_emit("      (if (i32.ne (local.get $ta) (local.get $tb)) (then (return (i32.const 0))))\n")
-  each(emit_eq_variant(sig, ??), specs)
-  wat_emit("    )\n")
+  wat_emit("    (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 1))))\n")
+  wat_emit("    (if (i32.or (i32.lt_u (local.get $a) (i32.const {hb})) (i32.lt_u (local.get $b) (i32.const {hb}))) (then (return (i32.const 0))))\n")
+  wat_emit("    (local.set $ta (i32.load offset=0 (local.get $a)))\n")
+  wat_emit("    (local.set $tb (i32.load offset=0 (local.get $b)))\n")
+  wat_emit("    (if (i32.ne (local.get $ta) (local.get $tb)) (then (return (i32.const 0))))\n")
+  each(emit_eq_variant, specs)
   // two records of one tag no fielded variant names hold no payload
   wat_emit("    (i32.const 1)\n")
   wat_emit("  )\n")
 }
 
 // A fielded variant's arm: its payload fields compared in order.
-fn emit_eq_variant(sig, spec) = match spec {
+fn emit_eq_variant(spec) = match spec {
   (tag_id, payloads) => if len(payloads) == 0 {
     ()
   } else {
     wat_emit("      (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
-    emit_eq_payload_fields(sig, payloads, 0, len(payloads))
+    emit_eq_payload_fields(payloads, 0, len(payloads))
     wat_emit("      ))\n")
   },
 }
@@ -9172,8 +9735,8 @@ fn emit_eq_variant(sig, spec) = match spec {
 // Payload field i of n, at the width-summed offset the store and the match
 // bind read (variant_payload_offset) and loaded at its proven repr: a field
 // before the last answers false when it differs, and the last answers the
-// variant — by its own leaf, or, of the helper's own type, by the next round.
-fn emit_eq_payload_fields(sig, payloads, i, n) = if i >= n {
+// variant.
+fn emit_eq_payload_fields(payloads, i, n) = if i >= n {
   ()
 } else {
   let pty = fold_strip(list_index(payloads, i))
@@ -9184,22 +9747,13 @@ fn emit_eq_payload_fields(sig, payloads, i, n) = if i >= n {
     emit_field_load_pair(off, r)
     emit_field_eq(pty)
     wat_emit("        ) (then (return (i32.const 0))))\n")
-    emit_eq_payload_fields(sig, payloads, i + 1, n)
-  } else if fold_sig(pty) == sig {
-    emit_next_round(off, ["$a", "$b"])
+    emit_eq_payload_fields(payloads, i + 1, n)
   } else {
     wat_emit("        (return\n")
     emit_field_load_pair(off, r)
     emit_field_eq(pty)
     wat_emit("        )\n")
   }
-}
-
-// The next round of a sum helper's loop: each operand becomes its last
-// payload field, the one of the helper's own type.
-fn emit_next_round(off, operands) = {
-  operands |> each({ v => wat_emit("        (local.set {v} (i32.load offset={int_to_str(off)} (local.get {v})))\n") })
-  wat_emit("        (br $again)\n")
 }
 
 // The conjunction body: for field i, push eq(a.field_i, b.field_i) then AND
@@ -9495,31 +10049,29 @@ fn emit_one_compare_helper(sig, ty) = match fold_strip(ty) {
   },
 }
 
-// emit_one_compare_sum_helper — the $compare_n<Name> sum helper. A nullary
-// variant is a sentinel word, a fielded variant a heap record [tag@0][f0@4]…,
-// so a value's TAG is the sentinel itself or the record's first word. Tags
-// order first (declaration order = tag id); equal tags name one variant, so
-// both operands are sentinels (equal) or both records, whose payloads order
-// next, the first non-zero answering, and a last field of the helper's own
-// type is the next round of the loop. The sentinel was once compared as a
-// word against the other operand's ADDRESS, which ranked a nullary variant
-// below every fielded one whatever their declaration order (measured
-// 2026-10-03: `B(5) < A` false over `type T = B(Int) | A`).
+// emit_one_compare_sum_helper — the $compare_n<Name> sum helper of a sum no
+// cycle reaches back through. A nullary variant is a sentinel word, a
+// fielded variant a heap record [tag@0][f0@4]…, so a value's TAG is the
+// sentinel itself or the record's first word. Tags order first (declaration
+// order = tag id); equal tags name one variant, so both operands are
+// sentinels (equal) or both records, whose payloads order next, the first
+// non-zero answering. The sentinel was once compared as a word against the
+// other operand's ADDRESS, which ranked a nullary variant below every
+// fielded one whatever their declaration order (measured 2026-10-03:
+// `B(5) < A` false over `type T = B(Int) | A`).
 fn emit_one_compare_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
   let hb = int_to_str(heap_base())
   wat_emit("  (func $compare_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32)")
   wat_emit(" (local $ta i32) (local $tb i32) (local $c i32) {fold_float_locals()}")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (loop $again\n")
-  wat_emit("      (local.set $ta (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.get $a)) (else (i32.load offset=0 (local.get $a)))))\n")
-  wat_emit("      (local.set $tb (if (result i32) (i32.lt_u (local.get $b) (i32.const {hb})) (then (local.get $b)) (else (i32.load offset=0 (local.get $b)))))\n")
-  wat_emit("      (if (i32.ne (local.get $ta) (local.get $tb)) (then (return ")
+  wat_emit("    (local.set $ta (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.get $a)) (else (i32.load offset=0 (local.get $a)))))\n")
+  wat_emit("    (local.set $tb (if (result i32) (i32.lt_u (local.get $b) (i32.const {hb})) (then (local.get $b)) (else (i32.load offset=0 (local.get $b)))))\n")
+  wat_emit("    (if (i32.ne (local.get $ta) (local.get $tb)) (then (return ")
   emit_word_sign_compare(Signed, "(local.get $ta)", "(local.get $tb)")
   wat_emit(")))\n")
-  wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {hb})) (then (return (i32.const 0))))\n")
-  each(emit_compare_variant(sig, ??), specs)
-  wat_emit("    )\n")
+  wat_emit("    (if (i32.lt_u (local.get $a) (i32.const {hb})) (then (return (i32.const 0))))\n")
+  each(emit_compare_variant, specs)
   // two records of one tag no fielded variant names hold no payload
   wat_emit("    (i32.const 0)\n")
   wat_emit("  )\n")
@@ -9547,20 +10099,19 @@ fn emit_word_sign_compare(order, x, y) = {
 
 // A fielded variant's arm for compare: tags already proven equal, its
 // payload fields in order.
-fn emit_compare_variant(sig, spec) = match spec {
+fn emit_compare_variant(spec) = match spec {
   (tag_id, payloads) => if len(payloads) == 0 {
     ()
   } else {
     wat_emit("      (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
-    emit_compare_payload_fields(sig, payloads, 0, len(payloads))
+    emit_compare_payload_fields(payloads, 0, len(payloads))
     wat_emit("      ))\n")
   },
 }
 
 // Payload field i of n, at the offset the store reads: a field before the
-// last answers when it differs, and the last answers the variant — by its
-// own leaf, or, of the helper's own type, by the next round.
-fn emit_compare_payload_fields(sig, payloads, i, n) = if i >= n {
+// last answers when it differs, and the last answers the variant.
+fn emit_compare_payload_fields(payloads, i, n) = if i >= n {
   ()
 } else {
   let pty = fold_strip(list_index(payloads, i))
@@ -9572,9 +10123,7 @@ fn emit_compare_payload_fields(sig, payloads, i, n) = if i >= n {
     emit_field_cmp(pty)
     wat_emit("        )\n")
     wat_emit("        (if (local.get $c) (then (return (local.get $c))))\n")
-    emit_compare_payload_fields(sig, payloads, i + 1, n)
-  } else if fold_sig(pty) == sig {
-    emit_next_round(off, ["$a", "$b"])
+    emit_compare_payload_fields(payloads, i + 1, n)
   } else {
     wat_emit("        (return\n")
     emit_field_load_pair(off, r)
@@ -9938,47 +10487,31 @@ fn emit_show_field_load(off, r) = {
   wat_emit(" (local.get $a))")
 }
 
-// SUM show: a nullary variant is a bare tag word < heap_base, rendered by its
-// constructor name; a fielded variant a heap record [tag@0][f0@4]…, rendered
-// "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names and payload types are
-// read LIVE from the env (variant_named_specs_of). A last payload of the
-// helper's own type is the next round of the loop: what comes before it is
-// appended to the rendering, and the ")" that closes it is owed, so a chain
-// of any length renders in one frame.
+// SUM show of a sum no cycle reaches back through: a nullary variant is a
+// bare tag word < heap_base, rendered by its constructor name; a fielded
+// variant a heap record [tag@0][f0@4]…, rendered "Ctor(" ++ f0 ++ ", " ++ f1
+// ++ ")". The variant names and payload types are read LIVE from the env
+// (variant_named_specs_of).
 fn emit_one_show_sum_helper(sig, applied) = {
   let specs = variant_named_specs_at(applied)
   wat_emit("  (func $show_{sig} (param $__state i32) (param $a i32) (result i32)")
-  wat_emit(" (local $ta i32) (local $s i32) (local $owed i32)")
+  wat_emit(" (local $ta i32) (local $s i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (local.set $s ")
   emit_show_str_literal_inline("")
   wat_emit(")\n")
-  wat_emit("    (loop $again\n")
-  wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {int_to_str(heap_base())}))\n")
-  wat_emit("        (then\n")
+  wat_emit("    (if (i32.lt_u (local.get $a) (i32.const {int_to_str(heap_base())}))\n")
+  wat_emit("      (then\n")
   emit_show_append_open()
   emit_show_nullary_name(specs, 0, len(specs))
   emit_show_append_close()
-  wat_emit("        )\n")
-  wat_emit("        (else\n")
-  wat_emit("          (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  each(emit_show_variant(sig, ??), specs)
-  wat_emit("        )))\n")
-  if any(variant_chains(sig, ??), specs) {
-    wat_emit("    (block $paid (loop $owing\n")
-    wat_emit("      (br_if $paid (i32.eqz (local.get $owed)))\n")
-    emit_show_append_literal(")")
-    wat_emit("      (local.set $owed (i32.sub (local.get $owed) (i32.const 1)))\n")
-    wat_emit("      (br $owing)))\n")
-  }
+  wat_emit("      )\n")
+  wat_emit("      (else\n")
+  wat_emit("        (local.set $ta (i32.load offset=0 (local.get $a)))\n")
+  each(emit_show_variant, specs)
+  wat_emit("      ))\n")
   wat_emit("    (local.get $s)\n")
   wat_emit("  )\n")
-}
-
-// Whether a variant's last payload is of the helper's own type, the one its
-// rendering continues into.
-fn variant_chains(sig, spec) = match spec {
-  (_tag, _cname, payloads) => len(payloads) > 0 && fold_sig(fold_strip(last(payloads))) == sig,
 }
 
 // A nullary value's name: the variant whose tag the word is ("" past the
@@ -10001,34 +10534,21 @@ fn emit_show_nullary_name(specs, i, n) = if i >= n {
   }
 }
 
-// A fielded variant's arm: "Ctor(" and its payloads, then ")" — or, when its
-// last payload is of the helper's own type, everything before that payload,
-// a ")" owed, and the next round on the payload.
-fn emit_show_variant(sig, spec) = match spec {
+// A fielded variant's arm: "Ctor(", its payloads, then ")".
+fn emit_show_variant(spec) = match spec {
   (tag_id, cname, payloads) => if len(payloads) == 0 {
     ()
   } else {
-    let n = len(payloads)
     wat_emit("          (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
     emit_show_append_open()
     emit_show_concat_open()
     emit_show_str_literal("{cname}(")
     emit_show_concat_open()
-    if variant_chains(sig, spec) {
-      emit_show_variant_payloads(payloads, 0, n - 1)
-      emit_show_str_literal(show_field_sep(n - 1))
-      emit_show_concat_close()
-      emit_show_concat_close()
-      emit_show_append_close()
-      wat_emit("            (local.set $owed (i32.add (local.get $owed) (i32.const 1)))\n")
-      emit_next_round(variant_payload_offset(payloads, n - 1, 0, 4), ["$a"])
-    } else {
-      emit_show_variant_payloads(payloads, 0, n)
-      emit_show_str_literal(")")
-      emit_show_concat_close()
-      emit_show_concat_close()
-      emit_show_append_close()
-    }
+    emit_show_variant_payloads(payloads, 0, len(payloads))
+    emit_show_str_literal(")")
+    emit_show_concat_close()
+    emit_show_concat_close()
+    emit_show_append_close()
     wat_emit("          ))\n")
   },
 }
@@ -10285,57 +10805,49 @@ fn emit_one_hash_helper(sig, ty) = match fold_strip(ty) {
   },
 }
 
-// emit_one_hash_sum_helper — the $hash_n<Name> sum helper. A nullary variant is
-// a sentinel word (its value IS its hash-seed); a fielded variant a heap record
-// [tag@0][f0@4]…, so: seed $h with the FNV basis; mix a sentinel's word, or a
-// record's tag and then the matched variant's payload fields. A last payload
-// of the helper's own type is the next round of the loop, mixed into the same
-// $h, so a chain of any length hashes in one frame; two structurally-equal
-// values fold identically.
+// emit_one_hash_sum_helper — the $hash_n<Name> sum helper of a sum no cycle
+// reaches back through. A nullary variant is a sentinel word (its value IS
+// its hash-seed); a fielded variant a heap record [tag@0][f0@4]…, so: seed
+// $h with the FNV basis; mix a sentinel's word, or a record's tag and then
+// the matched variant's payload fields; two structurally-equal values fold
+// identically.
 fn emit_one_hash_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
   wat_emit("  (func $hash_{sig} (param $__state i32) (param $a i32) (result i32)")
   wat_emit(" (local $h i32) (local $ta i32) {fold_float_locals()}")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (local.set $h (i32.const 2166136261))\n")
-  wat_emit("    (loop $again\n")
-  wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {int_to_str(heap_base())})) (then (return (i32.mul (i32.xor (local.get $h) (local.get $a)) (i32.const 16777619)))))\n")
-  wat_emit("      (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  wat_emit("      (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $ta)) (i32.const 16777619)))\n")
-  each(emit_hash_variant(sig, ??), specs)
-  wat_emit("    )\n")
+  wat_emit("    (if (i32.lt_u (local.get $a) (i32.const {int_to_str(heap_base())})) (then (return (i32.mul (i32.xor (local.get $h) (local.get $a)) (i32.const 16777619)))))\n")
+  wat_emit("    (local.set $ta (i32.load offset=0 (local.get $a)))\n")
+  wat_emit("    (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $ta)) (i32.const 16777619)))\n")
+  each(emit_hash_variant, specs)
   wat_emit("    (local.get $h)\n")
   wat_emit("  )\n")
 }
 
 // A fielded variant's arm for hash: the tag already mixed, its payload
 // fields mixed in order.
-fn emit_hash_variant(sig, spec) = match spec {
+fn emit_hash_variant(spec) = match spec {
   (tag_id, payloads) => if len(payloads) == 0 {
     ()
   } else {
     wat_emit("      (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
-    emit_hash_payload_fields(sig, payloads, 0, len(payloads))
+    emit_hash_payload_fields(payloads, 0, len(payloads))
     wat_emit("      ))\n")
   },
 }
 
 // Mix each payload field at the offset the store reads: h = (h xor
-// field_hash) * prime, and a last field of the helper's own type is the next
-// round.
-fn emit_hash_payload_fields(sig, payloads, i, n) = if i >= n {
+// field_hash) * prime.
+fn emit_hash_payload_fields(payloads, i, n) = if i >= n {
   ()
 } else {
   let pty = fold_strip(list_index(payloads, i))
   let off = variant_payload_offset(payloads, i, 0, 4)
-  if i + 1 >= n && fold_sig(pty) == sig {
-    emit_next_round(off, ["$a"])
-  } else {
-    wat_emit("        (local.set $h (i32.mul (i32.xor (local.get $h) ")
-    emit_field_hash(off, repr_of(pty), pty)
-    wat_emit(") (i32.const 16777619)))\n")
-    emit_hash_payload_fields(sig, payloads, i + 1, n)
-  }
+  wat_emit("        (local.set $h (i32.mul (i32.xor (local.get $h) ")
+  emit_field_hash(off, repr_of(pty), pty)
+  wat_emit(") (i32.const 16777619)))\n")
+  emit_hash_payload_fields(payloads, i + 1, n)
 }
 
 // The product hash mix chain: fold the FNV mix over each field at its width-

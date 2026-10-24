@@ -1,0 +1,28 @@
+// expect: refuse E_EffectMismatch
+// A fold over a type that can nest without bound through a field that is not
+// its last keeps its pending work in memory, so it allocates and the row says
+// so: comparing two trees under `!Alloc` refuses, directly, through a generic
+// function whose instantiation names the tree, and through one that reads a
+// record's field before comparing the whole record, whose other fields the
+// caller's record supplies; and so does hashing a tree, directly and through
+// `hash` handed in as a value.
+type Tree = Leaf | Node(Tree, Int, Tree)
+
+fn eq2(a, b) = a == b
+
+fn field_eq(r) = {
+  let n = r.n
+  n == n && r == r
+}
+
+fn direct(a: Tree, b: Tree) with !Alloc = a == b
+
+fn through(t: Tree) with !Alloc = eq2(t, t)
+
+fn opened(r: {n: Int, t: Tree}) with !Alloc = field_eq(r)
+
+fn hashed(t: Tree) with !Alloc = hash(t)
+
+fn run(h, t: Tree) with !Alloc = h(t)
+
+fn main() = if direct(Leaf, Leaf) && through(Leaf) && opened({n: 1, t: Leaf}) && hashed(Leaf) == run(hash, Leaf) { 1 } else { 0 }

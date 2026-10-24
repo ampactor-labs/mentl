@@ -34,7 +34,7 @@ cname == "int_to_str" ||
 cname == "slot_present" ||
 // The show/hash surfaces: the lowering intercepts both names into structural
 // show and hash nodes, so the table carries their generic faces (a -> String,
-// a -> Int) and the raw bodies never run.
+// a -> Int) and the raw bodies never run (is_fold_face).
 cname == "to_string" || cname == "hash" ||
 // The String face of the sequence node-kind: byte_at IS list_index, byte_len
 // IS len, typed so a consumer holding a String types against the projection,
@@ -46,6 +46,11 @@ cname == "byte_len" || cname == "byte_at" ||
 // of its contiguous stride-1 payload — String in, address out (the WASI
 // materialization boundary).
 cname == "str_slice" || cname == "str_concat" || cname == "str_of_single_byte" || cname == "str_payload" || cname == "str_of_buf" || cname == "float_to_str" || cname == "float_zero_pad" || cname == "float_format_fixed" || cname == "float_format_scientific" || cname == "float_render_positive" || cname == "float_digits_to_str"
+
+// The two faces whose raw bodies never run: a call is the structural show or
+// hash, so a reference to either as a value is the partial whose body folds,
+// as a primitive's value is, never the raw body's symbol.
+fn is_fold_face(cname: String) with Pure = cname == "to_string" || cname == "hash"
 
 // The faces typed over the element var alone, minting nothing: the judgment
 // reads them beside the three faces whose operand is minted per call, and

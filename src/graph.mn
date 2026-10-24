@@ -2205,32 +2205,6 @@ fn spec_pairs_find(pairs, root) = match find({ (v, _) => v == root }, pairs) {
   None => None,
 }
 
-// A RECORD ROW READ TO ITS END: every field its chain has learned, and what
-// lies past them — nothing, proven, or the one free row variable the rest
-// still is. Unify writes the chain and every reader walks it here (the
-// offset, the twin key, the substitution, the free-variable collection), so
-// no reader can stop one link short and call a partial set the whole.
-type RowEnd = RowEndClosed | RowEndFree(Int)
-
-fn record_row_full(fields, v) = match graph_chase(v) {
-  GNode(kind, _) => match kind {
-    NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
-    NRecordRowBound(residual, RowContinues(next)) => record_row_full(fields ++ residual, next),
-    NBound(t) => match t {
-      TRecordOpen(more, next) => record_row_full(fields ++ more, next),
-      TRecord(more) => (fields ++ more, RowEndClosed),
-      // A row cell bound to any other type is ill-sorted; its rest is not
-      // known, and a reader that needs it floors.
-      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
-      | TName(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (fields, RowEndFree(graph_chase_handle(v))),
-    },
-    NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
-    NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
-    NErrorHole(_) => (fields, RowEndFree(graph_chase_handle(v))),
-    NRowBound(_) => (fields, RowEndFree(graph_chase_handle(v))),
-  },
-}
-
 // Exact root-keyed substitution — the twin's one rule. Sound since the
 // subscript fracture fix (Force = UNIFY at IndexExpr): a generic body's
 // element classes and the scheme's quantified vars are ONE union-find root,
@@ -2267,7 +2241,7 @@ fn spec_copy_rest(t, pairs, found, d) = match found {
         },
       },
     },
-    DemandNumber(_) | DemandShape(_) | DemandLacks(_) => None,
+    DemandNumber(_) | DemandShape(_) | DemandLacks(_) | DemandSpill(_) => None,
   },
 }
 

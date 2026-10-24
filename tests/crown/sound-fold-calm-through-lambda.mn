@@ -1,0 +1,8 @@
+// CROWN sound twin of leak-fold-spill-through-lambda: the same lambda
+// applied to an Int compares a word, which allocates nothing, so the gate on
+// run's callback holds and the program runs.
+fn eq2(a, b) = a == b
+
+fn run(h, n: Int) with !Alloc = h(n)
+
+fn main() = if run({ x => eq2(x, x) }, 3) { 1 } else { 0 }

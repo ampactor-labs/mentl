@@ -30,7 +30,7 @@ Write `banner` as `greeting(name)` and the claim holds. The network then has a m
 
 ## Status
 
-Working, and changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending debt and the program still builds. One false proof is known and is the next landing: a recursion deep enough to exhaust the stack traps although its function says `!Trap`, since running out of stack is a trap no row shows yet (PLAN.md §7). The language and the command surface may still change.
+Working, and changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending debt and the program still builds. One false proof is known: a recursion a person writes deep enough to exhaust the stack traps although its function says `!Trap`, since running out of stack is a trap no row shows yet (PLAN.md §7). The language and the command surface may still change.
 
 ## Quick start
 
@@ -131,16 +131,15 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 
 PLAN.md §11 is the one ordered list, each step reading only what an earlier one built:
 
-1. Deep folds spill: `==`, compare, hash and show over a deeply nested value keep their pending work on the heap — closing the deep-comparison false proof.
-2. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality), the reach one walk.
-3. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle.
-4. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
-5. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
-6. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
-7. Edits that cost what they change, and the page that plays the course.
-8. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
-9. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
-10. `!Outside` closes: the native backend and diverse double compilation.
+1. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality), the reach one walk.
+2. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle.
+3. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
+4. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
+5. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
+6. Edits that cost what they change, and the page that plays the course.
+7. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
+8. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
+9. `!Outside` closes: the native backend and diverse double compilation.
 
 ## Documents
 

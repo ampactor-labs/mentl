@@ -1,0 +1,22 @@
+// expect: 31
+// A derived fold keeps the work a level leaves pending in memory, never on
+// the call stack: `==` under `!Trap`, `<`, hash and show cross two trees
+// nested 100,000 deep through their FIRST field, where each descended that
+// field by a call per level and exhausted the stack.
+type Tree = Leaf | Node(Tree, Int, Tree)
+
+fn left_spine(n, acc) = if n == 0 { acc } else { left_spine(n - 1, Node(acc, n, Leaf)) }
+
+fn same(a, b) with !Trap = a == b
+
+fn main() = {
+  let a = left_spine(100000, Leaf)
+  let b = left_spine(100000, Leaf)
+  let c = left_spine(100000, Node(Leaf, 0, Leaf))
+  let eq = if same(a, b) && !same(a, c) { 1 } else { 0 }
+  let lt = if a < c && !(c < a) { 2 } else { 0 }
+  let hs = if hash(a) == hash(b) { 4 } else { 0 }
+  let sh = if len("{a}") > 1000000 { 8 } else { 0 }
+  let exact = if "{left_spine(2, Leaf)}" == "Node(Node(Leaf, 2, Leaf), 1, Leaf)" { 16 } else { 0 }
+  eq + lt + hs + sh + exact
+}

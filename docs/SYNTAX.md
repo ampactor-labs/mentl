@@ -416,7 +416,7 @@ Surfaces primitives **#2** (pattern dispatch, the handler's own shape) and **#8*
 1. **REFERENCE** an existing function, with the fields it is not yet given left as holes — `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). An edge to a node that exists.
 2. **MINT** a new one, with an **ARM LIST** — `{ pattern => body, … }`.
 
-**What each costs is in the row of the frame that forms it.** A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record — its captures, its supplied fields — so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. The exception is structural, not a discount: where a verb APPLIES the literal in place — the stage of a `|>`, the recurrence of a `<~` — nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which rides its type, and never the cost of having made it.
+**What each costs is in the row of the frame that forms it.** A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record — its captures, its supplied fields — so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. A constructor, an op or a primitive named as a value is the partial with every slot open, and so are `hash` and `to_string`, which fold as their calls do (tests/micros/mn-fold-face-as-value.mn): each builds the same record and pays the same (tests/micros/mn-primitive-value-allocates.mn). The exception is structural, not a discount: where a verb APPLIES the literal in place — the stage of a `|>`, the recurrence of a `<~` — nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which rides its type, and never the cost of having made it.
 
 ### Canonical form
 
@@ -2716,9 +2716,10 @@ case (what was `str_eq`):
 
 The ordering operators `<` `<=` `>` `>=` are the same derivation with a 3-way
 leaf: a word orders by its value (an address by its magnitude, §«Addresses»),
-a sequence length-then-element, a product field-wise, and a sum by its
-variants' DECLARATION order first and its payloads second — so over `type T =
-B(Int) | A`, `B(5) < A` holds.
+a sequence element by element with a prefix before every sequence extending
+it (`[1] < [1, 2]` and `[1, 2, 3] < [2]`), a product field-wise, and a sum by
+its variants' DECLARATION order first and its payloads second — so over `type
+T = B(Int) | A`, `B(5) < A` holds.
 
 **Inside the structural folds a Float is totally ordered.** `==`, compare and
 hash over a sequence, a product or a sum's payload order a Float by IEEE
@@ -2731,9 +2732,27 @@ keystone). And a fold's depth is never a sequence's length: a sequence is
 walked in a loop and a sum's last field of its own type is the next round
 of one, so comparing two lists or two chains costs a loop, never a call per
 element (tests/micros/mn-fold-sequence-loops.mn, mn-fold-chain-loops.mn).
-A field of the sum's own type that is not its last is descended by a call
-per level, so a tree nested deep enough through its first field exhausts the
-stack (`PLAN.md` §11, deep folds spill).
+
+**A fold's pending work lives in memory, never on the call stack.** Where a
+type recurs through a field the fold does not reach last — a tree's first
+child, a rose tree's list of children, two types recurring through each other
+— the work each level leaves (the fields not yet compared, the elements not
+yet walked, the closers a rendering owes) waits on a stack of the instance's
+own, which grows on the heap as deep as the value nests: `==`, compare, hash
+and show over two trees nested 100,000 deep through their first field answer
+(tests/micros/mn-fold-deep-tree.mn, mn-fold-deep-rose.mn,
+mn-fold-mutual-chain.mn). That memory is in the row. A comparison or a hash
+over such a type charges `Memory + Alloc` where the type is known, and over a
+type variable the cell carries the charge as a demand, paid in a row each
+instantiation owns, unless the function already pays `Memory + Alloc`, all a
+spill can come to cost: `fn same(a: Tree, b: Tree) with !Alloc = a == b`
+refuses, a generic `fn eq2(a, b) = a == b` costs a caller only where it
+names such a type, and `hash` handed to a function declared `!Alloc` refuses
+at the gate on that callback once its parameter is a tree
+(tests/micros/mn-fold-spill-alloc-refuses.mn, mn-fold-calm-no-alloc.mn,
+tests/crown/leak-fold-spill-through-lambda.mn). A type that recurs only
+through its last field — a list, a chain — keeps nothing pending and
+allocates nothing.
 
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
 pointer-eq lying as structural equality is the silent fallback `PLAN.md §9.2`
@@ -2919,11 +2938,10 @@ can stop, so running out of stack cannot be the one way it does not: a
 recursion deeper than its stack spills its remainder to the heap and resumes
 on a fresh stack — a continuation, captured as any held perform's is — so its
 depth costs `Alloc`, `!Trap` holds over any recursion, and `!Alloc` keeps a
-real-time stage to the recursion it bounds. Today the stack runs out with
-nothing in the row: `fn same(a, b) with !Trap = a == b` checks clean and traps
-on two trees nested 100,000 deep through their first field, and so does a
-`!Trap` recursion a million calls deep (`PLAN.md` §7; §11, deep folds spill
-and the keystone).
+real-time stage to the recursion it bounds. A derived fold keeps its pending
+work in memory already (§«Equality operator»); a recursion a person writes
+runs out of stack with nothing in the row today, so a `!Trap` recursion a
+million calls deep checks clean and traps (`PLAN.md` §7; §11, the keystone).
 
 ---
 

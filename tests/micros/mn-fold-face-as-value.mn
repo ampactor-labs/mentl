@@ -1,0 +1,15 @@
+// expect: 3
+// `hash` and `to_string` handed on as values fold as their calls do, so two
+// equal values hash alike and a value renders as itself; each value ran the
+// raw body, the identity, and answered the value's address.
+type Chain = End | Link(Int, Chain)
+
+fn apply(f, x) = f(x)
+
+fn main() = {
+  let c = Link(2, End)
+  let d = Link(2, End)
+  let hashes = if apply(hash, c) == apply(hash, d) && apply(hash, c) == hash(c) { 1 } else { 0 }
+  let shows = if apply(to_string, c) == "Link(2, End)" { 2 } else { 0 }
+  hashes + shows
+}

@@ -206,7 +206,10 @@ fn board_bounds() = [
   // at its arguments, so a claim on a call's answer reads the callee's body.
   // 162 -> 139 (2026-10-22): a claim reads the conditions on its path as
   // hypotheses — a guarded read, a guarded division, a later arm of a match.
-  Bound({ceiling: 139, question: QVerifyDebt}),
+  // 139 -> 138 (2026-10-24): a type's rendering takes its list apart by
+  // pattern, and the fold graph keys its edges by node, read as an Option,
+  // with the one claim a fold machine makes of a cycle's sequence beside it.
+  Bound({ceiling: 138, question: QVerifyDebt}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, ten lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned
