@@ -279,8 +279,11 @@ fn board_bounds() = [
   // read the row at the root and the op scheme carried its handlers. 391 ->
   // 389 (2026-10-22): JSON's two digit scans left when a number became an
   // integer read. 389 -> 388 the same day: the march verb's newline count
-  // left with the generation tally nothing read.
-  Bound({ceiling: 388, question: QCensus(CsIterationCostume)}),
+  // left with the generation tally nothing read. 388 -> 383 (2026-10-24):
+  // the library's three [Float] fold loops left when a sequence of Floats
+  // took the emitted walker, and the fold helpers' tag dispatch became one
+  // arm per variant.
+  Bound({ceiling: 383, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -377,8 +380,9 @@ fn board_bounds() = [
   // the map's pop prose with the pop. 36 -> 35 (2026-10-21): the emit's
   // init-scope prose left when the judgment took the check. 35 -> 34
   // (2026-10-22): the parser's note on a retired install spelling left when
-  // a name the grammar demands became a demand.
-  Bound({ceiling: 34, question: QCensus(CsProseClass(PcLifecycle))}),
+  // a name the grammar demands became a demand. 34 -> 33 (2026-10-24): the
+  // wide-sequence walk's dated history left with the walk.
+  Bound({ceiling: 33, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes. 68 -> 67
   // (2026-10-15): the note over the type annotation's node kind that said
   // why its tag stood last. 67 -> 66 (2026-10-15): a stale note over the

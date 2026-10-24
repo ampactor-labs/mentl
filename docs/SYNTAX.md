@@ -2721,12 +2721,19 @@ variants' DECLARATION order first and its payloads second — so over `type T =
 B(Int) | A`, `B(5) < A` holds.
 
 **Inside the structural folds a Float is totally ordered.** `==`, compare and
-hash over a sequence or a product order a Float by IEEE total order, so
-`[nan] == [nan]` agrees with `a == a` and `sort` places a NaN; `<` on a Float
-itself stays IEEE for arithmetic. And a fold's depth is never its value's
-size: each derived fold iterates, so comparing two lists costs a loop, never a
-call per element (`PLAN.md` §11, the derived folds are loops — today they
-recurse, and two lists of forty thousand pairs exhaust the stack).
+hash over a sequence, a product or a sum's payload order a Float by IEEE
+total order with every NaN one value above +∞: `[nan] == [nan]` agrees with
+`a == a`, `[-0.0] < [0.0]` and the two are not equal, and hash agrees with
+`==`; `==` and `<` on a Float itself stay IEEE for arithmetic
+(tests/micros/mn-fold-float-total-order.mn). `sort` places a NaN once the
+derived compare is a node a generic function can call (`PLAN.md` §11, the
+keystone). And a fold's depth is never a sequence's length: a sequence is
+walked in a loop and a sum's last field of its own type is the next round
+of one, so comparing two lists or two chains costs a loop, never a call per
+element (tests/micros/mn-fold-sequence-loops.mn, mn-fold-chain-loops.mn).
+A field of the sum's own type that is not its last is descended by a call
+per level, so a tree nested deep enough through its first field exhausts the
+stack (`PLAN.md` §11, deep folds spill).
 
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
 pointer-eq lying as structural equality is the silent fallback `PLAN.md §9.2`
@@ -2914,8 +2921,9 @@ on a fresh stack — a continuation, captured as any held perform's is — so it
 depth costs `Alloc`, `!Trap` holds over any recursion, and `!Alloc` keeps a
 real-time stage to the recursion it bounds. Today the stack runs out with
 nothing in the row: `fn same(a, b) with !Trap = a == b` checks clean and traps
-on two lists of forty thousand pairs, and so does a `!Trap` recursion a
-million calls deep (`PLAN.md` §7; §11, the keystone).
+on two trees nested 100,000 deep through their first field, and so does a
+`!Trap` recursion a million calls deep (`PLAN.md` §7; §11, deep folds spill
+and the keystone).
 
 ---
 

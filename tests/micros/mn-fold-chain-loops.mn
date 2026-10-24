@@ -1,0 +1,20 @@
+// expect: 31
+// A sum whose last field is its own type is walked in a loop: `==`, `<`,
+// hash and show cross a chain of 100,000 links, where each recursed once per
+// link and exhausted the stack (exit 134 on boot 69d675d9), and a short chain
+// renders as it always has.
+type Chain = End | Link(Int, Chain)
+
+fn chain(n, acc) = if n == 0 { acc } else { chain(n - 1, Link(n, acc)) }
+
+fn main() = {
+  let a = chain(100000, End)
+  let b = chain(100000, End)
+  let c = chain(100000, Link(0, End))
+  let eq = if a == b && a != c { 1 } else { 0 }
+  let lt = if a < c && !(c < a) { 2 } else { 0 }
+  let hs = if hash(a) == hash(b) { 4 } else { 0 }
+  let sh = if len("{a}") > 1000000 { 8 } else { 0 }
+  let exact = if "{chain(3, End)}" == "Link(1, Link(2, Link(3, End)))" { 16 } else { 0 }
+  eq + lt + hs + sh + exact
+}

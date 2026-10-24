@@ -131,7 +131,7 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 
 PLAN.md §11 is the one ordered list, each step reading only what an earlier one built:
 
-1. The derived folds (`==`, compare, hash, show, `sort`) become loops — closing the deep-comparison false proof.
+1. Deep folds spill: `==`, compare, hash and show over a deeply nested value keep their pending work on the heap — closing the deep-comparison false proof.
 2. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality), the reach one walk.
 3. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle.
 4. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.

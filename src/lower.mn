@@ -655,8 +655,8 @@ fn lexpr_handle(e) with Pure = match e {
 // NAME into the tree — the one pair of type-directed decisions an emit-time
 // bracket could not re-make (a twin's to_string on its instantiated var
 // rendered the ADDRESS; its hash used the pointer). The reach projections
-// (show_reach_names / hash_reach_names, beside wide_binop_seed) mirror the
-// same dispatch so the prune keeps what emit will mint.
+// (show_reach_names / hash_reach_names) mirror the same dispatch so the
+// prune keeps what emit will mint.
 //
 // Hβ.lower.tail-call-mark-pass — rewrite LCall→LTailCall in tail position.
 // Tail position is a structural property: branches of LIf, last stmt of
@@ -6272,21 +6272,13 @@ fn lower_program(stmts) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], live = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new(), judgments = wmap_new(1024) {
+handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], live = [], fn_symbols = wmap_new(64), symbol_counts = smap_new(), judgments = wmap_new(1024) {
   ls_register_yield_facts(facts) => resume() with yield_facts = smap_build(facts),
   ls_judgment_memo(d) => // A declaration's judgment is settled before the lowering reads it, so it
   // is generalized once and read at every site that keys a twin by it.
   resume(wmap_get(judgments, d)),
   ls_judgment_note(d, j) => resume() with judgments = wmap_add(judgments, d, j),
   ls_effect_yield_fact(name) => resume(smap_get(yield_facts, name)),
-  ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
-  // `wide_reach_name` and read at every later site; the names whose
-  // structure the walk stands inside cut their own cycles.
-  resume(smap_get(wide, name)),
-  ls_wide_note(name, b) => resume() with wide = smap_add(wide, name, b),
-  ls_wide_walking(name) => resume(ls_find_str_local(walking, name, 0) >= 0),
-  ls_wide_enter(name) => resume() with walking = [name] ++ walking,
-  ls_wide_leave() => resume() with walking = rest(walking),
   ls_register_may_yield(b) => // band B M1.3 — the A1 gate's global short-circuit, computed once at
   // lower_program from the declared effects × their ops' inferred disciplines.
   resume() with may_yield = b,
@@ -6636,9 +6628,7 @@ fn low_refs(acc, expr) = match expr {
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => low_refs_list(acc, body),
   LBlock(_h, stmts) => low_refs_list(acc, stmts),
   LIf(_h, c, t, e) => low_refs_list(low_refs_list(low_refs(acc, c), t), e),
-  // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
-  // (emit_eq_for_ty / emit_cmp_for_ty); contribute it where emit reads it.
-  LBinOp(_h, op, l, r) => low_refs(low_refs(fold(acc, name_ref, wide_binop_seed(op, l)), l), r),
+  LBinOp(_h, _op, l, r) => low_refs(low_refs(acc, l), r),
   LUnaryOp(_h, _op, x) => low_refs(acc, x),
   LCall(_h, f, args) => low_refs_list(low_refs(acc, f), args),
   // show/hash contribute the names emit will mint, projected from the SAME
@@ -7086,109 +7076,6 @@ fn executable_hole(handle) with !Mutate = match graph_node_body(handle) {
   NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
-// A type NAMES a wide-element sequence — directly or nested — when some
-// reachable sub-shape is a sequence whose element face (chased through any
-// binding, §4①) rides a stride >= 8 (the f64/i64/v128 slot that crosses the
-// generic layer by reference). The recursion mirrors eq_subtys' aggregate
-// descent, so a {xs: [Float]} record or an ADT with a [Float] payload counts:
-// emit's generated eq/show/hash leaf recurses to that field and mints the same
-// f64 runtime call the flat case does.
-//
-// Whether a value of the type holds, anywhere in its structure, a sequence
-// of wide elements — the fact an ==/ordering site's reach reads to seed the
-// runtime family emit will mint there. It is a fact of the TYPE, so a
-// nominal type's answer is settled once and read at every later site
-// (`ls_wide_memo`): the walk is over the type graph, not over paths through
-// it. A name whose structure the walk already stands inside cuts the cycle,
-// and a cut is exact for the name being walked — everything beneath the cut
-// is reached from that name another way — so a walk cut only by its own name
-// settles it, while a walk cut by an ANCESTOR's name settles nothing and
-// answers for this site alone; the ancestor settles when its own walk ends.
-// Until 2026-09-30 the walk was path-local: a nominal type reached through
-// many paths was walked once per path, allocating its variant specs each
-// time, and every binary operator asked it — 1.8 MB at each `++` on a list
-// of the derivative reading's statements, at some forty sites, which is how
-// the cost ratchet found it (the self-compile's peak rose 148 MB for a
-// thousand lines).
-fn ty_has_wide_seq(t) = match wide_reach(t) {
-  (found, _cuts) => found,
-}
-
-// The walk: whether a wide sequence was found, and the in-progress names
-// cut beneath.
-fn wide_reach(t) = match fold_strip(t) {
-  TList(e) => if stride_of(seq_elem_face(e)) >= 8 { (true, []) } else { wide_reach(e) },
-  TRecord(fields) => wide_reach_list(map(field_ty_of, fields)),
-  TRecordOpen(fields, _) => wide_reach_list(map(field_ty_of, fields)),
-  TTuple(elems) => wide_reach_list(elems),
-  TName(name, _) => wide_reach_name(name),
-  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
-  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (false, []),
-}
-
-fn field_ty_of(field) = match field {
-  (_n, fty) => fty,
-}
-
-fn wide_reach_list(ts) = fold((false, []), wide_reach_step, ts)
-
-fn wide_reach_step(acc, t) = match acc {
-  (true, _) => acc,
-  (false, cuts) => match wide_reach(t) {
-    (true, _) => (true, []),
-    (false, more) => (false, cuts ++ more),
-  },
-}
-
-fn wide_reach_name(name: String) = match ls_wide_memo(name) {
-  Some(b) => (b, []),
-  None => if ls_wide_walking(name) {
-    (false, [name])
-  } else {
-    ls_wide_enter(name)
-    let r = wide_reach_list(flat_map(spec_payloads, variant_specs_of(name)))
-    ls_wide_leave()
-    match r {
-      (true, _) => {
-        ls_wide_note(name, true)
-        (true, [])
-      },
-      (false, cuts) => {
-        let outer = filter((c) => !field_name_eq(c, name), cuts)
-        if len(outer) == 0 { ls_wide_note(name, false) } else { () }
-        (false, outer)
-      },
-    }
-  },
-}
-
-fn spec_payloads(spec) = match spec {
-  (_tag, payloads) => payloads,
-}
-
-// The wide runtime family is emit-minted BY NAME at the SAME sites emit reads a
-// type's structural op: an ==/ordering LBinOp mints list_eq_f64/list_compare_f64
-// (emit_eq_for_ty / emit_cmp_for_ty), a show/hash call mints float_to_str /
-// list_hash_f64. Seeding the reach frontier from the operand's live type at
-// those nodes is the visitor-walk projection the runtime-contract comment names
-// (backends/wasm.mn) — the reach walk reads what emit will mint, never a hand-
-// copied guess, and a float-free program contributes nothing. Only the six
-// operators that mint ask the type; every other operator seeds nothing.
-fn wide_binop_seed(op, l) = match wide_binop_name(op) {
-  Some(n) => if ty_has_wide_seq(lookup_ty(lexpr_handle(l))) { [n] } else { [] },
-  None => [],
-}
-
-fn wide_binop_name(op) = match op {
-  BEq => Some("list_eq_f64"),
-  BNe => Some("list_eq_f64"),
-  BLt => Some("list_compare_f64"),
-  BGt => Some("list_compare_f64"),
-  BLe => Some("list_compare_f64"),
-  BGe => Some("list_compare_f64"),
-  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => None,
-}
-
 // The show/hash reach projections — the exact names emit's show_node_of /
 // hash_node_of will mint for this operand's type, plus the generated
 // aggregate leaf's INTERIOR renderers (str_concat rides the runtime
@@ -7228,16 +7115,14 @@ fn hash_reach_names(x) = {
   match ty {
     TList(e) => {
       // The seed mirrors hash_node_of's route exactly (the visitor-walk
-      // projection law): a byte face calls $str_hash, everything else at
-      // word width calls $list_hash, wide elements the f64 family. A
-      // STRUCTURAL face calls its generated walker, whose interior may
-      // reach any of the runtime hashes depending on nesting — seed the
-      // family conservatively (a name absent from the input dissolves).
+      // projection law): a byte face calls $str_hash and a word face
+      // $list_hash. A STRUCTURAL face — a Float's among them — calls its
+      // generated walker, whose interior may reach either runtime hash
+      // depending on nesting, so the family is seeded conservatively (a
+      // name absent from the input dissolves).
       let face = seq_elem_face(e)
       if seq_face_structural(face) {
-        ["list_hash", "str_hash", "list_hash_f64", "float_to_str"]
-      } else if stride_of(face) >= 8 {
-        ["list_hash_f64", "float_to_str", "str_hash"]
+        ["list_hash", "str_hash"]
       } else {
         match face {
           TByte => ["str_hash"],
@@ -8174,11 +8059,12 @@ fn spec_target_name(h, c) = {
 }
 
 // The wide runtime family a twin's emission can mint that its floor did not
-// (the same names wide_binop_seed / show_reach_names contribute at concrete
-// sites). Seeded whenever ANY site projects a wide key — a cheap, precise-
-// enough over-approximation in the emit_runtime_contract tradition; a
-// program with no wide instantiation adds nothing.
-fn spec_wide_family() = ["float_to_str", "list_compare_f64", "list_eq_f64", "list_hash_f64"]
+// (the name show_reach_names contributes at concrete sites): a Float twin
+// renders through float_to_str, while its folds' Float leaves are the
+// emitted walkers' own. Seeded whenever ANY site projects a wide key — a
+// cheap, precise-enough over-approximation in the emit_runtime_contract
+// tradition; a program with no wide instantiation adds nothing.
+fn spec_wide_family() = ["float_to_str"]
 
 // The demand worklist's driver — reachable_from_main takes the PROGRAM
 // (lower_program is its pre-passes) and constructs exactly what emission
@@ -8282,10 +8168,9 @@ fn emit_runtime_contract() = [
 // `call $make_list_sc` for a packed element (byte sc 1, f64 sc 2). Both are
 // always-available and tiny (each a one-line wrapper over alloc_list_sc); the
 // pairing keeps the wide literal's allocator reachable without a per-program
-// scan. The HEAVY wide family (the f64 structural leaves, which pull the
-// float renderer) is contributed CONDITIONALLY by low_refs (lower.mn)
-// AT its mint sites — the ==/ordering LBinOp (wide_binop_seed) and the
-// show/hash nodes (show_reach_names) — so a float-free module drags in nothing.
+// scan. The float renderer is contributed CONDITIONALLY by low_refs
+// (lower.mn) AT its mint sites — the show/hash nodes (show_reach_names) — so
+// a float-free module drags in nothing.
 // float_to_str is deliberately absent: to_string on a PROVEN float is
 // lower-minted (LGlobal — the walk sees it); only the emit-minted f64
 // show-fold leaf references it blind, and a program reaching that leaf
@@ -8365,22 +8250,23 @@ fn seq_elem_face(e) = match fold_strip(e) {
 }
 
 // A sequence element FACE that requires the generated sequence walker
-// ($eq/$compare/$hash_l<sig> — the sequence-of-struct fold leaves): a
-// product, sum, or nested list, where the word runtime fns would
-// compare/hash the element WORD — pointer identity standing in for
-// structure (the silent fallback the eq law forbids). Byte and float
-// faces stay with their runtime families (str_*/list_*_f64); word
-// scalars and the unresolved floor keep the word fns, which ARE
-// value-faithful for single-word elements, a sum with no payload among
-// them. One predicate, three leaf dispatches and the fold collector all
-// read it.
+// ($eq/$compare/$hash_l<sig> — the sequence fold leaves): a product, sum,
+// or nested list, where the word runtime fns would compare/hash the element
+// WORD — pointer identity standing in for structure (the silent fallback the
+// eq law forbids) — and a Float, whose element the walker reads through its
+// reference and orders by the folds' total order. Byte faces stay with
+// their runtime family (str_*); word scalars and the unresolved floor keep
+// the word fns, which ARE value-faithful for single-word elements, a sum
+// with no payload among them. One predicate, three leaf dispatches and the
+// fold collector all read it.
 fn seq_face_structural(face) = match face {
   TRecord(_) => true,
   TRecordOpen(_, _) => true,
   TTuple(_) => true,
   TName(_, _) => !sum_is_tag(face),
   TList(_) => true,
-  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  TFloat => true,
+  TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
   | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
@@ -8391,17 +8277,3 @@ fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
 } else {
   ls_find_str_local_loop(lst, target, i + 1, n)
 }
-
-// WAT data string escape: \HH per byte, little-endian for i32.
-//
-// variant_specs_of — the env's ConstructorScheme entries for `type_name`, each
-// as (tag_id, [payload_ty]) in declaration (tag) order. Reads env_snapshot and
-// filters exactly as synth_proposer's ctors_of_type does (the ONE variant-
-// enumeration channel; the graph already proved which bindings are this type's
-// constructors). A nullary ctor's scheme is bare TName -> []; a fielded ctor's
-// is TFun(params, TName, _) -> the param types. Carried-Truth: the payload
-// types are read LIVE from the constructor's scheme, never re-derived.
-// The keyed read: the type's own entry carries its variant specs
-// (TypeVariants, minted at registration). The whole-env backward scan
-// this replaces re-derived the grouping per read.
-fn variant_specs_of(type_name) = variant_specs_at(TName(type_name, []))

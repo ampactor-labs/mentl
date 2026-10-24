@@ -380,21 +380,28 @@ fn clamp(x, lo, hi) with Pure = min(max(x, lo), hi)
 // `if n < 0 { 0 - n } else { n }` at its own width.
 fn abs(x) with Pure = if x < 0.0 { 0.0 - x } else { x }
 
-fn merge(xs, ys) = if len(xs) == 0 {
-  ys
+// Two sorted lists as one, stably: a loop over a read position in each that
+// writes the lesser head into one flat buffer, the left on a tie.
+fn merge(xs, ys) = merge_into(make_list(len(xs) + len(ys)), xs, 0, ys, 0, 0)
+
+fn merge_into(out, xs, i, ys, j, k) = if 0 <= i && i < len(xs) && (j < 0 || j >= len(ys) || !(ys[j] < xs[i])) {
+  merge_into(list_set(out, k, xs[i]), xs, i + 1, ys, j, k + 1)
+} else if 0 <= j && j < len(ys) {
+  merge_into(list_set(out, k, ys[j]), xs, i, ys, j + 1, k + 1)
 } else {
-  if len(ys) == 0 {
-    xs
-  } else {
-    if xs[0] <= ys[0] { [xs[0]] ++ merge(rest(xs), ys) } else { [ys[0]] ++ merge(xs, rest(ys)) }
-  }
+  out
 }
 
-fn sort(xs) = if len(xs) <= 1 {
+// A merge sort over one flat list: each half is a slice of it read in
+// constant time, and each merge writes a flat buffer the next level reads
+// the same way, so the sort costs n log n and recurses only log n deep.
+fn sort(xs) = sort_flat(list_to_flat(xs))
+
+fn sort_flat(xs) = if len(xs) <= 1 {
   xs
 } else {
   let mid = len(xs) / 2
-  merge(sort(slice(xs, 0, mid)), sort(slice(xs, mid, len(xs))))
+  merge(sort_flat(slice(xs, 0, mid)), sort_flat(slice(xs, mid, len(xs))))
 }
 
 // The pins are the representation: with the element type free, `acc ++ sep

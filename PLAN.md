@@ -478,13 +478,14 @@ compiler (§7).
 where they disagree this section is the arbiter. Each line points at the §11
 landing that closes it. A gate that did not run is UNKNOWN, never green.
 
-- **`!Trap` is false under deep recursion** (§11.1, §11.3): running out of
-  stack is a trap no row shows. `fn same(a, b) with !Trap = a == b` checks
-  clean and traps with "call stack exhausted" comparing two 40,000-pair
-  lists, and a `!Trap` recursion a million calls deep traps the same way
-  (measured 2026-10-23): the derived folds (`==`, compare, hash, show) and
-  the prelude's `sort` and `merge` recurse once per element, and a
-  recursion a person writes once per level.
+- **`!Trap` is false under deep nesting** (§11.1, §11.3): running out of
+  stack is a trap no row shows. The derived folds (`==`, compare, hash,
+  show) walk a sequence in a loop and a sum's last field of its own type as
+  the next round of one, but descend any other field of its own type by a
+  call, so `fn same(a, b) with !Trap = a == b` checks clean and traps with
+  "call stack exhausted" comparing two trees nested 100,000 deep through
+  their first field (measured 2026-10-24); and a `!Trap` recursion a
+  person writes a million calls deep traps the same way.
 - **The program is the graph, and its one-write operations are not all built.**
   A node is its handle (`type Node = Int`), a body holds its children as handles,
   and everything the judgment learns about a node is a column at that handle;
@@ -816,20 +817,20 @@ the face (step 4) cut the last three.
 
 **THE STANDING CURSOR** — the order work runs in:
 
-1. **The derived folds are loops** (`Hβ.lower.derived-folds-are-loops`). A
-   false proof a user can hit: `fn same(a, b) with !Trap = a == b` checks
-   clean and traps with "call stack exhausted" comparing two 40,000-pair
-   lists (measured 2026-10-23). The structural folds the emitter derives —
-   `==`, compare, hash and show — iterate: a sequence loops, a product walks
-   its fields, a sum tests its tag, and nesting deeper than a bound keeps its
-   pending work on an arena stack, never the call stack. The prelude's `sort`
-   and its `merge` loop the same way, where today they exhaust the stack at
-   twenty thousand elements. A Float compares, equals and hashes in IEEE
-   total order inside those folds, so `[nan] == [nan]` agrees with `a == a`
-   and `sort` places a NaN, where it answers `[0.0, 0.0, 2.0, NaN, 1.0]` for
-   `[1.0, NaN, -0.0, 0.0, 2.0]` today; `<` on a Float stays IEEE for
-   arithmetic. The measurement above is the RED fixture. Recursion a person
-   writes stays exposed until step 3's spill.
+1. **Deep folds spill** (`Hβ.lower.deep-folds-spill`). A false proof
+   a user can hit: `fn same(a, b) with !Trap = a == b` checks clean and
+   traps with "call stack exhausted" comparing two trees nested 100,000
+   deep through their first field (measured 2026-10-24). A derived fold
+   descends a field of its sum's own type that is not the last by a call,
+   once per level; past a depth bound it keeps the work that level leaves
+   pending — the fields not yet compared, the elements not yet walked, the
+   closers a rendering owes — on an arena stack, never the call stack. The
+   pending work is memory, so the row says so: a fold over a type whose own
+   type recurs in such a field charges `Memory + Alloc` where the type is
+   known, and over a type variable the cell carries the cost as a demand
+   (beside the shape read a fold already demands of it), paid by the caller
+   whose instantiation names the type. The measurement above is the RED
+   fixture. Recursion a person writes stays exposed until step 3's spill.
 
 2. **The soundness core: the crown modal, the row whole, the reach one
    walk.** (a) The crown, modal (`Hβ.effects.modal-world-index`): a row names
@@ -898,7 +899,12 @@ the face (step 4) cut the last three.
    with n such places writes its tail n times. A module value is a column on
    its binder, so a module-scope let binds every binder its pattern writes,
    each at a global of its own, and runs its value for effect when it binds
-   none, where any pattern but one binder refuses today.
+   none, where any pattern but one binder refuses today. The derived compare
+   is a node a generic function calls, the 3-way fold `<` on an aggregate
+   already runs, so `sort` orders a Float in the folds' total order and a
+   NaN takes its place above +inf, where `sort` reads `<` and answers
+   `[-0.0, 0.0, 1.0, NaN, 2.0]` for `[1.0, NaN, -0.0, 0.0, 2.0]` today
+   (measured 2026-10-24).
    **The stack spills** (`Hβ.lower.deep-stack-spills-to-heap`): a recursive
    call is a place its frame may suspend, and past a depth bound the
    remainder moves to the heap and resumes on a fresh stack — so depth is

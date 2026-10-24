@@ -1,0 +1,19 @@
+// expect: 15
+// A derived fold's depth is never a sequence's length: `==` under `!Trap`,
+// `<`, hash and show walk two lists of 40,000 pairs in a loop, where each
+// recursed once per element and exhausted the stack (exit 134 on boot
+// 69d675d9).
+fn pairs(n, last) = range(0, n) |> map({ i => (i, if i == n - 1 { last } else { i + 1 }) })
+
+fn same(a, b) with !Trap = a == b
+
+fn main() = {
+  let a = pairs(40000, 7)
+  let b = pairs(40000, 7)
+  let c = pairs(40000, 8)
+  let eq = if same(a, b) && !same(a, c) { 1 } else { 0 }
+  let lt = if a < c && !(c < a) { 2 } else { 0 }
+  let hs = if hash(a) == hash(b) { 4 } else { 0 }
+  let sh = if starts_with("{a}", "[(0, 1), (1, 2), ") { 8 } else { 0 }
+  eq + lt + hs + sh
+}

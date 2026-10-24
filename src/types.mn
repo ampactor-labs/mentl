@@ -4840,20 +4840,11 @@ effect LowerScope {
   ls_register_live_ops([String])
   // whether the boundary check after a direct perform of this op takes the rest of the performer's frame
   ls_live_op(String) -> Bool
-  // whether a nominal type holds a wide-element sequence anywhere in its structure — settled once per name (the reach walk's read at an ==/ordering site), None while unsettled
-  ls_wide_memo(String) -> Option(Bool)
-  // settle a nominal type's wide-sequence fact
-  ls_wide_note(String, Bool)
   // a fn declaration's settled judgment (its quantified cells and type), read
   // once per declaration where the lowering keys a twin — None until noted
   ls_judgment_memo(Int) -> Option(([Int], Ty))
   // settle a fn declaration's judgment for every later site
   ls_judgment_note(Int, ([Int], Ty))
-  // whether the walk is inside this nominal type's own structure (the cycle cut)
-  ls_wide_walking(String) -> Bool
-  // enter a nominal type's structure; leave it
-  ls_wide_enter(String)
-  ls_wide_leave()
 }
 
 // Every claim performs `verify`; the ledger decides what its fragment can

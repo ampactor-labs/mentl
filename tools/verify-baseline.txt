@@ -25,7 +25,7 @@ loop_scaffold_refs_max: 2
 # The prelude names the desugar mints as string literals in the compiler's
 # modules: the lowering's name-keyed contract with lib/. A change is decided
 # and moved in the same commit.
-desugar_vocabulary: 48
+desugar_vocabulary: 45
 
 # The ownership markers the wheel's source authors; inference grades the
 # rest, so each falls as a marker becomes a fact the judgment derives.
@@ -54,4 +54,4 @@ head_round_trip_max: 0
 
 # The nodes the medium mints to judge `fn main() = 7` — the prelude a trivial
 # program links, never its layout (tools/frontier-gate.sh, the cost facet).
-prelude_floor_nodes_max: 12802
+prelude_floor_nodes_max: 12552

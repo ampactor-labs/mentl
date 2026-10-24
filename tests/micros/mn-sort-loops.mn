@@ -1,0 +1,24 @@
+// expect: 7
+// `sort` and `merge` loop: fifty thousand elements in reverse order sort with
+// no recursion per element, where `merge` recursed once per element and
+// exhausted the stack at twenty thousand (exit 134 on boot 69d675d9).
+fn sorted_from(xs, i) = if i >= 1 && i < len(xs) {
+  if xs[i] < xs[i - 1] { false } else { sorted_from(xs, i + 1) }
+} else {
+  true
+}
+
+fn main() = {
+  let s = sort(range(0, 50000) |> map({ x => 50000 - x }))
+  let whole =
+    if len(s) == 50000 && s[0] == 1 && s[49999] == 50000 && sorted_from(s, 1) { 1 } else { 0 }
+  let m = merge(range(0, 30000), range(0, 30000))
+  let merged =
+    if len(m) == 60000 && m[1] == 0 && m[59999] == 29999 && sorted_from(m, 1) { 2 } else { 0 }
+  let small = if sort([3, 1, 2]) == [1, 2, 3] && sort([(2, "b"), (1, "z"), (2, "a")]) == [(1, "z"), (2, "a"), (2, "b")] {
+    4
+  } else {
+    0
+  }
+  whole + merged + small
+}

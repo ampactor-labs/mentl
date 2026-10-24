@@ -1,0 +1,20 @@
+// expect: 63
+// Inside the derived folds a Float is totally ordered, every NaN one value
+// above +inf and -0.0 below 0.0: `[nan] == [nan]` agrees with `a == a`, a
+// signed zero is told apart, and hash agrees with `==`. `==` and `<` on a bare
+// Float stay IEEE. On boot 69d675d9 a list, a tuple and a payload compared by
+// IEEE, so only the bare legs held, and hashing a tuple that holds a Float
+// emitted a module that does not validate.
+fn main() = {
+  let nan = 0.0 / 0.0
+  let inf = 1.0 / 0.0
+  let a = [nan]
+  let reflexive =
+    if [nan] == [nan] && a == a && (nan, 1) == (nan, 1) && Some(nan) == Some(nan) { 1 } else { 0 }
+  let zeros = if [0.0] != [-0.0] && [-0.0] < [0.0] { 2 } else { 0 }
+  let top = if [inf] < [nan] && !([nan] < [inf]) { 4 } else { 0 }
+  let one_nan = if [nan] == [-nan] && hash([nan]) == hash([-nan]) { 8 } else { 0 }
+  let agree = if hash((0.0, 1)) != hash((-0.0, 1)) { 16 } else { 0 }
+  let bare = if nan != nan && !(nan < 1.0) && 0.0 == -0.0 { 32 } else { 0 }
+  reflexive + zeros + top + one_nan + agree + bare
+}

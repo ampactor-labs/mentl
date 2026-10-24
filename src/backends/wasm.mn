@@ -326,11 +326,9 @@ fn hash_node_of(h, x) = {
     // two hash fns, the divergence the fold family exists to forbid.
     TList(e) => match seq_elem_face(e) {
       TByte => LCall(h, LGlobal(h, vocabulary_callee("str_hash")), [x]),
-      // the field twin's route (emit_field_hash) — one type, one
-      // hash fn; the word list_hash here hashed the f64 REFERENCES
-      TFloat => LCall(h, LGlobal(h, vocabulary_callee("list_hash_f64")), [x]),
-      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => LCall(h, LGlobal(h, vocabulary_callee("list_hash")), [x]),
+      TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_) => LCall(h, LGlobal(h, vocabulary_callee("list_hash")), [x]),
     },
     TFloat => LCall(
       h,
@@ -2953,6 +2951,7 @@ fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) = if 
 
 fn register_show_sum_literals(specs, i) = if i >= len(specs) {
   visit_string(", ")
+  visit_string("")
 } else {
   match list_index(specs, i) {
     (_tag, cname, payloads) => {
@@ -8697,20 +8696,19 @@ fn emit_struct_eq(left_h, neg) = if left_h == 0 {
 fn emit_eq_for_ty(ty, neg) = match ty {
   // ONE sequence arm, dispatched on the element's RESOLVED face: a byte
   // sequence routes to the [byte] family (so String and [byte] — one type
-  // under §4① — can never diverge), a float sequence compares by VALUE
-  // through the word protocol (list_eq_f64 derefs each reference; the word
-  // list_eq would pointer-compare them), a STRUCTURAL element calls its
-  // generated sequence walker (emit_eq_leaf_seq — word compare on a
-  // struct element is pointer identity), and a word element keeps the
-  // floor, which IS value-faithful for single-word elements.
+  // under §4① — can never diverge), a STRUCTURAL element — a Float's, read
+  // through its reference, among them — calls its generated sequence walker
+  // (emit_eq_leaf_seq — word compare on a struct element or a Float's
+  // reference is pointer identity), and a word element keeps the floor,
+  // which IS value-faithful for single-word elements.
   TList(e) => {
     emit_fold_state_insert()
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_eq"),
-      TFloat => emit_vocab_call("list_eq_f64"),
       face @ (
-        TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+        TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
       ) => if seq_face_structural(face) {
         wat_emit("    (call $eq_")
         wat_emit(fold_sig(ty))
@@ -8992,165 +8990,113 @@ fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   if arena_live() { emit_evac_leaves(arena_leaves()) } else { () }
 }
 
-// ─── The sequence-of-struct walkers — the fold leaves' SEQUENCE arm ────
+// ─── The sequence walkers — the fold leaves' SEQUENCE arm ────
 // Generated when a list's element face is STRUCTURAL (seq_face_structural:
-// product / sum / nested list): the word runtime fns compare/hash the
-// element WORD, which for a struct element is pointer identity standing in
-// for structure — the silent fallback the eq law forbids (measured:
-// [(1,2,3)] == [(1,2,3)] false; [[1,2]] == [[1,2]] false; a
-// computed-[String] == masked only by literal interning; top-level
-// hash([1,2]) an undefined-$hash_li assembly break). Shape mirrors
-// emit_show_list_body_helper: a recursive body helper carrying the index
-// (finite on the list), elements through $list_index (representation-
-// total), the element leaf selected by face. Interior runtime names ride
-// emit_runtime_contract / wide_binop_seed / hash_reach_names.
+// product / sum / nested list / Float): the word runtime fns compare/hash
+// the element WORD, which for a struct element or a Float's reference is
+// pointer identity standing in for its value — the silent fallback the eq
+// law forbids (measured: [(1,2,3)] == [(1,2,3)] false; [[1,2]] == [[1,2]]
+// false; a computed-[String] == masked only by literal interning; top-level
+// hash([1,2]) an undefined-$hash_li assembly break). Each walker is one
+// loop over the index, elements through $list_index (representation-total),
+// each pair meeting the leaf a field of the element's face meets (the
+// collector self-contributes structural lists, so nested walkers exist
+// transitively). Interior runtime names ride emit_runtime_contract /
+// hash_reach_names.
 //
-// The element leaf's callee: a structural face calls its own generated
-// $<prefix>_<sig> (the collector self-contributes structural lists, so
-// nested walkers exist transitively); a byte / float / word LIST element
-// keeps its runtime family, under its declarations' symbols — the names
-// arrive as values from each walker's own generator, never a mode key.
-fn seq_elem_leaf_callee(prefix: String, rt_byte: String, rt_f64: String, rt_word: String, face) = match face {
-  TList(inner) => match seq_elem_face(inner) {
-    TByte => vocab_symbol(rt_byte),
-    TFloat => vocab_symbol(rt_f64),
-    f2 @ (
-      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
-    ) => if seq_face_structural(f2) { "{prefix}_{fold_sig(face)}" } else { vocab_symbol(rt_word) },
-  },
-  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
-  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
-  | TAlias(_, _) | TValue(_) => "{prefix}_{fold_sig(face)}",
-}
-
 // A call into the compiler's vocabulary, under the symbol of the
 // declaration the name resolves to (`vocab_symbol`).
 fn emit_vocab_call(n: String) = wat_emit("    (call ${vocab_symbol(n)})\n")
 
+// A sequence equals another element by element in one loop: identity
+// first, then length — two equal sequences agree on length before any
+// element is read (list_eq's own protocol) — and the first unequal pair
+// answers, so the walk holds one frame whatever the sequence's length.
 fn emit_eq_leaf_seq(sig, elem) = {
+  let face = seq_elem_face(elem)
   let len_sym = vocab_symbol("len")
-  wat_emit("  (func $eq_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  // Identity short-circuit, then length — two equal sequences agree on
-  // length before any element walk (list_eq's own protocol).
-  //
+  wat_emit("  (func $eq_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32)")
+  wat_emit(" (local $i i32) (local $n i32) {fold_float_locals()} (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 1))))\n")
-  wat_emit("    (if (i32.ne (call ${len_sym} (local.get $__state) (local.get $a)) (call ${len_sym} (local.get $__state) (local.get $b))) (then (return (i32.const 0))))\n")
-  wat_emit("    (call $eq_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.const 0))\n")
-  wat_emit("  )\n")
-  emit_eq_seq_body(sig, elem)
-}
-
-fn emit_eq_seq_body(sig, elem) = {
-  let callee = seq_elem_leaf_callee("eq", "str_eq", "list_eq_f64", "list_eq", seq_elem_face(elem))
-  let len_sym = vocab_symbol("len")
-  let index_sym = vocab_symbol("list_index")
-  wat_emit("  (func $eq_listbody_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (param $i i32) (result i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
-  wat_emit("      (then (i32.const 1))\n")
-  wat_emit("      (else\n")
-  wat_emit("        (if (result i32)\n")
-  wat_emit("          (call $")
-  wat_emit(callee)
-  wat_emit(" (local.get $__state) (call ${index_sym} (local.get $__state) (local.get $a) (local.get $i)) (call ${index_sym} (local.get $__state) (local.get $b) (local.get $i)))\n")
-  wat_emit("          (then (call $eq_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.add (local.get $i) (i32.const 1))))\n")
-  wat_emit("          (else (i32.const 0)))))\n")
+  wat_emit("    (local.set $n (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+  wat_emit("    (if (i32.ne (local.get $n) (call ${len_sym} (local.get $__state) (local.get $b))) (then (return (i32.const 0))))\n")
+  emit_seq_loop_open("$n")
+  wat_emit("      (if (i32.eqz\n")
+  emit_elem_pair(face)
+  emit_field_eq(face)
+  wat_emit("      ) (then (return (i32.const 0))))\n")
+  emit_seq_loop_close()
+  wat_emit("    (i32.const 1)\n")
   wat_emit("  )\n")
 }
 
-// The 3-way walker mirrors list_compare_loop's protocol exactly:
-// elementwise first-difference; exhaustion decides (both spent → 0,
-// a spent → -1, b spent → 1).
+// Element $i of the sequence a local holds, through the representation-total
+// read — a Float's through the reference its slot holds — so a walker's
+// element meets the same leaf a field of its face does.
+fn elem_at(seq: String, face) = {
+  let read =
+    "(call ${vocab_symbol("list_index")} (local.get $__state) (local.get {seq}) (local.get $i))"
+  match repr_of(face) {
+    RF64 => "(f64.load {read})",
+    RI32 | RI64 | RF32 | RV128 => read,
+  }
+}
+
+fn emit_elem_pair(face) = ["$a", "$b"] |> each({ s => wat_emit("      {elem_at(s, face)}\n") })
+
+// A walk over $i below the length a local holds: the loop opens, leaving
+// once $i reaches it, and closes on the step to the next element.
+fn emit_seq_loop_open(bound: String) = {
+  wat_emit("    (block $stop (loop $next\n")
+  wat_emit("      (br_if $stop (i32.ge_s (local.get $i) (local.get {bound})))\n")
+}
+
+fn emit_seq_loop_close() = {
+  wat_emit("      (local.set $i (i32.add (local.get $i) (i32.const 1)))\n")
+  wat_emit("      (br $next)))\n")
+}
+
+// The 3-way walker, list_compare_loop's protocol in one loop: the first
+// difference between elements answers, and once either sequence is spent
+// the shorter is the lesser.
 fn emit_cmp_leaf_seq(sig, elem) = {
-  wat_emit("  (func $compare_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  let face = seq_elem_face(elem)
+  let len_sym = vocab_symbol("len")
+  wat_emit("  (func $compare_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32)")
+  wat_emit(" (local $i i32) (local $na i32) (local $nb i32) (local $c i32) {fold_float_locals()} (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 0))))\n")
-  wat_emit("    (call $compare_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.const 0))\n")
-  wat_emit("  )\n")
-  emit_cmp_seq_body(sig, elem)
+  wat_emit("    (local.set $na (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+  wat_emit("    (local.set $nb (call ${len_sym} (local.get $__state) (local.get $b)))\n")
+  emit_seq_loop_open("$na")
+  wat_emit("      (br_if $stop (i32.ge_s (local.get $i) (local.get $nb)))\n")
+  wat_emit("      (local.set $c\n")
+  emit_elem_pair(face)
+  emit_field_cmp(face)
+  wat_emit("      )\n")
+  wat_emit("      (if (local.get $c) (then (return (local.get $c))))\n")
+  emit_seq_loop_close()
+  wat_emit("    ")
+  emit_word_sign_compare(Signed, "(local.get $na)", "(local.get $nb)")
+  wat_emit("\n  )\n")
 }
 
-fn emit_cmp_seq_body(sig, elem) = {
-  let callee = seq_elem_leaf_callee(
-    "compare",
-    "str_compare",
-    "list_compare_f64",
-    "list_compare",
-    seq_elem_face(elem)
-  )
-  let len_sym = vocab_symbol("len")
-  let index_sym = vocab_symbol("list_index")
-  wat_emit("  (func $compare_listbody_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (param $i i32) (result i32)")
-  wat_emit(" (local $c i32) (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
-  wat_emit("      (then (if (result i32) (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $b))) (then (i32.const 0)) (else (i32.const -1))))\n")
-  wat_emit("      (else\n")
-  wat_emit("        (if (result i32) (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $b)))\n")
-  wat_emit("          (then (i32.const 1))\n")
-  wat_emit("          (else\n")
-  wat_emit("            (local.set $c (call $")
-  wat_emit(callee)
-  wat_emit(" (local.get $__state) (call ${index_sym} (local.get $__state) (local.get $a) (local.get $i)) (call ${index_sym} (local.get $__state) (local.get $b) (local.get $i))))\n")
-  wat_emit("            (if (result i32) (i32.eqz (local.get $c))\n")
-  wat_emit("              (then (call $compare_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.add (local.get $i) (i32.const 1))))\n")
-  wat_emit("              (else (local.get $c)))))))\n")
-  wat_emit("  )\n")
-}
-
-// The FNV walker mirrors list_hash's exact seed and mix — the length
-// seeds the basis, each ELEMENT'S OWN HASH replaces the raw word in the
-// xor-then-prime fold, so structural-equal lists hash equal (eq ⇒ hash,
-// the agreement the fold enforces).
+// The FNV walker, list_hash's seed and mix in one loop: the length seeds
+// the basis and each element's own hash is mixed in order, so
+// structural-equal lists hash equal (eq ⇒ hash, the agreement the fold
+// enforces).
 fn emit_hash_leaf_seq(sig, elem) = {
-  wat_emit("  (func $hash_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (result i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  let face = seq_elem_face(elem)
   let len_sym = vocab_symbol("len")
-  wat_emit("    (call $hash_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (i32.const 0) (i32.mul (i32.xor (i32.const -2128831035) (call ${len_sym} (local.get $__state) (local.get $a))) (i32.const 16777619)))\n")
-  wat_emit("  )\n")
-  emit_hash_seq_body(sig, elem)
-}
-
-fn emit_hash_seq_body(sig, elem) = {
-  let callee =
-    seq_elem_leaf_callee("hash", "str_hash", "list_hash_f64", "list_hash", seq_elem_face(elem))
-  let len_sym = vocab_symbol("len")
-  let index_sym = vocab_symbol("list_index")
-  wat_emit("  (func $hash_listbody_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $i i32) (param $h i32) (result i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
-  wat_emit("      (then (local.get $h))\n")
-  wat_emit("      (else (call $hash_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (i32.add (local.get $i) (i32.const 1)) (i32.mul (i32.xor (local.get $h) (call $")
-  wat_emit(callee)
-  wat_emit(" (local.get $__state) (call ${index_sym} (local.get $__state) (local.get $a) (local.get $i)))) (i32.const 16777619)))))\n")
+  wat_emit("  (func $hash_{sig} (param $__state i32) (param $a i32) (result i32)")
+  wat_emit(" (local $i i32) (local $n i32) (local $h i32) {fold_float_locals()} (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  wat_emit("    (local.set $n (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+  wat_emit("    (local.set $h (i32.mul (i32.xor (i32.const -2128831035) (local.get $n)) (i32.const 16777619)))\n")
+  emit_seq_loop_open("$n")
+  wat_emit("      (local.set $h (i32.mul (i32.xor (local.get $h) ")
+  emit_part_hash(elem_at("$a", face), face)
+  wat_emit(") (i32.const 16777619)))\n")
+  emit_seq_loop_close()
+  wat_emit("    (local.get $h)\n")
   wat_emit("  )\n")
 }
 
@@ -9172,7 +9118,7 @@ fn emit_one_eq_helper(sig, ty) = match fold_strip(ty) {
     wat_emit("  (func $eq_")
     wat_emit(sig)
     wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
-    wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+    wat_emit(" {fold_float_locals()} (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
     // Identity is the first structural fact: the same record is equal to
     // itself, so one word compare short-circuits the whole field
     // conjunction. Sound unconditionally; effective wherever canonical
@@ -9185,106 +9131,75 @@ fn emit_one_eq_helper(sig, ty) = match fold_strip(ty) {
   },
 }
 
-// emit_eq_leaf_sum — the $eq_n<Name> sum helper. Two equal values share
-// a runtime tag; the fold then descends THAT variant's payload fields. A
-// nullary variant is a bare sentinel WORD (< heap_base) and a fielded variant
-// a heap record [tag@0][f0@4][f1@8]…, so:
-//   - if a < heap_base OR b < heap_base : compare as words (i32.eq) — a
-//     nullary tag == another iff the same value; sentinel != pointer always.
-//   - else (both heap records) : load tags; if they differ → 0; if equal →
-//     dispatch to the matched variant's payload conjunction. A type with no
-//     fielded variant degenerates to the word arm (purely-nullary ADT).
-// The per-variant payload conjunction recurses each field (offset 4+4*i,
-// uniform i32 slots) via emit_field_eq — a sum payload field re-enters this
-// family. Recursive ADTs (Tree) call $eq_nTree again: a runtime call, finite
-// on the value, never inline-infinite. The env's variant specs are read LIVE.
+// emit_eq_leaf_sum — the $eq_n<Name> sum helper. A nullary variant is a bare
+// sentinel WORD (< heap_base) and a fielded variant a heap record
+// [tag@0][f0@4][f1@8]…, so two values that are not the same word are equal
+// only as two records of one tag whose payloads are equal field by field,
+// the first unequal field answering. A last field of the helper's own type
+// is not a call but the next round of the loop, so a chain of any length is
+// walked in one frame; every other field calls its own helper. The env's
+// variant specs are read LIVE.
 fn emit_eq_leaf_sum(sig, applied) = {
   let specs = variant_specs_at(applied)
-  wat_emit("  (func $eq_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
-  wat_emit(" (local $ta i32) (local $tb i32)")
+  let hb = int_to_str(heap_base())
+  wat_emit("  (func $eq_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32)")
+  wat_emit(" (local $ta i32) (local $tb i32) {fold_float_locals()}")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  // Identity short-circuit — the same word is the same value for every
-  // operand class (equal sentinels and identical records alike), one
-  // compare before any tag load.
-  //
-  // Sentinel guard: either operand below heap_base ⇒ both are word-comparable
-  // (nullary-vs-nullary value-eq, nullary-vs-fielded always-unequal).
-  wat_emit("    (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 1))))\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.or\n")
-  wat_emit("        (i32.lt_u (local.get $a) (i32.const ")
-  wat_emit(int_to_str(heap_base()))
-  wat_emit("))\n")
-  wat_emit("        (i32.lt_u (local.get $b) (i32.const ")
-  wat_emit(int_to_str(heap_base()))
-  wat_emit(")))\n")
-  wat_emit("      (then (i32.eq (local.get $a) (local.get $b)))\n")
-  wat_emit("      (else\n")
-  // Both heap records: load tags, unequal ⇒ 0, else per-tag payload recursion.
-  wat_emit("        (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  wat_emit("        (local.set $tb (i32.load offset=0 (local.get $b)))\n")
-  wat_emit("        (if (result i32)\n")
-  wat_emit("          (i32.ne (local.get $ta) (local.get $tb))\n")
-  wat_emit("          (then (i32.const 0))\n")
-  wat_emit("          (else\n")
-  emit_eq_sum_tag_dispatch(specs, 0, len(specs))
-  // Close the four body forms (inner else, inner if, outer else, outer if);
-  // the func itself is closed by the "  )" below. The prior )))))  emitted
-  // FIVE — one over — so the first generated $eq_<sum> helper's stray paren
-  // closed the MODULE and orphaned every emit after it (the fold-helper tail,
-  // the doubled _start): m3 had no entry point at all. No micro caught it —
-  // the eq micros compare types that inline rather than generate a sum helper.
-  wat_emit("          ))))\n")
+  wat_emit("    (loop $again\n")
+  wat_emit("      (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 1))))\n")
+  wat_emit("      (if (i32.or (i32.lt_u (local.get $a) (i32.const {hb})) (i32.lt_u (local.get $b) (i32.const {hb}))) (then (return (i32.const 0))))\n")
+  wat_emit("      (local.set $ta (i32.load offset=0 (local.get $a)))\n")
+  wat_emit("      (local.set $tb (i32.load offset=0 (local.get $b)))\n")
+  wat_emit("      (if (i32.ne (local.get $ta) (local.get $tb)) (then (return (i32.const 0))))\n")
+  each(emit_eq_variant(sig, ??), specs)
+  wat_emit("    )\n")
+  // two records of one tag no fielded variant names hold no payload
+  wat_emit("    (i32.const 1)\n")
   wat_emit("  )\n")
 }
 
-// Per-variant tag dispatch: a cascade matching $ta against each fielded
-// variant's tag, emitting that variant's payload conjunction. A purely-nullary
-// variant (no payload) contributes nothing (its values never reach here — the
-// sentinel guard caught them). Tags equal but no fielded variant matched ⇒ the
-// values are nullary sentinels misrouted, impossible past the guard: the
-// terminal (i32.const 1) (tags already proven equal, no payload to compare).
-fn emit_eq_sum_tag_dispatch(specs, i, n) = if i >= n {
-  wat_emit("            (i32.const 1)\n")
-} else {
-  match list_index(specs, i) {
-    (tag_id, payloads) => if len(payloads) == 0 {
-      emit_eq_sum_tag_dispatch(specs, i + 1, n)
-    } else {
-      wat_emit("            (if (result i32)\n")
-      wat_emit("              (i32.eq (local.get $ta) (i32.const ")
-      wat_emit(int_to_str(tag_id))
-      wat_emit("))\n")
-      wat_emit("              (then\n")
-      emit_eq_variant_payload_conjunction(payloads, 0, len(payloads))
-      wat_emit("              )\n")
-      wat_emit("              (else\n")
-      emit_eq_sum_tag_dispatch(specs, i + 1, n)
-      wat_emit("              ))\n")
-    },
-  }
+// A fielded variant's arm: its payload fields compared in order.
+fn emit_eq_variant(sig, spec) = match spec {
+  (tag_id, payloads) => if len(payloads) == 0 {
+    ()
+  } else {
+    wat_emit("      (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
+    emit_eq_payload_fields(sig, payloads, 0, len(payloads))
+    wat_emit("      ))\n")
+  },
 }
 
-// The payload conjunction for one variant: AND each payload field's structural
-// eq. Payload field i lives at the width-summed offset (variant_payload_offset —
-// the SAME fold the store and the LPCon match-bind read), loaded at its PROVEN
-// repr (repr_of), so an f64 payload is genuinely 8 inline bytes loaded f64-wide
-// and compared with f64.eq. Carried-Truth: store, load, and eq project ONE
-// offset+width — they cannot disagree about where (or how wide) a payload is.
-fn emit_eq_variant_payload_conjunction(payloads, i, n) = if n == 0 {
-  wat_emit("                (i32.const 1)\n")
-} else if i >= n {
+// Payload field i of n, at the width-summed offset the store and the match
+// bind read (variant_payload_offset) and loaded at its proven repr: a field
+// before the last answers false when it differs, and the last answers the
+// variant — by its own leaf, or, of the helper's own type, by the next round.
+fn emit_eq_payload_fields(sig, payloads, i, n) = if i >= n {
   ()
 } else {
   let pty = fold_strip(list_index(payloads, i))
   let r = repr_of(pty)
   let off = variant_payload_offset(payloads, i, 0, 4)
-  emit_field_load_pair(off, r)
-  emit_field_eq(pty)
-  if i > 0 { wat_emit("    (i32.and)\n") }
-  emit_eq_variant_payload_conjunction(payloads, i + 1, n)
+  if i + 1 < n {
+    wat_emit("        (if (i32.eqz\n")
+    emit_field_load_pair(off, r)
+    emit_field_eq(pty)
+    wat_emit("        ) (then (return (i32.const 0))))\n")
+    emit_eq_payload_fields(sig, payloads, i + 1, n)
+  } else if fold_sig(pty) == sig {
+    emit_next_round(off, ["$a", "$b"])
+  } else {
+    wat_emit("        (return\n")
+    emit_field_load_pair(off, r)
+    emit_field_eq(pty)
+    wat_emit("        )\n")
+  }
+}
+
+// The next round of a sum helper's loop: each operand becomes its last
+// payload field, the one of the helper's own type.
+fn emit_next_round(off, operands) = {
+  operands |> each({ v => wat_emit("        (local.set {v} (i32.load offset={int_to_str(off)} (local.get {v})))\n") })
+  wat_emit("        (br $again)\n")
 }
 
 // The conjunction body: for field i, push eq(a.field_i, b.field_i) then AND
@@ -9371,10 +9286,10 @@ fn emit_field_eq(fty) = match fty {
     emit_swap_under_state()
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_eq"),
-      TFloat => emit_vocab_call("list_eq_f64"),
       face @ (
-        TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+        TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
       ) => if seq_face_structural(face) {
         wat_emit("    (call $eq_")
         wat_emit(fold_sig(fty))
@@ -9393,11 +9308,34 @@ fn emit_field_eq(fty) = match fty {
   // (never inline) is what makes a self-referential type well-founded. A
   // sum with no payload is its tag word.
   TName(_, _) => if sum_is_tag(fty) { wat_emit("    (i32.eq)\n") } else { emit_field_product_eq(fold_sig(fty)) },
-  TFloat => wat_emit("    (f64.eq)\n"),
+  // Inside a fold a Float is equal by its total-order key, so a NaN equals
+  // itself and -0.0 is not 0.0 — the order compare and hash read.
+  TFloat => {
+    emit_float_keys()
+    wat_emit("    (i64.eq (local.get $ka) (local.get $kb))\n")
+  },
   // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word eq.
   TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
   | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => wat_emit("    (i32.eq)\n"),
 }
+
+// The scratch a fold helper's Float leaves use: the pair of f64s and their
+// keys.
+fn fold_float_locals() = "(local $fa f64) (local $fb f64) (local $ka i64) (local $kb i64)"
+
+// The pair of f64s on the stack, as their keys: inside a fold a Float is
+// ordered by IEEE total order with every NaN one value above +inf, so its key
+// is its bits with a NaN made the one NaN and a negative value's bits below
+// the sign flipped, and keys order as signed words.
+fn emit_float_keys() = {
+  wat_emit("    (local.set $fb)\n")
+  wat_emit("    (local.set $fa)\n")
+  wat_emit("    (local.set $ka {float_key("$fa")})\n")
+  wat_emit("    (local.set $kb {float_key("$fb")})\n")
+}
+
+fn float_key(f: String) =
+  "(select (i64.const 9221120237041090560) (i64.xor (i64.reinterpret_f64 (local.get {f})) (i64.shr_u (i64.shr_s (i64.reinterpret_f64 (local.get {f})) (i64.const 63)) (i64.const 1))) (f64.ne (local.get {f}) (local.get {f})))"
 
 // A nested product field: the two field pointers are on the stack; insert
 // __state under them (the W7 (state, a, b) convention) and recurse.
@@ -9454,10 +9392,10 @@ fn emit_cmp_for_ty(op, ty) = match ty {
   // One sequence arm, element-face dispatched (the eq routing's twin).
   TList(e) => match seq_elem_face(e) {
     TByte => emit_cmp_seq_call(vocab_symbol("str_compare"), op),
-    TFloat => emit_cmp_seq_call(vocab_symbol("list_compare_f64"), op),
     face @ (
-      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+      TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_)
     ) => if seq_face_structural(face) {
       emit_cmp_agg_call(fold_sig(ty), op)
     } else {
@@ -9550,7 +9488,7 @@ fn emit_one_compare_helper(sig, ty) = match fold_strip(ty) {
     wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
     wat_emit(" (local $c i32) (local $state_tmp i32)")
     wat_emit(" (local $callee_closure i32) (local $alloc_size i32)")
-    wat_emit(" (local $fa f64) (local $fb f64)\n")
+    wat_emit(" {fold_float_locals()}\n")
     let fields = product_field_tys(ty)
     emit_cmp_helper_chain(fields, 0, len(fields), 0)
     wat_emit("  )\n")
@@ -9562,36 +9500,28 @@ fn emit_one_compare_helper(sig, ty) = match fold_strip(ty) {
 // so a value's TAG is the sentinel itself or the record's first word. Tags
 // order first (declaration order = tag id); equal tags name one variant, so
 // both operands are sentinels (equal) or both records, whose payloads order
-// next (first non-zero wins). The sentinel was once compared as a word
-// against the other operand's ADDRESS, which ranked a nullary variant below
-// every fielded one whatever their declaration order (measured 2026-10-03:
-// `B(5) < A` false over `type T = B(Int) | A`).
+// next, the first non-zero answering, and a last field of the helper's own
+// type is the next round of the loop. The sentinel was once compared as a
+// word against the other operand's ADDRESS, which ranked a nullary variant
+// below every fielded one whatever their declaration order (measured
+// 2026-10-03: `B(5) < A` false over `type T = B(Int) | A`).
 fn emit_one_compare_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
   let hb = int_to_str(heap_base())
-  wat_emit("  (func $compare_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
-  wat_emit(" (local $ta i32) (local $tb i32) (local $c i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)")
-  wat_emit(" (local $fa f64) (local $fb f64)\n")
-  wat_emit("    (local.set $ta (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.get $a)) (else (i32.load offset=0 (local.get $a)))))\n")
-  wat_emit("    (local.set $tb (if (result i32) (i32.lt_u (local.get $b) (i32.const {hb})) (then (local.get $b)) (else (i32.load offset=0 (local.get $b)))))\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ne (local.get $ta) (local.get $tb))\n")
-  wat_emit("      (then ")
+  wat_emit("  (func $compare_{sig} (param $__state i32) (param $a i32) (param $b i32) (result i32)")
+  wat_emit(" (local $ta i32) (local $tb i32) (local $c i32) {fold_float_locals()}")
+  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  wat_emit("    (loop $again\n")
+  wat_emit("      (local.set $ta (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.get $a)) (else (i32.load offset=0 (local.get $a)))))\n")
+  wat_emit("      (local.set $tb (if (result i32) (i32.lt_u (local.get $b) (i32.const {hb})) (then (local.get $b)) (else (i32.load offset=0 (local.get $b)))))\n")
+  wat_emit("      (if (i32.ne (local.get $ta) (local.get $tb)) (then (return ")
   emit_word_sign_compare(Signed, "(local.get $ta)", "(local.get $tb)")
-  wat_emit(")\n")
-  wat_emit("      (else\n")
-  wat_emit("        (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb}))\n")
-  wat_emit("          (then (i32.const 0))\n")
-  wat_emit("          (else\n")
-  emit_compare_sum_tag_dispatch(specs, 0, len(specs))
-  // Four body closes (the func is closed by "  )" below) — the same
-  // one-over )))))  the eq sum helper had (emit_eq_leaf_sum): the extra paren
-  // closed the module and orphaned the emit tail. Sibling generator, sibling
-  // fix. sum-compare micro proves it (module balance 0, exit correct).
-  wat_emit("          ))))\n")
+  wat_emit(")))\n")
+  wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {hb})) (then (return (i32.const 0))))\n")
+  each(emit_compare_variant(sig, ??), specs)
+  wat_emit("    )\n")
+  // two records of one tag no fielded variant names hold no payload
+  wat_emit("    (i32.const 0)\n")
   wat_emit("  )\n")
 }
 
@@ -9615,58 +9545,41 @@ fn emit_word_sign_compare(order, x, y) = {
   wat_emit("))")
 }
 
-// Per-variant tag dispatch for compare: tags already proven equal, descend the
-// matched fielded variant's payload conjunction. A purely-nullary variant
-// contributes nothing (two of its sentinels answered 0 before the dispatch).
-// No fielded variant matched past equal tags ⇒ equal nullary records
-// (impossible past that answer): terminal 0 (equal).
-fn emit_compare_sum_tag_dispatch(specs, i, n) = if i >= n {
-  wat_emit("            (i32.const 0)\n")
-} else {
-  match list_index(specs, i) {
-    (tag_id, payloads) => if len(payloads) == 0 {
-      emit_compare_sum_tag_dispatch(specs, i + 1, n)
-    } else {
-      wat_emit("            (if (result i32)\n")
-      wat_emit("              (i32.eq (local.get $ta) (i32.const ")
-      wat_emit(int_to_str(tag_id))
-      wat_emit("))\n")
-      wat_emit("              (then\n")
-      emit_cmp_variant_payload_chain(payloads, 0, len(payloads), 4)
-      wat_emit("              )\n")
-      wat_emit("              (else\n")
-      emit_compare_sum_tag_dispatch(specs, i + 1, n)
-      wat_emit("              ))\n")
-    },
-  }
+// A fielded variant's arm for compare: tags already proven equal, its
+// payload fields in order.
+fn emit_compare_variant(sig, spec) = match spec {
+  (tag_id, payloads) => if len(payloads) == 0 {
+    ()
+  } else {
+    wat_emit("      (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
+    emit_compare_payload_fields(sig, payloads, 0, len(payloads))
+    wat_emit("      ))\n")
+  },
 }
 
-// The payload chain for one variant: compare payload field i; if non-zero,
-// THAT is the order; else recurse to field i+1; the last field's compare is
-// the result. `off` is the running byte offset (variant payload base 4,
-// width-summed — the SAME variant_payload_offset the eq + store sides read).
-fn emit_cmp_variant_payload_chain(payloads, i, n, off) = if n == 0 {
-  wat_emit("                (i32.const 0)\n")
-} else if i >= n {
+// Payload field i of n, at the offset the store reads: a field before the
+// last answers when it differs, and the last answers the variant — by its
+// own leaf, or, of the helper's own type, by the next round.
+fn emit_compare_payload_fields(sig, payloads, i, n) = if i >= n {
   ()
 } else {
   let pty = fold_strip(list_index(payloads, i))
   let r = repr_of(pty)
-  if i + 1 >= n {
-    // Last payload field — its compare IS the variant's order.
+  let off = variant_payload_offset(payloads, i, 0, 4)
+  if i + 1 < n {
+    wat_emit("        (local.set $c\n")
     emit_field_load_pair(off, r)
     emit_field_cmp(pty)
+    wat_emit("        )\n")
+    wat_emit("        (if (local.get $c) (then (return (local.get $c))))\n")
+    emit_compare_payload_fields(sig, payloads, i + 1, n)
+  } else if fold_sig(pty) == sig {
+    emit_next_round(off, ["$a", "$b"])
   } else {
-    // (local.set $c <field compare>) ; if $c != 0 return $c else next field.
-    wat_emit("                (local.set $c ")
+    wat_emit("        (return\n")
     emit_field_load_pair(off, r)
     emit_field_cmp(pty)
-    wat_emit(")\n")
-    wat_emit("                (if (result i32) (i32.ne (local.get $c) (i32.const 0))\n")
-    wat_emit("                  (then (local.get $c))\n")
-    wat_emit("                  (else\n")
-    emit_cmp_variant_payload_chain(payloads, i + 1, n, off + repr_width(r))
-    wat_emit("                  ))\n")
+    wat_emit("        )\n")
   }
 }
 
@@ -9712,10 +9625,10 @@ fn emit_field_cmp(fty) = match fty {
     emit_swap_under_state()
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_compare"),
-      TFloat => emit_vocab_call("list_compare_f64"),
       face @ (
-        TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+        TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
       ) => if seq_face_structural(face) {
         wat_emit("    (call $compare_")
         wat_emit(fold_sig(fty))
@@ -9729,14 +9642,10 @@ fn emit_field_cmp(fty) = match fty {
   TRecordOpen(_, _) => emit_field_agg_cmp(fold_sig(fty)),
   TTuple(_) => emit_field_agg_cmp(fold_sig(fty)),
   TName(_, _) => emit_field_agg_cmp(fold_sig(fty)),
-  // f64 sign: gt ⇒ 1, else lt ⇒ -1, else 0 — the word arm's shape at f64
-  // width. The select consumes the pair TWICE (lt AND gt), so stash both
-  // through the f64 scratch pair and re-reference; the bare-(f64.lt) form
-  // consumed the pair once and did not assemble (the sortpairs probe).
+  // The keys' sign: gt ⇒ 1, else lt ⇒ -1, else 0, in IEEE total order.
   TFloat => {
-    wat_emit("    (local.set $fb)\n")
-    wat_emit("    (local.set $fa)\n")
-    wat_emit("    (select (i32.const 1) (select (i32.const -1) (i32.const 0) (f64.lt (local.get $fa) (local.get $fb))) (f64.gt (local.get $fa) (local.get $fb)))\n")
+    emit_float_keys()
+    wat_emit("    (select (i32.const 1) (select (i32.const -1) (i32.const 0) (i64.lt_s (local.get $ka) (local.get $kb))) (i64.gt_s (local.get $ka) (local.get $kb)))\n")
   },
   // Int / Unit / resolved-TVar / nullary-tag / address — word
   // sign-of-difference in the word's own order. The stack has [a_field,
@@ -9796,7 +9705,7 @@ fn eq_operand_contrib(left_h, acc) =
 // aggregates its fields / elements / list-element / variant payloads reach).
 // Words and sequences-of-words contribute nothing; a list-of-records
 // contributes the record; a sum contributes itself and descends each variant's
-// payload types read LIVE from the env (variant_specs_of). `seen` guards
+// payload types read LIVE from the env (variant_specs_at). `seen` guards
 // recursive ADTs so the COLLECTION terminates (the helper's runtime recursion
 // handles the unbounded value depth). Input arrives RESOLVED (the fold
 // boundary chase_deep at eq/hash_operand_contrib), so the walk and the
@@ -9865,7 +9774,7 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 // payload / element re-enters the five-node-kind leaf (show_field), so a nested
 // aggregate recurses its own $show_<sig> helper — finite on the value, the same
 // well-foundedness the eq leaf has. The env's variant payload types are read
-// LIVE (variant_specs_of) — never a re-derived shape at runtime when the graph
+// LIVE (variant_specs_at) — never a re-derived shape at runtime when the graph
 // proved the type at the to_string site. The eq/show DIVERGENCE footgun is
 // unsayable: both are leaves of one traversal over the same five node-kinds.
 //
@@ -10029,68 +9938,99 @@ fn emit_show_field_load(off, r) = {
   wat_emit(" (local.get $a))")
 }
 
-// SUM show: sentinel-guard (a nullary variant is a bare tag word < heap_base,
-// rendered by its constructor name; a fielded variant a heap record [tag@0]
-// [f0@4]…). The tag selects the variant; a fielded variant renders
-// "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names + payload types are read
-// LIVE from the env (variant_named_specs_of). A recursive ADT re-enters
-// $show_n<Name> (finite on the value). Mirrors emit_eq_leaf_sum's guard.
+// SUM show: a nullary variant is a bare tag word < heap_base, rendered by its
+// constructor name; a fielded variant a heap record [tag@0][f0@4]…, rendered
+// "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names and payload types are
+// read LIVE from the env (variant_named_specs_of). A last payload of the
+// helper's own type is the next round of the loop: what comes before it is
+// appended to the rendering, and the ")" that closes it is owed, so a chain
+// of any length renders in one frame.
 fn emit_one_show_sum_helper(sig, applied) = {
   let specs = variant_named_specs_at(applied)
-  wat_emit("  (func $show_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (result i32) (local $ta i32)")
+  wat_emit("  (func $show_{sig} (param $__state i32) (param $a i32) (result i32)")
+  wat_emit(" (local $ta i32) (local $s i32) (local $owed i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.lt_u (local.get $a) (i32.const ")
-  wat_emit(int_to_str(heap_base()))
-  wat_emit("))\n")
-  // Nullary arm: $a IS the tag word.
-  wat_emit("      (then\n")
-  emit_show_sum_tag_dispatch(specs, 0, len(specs), "$a")
-  wat_emit("      )\n")
-  // Heap arm: load tag@0, dispatch on it.
-  wat_emit("      (else\n")
-  wat_emit("        (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  emit_show_sum_tag_dispatch(specs, 0, len(specs), "$ta")
-  wat_emit("      ))\n")
+  wat_emit("    (local.set $s ")
+  emit_show_str_literal_inline("")
+  wat_emit(")\n")
+  wat_emit("    (loop $again\n")
+  wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {int_to_str(heap_base())}))\n")
+  wat_emit("        (then\n")
+  emit_show_append_open()
+  emit_show_nullary_name(specs, 0, len(specs))
+  emit_show_append_close()
+  wat_emit("        )\n")
+  wat_emit("        (else\n")
+  wat_emit("          (local.set $ta (i32.load offset=0 (local.get $a)))\n")
+  each(emit_show_variant(sig, ??), specs)
+  wat_emit("        )))\n")
+  if any(variant_chains(sig, ??), specs) {
+    wat_emit("    (block $paid (loop $owing\n")
+    wat_emit("      (br_if $paid (i32.eqz (local.get $owed)))\n")
+    emit_show_append_literal(")")
+    wat_emit("      (local.set $owed (i32.sub (local.get $owed) (i32.const 1)))\n")
+    wat_emit("      (br $owing)))\n")
+  }
+  wat_emit("    (local.get $s)\n")
   wat_emit("  )\n")
 }
 
-// Per-variant tag switch. `scrutinee` is the local holding the runtime tag
-// ($a in the nullary arm, $ta in the heap arm). A nullary variant renders its
-// bare name; a fielded variant renders "Ctor(" ++ payloads ++ ")". The cascade
-// terminal is "" (the env enumerates every variant; control lands on one arm).
-fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) = if i >= n {
+// Whether a variant's last payload is of the helper's own type, the one its
+// rendering continues into.
+fn variant_chains(sig, spec) = match spec {
+  (_tag, _cname, payloads) => len(payloads) > 0 && fold_sig(fold_strip(last(payloads))) == sig,
+}
+
+// A nullary value's name: the variant whose tag the word is ("" past the
+// last, a word no nullary variant holds).
+fn emit_show_nullary_name(specs, i, n) = if i >= n {
   emit_show_str_literal("")
 } else {
   match list_index(specs, i) {
-    (tag_id, cname, payloads) => {
-      wat_emit("        (if (result i32)\n")
-      wat_emit("          (i32.eq (local.get ")
-      wat_emit(scrutinee)
-      wat_emit(") (i32.const ")
-      wat_emit(int_to_str(tag_id))
-      wat_emit("))\n")
+    (tag_id, cname, payloads) => if len(payloads) > 0 {
+      emit_show_nullary_name(specs, i + 1, n)
+    } else {
+      wat_emit("        (if (result i32) (i32.eq (local.get $a) (i32.const {int_to_str(tag_id)}))\n")
       wat_emit("          (then\n")
-      if len(payloads) == 0 {
-        emit_show_str_literal(cname)
-      } else {
-        // concat( "Ctor(", concat( <payloads-with-seps>, ")" ) )
-        emit_show_concat_open()
-        emit_show_str_literal("{cname}(")
-        emit_show_concat_open()
-        emit_show_variant_payloads(payloads, 0, len(payloads))
-        emit_show_str_literal(")")
-        emit_show_concat_close()
-        emit_show_concat_close()
-      }
+      emit_show_str_literal(cname)
       wat_emit("          )\n")
       wat_emit("          (else\n")
-      emit_show_sum_tag_dispatch(specs, i + 1, n, scrutinee)
+      emit_show_nullary_name(specs, i + 1, n)
       wat_emit("          ))\n")
     },
   }
+}
+
+// A fielded variant's arm: "Ctor(" and its payloads, then ")" — or, when its
+// last payload is of the helper's own type, everything before that payload,
+// a ")" owed, and the next round on the payload.
+fn emit_show_variant(sig, spec) = match spec {
+  (tag_id, cname, payloads) => if len(payloads) == 0 {
+    ()
+  } else {
+    let n = len(payloads)
+    wat_emit("          (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
+    emit_show_append_open()
+    emit_show_concat_open()
+    emit_show_str_literal("{cname}(")
+    emit_show_concat_open()
+    if variant_chains(sig, spec) {
+      emit_show_variant_payloads(payloads, 0, n - 1)
+      emit_show_str_literal(show_field_sep(n - 1))
+      emit_show_concat_close()
+      emit_show_concat_close()
+      emit_show_append_close()
+      wat_emit("            (local.set $owed (i32.add (local.get $owed) (i32.const 1)))\n")
+      emit_next_round(variant_payload_offset(payloads, n - 1, 0, 4), ["$a"])
+    } else {
+      emit_show_variant_payloads(payloads, 0, n)
+      emit_show_str_literal(")")
+      emit_show_concat_close()
+      emit_show_concat_close()
+      emit_show_append_close()
+    }
+    wat_emit("          ))\n")
+  },
 }
 
 // The payload conjunction for one variant: each payload field at offset 4+4*i
@@ -10152,59 +10092,41 @@ fn emit_show_variant_load(off, pty) = {
   wat_emit(" (local.get $a))")
 }
 
-// LIST show: "[" ++ <element loop, joined by ", "> ++ "]". The element count is
-// runtime (len); $show_listbody_<sig> folds str_concat over list_index(a, i),
-// joining ", ". The element leaf is read from the proven element type.
+// LIST show: "[", each element's rendering with ", " between, then "]",
+// appended in one loop. The element leaf is read from the proven element
+// type.
 fn emit_one_show_list_helper(sig, elem) = {
-  emit_show_header(sig)
-  emit_show_concat_open()
-  emit_show_str_literal("[")
-  emit_show_concat_open()
-  wat_emit("    (call $show_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (i32.const 0))\n")
-  emit_show_str_literal("]")
-  emit_show_concat_close()
-  emit_show_concat_close()
+  let len_sym = vocab_symbol("len")
+  wat_emit("  (func $show_{sig} (param $__state i32) (param $a i32) (result i32)")
+  wat_emit(" (local $i i32) (local $n i32) (local $s i32) (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  wat_emit("    (local.set $n (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+  wat_emit("    (local.set $s ")
+  emit_show_str_literal_inline("[")
+  wat_emit(")\n")
+  emit_seq_loop_open("$n")
+  wat_emit("      (if (i32.gt_s (local.get $i) (i32.const 0)) (then\n")
+  emit_show_append_literal(", ")
+  wat_emit("      ))\n")
+  emit_show_append_open()
+  emit_show_list_elem_render(fold_strip(elem))
+  emit_show_append_close()
+  emit_seq_loop_close()
+  emit_show_append_literal("]")
+  wat_emit("    (local.get $s)\n")
   wat_emit("  )\n")
-  emit_show_list_body_helper(sig, elem)
 }
 
-// The recursive element loop: render element i (", " prefix when i>0), then
-// recurse to i+1; "" when i == len(a). Tail-recursive over the list length
-// (finite). The element leaf reads the proven element type (Carried-Truth).
-fn emit_show_list_body_helper(sig, elem) = {
-  let len_sym = vocab_symbol("len")
-  let concat = vocab_symbol("str_concat")
-  wat_emit("  (func $show_listbody_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (param $i i32) (result i32)")
-  wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
-  wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
-  wat_emit("      (then ")
-  emit_show_str_literal_inline("")
-  wat_emit(")\n")
-  wat_emit("      (else\n")
-  // concat( sep, concat( show(elem_i), recurse(i+1) ) )
-  wat_emit("        (call ${concat} (local.get $__state)\n")
-  wat_emit("          (if (result i32) (i32.gt_s (local.get $i) (i32.const 0))\n")
-  wat_emit("            (then ")
-  emit_show_str_literal_inline(", ")
-  wat_emit(") (else ")
-  emit_show_str_literal_inline("")
-  wat_emit("))\n")
-  wat_emit("          (call ${concat} (local.get $__state)\n")
-  emit_show_list_elem_render(fold_strip(elem))
-  wat_emit("            (call $show_listbody_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (i32.add (local.get $i) (i32.const 1)))\n")
-  wat_emit("          )))\n")
-  // TWO closers: the if, THEN the func — the single ")" left the func open
-  // (m3's one structural break: "(func $_start" where an instr belonged;
-  // the whole-file paren census counted exactly one missing close).
-  wat_emit("  )\n")
-  wat_emit("  )\n")
+// A show helper's rendering grows in the local $s: each piece appended
+// where it is read, so a walk of any length holds one frame.
+fn emit_show_append_open() =
+  wat_emit("      (local.set $s (call ${vocab_symbol("str_concat")} (local.get $__state) (local.get $s)\n")
+
+fn emit_show_append_close() = wat_emit("      ))\n")
+
+fn emit_show_append_literal(s: String) = {
+  emit_show_append_open()
+  emit_show_str_literal(s)
+  emit_show_append_close()
 }
 
 // Render list element i: list_index(__state, a, i), wrapped in its leaf renderer.
@@ -10354,7 +10276,7 @@ fn emit_one_hash_helper(sig, ty) = match fold_strip(ty) {
     wat_emit("  (func $hash_")
     wat_emit(sig)
     wat_emit(" (param $__state i32) (param $a i32) (result i32)")
-    wat_emit(" (local $h i32) (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+    wat_emit(" (local $h i32) {fold_float_locals()} (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
     wat_emit("    (local.set $h (i32.const 2166136261))\n")
     let fields = product_field_tys(ty)
     emit_hash_field_mix(fields, 0, len(fields), 0)
@@ -10365,68 +10287,55 @@ fn emit_one_hash_helper(sig, ty) = match fold_strip(ty) {
 
 // emit_one_hash_sum_helper — the $hash_n<Name> sum helper. A nullary variant is
 // a sentinel word (its value IS its hash-seed); a fielded variant a heap record
-// [tag@0][f0@4]…, so: seed $h with the FNV basis; if the operand is a sentinel
-// (< heap_base) mix the word itself; else mix tag@0, then the matched variant's
-// payload fields. Two structurally-equal ADT values fold identically.
+// [tag@0][f0@4]…, so: seed $h with the FNV basis; mix a sentinel's word, or a
+// record's tag and then the matched variant's payload fields. A last payload
+// of the helper's own type is the next round of the loop, mixed into the same
+// $h, so a chain of any length hashes in one frame; two structurally-equal
+// values fold identically.
 fn emit_one_hash_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
-  wat_emit("  (func $hash_")
-  wat_emit(sig)
-  wat_emit(" (param $__state i32) (param $a i32) (result i32)")
-  wat_emit(" (local $h i32) (local $ta i32)")
+  wat_emit("  (func $hash_{sig} (param $__state i32) (param $a i32) (result i32)")
+  wat_emit(" (local $h i32) (local $ta i32) {fold_float_locals()}")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (local.set $h (i32.const 2166136261))\n")
-  wat_emit("    (if\n")
-  wat_emit("      (i32.lt_u (local.get $a) (i32.const ")
-  wat_emit(int_to_str(heap_base()))
-  wat_emit("))\n")
-  // Sentinel (nullary): mix the word itself.
-  wat_emit("      (then (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $a)) (i32.const 16777619))))\n")
-  wat_emit("      (else\n")
-  wat_emit("        (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  wat_emit("        (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $ta)) (i32.const 16777619)))\n")
-  emit_hash_sum_tag_dispatch(specs, 0, len(specs))
-  wat_emit("      ))\n")
+  wat_emit("    (loop $again\n")
+  wat_emit("      (if (i32.lt_u (local.get $a) (i32.const {int_to_str(heap_base())})) (then (return (i32.mul (i32.xor (local.get $h) (local.get $a)) (i32.const 16777619)))))\n")
+  wat_emit("      (local.set $ta (i32.load offset=0 (local.get $a)))\n")
+  wat_emit("      (local.set $h (i32.mul (i32.xor (local.get $h) (local.get $ta)) (i32.const 16777619)))\n")
+  each(emit_hash_variant(sig, ??), specs)
+  wat_emit("    )\n")
   wat_emit("    (local.get $h)\n")
   wat_emit("  )\n")
 }
 
-// Per-variant tag dispatch for hash: the tag already mixed, descend the matched
-// fielded variant's payload mix. A nullary variant has no payload (nothing to
-// mix past its tag). No fielded variant matched ⇒ a nullary record (its tag is
-// its full hash): nothing more to mix.
-fn emit_hash_sum_tag_dispatch(specs, i, n) = if i >= n {
-  ()
-} else {
-  match list_index(specs, i) {
-    (tag_id, payloads) => if len(payloads) == 0 {
-      emit_hash_sum_tag_dispatch(specs, i + 1, n)
-    } else {
-      wat_emit("        (if\n")
-      wat_emit("          (i32.eq (local.get $ta) (i32.const ")
-      wat_emit(int_to_str(tag_id))
-      wat_emit("))\n")
-      wat_emit("          (then\n")
-      emit_hash_variant_payload_mix(payloads, 0, len(payloads), 4)
-      wat_emit("          )\n")
-      wat_emit("          (else\n")
-      emit_hash_sum_tag_dispatch(specs, i + 1, n)
-      wat_emit("          ))\n")
-    },
-  }
+// A fielded variant's arm for hash: the tag already mixed, its payload
+// fields mixed in order.
+fn emit_hash_variant(sig, spec) = match spec {
+  (tag_id, payloads) => if len(payloads) == 0 {
+    ()
+  } else {
+    wat_emit("      (if (i32.eq (local.get $ta) (i32.const {int_to_str(tag_id)})) (then\n")
+    emit_hash_payload_fields(sig, payloads, 0, len(payloads))
+    wat_emit("      ))\n")
+  },
 }
 
-// Mix each payload field at its width-summed offset (variant base 4 — the SAME
-// offset fold the eq/compare leaves read). h = (h xor field_hash) * prime.
-fn emit_hash_variant_payload_mix(payloads, i, n, off) = if i >= n {
+// Mix each payload field at the offset the store reads: h = (h xor
+// field_hash) * prime, and a last field of the helper's own type is the next
+// round.
+fn emit_hash_payload_fields(sig, payloads, i, n) = if i >= n {
   ()
 } else {
   let pty = fold_strip(list_index(payloads, i))
-  let r = repr_of(pty)
-  wat_emit("            (local.set $h (i32.mul (i32.xor (local.get $h) ")
-  emit_field_hash(off, r, pty)
-  wat_emit(") (i32.const 16777619)))\n")
-  emit_hash_variant_payload_mix(payloads, i + 1, n, off + repr_width(r))
+  let off = variant_payload_offset(payloads, i, 0, 4)
+  if i + 1 >= n && fold_sig(pty) == sig {
+    emit_next_round(off, ["$a"])
+  } else {
+    wat_emit("        (local.set $h (i32.mul (i32.xor (local.get $h) ")
+    emit_field_hash(off, repr_of(pty), pty)
+    wat_emit(") (i32.const 16777619)))\n")
+    emit_hash_payload_fields(sig, payloads, i + 1, n)
+  }
 }
 
 // The product hash mix chain: fold the FNV mix over each field at its width-
@@ -10443,67 +10352,50 @@ fn emit_hash_field_mix(fields, i, n, off) = if i >= n {
   emit_hash_field_mix(fields, i + 1, n, here + repr_width(r))
 }
 
-// The leaf hash of one field at byte offset `off` → an i32 hash s-expression.
-// Word → the loaded word itself; float → str_hash(float_to_str) (value-faithful,
-// equal f64 ⇒ equal hash); sequence → the state-threaded str_hash/list_hash;
-// product/sum → a recursive $hash_<sig> call. The SAME five-node-kind leaf the
+// The leaf hash of one field at byte offset `off` → an i32 hash s-expression:
+// the part's hash over the field's width-typed load.
+fn emit_field_hash(off, r, fty) =
+  emit_part_hash("({repr_load_op(r)} offset={int_to_str(off)} (local.get $a))", fty)
+
+// The leaf hash of one part — a field, an element — given the s-expression
+// that reads it. Word → the read word itself; float → its total-order key,
+// folded to a word (equal under the fold's `==` ⇒ equal hash); sequence →
+// the state-threaded str_hash/list_hash or its walker; product/sum → a
+// recursive $hash_<sig> call. The SAME five-node-kind leaf the
 // lower_hash_dispatch drives — eq, compare, and hash cannot diverge.
-fn emit_field_hash(off, r, fty) = match fty {
+fn emit_part_hash(part: String, fty) = match fty {
   // Byte sequence == the String family (§4①). Load-bearing here: list_hash
   // seeds its FNV mix with the length, str_hash does not — one type must
   // hash through ONE route or eq-equal values hash unequal.
   TList(e) => match seq_elem_face(e) {
-    TByte => emit_field_hash_seq_call(off, vocab_symbol("str_hash")),
-    TFloat => emit_field_hash_seq_call(off, vocab_symbol("list_hash_f64")),
+    TByte => emit_part_call(vocab_symbol("str_hash"), part),
     face @ (
-      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
-      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+      TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_)
     ) => if seq_face_structural(face) {
-      emit_field_hash_seq_call(off, "hash_{fold_sig(fty)}")
+      emit_part_call("hash_{fold_sig(fty)}", part)
     } else {
-      emit_field_hash_seq_call(off, vocab_symbol("list_hash"))
+      emit_part_call(vocab_symbol("list_hash"), part)
     },
   },
-  TRecord(_) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  TRecordOpen(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  TTuple(_) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  TName(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  // Float field: hash the decimal rendering of the loaded f64 (value-faithful).
-  TFloat => {
-    wat_emit("(call ${vocab_symbol("str_hash")} (call ${vocab_symbol("float_to_str")} (f64.load offset=")
-    wat_emit(int_to_str(off))
-    wat_emit(" (local.get $a))))")
-  },
-  // Int / Unit / resolved-TVar / nullary-tag — the loaded word IS its hash.
+  TRecord(_) => emit_part_call("hash_{fold_sig(fty)}", part),
+  TRecordOpen(_, _) => emit_part_call("hash_{fold_sig(fty)}", part),
+  TTuple(_) => emit_part_call("hash_{fold_sig(fty)}", part),
+  TName(_, _) => emit_part_call("hash_{fold_sig(fty)}", part),
+  // The f64's key, its low half mixed by the prime before the high half
+  // joins it — a bare xor of the halves would fold -0.0's key, every bit
+  // set, onto 0.0's, none.
+  TFloat => wat_emit("(local.set $fa {part}) (i32.xor (i32.mul (i32.wrap_i64 (local.tee $ka {float_key("$fa")})) (i32.const 16777619)) (i32.wrap_i64 (i64.shr_u (local.get $ka) (i64.const 32))))"),
+  // Int / Unit / resolved-TVar / nullary-tag — the read word IS its hash.
   TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
-  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
-    wat_emit("(")
-    wat_emit(repr_load_op(r))
-    wat_emit(" offset=")
-    wat_emit(int_to_str(off))
-    wat_emit(" (local.get $a))")
-  },
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => wat_emit(part),
 }
 
-// A sequence field hash: load the field pointer at `off`, call the runtime
-// str_hash/list_hash with __state threaded (the W7 (state, ptr) convention).
-fn emit_field_hash_seq_call(off, rt) = {
-  wat_emit("(call $")
-  wat_emit(rt)
-  wat_emit(" (local.get $__state) (i32.load offset=")
-  wat_emit(int_to_str(off))
-  wat_emit(" (local.get $a)))")
-}
-
-// A nested aggregate field hash: load the field pointer, recurse its own
-// $hash_<sig> (state-threaded). Finite on the value (the call, never inline).
-fn emit_field_hash_agg_call(off, sig) = {
-  wat_emit("(call $hash_")
-  wat_emit(sig)
-  wat_emit(" (local.get $__state) (i32.load offset=")
-  wat_emit(int_to_str(off))
-  wat_emit(" (local.get $a)))")
-}
+// A part's hash through a helper or the runtime, __state threaded (the W7
+// (state, ptr) convention). Finite on the value (the call, never inline).
+fn emit_part_call(name: String, part: String) =
+  wat_emit("(call ${name} (local.get $__state) {part})")
 
 fn hash_operand_contrib(arg, acc) = {
   let h = lexpr_handle(arg)
