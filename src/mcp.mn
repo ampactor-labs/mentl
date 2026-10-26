@@ -54,6 +54,8 @@ import pipeline
 
 import query
 
+import sections
+
 import strings
 
 // The session's collecting console — the address projection's transport
@@ -224,6 +226,17 @@ fn mcp_tools_result() = JObj([
           JStr("Project the entry file's whole ranked absence field from the resident graph — the oracle's frontier, the gradient's argmax uncollapsed. Every authored ?? hole first, each carrying its proven-survivor fan and tie-teaching; then the annotation-gradient positions. The same read `mentl main.mn:0` serves. Answer it, act on the head position, and ask again — the session re-derives as the tree moves. No arguments.")
         ),
         ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))
+      ]),
+      JObj([
+        ("name", JStr("map")),
+        (
+          "description",
+          JStr("The read path by part — PLAN.md (the substance) and docs/SYNTAX.md (the surface) listed by heading and by PLAN §11's steps, each with its line and size; with a section, the one part it names by id (§11.2, S7.3), by title, or by a word it holds. The same read `mentl map [section]` serves.")
+        ),
+        (
+          "inputSchema",
+          JObj([("type", JStr("object")), ("properties", JObj([("section", JObj([("type", JStr("string"))]))]))])
+        )
       ])
     ])
   )
@@ -485,10 +498,29 @@ fn mcp_tool_call(id, params, at_read) = {
         ),
       }
     },
+    // The documents need no project: the map answers in any session.
+    "map" => {
+      let section = match json_obj_get(params, "arguments") {
+        Some(args) => match json_obj_get(args, "section") {
+          Some(JStr(s)) => Some(s),
+          None | Some(_) => None,
+        },
+        None => None,
+      }
+      match read_path_map(section) ~> wasi_filesystem {
+        (text, code) => mcp_response(
+          id,
+          JObj([
+            ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
+            ("isError", JBool(code != 0))
+          ])
+        ),
+      }
+    },
     _ => mcp_error(
       id,
       -32602,
-      "unknown tool: {name} — the server serves propose, query, at, frontier, audit, and teach"
+      "unknown tool: {name} — the server serves propose, query, at, frontier, audit, teach, and map"
     ),
   }
 }

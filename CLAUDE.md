@@ -1,14 +1,19 @@
 # Mentl — CLAUDE.md · how to work
 
-Three documents, read whole every session: this one (the method), **`PLAN.md`**
-(the substance — thesis, kernel, decisions, §7 the state, §11 the one list of
-open work) and **`docs/SYNTAX.md`** (the surface — the authority on the
-language's form). Nothing else is read-path. History is `git log`; the pin
-chain is `boot/PROVENANCE.md`; what the program has not reached is measured by
-the medium itself (`mentl verify`, `mentl query`), never kept as prose.
-
-@PLAN.md
-@docs/SYNTAX.md
+Three documents. This one, the method, is read whole every session.
+**`PLAN.md`** (the substance — thesis, kernel, decisions, §7 the state, §11 the
+one list of open work) and **`docs/SYNTAX.md`** (the surface — the authority on
+the language's form) are read by part: the session starts with their map, a
+line per heading and per §11 step with its line and size (`mentl map`), and
+`mentl map <id, title or word>` serves one part (`mentl map §11.1`, `mentl map
+"Resume discipline"`, a label; the same read over `mentl mcp`). A landing reads
+PLAN §0 and its §11 step, then every part it touches, before it acts; an agent
+is briefed with the parts it reads, never the documents whole. Nothing else is
+read-path. History is `git log`; the pin chain is `boot/PROVENANCE.md`; what
+the program has not reached is measured by the medium itself (`mentl verify`,
+`mentl query`), never kept as prose. The map stands while landings read
+through it spend less context than loading the documents whole did (363,609
+bytes at every session's start, 2026-10-26) and land as well.
 
 ## The one law
 
@@ -40,52 +45,25 @@ names the property, the verb that shows it, the measurement that was RED
 before, and the pin. A change no person can feel at the keyboard is either
 infrastructure a named PLAN §11 landing stands on, or it is not done.
 
-## What the hooks refuse — the exact rules
+## The hooks
 
-`.claude/settings.json` wires four hooks; each refuses with exit 2 and says
-why. There is no flag past any of them.
-
-- **Searching `.mn` source by hand** (`tools/hooks/medium_first.py`, before
-  every Grep and Bash call). The Grep tool is refused when its `glob` names
-  `.mn` or is `*`/`**`, when its `path` is `src`, `lib` or a `.mn` file, or when
-  it has no `path`, `glob` or `type` at all; give it a `path` outside `src/`
-  and `lib/`, a `glob` such as `*.md`, or a `type`. In Bash, `grep`, `rg`,
-  `ag`, `ack` and `git grep` are refused when an operand names `.mn`, `src` or
-  `lib`, and `rg`/`ag`/`ack` with no path are refused at the repository root
-  unless a filter excludes `.mn`; a `grep` filtering another command's output
-  passes. The confession: a Bash search carrying `# verb-gap: <facet>` passes
-  and the facet lands in `.build/verb-gaps.log`; a question no verb answers is
-  a missing facet, grown in `src/` in the same landing.
-- **Writing `.mn` source from the shell** (same hook): `sed -i`, `perl -i`,
-  `tee`, `cp`, `mv`, `install`, a `>`/`>>` redirect, or a python/node script
-  that writes a `.mn` path. The writers are the Edit and Write tools and the
-  verbs that write their own fixpoint (`mentl fmt`, `mentl tighten`,
-  `mentl accept`, `mentl rename`). Shell writes to `.md` files pass.
-- **Editing a wheel file the medium was not asked about**
-  (`tools/consult-gate.sh`, before every Edit/Write of `src/**.mn` or
-  `lib/**.mn`): refused until a `mentl` command whose text names that path has
-  run this session (`mentl check src/x.mn` is the cheapest; an answer with
-  errors still counts). The ledger `.build/consult` resets at session start.
-  Tests, docs and tools are not gated.
-- **A drift pattern in an edited `.mn`** (`tools/hooks/post_edit_drift.sh`,
-  after every Edit/Write): `tools/drift-audit.sh` runs on the file and the
-  named drift mode is shown; `tools/drift-patterns.tsv` holds the patterns.
+`.claude/settings.json` wires the hooks, and each refusal states its rule and
+the way past it; there is no flag past any of them. A search of `.mn` source
+by hand and a shell write to it are refused (`tools/hooks/medium_first.py`); a
+wheel file is edited only after a `mentl` command naming its path ran this
+session (`tools/consult-gate.sh`); an edited `.mn` is drift-audited
+(`tools/hooks/post_edit_drift.sh`); a session starts with the map.
 
 **The commit boundary** (`.githooks/pre-commit`, installed by
-`tools/setup-git-hooks.sh`; never `--no-verify`): the obey gate
-(`tools/obey-gate.py`) refuses a ceiling raised in `src/board.mn` or a
-`*_max:` raised in `tools/verify-baseline.txt`, a bound deleted (unless its
-ceiling was 0), a new `frontier_expected_red:`, more `drift-audit: ignore`
-markers, a record of a partial or unlanded landing in any `.md`, a new `.sh`
-`.py` `.js` `.mjs` `.ts` file outside `ide/`, a new `.md` file, or more lines
-under `tools/`; then `mentl fmt` rewrites each staged `src/` or `lib/` file in
-place and re-stages it (a partially staged file is skipped, a file the parser
-refuses is restored); the drift audit runs on every staged `.mn`;
-`tools/verify.sh` runs when compiler source is staged (stamped — an unchanged
-tree answers at once); and a compiler commit needs `.build/frontier-stamp` to
-equal the boot's sha, which only a green `tools/frontier-gate.sh` writes. A
-docs-only commit runs the obey gate alone, and verify's stamp keys on no
-document, so after a docs edit run `bash tools/doc-truth.sh` yourself.
+`tools/setup-git-hooks.sh`; never `--no-verify`) runs the obey gate
+(`tools/obey-gate.py`: a raised ceiling, a deleted bound, a new expected red or
+silencer, a record of a partial landing, a new script or `.md` file, or more
+lines under `tools/` refuses), formats each staged `src/` and `lib/` file,
+drift-audits each staged `.mn`, runs `tools/verify.sh` when compiler source is
+staged, and needs `.build/frontier-stamp` to equal the boot's sha for a
+compiler commit, which only a green `tools/frontier-gate.sh` writes. A
+docs-only commit runs the obey gate alone: run `bash tools/doc-truth.sh`
+yourself.
 
 ## The candidate compiler
 
@@ -197,8 +175,8 @@ size, and nothing a commit writes moves it.
   are deleted on sight (`mentl query src/main.mn unreachable`, `census`,
   `mentl verify`).
 - **Agents are for breadth only** — reading, fixtures — with the model passed
-  explicitly; never to review a design or a document. The artifact is the
-  refuter.
+  explicitly, starting from the map and the parts their brief names; never to
+  review a design or a document. The artifact is the refuter.
 
 ## No unfinished work
 

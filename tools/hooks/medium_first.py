@@ -235,7 +235,7 @@ def main():
         else:
             scoped = True
         if scoped:
-            refuse("the Grep tool is searching .mn source by hand.")
+            refuse("the Grep tool is searching .mn source by hand; scope it with a glob such as *.md, a type, or a path outside src/ and lib/.")
         sys.exit(0)
     if tool == "Bash":
         command = args.get("command", "") or ""
@@ -245,7 +245,7 @@ def main():
             sys.stderr.write(
                 "medium-first: a shell write to .mn source (%s). Edit .mn through the Edit\n"
                 "tool, where the drift audit fires, or through a verb that writes its own\n"
-                "fixpoint (mentl fmt, mentl tighten, mentl accept).\n" % writes[0][:80])
+                "fixpoint (mentl fmt, tighten, accept, rename); a shell write to .md passes.\n" % writes[0][:80])
             sys.exit(2)
         if any(bash_search(s) for s in segs):
             if confess(command):

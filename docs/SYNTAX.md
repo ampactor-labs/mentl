@@ -2,9 +2,10 @@
 
 > *The form that best translates intent into computation.*
 
-> **One of the three documents (the contract).** Mentl's read-path is exactly
-> three self-contained docs — `CLAUDE.md` (*method*), `PLAN.md` (*substance*),
-> and this one, `SYNTAX.md` (*surface*). This file is the **authority on syntax**
+> **One of the three documents (the contract).** Mentl's read path is exactly
+> three documents — `CLAUDE.md` (*method*), read whole, and `PLAN.md`
+> (*substance*) and this one, `SYNTAX.md` (*surface*), read by part through
+> `mentl map`, each `##` and `###` heading a part. This file is the **authority on syntax**
 > and supersedes any syntactic claim in the other two. For *what Mentl is*, the
 > kernel, and the resolved design decisions, see `PLAN.md`; for *how to work*,
 > `CLAUDE.md`. The former `docs/**` corpus (DESIGN.md, SUBSTRATE.md, the per-

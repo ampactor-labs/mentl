@@ -77,6 +77,7 @@ mentl audit <path>              the capability set, and the !E claims the file c
 mentl query <path> <question>   why, type, effects, ownership, unreachable declarations, census
 mentl test [dir]                judge every fixture in a directory against its first-line contract
 mentl new <name>                write <name>.mn in the current directory
+mentl map [part]                PLAN and SYNTAX by part: the map of their headings, or one part by id, title or word
 mentl mcp                       serve the proof gate as an MCP server on stdio
 mentl help                      the full table: also tighten, where, why, teach, doc, accept, rename,
                                 resume, session, serve, repl, asm, march and verify
@@ -131,20 +132,19 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 
 PLAN.md §11 is the one ordered list, each step reading only what an earlier one built:
 
-1. The read path is a map: the documents served by section, so a session loads what it reads.
-2. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality, every trap the emit writes said), the reach one walk.
-3. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle and a witness that searches boundary inputs.
-4. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
-5. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
-6. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
-7. Edits that cost what they change, and the page that plays the course.
-8. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
-9. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
-10. `!Outside` closes: the native backend and diverse double compilation.
+1. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality, every trap the emit writes said), the reach one walk.
+2. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle and a witness that searches boundary inputs.
+3. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
+4. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
+5. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
+6. Edits that cost what they change, and the page that plays the course.
+7. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
+8. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
+9. `!Outside` closes: the native backend and diverse double compilation.
 
 ## Documents
 
-Three documents are the read-path: [CLAUDE.md](CLAUDE.md), the method for changing the compiler; [PLAN.md](PLAN.md), the thesis, the design decisions, what the code has not reached (§7) and the open work (§11); and [docs/SYNTAX.md](docs/SYNTAX.md), the authority on the language's form. [lib/dsp/README.md](lib/dsp/README.md) shows the feedback verb `<~` on audio, [lib/ml/README.md](lib/ml/README.md) the derivative reading, and [ide/README.md](ide/README.md) the browser IDE. History is `git log`.
+Three documents are the read-path: [CLAUDE.md](CLAUDE.md), the method for changing the compiler, read whole; [PLAN.md](PLAN.md), the thesis, the design decisions, what the code has not reached (§7) and the open work (§11); and [docs/SYNTAX.md](docs/SYNTAX.md), the authority on the language's form — the last two read by part through `mentl map`. [lib/dsp/README.md](lib/dsp/README.md) shows the feedback verb `<~` on audio, [lib/ml/README.md](lib/ml/README.md) the derivative reading, and [ide/README.md](ide/README.md) the browser IDE. History is `git log`.
 
 ## License
 

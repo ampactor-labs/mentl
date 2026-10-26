@@ -1,7 +1,8 @@
 # Mentl — agent entry point
 
-This file is a pointer, not a second rulebook. Read three documents, whole,
-before proposing any edit:
+This file is a pointer, not a second rulebook. Read CLAUDE.md whole and the
+other two by part — `mentl map` lists their parts, `mentl map <id>` serves one
+— before proposing any edit:
 
 - **`CLAUDE.md`** — the method: the one law, the thesis as every landing's
   acceptance test, the medium asked before any edit, the loop.

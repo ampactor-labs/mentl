@@ -12,10 +12,6 @@
 #      name exists on disk — the verification surface (PLAN §8) and the
 #      README's command blocks are the outsider's path; a command that does
 #      not exist is a broken promise.
-#
-# Scaffold tier (PLAN §6): dissolves into docs-as-projection + `mentl audit`
-# (the state sections generated from the graph make checks 1-2 vacuous; the
-# comment-refs machinery generalized to doc anchors absorbs check 3).
 set -u
 cd "$(dirname "$0")/.." || exit 2
 fail=0
@@ -103,6 +99,13 @@ else
   done
 fi
 
+# EVERY `§` A DOCUMENT CITES IS A PART THE MAP SERVES (`mentl map`): a step
+# renumbered or a section renamed leaves no citation pointing at nothing.
+map=$(mentl map 2>/dev/null)
+for c in $( { cat PLAN.md CLAUDE.md README.md AGENTS.md; grep -oE 'PLAN(\.md)?`? §[0-9][0-9.A-Z]*' docs/SYNTAX.md; } | grep -oE '§[0-9]+(\.[0-9]+|\.[A-Z])?' | sort -u); do
+  printf '%s\n' "$map" | grep -qE "^ *${c//./\\.} " || { echo "doc-truth: the documents cite $c and the map serves no such part"; fail=1; }
+done
+
 # PLAN §11 IS THE ONLY LIST OF OPEN WORK (CLAUDE.md): a `Hβ.*` label names a
 # landing's design, so one a document names and PLAN does not is work recorded
 # outside the list. Source comments carry labels too, trued module by module
@@ -129,12 +132,8 @@ for c in $(grep -rhoE '[A-Za-z0-9_/-]+\.md' --include='*.mn' src lib 2>/dev/null
   fail=1
 done
 
-# THE PROJECT'S OWN NAME, for the same reason and at Morgan's catch: `Lux`
-# survived in five module headers ("Lux DSP Framework", "Lux ML framework",
-# and a `signal.lux` that named an extension three renames dead) long after
-# Inka -> Mentl. A dead name in a header is the identity equivalent of a
-# dangling citation. `Inka-era` stays sayable — naming a deleted era is
-# history, not a live referent.
+# THE PROJECT'S OWN NAME: a retired identity (`Lux`, `Inka`) in a header is a
+# dangling citation; `Inka-era` names a deleted era and stays sayable.
 for dead in $(grep -rnoE '\b(Lux|Inka)\b(-era)?' --include='*.mn' src lib 2>/dev/null | grep -v -- '-era' | head -20); do
   echo "doc-truth: source names a retired project identity at $dead — the project is Mentl"
   fail=1

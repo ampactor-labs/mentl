@@ -1,0 +1,254 @@
+// sections.mn — the read path, by section (`mentl map`)
+//
+// A session reads CLAUDE.md whole and reaches PLAN.md and docs/SYNTAX.md
+// through their parts: the map is a line per heading and per numbered
+// paragraph its bold words lead (PLAN §11's steps, §9's laws), each with
+// the line it starts at and its size, and a part is served by its id, its
+// title or a word it holds. The map is read off the documents' own lines
+// each time it is asked, so it never falls out of step with them.
+import fs
+
+import lists
+
+import strings
+
+// The documents the map holds, in the order it lists them.
+fn read_path_docs() = ["PLAN.md", "docs/SYNTAX.md"]
+
+// Where the documents stand: the home the install shim mounts, so a project
+// anywhere reads the medium's own documents, else the working directory,
+// where a compiler run in the repository finds them.
+fn read_path_root() = if fs_exists("/mentl-home/PLAN.md") { "/mentl-home/" } else { "" }
+
+// A part of a document the map lists: the document, its id (a PLAN heading's
+// own `§` number, else its place among its siblings under its parent's id,
+// `S3.2`, PLAN §11's step N `§11.N`), its title, its
+// depth (the document 1, a `##` 2, a `###` or a paragraph under a `##` 3),
+// the line it starts at, counted from 1, and its lines, its parts included.
+type DocSection = {depth: Int, doc: String, id: String, line: Int, text: [String], title: String}
+
+// Where a part starts, read in one pass over the lines.
+type DocMark
+  // a heading: its line, its level (the count of its `#`s) and its words
+  = HeadingAt(Int, Int, String)
+  // a numbered paragraph led by bold words: its first and last line
+  | ItemAt(Int, Int)
+
+// The map, or the part a name answers: the text and the exit code, 1 where
+// nothing answers.
+fn read_path_map(name) = {
+  let root = read_path_root()
+  if fs_exists("{root}PLAN.md") {
+    let parts = read_path_docs() |> flat_map({ doc => doc_sections(doc, fs_read_file("{root}{doc}")) })
+    match name {
+      None => ("{read_path_lede()}{parts |> map(index_line) |> join("\n")}\n", 0),
+      Some(words) => serve_named(words, parts),
+    }
+  } else {
+    (
+      "the read path's documents are not here: PLAN.md stands neither in the installed home nor in this directory\n",
+      1
+    )
+  }
+}
+
+fn read_path_lede() =
+  "The read path by part — each line its id, its title, the line it starts at and its size. `mentl map <id, title or word>` serves one; a document's name serves it whole. CLAUDE.md, the method, is read whole.\n"
+
+// A document's parts, in the order they stand: each heading with every line
+// up to the next heading as high as it, and each numbered paragraph with the
+// lines its body is indented under it.
+fn doc_sections(doc: String, body: String) = {
+  let ls = lines(body)
+  let marks = doc_marks(ls)
+  let placed =
+    fold({out: [], parents: [{count: 0, id: doc, level: 1}]}, place_mark(doc, ls, marks, ??, ??), marks)
+  placed.out
+}
+
+// The marks of a document's lines. A fence opened at the margin holds code,
+// whose `#` is no heading; a numbered paragraph reaches every blank or
+// indented line until the next line at the margin.
+fn doc_marks(ls) =
+  (enumerate(ls) |> fold({fenced: false, marks: [], open: None}, scan_doc_line) |> close_open_item).marks
+
+fn scan_doc_line(scan, entry) = match entry {
+  (i, line) => if byte_len(trim(line)) == 0 {
+    scan
+  } else if byte_at(line, 0) == 32 {
+    {...scan, open: extend_open_item(scan.open, i)}
+  } else {
+    let closed = close_open_item(scan)
+    if starts_with(line, "```") {
+      {...closed, fenced: !closed.fenced}
+    } else if closed.fenced {
+      closed
+    } else {
+      match heading_mark_at(i, line) {
+        Some(mark) => {...closed, marks: push(closed.marks, mark)},
+        None => {...closed, open: numbered_item_at(i, line)},
+      }
+    }
+  },
+}
+
+fn extend_open_item(open, i) = match open {
+  Some((at, _)) => Some((at, i)),
+  None => None,
+}
+
+fn close_open_item(scan) = match scan.open {
+  Some((at, end_at)) => {...scan, marks: push(scan.marks, ItemAt(at, end_at)), open: None},
+  None => scan,
+}
+
+// A heading: one or more `#`s, a space, its words.
+fn heading_mark_at(i, line) = {
+  let p = index_of(line, " ")
+  if p > 0 && all(is_hash_byte, str_slice(line, 0, p)) {
+    Some(HeadingAt(i, p, trim(str_slice(line, p + 1, byte_len(line)))))
+  } else {
+    None
+  }
+}
+
+// A numbered paragraph led by bold words: `11. **The words.** …`.
+fn numbered_item_at(i, line) = {
+  let p = index_of(line, ". **")
+  if p > 0 && all(is_digit_byte, str_slice(line, 0, p)) { Some((i, i)) } else { None }
+}
+
+// A numbered paragraph's title: its bold words, read across the lines they
+// wrap over, a full stop ending them dropped.
+fn bold_words(text) = {
+  let joined = text |> map(trim) |> join(" ")
+  let rest = str_slice(joined, index_of(joined, ". **") + 4, byte_len(joined))
+  let q = index_of(rest, "**")
+  let words = if q >= 0 { str_slice(rest, 0, q) } else { rest }
+  if ends_with(words, ".") { str_slice(words, 0, byte_len(words) - 1) } else { words }
+}
+
+fn is_hash_byte(b) with Pure = b == 35
+
+fn is_digit_byte(b) with Pure = b >= 48 && b <= 57
+
+// A mark placed among the parts: a heading closes every part as deep as it
+// and opens one, a numbered paragraph is a part of the heading it stands
+// under.
+fn place_mark(doc: String, ls, marks, placed, mark) = match mark {
+  HeadingAt(at, level, words) => {
+    let up = filter({ p => p.level < level }, placed.parents)
+    let (id, title, parents) = heading_place(doc, up, level, words)
+    {
+      out: push(
+        placed.out,
+        {
+          depth: level,
+          doc,
+          id,
+          line: at + 1,
+          text: slice(ls, at, heading_end(marks, at, level, len(ls))),
+          title,
+        }
+      ),
+      parents: push(parents, {count: 0, id, level}),
+    }
+  },
+  ItemAt(at, end_at) => {
+    let text = slice(ls, at, end_at + 1)
+    let (id, parents) = next_child(placed.parents)
+    {
+      out: push(
+        placed.out,
+        {depth: last(parents).level + 1, doc, id, line: at + 1, text, title: bold_words(text)}
+      ),
+      parents,
+    }
+  },
+}
+
+// A heading's id and title: PLAN writes its number before ` · `; any other
+// heading takes its place among its siblings. A document's own heading is
+// its name.
+fn heading_place(doc: String, up, level, words: String) = {
+  let dot = index_of(words, " · ")
+  if level == 1 {
+    (doc, words, [])
+  } else if starts_with(words, "§") && dot > 0 {
+    (str_slice(words, 0, dot), str_slice(words, dot + 4, byte_len(words)), up)
+  } else {
+    let (id, parents) = next_child(up)
+    (id, words, parents)
+  }
+}
+
+// The id of the next part under the innermost open heading — its place among
+// its siblings, so PLAN §11's step N is §11.N — and the headings with that
+// place taken.
+fn next_child(parents) = {
+  let parent = last(parents)
+  let k = parent.count + 1
+  let id = if parent.level == 1 { "S{k}" } else { "{parent.id}.{k}" }
+  (id, push(drop_last(parents), {...parent, count: k}))
+}
+
+// The line a heading's part ends before: the next heading as high as it.
+fn heading_end(marks, at, level, n) = match find(ends_heading(at, level, ??), marks) {
+  Some(HeadingAt(next, _, _)) => next,
+  Some(ItemAt(_, _)) | None => n,
+}
+
+fn ends_heading(at, level, mark) = match mark {
+  HeadingAt(next, l, _) => next > at && l <= level,
+  ItemAt(_, _) => false,
+}
+
+fn index_line(part) = if part.depth == 1 {
+  "{part.doc} · {part_kb(part)} KB"
+} else {
+  "{join("", repeat(part.depth - 2, "  "))}{part.id} {part.title} · {part.line} · {part_kb(part)} KB"
+}
+
+fn part_kb(part) = (fold(0, add_line_bytes, part.text) + 1023) / 1024
+
+fn add_line_bytes(n, line) = n + byte_len(line) + 1
+
+// The part a name answers: by id, else by title, else the titles holding
+// it, else the innermost parts whose lines hold it — case set aside.
+fn serve_named(name: String, parts) = match parts_named(ascii_lowered(trim(name)), parts) {
+  [] => ("no part of the read path is named `{name}` or holds it — `mentl map` lists the parts\n", 1),
+  [part] => ("{part.doc}:{part.line} {part.id} · {part.title}\n{join("\n", part.text)}\n", 0),
+  found @ [_, _, ..._] => ("{len(found)} parts answer `{name}`:\n{found |> map(found_line) |> join("\n")}\n", 0),
+}
+
+fn found_line(part) = "  {part.doc}:{part.line} {part.id} {part.title} · {part_kb(part)} KB"
+
+fn parts_named(key, parts) = match filter(id_is(key, ??), parts) {
+  [] => match filter(title_is(key, ??), parts) {
+    [] => match filter(title_holds(key, ??), parts) {
+      [] => innermost_parts(filter(text_holds(key, ??), parts)),
+      found @ [_, ..._] => found,
+    },
+    found @ [_, ..._] => found,
+  },
+  found @ [_, ..._] => found,
+}
+
+fn id_is(key, part) = ascii_lowered(part.id) == key
+
+fn title_is(key, part) = ascii_lowered(part.title) == key
+
+fn title_holds(key, part) = contains(ascii_lowered(part.title), key)
+
+// A word a part holds; a document is never served for a word, only by name.
+fn text_holds(key, part) =
+  part.depth > 1 && any({ line => contains(ascii_lowered(line), key) }, part.text)
+
+fn innermost_parts(found) = filter({ outer => !any(holds_part(outer, ??), found) }, found)
+
+fn holds_part(outer, inner) =
+  outer.doc == inner.doc && outer.line <= inner.line && inner.line + len(inner.text) <= outer.line + len(outer.text) && len(inner.text) < len(outer.text)
+
+fn ascii_lowered(s: String) -> String = map(ascii_lower_byte, s)
+
+fn ascii_lower_byte(b) = if b >= 65 && b <= 90 { b + 32 } else { b }

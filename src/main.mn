@@ -79,6 +79,8 @@ import query
 
 import rename
 
+import sections
+
 import space
 
 import synth_proposer
@@ -133,6 +135,7 @@ fn main(argv) = match parse_cli_args(argv) {
 fn dispatch_invocation(verb) = match verb {
   VEdit(target) => edit_run(target),
   VDoc(target) => doc_run(target),
+  VMap(name) => map_run(name),
   VServe => serve_run(),
   VSpace(addr) => space_run(addr),
   VTighten(target) => tighten_run(target),
@@ -1066,6 +1069,15 @@ fn doc_run(target_opt) = {
   0
 }
 
+// The read path by part (src/sections.mn): the map, or the part a name
+// answers, on stdout.
+fn map_run(name) = match read_path_map(name) ~> wasi_filesystem {
+  (text, code) => {
+    print_string(text)
+    code
+  },
+}
+
 // The documentation projection: the entry module's declarations, each with
 // its judged type and the first line of its attached prose — the weave's
 // comment cells read back, the same edge `mentl <file:line>` speaks as
@@ -1329,8 +1341,8 @@ fn session_answer(line, manifest) = match parse_cli_args(session_argv(line)) {
   ParseError(_) => (session_miss(), manifest),
   Invocation(verb) => match verb {
     VAccept(target, l, c) => session_accept(target, l, c, manifest),
-    VEdit(_) | VDoc(_) | VServe | VSpace(_) | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_)
-    | VResume(_) | VCompileStdin | VRun(_, _) | VCheck(_) | VAt(_, _, _) | VRename(_, _, _, _)
+    VEdit(_) | VDoc(_) | VMap(_) | VServe | VSpace(_) | VTighten(_) | VFmt(_, _) | VCompile(_)
+    | VAsm(_) | VResume(_) | VCompileStdin | VRun(_, _) | VCheck(_) | VAt(_, _, _) | VRename(_, _, _, _)
     | VTest(_) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession
     | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
   },
@@ -1357,9 +1369,9 @@ fn session_read(verb) = match verb {
     None => teach_project(link_entry_decls()),
   },
   // The cold-only verbs answer MISS, so they take the cold path.
-  VEdit(_) | VDoc(_) | VServe | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_) | VResume(_)
-  | VCompileStdin | VRun(_, _) | VCheck(_) | VAccept(_, _, _) | VRename(_, _, _, _) | VTest(_) | VRepl
-  | VMarch | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => session_miss(),
+  VEdit(_) | VDoc(_) | VMap(_) | VServe | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_)
+  | VResume(_) | VCompileStdin | VRun(_, _) | VCheck(_) | VAccept(_, _, _) | VRename(_, _, _, _)
+  | VTest(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => session_miss(),
 }
 
 // THE SESSION'S ACCEPT. The edge is drawn and the file written exactly as

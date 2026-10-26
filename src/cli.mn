@@ -20,6 +20,8 @@ type EntryVerb
   // target optional → default "main"
   = VEdit(Option(String))
   | VDoc(Option(String))
+  // the read path by part — `mentl map [<id, title or word>]` (sections.mn)
+  | VMap(Option(String))
   | VServe
   // the View at an address — `mentl space <path>:<line>[:<col>] [<needle>]`
   // writes it as JSON (space.mn); bare `mentl space` is the page, the mentl
@@ -263,6 +265,13 @@ fn verb_specs() = [
   ),
   VerbSpec("teach", "[path]", opt_target(VTeach, ??), "the gradient narrated"),
   VerbSpec("doc", "[path]", opt_target(VDoc, ??), "documentation projection"),
+  VerbSpec(
+    "map",
+    "[<id, title or word>]",
+    // The name is every word after the verb, quoted or not.
+    { [] => Invocation(VMap(None)), words @ [_, ..._] => Invocation(VMap(Some(join(" ", words)))) },
+    "the read path by part — PLAN and SYNTAX listed by heading and by PLAN §11's steps, each with its line and size; a name serves the one part it answers"
+  ),
   VerbSpec("test", "[path]", opt_path(VTest, ??), "the test chain"),
   VerbSpec(
     "new",

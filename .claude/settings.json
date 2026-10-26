@@ -46,6 +46,10 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/tools/consult-gate.sh\" reset"
+          },
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && mentl map"
           }
         ]
       }
