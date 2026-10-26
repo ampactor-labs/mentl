@@ -59,7 +59,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 source "$ROOT/tools/wt-env.sh"
 
-BOOT="$ROOT/boot/mentl.wasm"
+BOOT="${MENTL_BOOT:-$ROOT/boot/mentl.wasm}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 fail=0
 say() { printf '%s\n' "$*"; }

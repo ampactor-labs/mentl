@@ -41,6 +41,9 @@ type EntryVerb
   // target, then the program's own argv (everything after the target — the
   // executor hands it to the program as its args, NUL-joined at the seam)
   | VRun(String, [String])
+  // the landing pass — the mentl command's: the gates it sequences are
+  // processes, which a WASI module cannot spawn
+  | VLand
   // no target judges the PROJECT (its main, wherever the resolver finds it);
   // a target judges that entry's link — every module of it reports either way
   | VCheck(Option(String))
@@ -316,6 +319,12 @@ fn verb_specs() = [
     "[path]",
     opt_target(VVerify, ??),
     "the standing bounds the medium keeps on its own source — a rise REFUSES"
+  ),
+  VerbSpec(
+    "land",
+    "[--quick | --board]",
+    bare_verb(VLand, ??),
+    "the landing pass — the mentl command judges the compiler this tree compiles to, cheapest first, stops at the first red and pins it once, every gate's verdict kept by the bytes it judged; --quick: where the tree stands; --board: every gate on the pinned boot"
   ),
   VerbSpec(
     "mcp",

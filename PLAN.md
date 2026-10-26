@@ -7,7 +7,7 @@
 > and the others point to it. CLAUDE.md is read whole; this file and SYNTAX
 > are read by part, through the map `mentl map` projects from their headings. History is `git log`, the pin chain is
 > `boot/PROVENANCE.md`, and the board's numbers are the medium's to report
-> (`bash tools/state.sh`, `mentl verify`), never this file's. A landing that
+> (`mentl land`, `mentl verify`), never this file's. A landing that
 > lands deletes its §11 paragraph and trues §7 in the same commit.
 
 ---
@@ -673,7 +673,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 ## §8 · Verification surface
 
 ```
-bash tools/state.sh                 # THE BOARD, ground first: verify, march, frontier, proof-exactness, crown, effect identity, threads, ide — one scoreboard; --quick = verify only
+mentl land [--quick | --board]      # the landing pass: this tree's compiler judged cheapest first, stopping at the first red — verify, march, frontier, proof-exactness, crown, effect identity, threads, ide — every verdict kept by the bytes it judged, pinned once; --quick = verify only; --board = the board on the pinned boot
 mentl verify [path]                 # the standing bounds on the medium's own source (src/board.mn), read off one judged graph; a rise refuses
 mentl check [path]                  # every module of the link judged, no emit; no path: the project
 mentl query <entry> <question>      # refs of NAME · unreachable · unreferenced · census <shape> · ghosts · imports · performs · smt · text · prose · writes of · reads of · provider of · heads · env · reports · owed <dir>
@@ -763,12 +763,12 @@ type) · a blind token-walk absorber eating comma-less siblings.
 1. Read `CLAUDE.md` whole and the map the session starts with (`mentl map`),
    then PLAN §0, §11's first step and every part of PLAN and SYNTAX the step
    touches (`mentl map <id>`). That is the entire required context.
-2. Run `bash tools/state.sh --quick`; trust the artifact over any prose here,
+2. Run `mentl land --quick`; trust the artifact over any prose here,
    and fix the prose where they disagree.
 3. Take §11's first item. Ask the medium about every structure it touches —
    `mentl query`, `where`, `why`, `<file:line>` — before any edit.
-4. Build the landing whole, prove it on the board, repin if the wheel moved,
-   commit on main, push, and delete the item's paragraph from §11.
+4. Build the landing whole, prove and pin it with `mentl land`, commit on
+   main, push, and delete the item's paragraph from §11.
 
 ---
 
@@ -1304,9 +1304,9 @@ the face (step 3) cut the last three.
    2's lowering column; diverse double compilation
    (`Hβ.closure.diverse-double-compilation`) compiles the wheel through two
    independent projections and compares them; and every scaffold under
-   tools/ is absorbed into a verb — the march is `mentl march` and the board
-   `mentl verify` already; the state script is next, and the loop then names
-   no script.
+   tools/ is absorbed into a verb — the march is `mentl march`, the board
+   `mentl verify` and the landing pass `mentl land`, so the loop names no
+   script; the gates `mentl land` sequences on the host are next.
 
 ---
 

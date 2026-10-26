@@ -18,9 +18,9 @@ fs_impl_bypass_max: 0
 # turns it green and deletes this line.
 frontier_expected_red: why-coordinates
 
-# The distinct tools/*.sh scripts CLAUDE.md's «The loop» names; it falls only
-# when a verb replaces a script.
-loop_scaffold_refs_max: 2
+# The distinct tools/*.sh scripts CLAUDE.md's «The loop» names; it falls when a
+# verb replaces a script (2 -> 0, 2026-10-26: `mentl land` runs board and pin).
+loop_scaffold_refs_max: 0
 
 # The prelude names the desugar mints as string literals in the compiler's
 # modules: the lowering's name-keyed contract with lib/. A change is decided

@@ -474,7 +474,7 @@ wt_memo_key() {  # wt_memo_key <input>... — a file, a directory, or =literal
         [ -f "$x" ] && sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$x" ;;
       *)
         if [ -d "$x" ]; then
-          find "$x" -type f ! -path '*/node_modules/*' ! -path '*/target/*' -print0 \
+          find "$x" -type f ! -path '*/node_modules/*' ! -path '*/target/*' ! -path '*/.build/*' ! -path '*/__pycache__/*' -print0 \
             | LC_ALL=C sort -z | xargs -0 -r sha256sum
         elif [ -f "$x" ]; then
           # CONTENT ONLY for a named file: the same compiler bytes reached as

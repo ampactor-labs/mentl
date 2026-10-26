@@ -77,7 +77,7 @@ esac
 # read back instead of re-derived; a byte-identical repin used to pay this
 # whole gate a second time. FORCE_GATES=1 re-runs it.
 frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide examples tools/frontier-gate.sh tools/verify-baseline.txt)
-if frontier_memo=$(wt_memo_hit "frontier-$selection" "$frontier_key"); then
+if frontier_memo=$(wt_memo_hit frontier "$frontier_key"); then
   printf '%s\n' "$frontier_memo"
   echo "  (memo: these compilers already ran every leg against these inputs green — FORCE_GATES=1 re-runs)"
   sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
@@ -4951,7 +4951,7 @@ echo "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
 # zero here is the strong form, not the unreachable one it was this morning.
 if [ "$total_fail" -eq 0 ]; then
   sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
-  wt_memo_put "frontier-$selection" "$frontier_key" "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
+  wt_memo_put frontier "$frontier_key" "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
 else
   rm -f "$ROOT/.build/frontier-stamp"
 fi

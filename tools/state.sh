@@ -1,77 +1,96 @@
 #!/usr/bin/env bash
-# tools/state.sh — THE BOARD: ground in reality, then every gate the repo
-# owns, one scoreboard. This file only SEQUENCES — each check lives in
-# exactly one home (verify.sh: micros + census, stamped; march.sh: the
-# fixpoint ratchet; frontier-gate.sh: the scheduled/authoring contracts;
-# proof-exactness-gate.sh: hole-refuses/debt-surfaces/suspension-runs;
-# crown-gate.sh: !E soundness; effect-identity-gate.sh: Fail≠Abort).
-# The board's shape mirrors its successor — the medium's own verify verb
-# (PLAN §6: the bash scaffolds dissolve at L1); until then this command IS
-# "is everything true?". --quick runs verify only (the stamp makes an
-# unchanged tree instant).
+# tools/state.sh — THE BOARD, and `mentl land` (--land). It only SEQUENCES;
+# each check has one home (verify.sh: micros + census, stamped; march.sh: the
+# cost ratchets and the fixed point; the frontier, proof-exactness, crown,
+# effect-identity, instrument, thread and ide gates). --quick runs verify only.
+#
+# --land judges the CANDIDATE the tree compiles to, cheapest first, stopping
+# at the first red — self-check, format, the board's bounds (a count that fell
+# stops it there: lowering its ceiling moves the wheel every memo keys), the
+# march's ratchets and fixed point, the batteries, every gate the board holds
+# — and blesses it once, last. The board then reads each leg back from the
+# memo its candidate run left (a memo keys the bytes a leg judges, not the
+# compiler's name). A candidate that already is the boot goes to the board.
 set -u
 cd "$(dirname "$0")/.." || exit 2
+source tools/wt-env.sh
 
 reds=0
 
 # Run one gate: green → its cost lines + its last line; red → its RED lines +
-# last line. The cost lines are the march's `· cost:` (the self-compile's wall
-# and peak RSS) and `· image:` (the line peak): a green board used to print
-# neither, so a runner's reading of a boot existed only when it breached the
-# ceiling (2026-10-13 — the ceiling that is held 1% over the highest machine's
-# reading could not be set from a green run).
+# last line (the march's `· cost:` and `· image:` are printed either way).
 gate() {
   local label="$1"; shift
   echo "▸ $label"
   local out rc
-  out=$("$@" 2>&1); rc=$?
+  out=$("$@" 2>&1); rc=$?; GATE_OUT=$out
+  GATE_LAST=$(echo "$out" | tail -1)
   if [ "$rc" -eq 0 ]; then
-    echo "$out" | grep -E "^· cost:|^· image:" | sed 's/^/    /'
-    echo "$out" | tail -1 | sed 's/^/    /'
+    echo "$out" | grep -E "^· cost:|^· image:|FELL|TIGHTENED" | sed 's/^ */    /'
+    echo "    ${GATE_LAST:-✓ (green, silent)}"
   else
     echo "$out" | grep -E "RED|✗|FAIL" | head -8 | sed 's/^/    /'
-    echo "$out" | tail -1 | sed 's/^/    /'
+    echo "    $GATE_LAST"
     reds=$((reds + 1))
   fi
+  return "$rc"
 }
+
+# A gate with no memo of its own answers from one keyed by its compiler and all
+# a gate reads: the wheel, library, fixtures, page, programs, script, baseline.
+memo_gate() {  # memo_gate <label> <leg> <compiler> <script> <cmd…>
+  local label="$1" leg="$2" compiler="$3" script="$4" key v; shift 4
+  key=$(wt_memo_key_run "$compiler" src lib tests ide examples "$script" tools/verify-baseline.txt)
+  if v=$(wt_memo_hit "$leg" "$key"); then echo "▸ $label"; echo "    $v (memo: these bytes already ran green)"; return 0; fi
+  gate "$label" "$@" && wt_memo_put "$leg" "$key" "$GATE_LAST"
+}
+
+if [ "${1:-}" = "--land" ]; then
+  C=$(wt_m2_ensure) && wt_m2_place "$C" .build/probe || { echo "✗ the candidate does not build — read .build/m2cache/m2.err"; exit 1; }
+  cand="$PWD/.build/probe/m2.wasm"
+  if cmp -s "$cand" boot/mentl.wasm; then
+    echo "▸ LAND: the boot is this tree's fixed point — the board judges it"
+  else
+    step() { gate "$@" || { echo "▸ LAND STOPPED at the first red: the work is what it measures."; exit 1; }; }
+    mstep() { memo_gate "$@" || { echo "▸ LAND STOPPED at the first red: the work is what it measures."; exit 1; }; }
+    mstep "SELF-CHECK (the candidate judges its own source)" self-check "$cand" =self-check env MENTL_BOOT="$cand" mentl check src/main.mn
+    mstep "FORMAT" format "$cand" =format env MENTL_BOOT="$cand" mentl fmt --check src lib examples
+    step "BOUNDS (the candidate's census and the board's bounds)" env MENTL_BOOT="$cand" mentl verify
+    fell=$(echo "$GATE_OUT" | awk '/ — within / && $2 + 0 < $NF + 0')
+    [ -z "$fell" ] || { printf '%s\n' "$fell" "▸ LAND STOPPED: lower each fallen ceiling in src/board.mn (a dated reason), then run \`mentl land\` again."; exit 1; }
+    step "MARCH (the cost ratchets and the fixed point)" bash tools/march.sh
+    for d in micros syntax proposals teach; do step "BATTERY tests/$d" wt_battery "$cand" "tests/$d"; done
+    step "CROWN" env MENTL_BOOT="$cand" bash tools/crown-gate.sh
+    step "PROOF-EXACTNESS" bash tools/proof-exactness-gate.sh fresh
+    step "FRONTIER" bash tools/frontier-gate.sh --compiler fresh
+    step "EFFECT IDENTITY" env MENTL_BOOT="$cand" bash tools/effect-identity-gate.sh
+    mstep "INSTRUMENT" instrument "$cand" tools/instrument-gate.sh env MENTL_BOOT="$cand" bash tools/instrument-gate.sh
+    mstep "THREADS" threads "$cand" tools/thread-gate.sh env MENTL_BOOT="$cand" bash tools/thread-gate.sh
+    mstep "IDE" ide "$cand" tools/ide-gate.sh env MENTL_IDE_WASM="$cand" bash tools/ide-gate.sh
+    step "REPIN (the march blesses the candidate)" env MARCH_REPIN=1 bash tools/march.sh
+    if grep -q 'NARRATIVE UNWRITTEN' boot/PROVENANCE.md; then
+      echo "▸ LANDED at boot $(sha256sum boot/mentl.wasm | cut -c1-12): write the pin's narrative line in boot/PROVENANCE.md"
+      echo "  (what landed, the property a person sees, the verb that shows it); \`mentl land\` then reads the board back."
+      exit 0
+    fi
+  fi
+fi
 
 echo "▸ GIT"
 git log --oneline -3 | sed 's/^/    /'
 sc=$(git status --short); echo "    uncommitted: $([ -z "$sc" ] && echo none || echo "$(echo "$sc" | wc -l) file(s)")"
 [ -n "$sc" ] && echo "$sc" | sed 's/^/      /'
 
-# ─── WHICH BOOT-SUITE GATES HAVE MEASURED THIS BOOT ───────────────────
-# Runs in BOTH modes, before verify, because it is the cheapest true thing
-# the board can say and --quick used to say nothing at all. Paid for
-# 2026-08-18: an iteration grounded on `state.sh --quick`, read "verify
-# green" as "the board is green", built, marched twice, and only then
-# learned from the frontier that the prelude floor had gone RED — its own
-# doing. Six pins in a row had recorded `frontier: NOT RUN` in
-# PROVENANCE, a visible blank nobody was looking at, and the first thing
-# an iteration runs was the right place to look.
-#
-# A stamp is the gate's word that it ran against THIS boot. The frontier
-# keeps one; the board legs memoize by their inputs (below); the gates with
-# neither are named rather than silently omitted, because an unreported gate
-# stops being run (PLAN §11 tripwire 4 — the crown went eleven ledger entries
-# unmentioned while a leak rode the whole arc).
+# The cheapest true things the board can say, in both modes: whether the gate
+# that refuses commits is installed, and which boot the frontier and the
+# determinism probe last measured.
 echo "▸ STAMPS (which boot-suite gates have measured THIS boot)"
-# THE PERIMETER ITSELF IS A GATE, and it was the one nobody reported. Every
-# line below asks whether a gate has RUN; none asked whether the gate that
-# refuses commits is INSTALLED. Measured 2026-09-14: core.hooksPath was unset
-# and .git/hooks/pre-commit did not exist, so .githooks/pre-commit — whose own
-# comment claims it "survives any editor, any model, any future tooling
-# change" — had run on ZERO commits, while the frontier line below asserted
-# "the pre-commit perimeter refuses a wheel commit without it". Tripwire 4 one
-# level deeper: not a gate that stopped being reported, a gate that was never
-# switched on, and a board that spoke of it as though it were.
 hookspath=$(git config core.hooksPath 2>/dev/null)
 if [ "$hookspath" = ".githooks" ]; then
   echo "    perimeter: pre-commit INSTALLED (core.hooksPath → .githooks)"
 else
   echo "    perimeter: ✗ RED — pre-commit NOT INSTALLED (core.hooksPath='${hookspath:-unset}')"
-  echo "               drift-audit and verify refuse nothing at commit time; every"
-  echo "               gate below is advisory until this is on. bash tools/setup-git-hooks.sh"
+  echo "               every gate below is advisory until it is on: bash tools/setup-git-hooks.sh"
 fi
 boot_sha=$(sha256sum boot/mentl.wasm 2>/dev/null | cut -d' ' -f1)
 stamp=$(cat .build/frontier-stamp 2>/dev/null)
@@ -79,59 +98,32 @@ if [ -n "$boot_sha" ] && [ "$stamp" = "$boot_sha" ]; then
   echo "    frontier: green at this boot (${boot_sha:0:12})"
 else
   echo "    frontier: NOT RUN at this boot — boot ${boot_sha:0:12}, stamp ${stamp:0:12}${stamp:+ (stale)}"
-  echo "              bash tools/frontier-gate.sh  ·  the pre-commit perimeter refuses a"
-  echo "              wheel commit without it, so this blank is a landing you cannot make"
+  echo "              the pre-commit perimeter refuses a wheel commit without it"
 fi
-# Since 2026-09-26 the march's board legs memoize their green under the sha of
-# exactly what they read (.build/gate/memo, tools/wt-env.sh wt_memo_*), so
-# running one costs nothing when nothing it reads changed — the honest
-# answer to "has it run?" is to run it.
-echo "    crown · proof-exactness · effect-identity · frontier: memoized by what they read —"
-echo "              a run answers in ~0s when its inputs are unchanged (.build/gate/memo)"
-echo "    instrument · threads · ide: no memo kept — running them is the only way to know"
-# DETERMINISM IS NOT ON THIS BOARD, and saying so is the whole point of the line.
-# `march.sh` asserts m2 == m3, which IS the fixed point in the boot era. On a
-# CLEAN march the m4 leg is deductively redundant — if m2 == m3 byte-for-byte
-# then m3 IS m2, so m4 = m3(src) = m2(src) = m3 follows. What does NOT follow is
-# that the same wasm on the same input produces the same bytes, and
-# `--fixpoint` is the only thing that tests it. Measured 2026-09-21: nothing
-# invoked that flag, and the last twelve pins were all CLEAN — so the leg had
-# not run in twelve landings. Tripwire 4 one layer down: a leg that only runs on
-# FAILURE has never been exercised on SUCCESS. It is reported here rather than
-# run here, because a determinism probe is a cadence (every Nth pin, or on
-# demand) and not a per-landing cost — and an unreported absence is how the
-# crown went eleven entries unmentioned.
+# m2 == m3 is the fixed point; whether the same wasm on the same input emits
+# the same bytes is a separate question, probed on a cadence, not per landing.
 det=$(cat .build/gate/fixpoint-stamp 2>/dev/null)
 if [ -n "$boot_sha" ] && [ "$det" = "$boot_sha" ]; then
   echo "    determinism: m3 == m4 confirmed at this boot (${boot_sha:0:12})"
 else
-  echo "    determinism: NOT PROBED at this boot — m2 == m3 is the fixpoint and holds;"
-  echo "              this is the separate question of whether the same wasm on the same"
-  echo "              input emits the same bytes. bash tools/march.sh --fixpoint"
+  echo "    determinism: NOT PROBED at this boot — bash tools/march.sh --fixpoint"
 fi
 
 echo "▸ VERIFY (micros + census — stamped)"
 bash tools/verify.sh || exit 1
 
 if [ "${1:-}" != "--quick" ]; then
-  gate "MARCH (the fixpoint ratchet)"                                    bash tools/march.sh
+  boot="$PWD/boot/mentl.wasm"
+  memo_gate "MARCH (the fixpoint ratchet)" march "$boot" tools/march.sh bash tools/march.sh
   gate "FRONTIER (scheduled matrix + the ?? authoring workflows)"        bash tools/frontier-gate.sh
   gate "PROOF-EXACTNESS (hole refuses · debt surfaces · suspension runs)" bash tools/proof-exactness-gate.sh
   gate "CROWN (!E soundness crucibles)"                                  bash tools/crown-gate.sh
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
-  gate "INSTRUMENT (can the board go RED?)"                              bash tools/instrument-gate.sh
-  gate "THREADS (is the concurrency width what the source says?)"        bash tools/thread-gate.sh
-  # THE STANDING CURSOR'S OWN TERMINAL GATE, and it was not on this board.
-  # PLAN named `ide-gate green Node + headless Chrome` as the bar the whole
-  # Space spine is measured against, and asserted the resident
-  # session is "verified green across Node and headless Chrome
-  # (tools/ide-gate.sh)" — while NOTHING invoked the script: not this file,
-  # not a hook. Tripwire 4 exactly ("a gate that stops
-  # being reported stops being run"), standing on the arc the plan calls the
-  # production target, with a green claim already written over it. Its leg 2
-  # skips loudly without chrome, which is the honest shape for a board that
-  # runs on machines that may not have one.
-  gate "IDE (the resident session — node twin + headless browser)"       bash tools/ide-gate.sh
+  memo_gate "INSTRUMENT (can the board go RED?)" instrument "$boot" tools/instrument-gate.sh bash tools/instrument-gate.sh
+  memo_gate "THREADS (is the concurrency width what the source says?)" threads "$boot" tools/thread-gate.sh bash tools/thread-gate.sh
+  # The resident session's gate (node twin + headless browser); its browser
+  # leg skips loudly on a machine without one.
+  memo_gate "IDE (the resident session — node twin + headless browser)" ide "$boot" tools/ide-gate.sh bash tools/ide-gate.sh
 
   if [ "$reds" -eq 0 ]; then
     echo "▸ THE BOARD IS WHOLE — every gate green."

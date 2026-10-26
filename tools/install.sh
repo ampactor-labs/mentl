@@ -199,6 +199,8 @@ if [ "\${1:-}" = "space" ]; then
       ;;
   esac
 fi
+# mentl land [--quick | --board] — tools/state.sh: the landing pass, where the tree stands, the board.
+[ "\${1:-}" = "land" ] && exec bash "\$MENTL_HOME/tools/state.sh" "\${2:---land}"
 exec_rc=0
 mentl_wasm "\$@" || exec_rc=\$?
 exit "\$exec_rc"

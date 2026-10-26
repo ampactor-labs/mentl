@@ -156,6 +156,7 @@ fn dispatch_invocation(verb) = match verb {
   // the welcome instead of hanging on a read that never comes.
   VCompileStdin => if fd_is_tty(0) { welcome_run() } else { compile_stdin_run() },
   VRun(target, _) => run_run(target),
+  VLand => land_run(),
   VCheck(target) => check_run(target),
   VAt(target, line, col) => at_run(target, line, col),
   VAccept(target, line, col) => accept_run(target, line, col),
@@ -1204,6 +1205,15 @@ fn run_run(target) = {
   2
 }
 
+// The landing pass (`mentl land`) sequences the gates, and each gate is a
+// process: the mentl command runs them (tools/state.sh). The compiler
+// reached directly with `land` can judge the tree but never land it, and
+// says so.
+fn land_run() = {
+  eprint_string("mentl land: the host runs the landing pass — the mentl command sequences the gates, each a process; the compiler reached directly judges (mentl check, mentl verify) and never lands\n")
+  2
+}
+
 // ─── check_run — diagnostics; no emit
 //
 // Same handler chain as compile_run minus wat_stdout — the diagnostic
@@ -1341,9 +1351,9 @@ fn session_answer(line, manifest) = match parse_cli_args(session_argv(line)) {
   Invocation(verb) => match verb {
     VAccept(target, l, c) => session_accept(target, l, c, manifest),
     VEdit(_) | VDoc(_) | VMap(_) | VServe | VSpace(_) | VTighten(_) | VFmt(_, _) | VCompile(_)
-    | VAsm(_) | VResume(_) | VCompileStdin | VRun(_, _) | VCheck(_) | VAt(_, _, _) | VRename(_, _, _, _)
-    | VTest(_) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession
-    | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
+    | VAsm(_) | VResume(_) | VCompileStdin | VRun(_, _) | VLand | VCheck(_) | VAt(_, _, _)
+    | VRename(_, _, _, _) | VTest(_) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch
+    | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
   },
 }
 
@@ -1369,8 +1379,9 @@ fn session_read(verb) = match verb {
   },
   // The cold-only verbs answer MISS, so they take the cold path.
   VEdit(_) | VDoc(_) | VMap(_) | VServe | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_)
-  | VResume(_) | VCompileStdin | VRun(_, _) | VCheck(_) | VAccept(_, _, _) | VRename(_, _, _, _)
-  | VTest(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => session_miss(),
+  | VResume(_) | VCompileStdin | VRun(_, _) | VLand | VCheck(_) | VAccept(_, _, _)
+  | VRename(_, _, _, _) | VTest(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession | VNew(_)
+  | VWith(_, _) | VWelcome => session_miss(),
 }
 
 // THE SESSION'S ACCEPT. The edge is drawn and the file written exactly as

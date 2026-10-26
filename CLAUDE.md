@@ -95,9 +95,10 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
 - `mentl fmt --check` of a fixture using a form the boot cannot parse runs
   through the candidate. A probe (`.build/probe/m2.wat`) is comparable only
   within one binary; patch probes there, never in the wheel's source.
-- The gates take the candidate as `fresh`: `bash tools/proof-exactness-gate.sh
-  fresh`, `bash tools/frontier-gate.sh --compiler fresh`,
-  `MENTL_BOOT=… bash tools/crown-gate.sh`, `MENTL_BOOT=… mentl verify`.
+- `mentl land` takes every gate through the candidate; by hand a gate takes it
+  as `fresh`: `bash tools/proof-exactness-gate.sh fresh`, `bash
+  tools/frontier-gate.sh --compiler fresh`, `MENTL_BOOT=… bash
+  tools/crown-gate.sh`, `MENTL_BOOT=… mentl verify`.
 
 ## The loop
 
@@ -105,9 +106,8 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
    or a measured false proof a real program hits preempts it — a program in
    `examples/`, `lib/` or the wheel; a shape only a fixture writes joins the
    step that owns its mechanism, its fixture that step's RED (PLAN §11).
-   `bash tools/state.sh --quick`, then
-   ask the medium about every
-   file the landing touches: `mentl check <file>`, `mentl <file>:<line>`,
+   `mentl land --quick` (where the tree stands: git, the stamps, verify),
+   then ask the medium about every file the landing touches: `mentl check <file>`, `mentl <file>:<line>`,
    `mentl query src/main.mn "refs of NAME"`, `mentl where src/main.mn NAME`,
    `mentl why <file> <fn> [<Effect>]`, `mentl query src/main.mn "census
    <shape>"`, `"provider of OP"`, `"writes of FIELD"`, `"text NEEDLE"`,
@@ -118,23 +118,25 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
    (a scratch `.mn` through `mentl check` and `mentl run`), never memory.
 3. **Build the whole landing in `.mn`**, hardest piece first; a dependency the
    form needs is built in the same arc, never handed back as a question.
-4. **Prove it**, through the candidate, cheapest first: `mentl check
-   src/main.mn` 0; `mentl fmt --check src lib examples` (the boot's check once
-   passed a formatter that lost every handler arm's prose, 2026-10-16); the
-   batteries through `wt_battery`; crown, proof-exactness and frontier as
-   `fresh`; `mentl verify`; then `bash tools/state.sh` — verify, the march,
-   frontier, proof-exactness, crown, effect identity, threads, ide — one
-   scoreboard, about seven minutes. Runs that long go in the background, one
-   wheel-scale run at a time, and their output is read, never predicted. A
-   count that fell lowers its ceiling (`src/board.mn`, with a dated reason;
-   `tools/verify-baseline.txt` for the cost keys); a count that would rise
-   means the landing is reshaped.
-5. **Repin when the wheel moved.** `MARCH_REPIN=1 bash tools/march.sh`, then
-   the one narrative line replacing the march's placeholder in
-   `boot/PROVENANCE.md`. The march rules CLEAN (m2 == m3, repin from m2),
-   TRANSITION (m3 == m4, repin from m3) or BROKEN, and holds the candidate's
-   image line peak and wall against the boot on the same wheel; on a trap,
-   diff the two emits first (PLAN §8, forensics).
+4. **Prove it: `mentl land`.** It builds the candidate and judges it cheapest
+   first, stopping at the first red: `mentl check src/main.mn`; `mentl fmt
+   --check src lib examples` (the boot's check once passed a formatter that
+   lost every handler arm's prose, 2026-10-16); `mentl verify`'s bounds; the
+   march's ratchets and fixed point; the batteries; crown, proof-exactness,
+   frontier, effect identity, instrument, threads, ide. Every verdict is kept
+   by the bytes it judged, so a run after a fix pays only for what the fix
+   moved. It runs in the background, one wheel-scale run at a time, and its
+   output is read, never predicted. A count that fell stops it at the bounds:
+   lower its ceiling (`src/board.mn`, with a dated reason;
+   `tools/verify-baseline.txt` for the cost keys) and run it again; a count
+   that would rise means the landing is reshaped.
+5. **Repin: `mentl land` pins once, when every gate is green.** The march
+   rules CLEAN (m2 == m3, repin from m2), TRANSITION (m3 == m4, repin from
+   m3) or BROKEN, and holds the candidate's image line peak and wall against
+   the boot on the same wheel; on a trap, diff the two emits first (PLAN §8,
+   forensics). It stops for the one narrative line replacing the march's
+   placeholder in `boot/PROVENANCE.md`; `mentl land` again reads the board on
+   the new boot back from the kept verdicts.
 6. **Record.** The landed text leaves PLAN §11 and §7 is trued; SYNTAX where
    the surface moved; every changed claim checked against the artifact with a
    verb; a file outside PLAN cites a §11 step by its name, never its number.

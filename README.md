@@ -100,7 +100,8 @@ The open work converges on five mechanisms (PLAN.md §4⑧): every declaration p
 `.github/workflows/board.yml` runs the board on every push to main and every pull request; `.github/workflows/deploy-space.yml` publishes the browser IDE. The gates need the pinned wasmtime (`bash tools/wasmtime-get.sh`) and GNU `time`, which the march measures the self-compile under.
 
 ```sh
-bash tools/state.sh                  # the board: verify, then every gate below, one scoreboard; --quick runs verify only
+mentl land                           # the landing pass: this tree's compiler judged cheapest first, stopping at the first red,
+                                     # every verdict kept by the bytes it judged, pinned once; --quick: verify; --board: the board
 bash tools/verify.sh                 # the micro battery through the pinned boot and through this tree's compiler, the form
                                      # fixtures, the census ratchet and doc-truth; stamped, so an unchanged tree answers at once
 bash tools/march.sh                  # boot → m2 → m3, assert the fixed point (m4 on a mismatch: TRANSITION or BROKEN); the

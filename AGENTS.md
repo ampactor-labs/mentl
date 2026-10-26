@@ -19,8 +19,8 @@ wins and the document is the next thing to fix.
 ## Ground before theorizing
 
 ```
-bash tools/state.sh --quick   # verify: micros, census, ratchets, doc-truth (stamped-cheap on an unchanged tree)
-bash tools/state.sh           # the whole board
+mentl land --quick   # verify: micros, census, ratchets, doc-truth (stamped-cheap on an unchanged tree)
+mentl land           # the landing pass: this tree's compiler judged and pinned once, then the whole board
 bash tools/march.sh           # boot → m2 → m3, the fixed point
 ```
 

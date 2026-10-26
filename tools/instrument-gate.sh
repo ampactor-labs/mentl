@@ -35,7 +35,7 @@ source "$ROOT/tools/wt-env.sh"
 # because nothing ran — the gate against vacuous gates, vacuous. That is not a
 # hypothetical: it is what this script did on its first run, and only the
 # clean-program negative control exposed it. Keep the controls.
-BOOT="${INSTRUMENT_BOOT:-$ROOT/boot/mentl.wasm}"
+BOOT="${MENTL_BOOT:-$ROOT/boot/mentl.wasm}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 printf 'fn main() = 7\n'                                   > "$T/ok.mn"
 printf 'import totally/absent\nfn main() = 7\n'            > "$T/missing.mn"

@@ -42,7 +42,7 @@ pe_key=$(wt_memo_key_run "$compiler" tests/frontier/mn-hole-executable-refusal.m
   tests/frontier/mn-refine-fn-result-discharges.mn tests/frontier/mn-refine-fn-param-pending.mn \
   tests/frontier/mn-refine-fn-param-discharges.mn \
   lib tools/proof-exactness-gate.sh)
-if pe_memo=$(wt_memo_hit "proof-exactness-$label" "$pe_key"); then
+if pe_memo=$(wt_memo_hit proof-exactness "$pe_key"); then
   printf '%s\n' "$pe_memo"
   echo "  (memo: this compiler already judged these fixtures green — FORCE_GATES=1 re-runs)"
   exit 0
@@ -206,5 +206,5 @@ expect_executable \
   40
 
 echo "proof-exactness: $passes pass / $reds red"
-[ "$reds" -eq 0 ] && wt_memo_put "proof-exactness-$label" "$pe_key" "proof-exactness: $passes pass / $reds red"
+[ "$reds" -eq 0 ] && wt_memo_put proof-exactness "$pe_key" "proof-exactness: $passes pass / $reds red"
 [ "$reds" -eq 0 ]

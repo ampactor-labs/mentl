@@ -61,6 +61,10 @@ trap_lines() { grep -nE 'out of bounds|wasm trap|undefined element|unreachable|o
 # the m2 cache's (wt_m2_ensure), and the parity leg below holds the shipped
 # `compile` route to the same bytes.
 gen() { wt_wheel_root "$1" "${2%.wat}.verb" "$3" "${2%.wat}.time" "$OUT/$(basename "$2" .wat).coredump" ".build/march/m2.wat=$2" march; }  # coredump: one trap buys the whole heap autopsy (face 7 lesson)  # gen <wasm> <out.wat> <out.err>
+# A generation is its compiler's bytes and the wheel's: one this march made from
+# both is read back (`mentl land` marches before the gates and to bless after).
+gen_once() { local key; key="$(sha256sum "$1" | cut -d' ' -f1) $(wt_wheel_digest | sha256sum | cut -d' ' -f1)"
+  [ -s "$2" ] && [ "$(cat "${2%.wat}.key" 2>/dev/null)" = "$key" ] || { gen "$@" && echo "$key" > "${2%.wat}.key"; }; }
 
 # WABT disassembly, cached on the wasm's mtime (objdump on 1.7MB is slow; the
 # 500k-line dump is reused across runs until m2.wasm is rebuilt). PLAN §8: pin the
@@ -314,7 +318,7 @@ if [ -n "${PROBE:-}" ]; then
 fi
 
 # ── m3: m2 compiles the wheel — THE GATE (the trapping lambda executes here) ──
-gen "$OUT/m2.wasm" "$OUT/m3.wat" "$OUT/m3.err"; m3rc=$?
+gen_once "$OUT/m2.wasm" "$OUT/m3.wat" "$OUT/m3.err"; m3rc=$?
 echo "m3: exit=$m3rc, $(wc -l < "$OUT/m3.wat" 2>/dev/null) lines, census=$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
 # ── the COST read + the peak ratchet (the self-compile's own footprint) ──
 # The m3 leg IS the self-compile (the wheel compiling the wheel); its
@@ -373,10 +377,11 @@ read_cost m3 "$OUT/m2.wasm"
 # against the PINNED BOOT compiling the same wheel (run once a march), so the
 # wheel growing never reads as the compiler growing and nothing a commit
 # writes moves either number (Morgan, 2026-10-21).
-read_line() {  # read_line <leg> — ratchets the image's line peak from $OUT/<leg>.err
+read_line() {  # read_line <leg> <compiler> — ratchets the image's line peak from $OUT/<leg>.err
   local leg="$1" line_kb allow
   line_kb=$(grep -oE 'line peak [0-9]+ KB' "$OUT/$leg.err" 2>/dev/null | head -1 | grep -oE '[0-9]+')
-  [ -n "${BOOT_LINE_KB:-}" ] || { gen "$BOOT" "$OUT/m1.wat" "$OUT/m1.err"; BOOT_LINE_KB=$(grep -oE 'line peak [0-9]+ KB' "$OUT/m1.err" | head -1 | grep -oE '[0-9]+'); }
+  cmp -s "$2" "$BOOT" && BOOT_LINE_KB="${BOOT_LINE_KB:-$line_kb}"  # the boot's own bytes: its peak, by identity
+  [ -n "${BOOT_LINE_KB:-}" ] || { gen_once "$BOOT" "$OUT/m1.wat" "$OUT/m1.err"; BOOT_LINE_KB=$(grep -oE 'line peak [0-9]+ KB' "$OUT/m1.err" | head -1 | grep -oE '[0-9]+'); }
   allow=$(grep -E '^selfcompile_line_peak_kb_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
   MARCH_COST="${MARCH_COST:+$MARCH_COST · }line peak ${line_kb:-?} KB (boot ${BOOT_LINE_KB:-?} KB)"
   echo "· image: line peak ${line_kb:-?} KB; the pinned boot on the same wheel ${BOOT_LINE_KB:-?} KB"
@@ -385,20 +390,21 @@ read_line() {  # read_line <leg> — ratchets the image's line peak from $OUT/<l
   echo "  (selfcompile_line_peak_kb_max in $BASELINE) — a deterministic reading; the landing pays it down; repin refused."
   costok=0
 }
-read_line m3
+read_line m3 "$OUT/m2.wasm"
 # ── the compiler's own WALL, as a share of the pinned boot's on the same wheel
 # in the same march (the m1 leg the line peak reads): the machine's load and
-# the wheel's size move both readings, so the ratio measures the compiler. A
-# breach re-reads both legs and compares the minimums.
+# the wheel's size move both readings, so the ratio measures the compiler; a
+# breach reads each leg thrice more, ABBA (drift favours neither): mins of four.
 read_wall() {  # read_wall <leg> <compiler>
   local leg="$1" compiler="$2" pct w b i r
+  cmp -s "$compiler" "$BOOT" && { echo "· wall: the $leg leg's compiler is the boot's own bytes — one compiler, one wall"; return 0; }
   pct=$(grep -E '^selfcompile_wall_pct_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
   [ -n "${pct:-}" ] && [ -s "$OUT/$leg.time" ] && [ -s "$OUT/m1.time" ] || return 0
   w=$(tail -1 "$OUT/$leg.time" | cut -d' ' -f1); b=$(tail -1 "$OUT/m1.time" | cut -d' ' -f1)
   if awk -v w="$w" -v b="$b" -v p="$pct" 'BEGIN { exit !(w * 100 > b * p) }'; then
-    for i in 1 2; do
-      gen "$compiler" "$OUT/$leg-wall.wat" "$OUT/$leg-wall.err"; r=$(tail -1 "$OUT/$leg-wall.time" | cut -d' ' -f1); w=$(awk -v a="$w" -v c="$r" 'BEGIN { print (c < a) ? c : a }')
-      gen "$BOOT" "$OUT/m1-wall.wat" "$OUT/m1-wall.err"; r=$(tail -1 "$OUT/m1-wall.time" | cut -d' ' -f1); b=$(awk -v a="$b" -v c="$r" 'BEGIN { print (c < a) ? c : a }')
+    for i in "$BOOT" "$compiler" "$compiler" "$BOOT" "$BOOT" "$compiler"; do
+      gen "$i" "$OUT/wall.wat" "$OUT/wall.err"; r=$(tail -1 "$OUT/wall.time" | cut -d' ' -f1)
+      if [ "$i" = "$BOOT" ]; then b=$(awk -v a="$b" -v c="$r" 'BEGIN { print (c < a) ? c : a }'); else w=$(awk -v a="$w" -v c="$r" 'BEGIN { print (c < a) ? c : a }'); fi
     done
   fi
   MARCH_COST="${MARCH_COST:+$MARCH_COST · }wall ${w}s (boot ${b}s on the same wheel)"
@@ -619,7 +625,7 @@ elif [ "$m3rc" = 0 ]; then
       gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
       echo "m4: exit=$m4rc, $(wc -l < "$OUT/m4.wat" 2>/dev/null) lines"
       read_cost m4 "$OUT/m3.wasm"
-      read_line m4
+      read_line m4 "$OUT/m3.wasm"
       if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
         echo "✓✓ TRANSITION: m3 == m4 — the NEW wheel reproduces itself; the m2/m3 diff was the emit change crossing one generation."
         if [ "${MARCH_REPIN:-0}" = 1 ]; then
