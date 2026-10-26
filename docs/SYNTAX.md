@@ -1684,7 +1684,7 @@ and repeated to its least fixed point, so recursion terminates. `mentl query
 (`tests/micros/mn-flow-*.mn`, each fixture's second line its contract at the
 sink).
 
-The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
+The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check — the one check a program runs is a partial primitive's, where its instruction would trap anyway, §«Partiality»). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
 
 ---
 
@@ -2876,7 +2876,18 @@ the perform's own address — `trap: a precondition failed at lists:234:37` —
 as every stop the emit writes says its kind before the machine stops (`memory
 is exhausted`, a pattern's claim, the compiler's own invariant), and the
 board holds the instruction to the three places it follows a said stop
-(tests/micros/mn-oob-traps.mn, mn-trap-exhausted-says.mn). It is a row
+(tests/micros/mn-oob-traps.mn, mn-trap-exhausted-says.mn). An integer `/` or
+`%` or a `float_to_int` whose claim the fragment left open is checked where
+the instruction would trap, and the check stops the same way, naming the face
+that failed — `trap: a precondition failed at
+tests/micros/mn-div-open-says:8:13 — the divisor is 0`, `the quotient does
+not fit the word`, `the operand is not a number`, `the operand is outside the
+word` — where the engine's own trap said `integer divide by zero` and no
+address; a claim the fragment proved writes the bare instruction, so the
+check is the open claim's projection and proof deletes it
+(tests/micros/mn-div-open-says.mn, mn-div-overflow-says.mn,
+mn-mod-open-says.mn, mn-float-to-int-says.mn, mn-float-to-int-nan-says.mn).
+It is a row
 fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
 `-> Int with Trap` at the address surface), transitive through calls, and
 provable absent — `fn ratio(t, n) with !Trap = t / n` refuses

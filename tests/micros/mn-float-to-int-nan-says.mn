@@ -1,0 +1,6 @@
+// expect: 134 trap: a precondition failed at tests/micros/mn-float-to-int-nan-says:6:13 — the operand is not a number
+// A Float that is not a number has no Int: the checked conversion says so
+// where the engine's own trap said `invalid conversion to integer`.
+fn nan_from(x) = x - x
+
+fn main() = float_to_int(nan_from(1.0 / 0.0))

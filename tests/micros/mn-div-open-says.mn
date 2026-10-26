@@ -1,0 +1,8 @@
+// expect: 134 trap: a precondition failed at tests/micros/mn-div-open-says:8:13 — the divisor is 0
+// An integer division whose divisor the fragment cannot prove nonzero
+// checks its claim where the instruction would trap and stops saying so,
+// at the operator's own address and naming the face that failed; the
+// engine's own trap said `integer divide by zero` and no address.
+fn zero_from(n) = n - n
+
+fn main() = 7 / zero_from(3)

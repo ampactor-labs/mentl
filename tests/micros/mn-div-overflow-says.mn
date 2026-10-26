@@ -1,0 +1,10 @@
+// expect: 134 trap: a precondition failed at tests/micros/mn-div-overflow-says:10:13 — the quotient does not fit the word
+// The one quotient a signed word cannot hold: INT_MIN / -1 traps in the
+// instruction, and the check at an open claim says which face failed —
+// the divisor is not 0 here — at the operator's address; the engine's own
+// trap said `integer overflow`.
+fn least(n) = -2147483647 - n
+
+fn neg(n) = 0 - n
+
+fn main() = least(1) / neg(1)

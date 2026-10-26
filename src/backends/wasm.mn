@@ -4761,13 +4761,15 @@ fn emit_runtime_imports(wasi_ops) = {
 // says why before it does:
 // one runtime function, `$mentl_stop`, writes `trap: <what> at
 // <module>:<line>:<col>` to fd 2 — at a pattern's claim, with the
-// constructor that arrived — and then executes the instruction, so the
+// constructor that arrived; at a checked instruction, with the face of its
+// claim that failed — and then executes the instruction, so the
 // engine's backtrace still follows the line. fd_write is imported with
 // proc_exit for it: the allocator's exhaustion is a stop, and every module
 // allocates. The kinds are the ways the emit's own hand stops a run: a claim
-// the row states (a pattern's, or a precondition `trap()` checks), an
-// exhaustion Alloc states, an image another compiler wrote, and the
-// compiler's own invariant.
+// the row states (a pattern's, a precondition `trap()` checks, or a partial
+// instruction's the fragment left open, checked where the instruction would
+// trap), an exhaustion Alloc states, an image another compiler wrote, and
+// the compiler's own invariant.
 type Stop
   = StopClaim
   | StopPrecondition
@@ -4792,7 +4794,27 @@ fn stop_said(k) with Pure = match k {
 fn stop_literals() = map(
   stop_said,
   [StopClaim, StopPrecondition, StopExhausted, StopNoThread, StopImage, StopInvariant, StopNoHandler]
-) ++ ["trap: ", " at ", ":", " — ", " arrived"]
+) ++ [
+  "trap: ",
+  " at ",
+  ":",
+  " — ",
+  " arrived",
+  said_divisor_zero(),
+  said_quotient_fits(),
+  said_not_a_number(),
+  said_outside_word()
+]
+
+// What a checked instruction says failed: the one face of its claim the
+// value refuted, read at the fatal point.
+fn said_divisor_zero() with Pure = "the divisor is 0"
+
+fn said_quotient_fits() with Pure = "the quotient does not fit the word"
+
+fn said_not_a_number() with Pure = "the operand is not a number"
+
+fn said_outside_word() with Pure = "the operand is outside the word"
 
 // Where a stop stands: its module's path, laid in the data section, and the
 // line and column of the node it stops at; zeros where it stands at no node,
@@ -4805,13 +4827,18 @@ fn stop_at(h) = if h > 0 {
   (0, 0, 0)
 }
 
+// A site's address as a stop's arguments: its module's path in the data
+// section, its line and its column.
+fn site_args(h) = match stop_at(h) {
+  (at, line, col) => "(i32.const {int_to_str(at)}) (i32.const {int_to_str(line)}) (i32.const {int_to_str(col)})",
+}
+
 // The stop's call: its kind's line, its address, and what arrived — a names
 // table and the word whose tag picks the name, or zero and a detail string,
 // or two zeros. It never returns; where nothing is owed after it, it stands
 // alone.
-fn stop_call(k, h, names, word) = match stop_at(h) {
-  (at, line, col) => "(call $mentl_stop (i32.const {int_to_str(string_offset(stop_said(k)))}) (i32.const {int_to_str(at)}) (i32.const {int_to_str(line)}) (i32.const {int_to_str(col)}) (i32.const {int_to_str(names)}) {word})",
-}
+fn stop_call(k, h, names, word) =
+  "(call $mentl_stop (i32.const {int_to_str(string_offset(stop_said(k)))}) {site_args(h)} (i32.const {int_to_str(names)}) {word})"
 
 // A stop where a value is owed: the call, then the instruction that makes
 // the stack polymorphic — the one literal that writes it at a site.
@@ -4848,6 +4875,28 @@ fn emit_stop_runtime() = {
   wat_emit("    (i32.store8 (local.get $p)(i32.const 10))(i32.store (i32.const 16)(i32.const 1024))(i32.store (i32.const 20)(i32.sub (i32.add (local.get $p)(i32.const 1))(i32.const 1024)))\n")
   wat_emit("    (drop (call $fd_write (i32.const 2)(i32.const 16)(i32.const 1)(i32.const 24)))\n")
   wat_emit("    (unreachable))\n")
+}
+
+// AN OPEN CLAIM IS CHECKED WHERE THE INSTRUCTION WOULD TRAP. Integer `/`
+// and `%` and the conversion to Int are the instructions whose precondition
+// the fragment can leave open, and each traps at its fatal point with the
+// engine's own words and no address. The checked forms take the operands and
+// the site's address, test the claim's faces in the order the instruction
+// fails them, and stop saying the one that failed; the instruction follows
+// where every face holds. The emit calls one only where the site's claim
+// stayed open (`claim_open_at`), so a proven site pays nothing: the check is
+// the open claim's projection, and proof deletes it.
+fn emit_claim_checks() = {
+  let lit = { s => int_to_str(string_offset(s)) }
+  let stop = {
+    s => "(call $mentl_stop (i32.const {lit(stop_said(StopPrecondition))})(local.get $at)(local.get $line)(local.get $col)(i32.const 0)(i32.const {lit(s)}))",
+  }
+  let site = "(param $at i32)(param $line i32)(param $col i32)"
+  wat_emit("  (func $mentl_div_i32 (param $a i32)(param $b i32){site}(result i32)(if (i32.eqz (local.get $b))(then {stop(said_divisor_zero())}))(if (i32.and (i32.eq (local.get $b)(i32.const -1))(i32.eq (local.get $a)(i32.const -2147483648)))(then {stop(said_quotient_fits())}))(i32.div_s (local.get $a)(local.get $b)))\n")
+  wat_emit("  (func $mentl_rem_i32 (param $a i32)(param $b i32){site}(result i32)(if (i32.eqz (local.get $b))(then {stop(said_divisor_zero())}))(i32.rem_s (local.get $a)(local.get $b)))\n")
+  wat_emit("  (func $mentl_div_i64 (param $a i64)(param $b i64){site}(result i64)(if (i64.eqz (local.get $b))(then {stop(said_divisor_zero())}))(if (i32.and (i64.eq (local.get $b)(i64.const -1))(i64.eq (local.get $a)(i64.const -9223372036854775808)))(then {stop(said_quotient_fits())}))(i64.div_s (local.get $a)(local.get $b)))\n")
+  wat_emit("  (func $mentl_rem_i64 (param $a i64)(param $b i64){site}(result i64)(if (i64.eqz (local.get $b))(then {stop(said_divisor_zero())}))(i64.rem_s (local.get $a)(local.get $b)))\n")
+  wat_emit("  (func $mentl_trunc_f64 (param $x f64){site}(result i32)(if (f64.ne (local.get $x)(local.get $x))(then {stop(said_not_a_number())}))(if (i32.eqz (i32.and (f64.gt (local.get $x)(f64.const -2147483649))(f64.lt (local.get $x)(f64.const 2147483648))))(then {stop(said_outside_word())}))(i32.trunc_f64_s (local.get $x)))\n")
 }
 
 // The constructor names of the sum a pattern's claim stands over, in tag
@@ -5072,6 +5121,7 @@ fn emit_memory_decl(spawns, wants_rmw, yield_slots, carries_lets) = {
   // through a `~>` perform) because a body-emitting perform trips the
   // evidence-dispatch seam today.
   emit_stop_runtime()
+  emit_claim_checks()
   // $memory_reach — the memory covers [0, end) on return, or the run stops
   // saying memory is exhausted. The needed page count is `((end - 1) >> 16) +
   // 1` (exact at the 4GB edge, where `(end + 65535) >> 16` wraps); a
@@ -8296,12 +8346,12 @@ fn emit_expr(expr) = match expr {
       wat_emit(")\n")
     }
   },
-  // A primitive: its arguments left on the stack, then its one instruction.
-  LPrim(_h, p, args) => {
+  // A primitive: its arguments left on the stack, then its one instruction —
+  // or the checked conversion where `float_to_int`'s claim stayed open at
+  // the argument (`emit_primitive`).
+  LPrim(h, p, args) => {
     each(emit_expr, args)
-    wat_emit("    (")
-    wat_emit(primitive_op(p))
-    wat_emit(")\n")
+    emit_primitive(h, p)
   },
   // Hβ.first-light.resume-with-state-mutation: store VALUE into the
   // handler state record at slot_offset, mutating handler state across
@@ -8531,31 +8581,54 @@ fn emit_binop_for(h, op, l, r) = {
     // arithmetic operand's cell numeric (infer.mn numeric_demand), so what
     // reaches this arm is a word at its proven repr, or a floor twin's
     // quantified var — a word at the floor width by construction.
-    BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr => emit_arith_for(op, left_h, l, r),
+    BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr => emit_arith_for(h, op, left_h, l, r),
   }
 }
 
-fn emit_arith_for(op, left_h, l, r) = if left_h == 0 {
+fn emit_arith_for(h, op, left_h, l, r) = if left_h == 0 {
   // Flat scalar word by construction — the machine floor at the join.
-  emit_binop_repr(op, repr_join(tail_expr_repr(l), tail_expr_repr(r)))
+  emit_arith_at(h, op, repr_join(tail_expr_repr(l), tail_expr_repr(r)))
 } else {
   match arith_operand_class(chase_deep(lookup_ty(left_h))) {
     // The type's own repr: the pin's width where one is authored
     // (repr_of's TReprPin arm), the gradient's default otherwise — the same
     // fact the join of the emitted widths reads, at its one home.
-    AoWord => emit_binop_repr(op, slot_repr(lookup_ty(left_h))),
+    AoWord => emit_arith_at(h, op, slot_repr(lookup_ty(left_h))),
     // A variable at emit is a FLOOR twin's quantified var: every wide
     // instantiation minted its own twin and bound the var under its
     // bracket, so this operand is a word at the floor width. A var the
     // judgment never gated numeric is an invariant broken upstream, which
     // the settle point said before this byte (`settle_arith`).
-    AoUnproven(_) => emit_binop_repr(op, RI32),
+    AoUnproven(_) => emit_arith_at(h, op, RI32),
     // Unreachable by construction — the judgment refused the bind that would
     // put an aggregate here, and the settle point refused the module that
     // reached it anyway (`settle_arith`) — so this floor is written only
     // where nothing runs it.
     AoAggregate => wat_emit("    {stopped(StopInvariant, 0)}  ;;arithmetic on an aggregate past the gate\n"),
   }
+}
+
+// Arithmetic at its width. Integer `/` and `%` are the one instruction here
+// that traps: where the fragment left the site's claim open the emit calls
+// the checked form (`emit_claim_checks`) — the operands as they stand, the
+// site's address after them — which stops saying which face failed at the
+// operator's address, where the instruction trapped with the engine's words
+// and no address; where the claim held, the instruction stands bare.
+fn emit_arith_at(h, op, r) = match op {
+  BDiv => emit_int_div(h, op, r, "div"),
+  BMod => emit_int_div(h, op, r, "rem"),
+  BAdd | BSub | BMul | BAnd | BOr | BEq | BNe | BLt | BGt | BLe | BGe | BConcat => emit_binop_repr(op, r),
+}
+
+// A Float's division is total in the substrate (IEEE answers inf and NaN)
+// and raises no claim, so it keeps its instruction at every width.
+fn emit_int_div(h, op, r, k) = match r {
+  RI32 | RI64 => if claim_open_at(h) {
+    wat_emit("    {site_args(h)} (call $mentl_{k}_{repr_wat(r)})\n")
+  } else {
+    emit_binop_repr(op, r)
+  },
+  RF32 | RF64 | RV128 => emit_binop_repr(op, r),
 }
 
 fn emit_wide_ref(r) = match r {
@@ -9956,6 +10029,21 @@ fn primitive_op(p) with Pure = match p {
   FloatToInt => "i32.trunc_f64_s",
   FloatFloor => "f64.floor",
   FloatSqrt => "f64.sqrt",
+}
+
+// A primitive's instruction at its site. The conversion the machine refuses
+// to complete is the checked call (`emit_claim_checks`) where its claim
+// stayed open at the argument: the operand as it stands, the site's address
+// after it, stopping saying which face failed where the instruction trapped
+// with the engine's words and no address; where the claim held, the
+// instruction.
+fn emit_primitive(h, p) = match p {
+  FloatToInt => if claim_open_at(h) {
+    wat_emit("    {site_args(h)} (call $mentl_trunc_f64)\n")
+  } else {
+    wat_emit("    ({primitive_op(p)})\n")
+  },
+  FloatOfInt | FloatFloor | FloatSqrt => wat_emit("    ({primitive_op(p)})\n"),
 }
 
 // The width a primitive's instruction leaves on the stack.

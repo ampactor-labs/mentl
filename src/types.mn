@@ -2550,7 +2550,6 @@ type Version = {
   links: [[[[Int]]]],
   module: [[[[Int]]]],
   modules_now: [[(String, Int)]],
-  narrowing: [[[[Int]]]],
   next: Int,
   nodes: [[[[GNode]]]],
   parent: [[[[Int]]]],
@@ -3645,8 +3644,6 @@ effect GraphRead {
   graph_comment_refs_of(decl: Int) -> [Int]
   // the e-graph canonical pointer at a handle — the equivalence weave's find step (returns the handle itself if it is its own e-class root). One co-indexed weave, exactly like the nodes column's TVar union-find; egraph_extract chases it live.
   graph_canon_at(Int) -> Int
-  // the refinement-narrowing pointer at a handle — the path-predicate's bool-node handle proven to hold AT this program point (0 = no narrowing). One co-indexed weave like the canon column; lower's verify-obligation read chases it live to elide a check the path already proves (§4⑥). Appropriate as a side-table: narrowing is a per-program-point boolean fact, not a unifiable variable.
-  graph_narrow_at(Int) -> Int
   // exact compiler-created executable edges keyed by fanout site
   graph_boundary_at(Int) -> ExecutableBoundary
   // THE REFERENCE LINK's reads. A reference's declaration: the handle the
@@ -3787,8 +3784,6 @@ effect GraphWrite {
   graph_reword_comment(Int, String)
   // draw the e-graph equivalence edge from ≡ to — point the from-side's canonical pointer at the cheaper target. The union-find union step over the equivalence weave; saturation reads it back via graph_canon_at (find). Idempotent: re-pointing an already-rooted source overwrites in place (one cell), never grows a ledger.
   graph_canon_set(Int, Int)
-  // write what the judgment proved at a program point — a sequence read's index node carries 1 where its bounds claim held (TRAP). One co-indexed weave like the canon column; one cell per handle, written both ways by every judgment of the read, read back via graph_narrow_at by lower's check-elision.
-  graph_narrow_set(Int, Int)
   // draw/replace one fanout's executable edges; a column of the version, since inference runs under speculation
   graph_boundary_set(Int, ExecutableBoundary)
   // set the module in force for every SUBSEQUENT mint — the parser's own

@@ -1505,6 +1505,22 @@ fn row_names_mutate(row) = match row {
   EfRow(present, _, _) => any(names_mutate, present),
 }
 
+// Whether a row names Trap, what a partial primitive performs where its
+// precondition fails.
+fn names_trap(e) = eff_name_str(e) == "Trap"
+
+fn row_names_trap(row) = match row {
+  EfRow(present, _, _) => any(names_trap, present),
+}
+
+// A claim the judgment raised at a node and left open — a division's, a
+// conversion's, a sequence read's. The site charges Trap at its own node
+// exactly there, read off the claim, so the note is the verdict where the
+// lowering and the emit read which form to write: the bare instruction or
+// the unchecked read where the claim held, the form that checks it and stops
+// saying so where it stayed open.
+fn claim_open_at(h) = any(row_names_trap, graph_rows_at(h))
+
 // body ∩ forbidden = ∅ BY NAME — the crown's negation membership. A body effect
 // whose NAME is forbidden fails the gate: this is where a forbidden effect
 // carried in through instantiation is CAUGHT.

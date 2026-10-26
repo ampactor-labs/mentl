@@ -6048,13 +6048,11 @@ fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
 }
 
 // A list index lowers to the runtime list_index call. When the judgment proved
-// the read in range (its `PInBounds` claim held — the verdict the judgment
-// wrote on the index node, graph_narrow_at ≠ 0), the access is the traversal
-// beneath the check, list_index_unchecked (SYNTAX.md «Indexing»: "the compiler
-// elides the bounds check"), whose row carries no Trap — exactly what the
-// judgment charged (`subscript_callee`, one home for both reads). Until TRAP
-// (2026-10-06) nothing wrote the verdict, so this branch's elision wrapper
-// was never called; the wrapper is deleted.
+// the read in range (its `PInBounds` claim held, so the site charges no Trap —
+// `claim_open_at`), the access is the traversal beneath the check,
+// list_index_unchecked (SYNTAX.md «Indexing»: "the compiler elides the bounds
+// check"), whose row carries no Trap — exactly what the judgment charged
+// (`subscript_callee`, one home for both reads).
 //
 // The reader is a NAMED function, so it is called DIRECTLY at its own
 // signature (LDirectCall), never through its static closure as a value: its
@@ -6064,7 +6062,7 @@ fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
 // vector — `(i32, i32, i32) -> f64` against a callee that signs a word — the
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = {
-  let callee = sugar_callee(handle, subscript_callee(graph_narrow_at(index) != 0))
+  let callee = sugar_callee(handle, subscript_callee(!claim_open_at(handle)))
   LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
 }
 

@@ -1,0 +1,7 @@
+// expect: 134 trap: a precondition failed at tests/micros/mn-mod-open-says:7:13 — the divisor is 0
+// A remainder's one fatal point is a zero divisor (INT_MIN % -1 is 0): the
+// check at an open claim stops saying so at the operator's address, where
+// the engine's own trap said `integer divide by zero`.
+fn zero_from(n) = n - n
+
+fn main() = 7 % zero_from(3)

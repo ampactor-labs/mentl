@@ -8543,9 +8543,6 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   // the claim it is (PInBounds) and reads the ledger's verdict — proven, the
   // read is the unchecked traversal and charges no Trap; refuted, the ledger
   // refuses at the site; open, the checked read's own row carries the Trap.
-  // The verdict is written on the index node where the lowering reads which
-  // read to emit, both ways, so a handle a rolled-back judgment wrote is
-  // overwritten by the judgment of the node that holds it now.
   let proven = match verify_claim(
     graph_module_current(),
     span,
@@ -8555,11 +8552,11 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
     Some(held) => held,
     None => false,
   }
-  graph_narrow_set(ih, if proven { 1 } else { 0 })
   // An open claim is the site's own row fact, as an open division's is: the
   // Trap is charged here, read off the claim, never only through whichever
   // callee the link happens to carry (a program judged with no library
-  // still traps at the read).
+  // still traps at the read), and the note is the verdict the lowering reads
+  // to choose the read it emits (`claim_open_at`).
   if proven { () } else { inf_add_row_at(handle, trap_row()) }
   // The sugar calls what its lowering performs: `xs[i]` emits the read the
   // claim's verdict chose, so the node is linked to it and charges its

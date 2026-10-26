@@ -1,0 +1,8 @@
+// expect: 134 trap: a precondition failed at tests/micros/mn-float-to-int-says:8:13 — the operand is outside the word
+// `float_to_int` of a Float past what an Int holds traps in the
+// instruction; where its claim stayed open at the argument, the checked
+// conversion stops saying so at the call's address, where the engine's own
+// trap said `integer overflow`.
+fn big(n) = 1000000000000.0 * n
+
+fn main() = float_to_int(big(2.0))

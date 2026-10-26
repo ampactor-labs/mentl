@@ -80,7 +80,6 @@ fn root_version() = Version{
   links: pt_empty(),
   module: pt_empty(),
   modules_now: smap_new(),
-  narrowing: pt_empty(),
   next: 0,
   nodes: pt_empty(),
   parent: pt_empty(),
@@ -145,8 +144,6 @@ fn version_comments(v) = v.comments
 
 fn version_canon(v) = v.canon
 
-fn version_narrowing(v) = v.narrowing
-
 fn version_boundaries(v) = v.boundaries
 
 fn version_installs(v) = v.installs
@@ -188,7 +185,7 @@ fn version_store_claims(v) = v.store_claims
 // column's). The nodes column answers a synthesized free cell for a handle
 // never minted; the program column answers the absent body; the spans and
 // comments columns the absent position; the canon column reads 0 as "no
-// edge" and the narrowing column as "nothing proven"; a boundaries,
+// edge"; a boundaries,
 // installs or products cell's 0 IS its nullary absent tag natively; the
 // module, parent and links columns hold their handle BIASED BY ONE, since a
 // module node, a parent or a declaration may be handle 0 and a virgin cell
@@ -503,7 +500,7 @@ fn supersede_one(gone, s) = wmap_add(gone, s, 1)
 // same live graph through the same effect discipline. State is internal to
 // the handler; callers never see the columns as a value except as a
 // Version they hand back; access is only through perform.
-handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), narrowing = pt_empty(), boundaries = pt_empty(), installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx {
+handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx {
   graph_chase(handle) => resume(chase_node(nodes, seed, handle, 0)),
   graph_chase_handle(handle) => resume(chase_handle(nodes, seed, handle, 0)),
   graph_epoch() => resume(epoch),
@@ -560,7 +557,6 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
     links,
     module,
     modules_now,
-    narrowing,
     next,
     nodes,
     parent,
@@ -581,7 +577,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // (lib/imap.mn's pt_merge), and every other fact is the kept instance's
   // as it left it. O(what the kept instance wrote); FV's columns die with
   // the extent that built them.
-  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), narrowing = pt_merge(narrowing, fv.narrowing), boundaries = pt_merge(boundaries, fv.boundaries), installs = pt_merge(installs, fv.installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = fv.superseded, link_now = fv.link_now, tails_idx = fv.tails_idx,
+  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), installs = pt_merge(installs, fv.installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = fv.superseded, link_now = fv.link_now, tails_idx = fv.tails_idx,
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write rebinds the column it wrote: pt_set answers the root as it
   // stands when the path was this version's own, else the copied root.
@@ -685,16 +681,6 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // Module root (never an expr operand), so a 0 cell reads as "no edge" ⇒
   // return the handle itself.
   resume(canon_at(canon, seed, handle)),
-  graph_narrow_set(handle, pred_handle) => // The refinement-narrowing column — beside canon.
-  // graph_narrow_set(handle, verdict) records what the judgment proved AT
-  // program-point `handle`: a sequence read's index node carries 1 where its
-  // bounds claim held (TRAP), and lower reads it to emit the unchecked
-  // traversal. graph_narrow_at reads it back — 0 = nothing proven (the
-  // default). One cell per handle: every judgment of a read writes its
-  // verdict both ways, so a cell a restored speculation wrote is overwritten
-  // by the judgment of the node that holds the handle now.
-  resume() with narrowing = pt_set(narrowing, handle, pred_handle),
-  graph_narrow_at(handle) => resume(col_get(handle, narrowing, seed, version_narrowing)),
   graph_boundary_at(site_handle) => // The executable-boundary weave: one O(1) read per fanout site, containing
   // its ordered branch edges. A virgin cell IS NoBoundary, the nullary tag 0.
   resume(col_get(site_handle, boundaries, seed, version_boundaries)),
