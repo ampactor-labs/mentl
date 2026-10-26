@@ -131,15 +131,16 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 
 PLAN.md §11 is the one ordered list, each step reading only what an earlier one built:
 
-1. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality), the reach one walk.
-2. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle.
-3. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
-4. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
-5. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
-6. Edits that cost what they change, and the page that plays the course.
-7. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
-8. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
-9. `!Outside` closes: the native backend and diverse double compilation.
+1. The read path is a map: the documents served by section, so a session loads what it reads.
+2. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality, every trap the emit writes said), the reach one walk.
+3. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle and a witness that searches boundary inputs.
+4. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
+5. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
+6. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
+7. Edits that cost what they change, and the page that plays the course.
+8. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
+9. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
+10. `!Outside` closes: the native backend and diverse double compilation.
 
 ## Documents
 

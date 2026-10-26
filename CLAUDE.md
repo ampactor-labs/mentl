@@ -123,8 +123,11 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
 
 ## The loop
 
-1. **Choose and ground.** The work is PLAN §11's first step unless a measured
-   false proof or a red gate preempts it. `bash tools/state.sh --quick`, then
+1. **Choose and ground.** The work is PLAN §11's first step unless a red gate
+   or a measured false proof a real program hits preempts it — a program in
+   `examples/`, `lib/` or the wheel; a shape only a fixture writes joins the
+   step that owns its mechanism, its fixture that step's RED (PLAN §11).
+   `bash tools/state.sh --quick`, then
    ask the medium about every
    file the landing touches: `mentl check <file>`, `mentl <file>:<line>`,
    `mentl query src/main.mn "refs of NAME"`, `mentl where src/main.mn NAME`,
