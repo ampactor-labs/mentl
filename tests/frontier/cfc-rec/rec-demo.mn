@@ -25,4 +25,4 @@ fn main() = {
   let matrix = comodulogram(signal, sr, low_freqs, high_freqs, 128, 32)
   let flat = comodulogram_argmax(matrix, 4, 4)
   if flat == 7 { 42 } else { flat }
-} ~> wasi_filesystem
+} ~> wasi_filesystem ~> fail_exit

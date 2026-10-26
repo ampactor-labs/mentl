@@ -34,4 +34,4 @@ fn main(argv) = {
   } else {
     park() ~> arena
   }
-} ~> persist_to_disk ~> fail_exit ~> wasi_filesystem
+} ~> persist_to_disk ~> wasi_filesystem ~> fail_exit

@@ -159,14 +159,14 @@ handler stdout_console {
 
 // ─── fail_exit — the host-boundary failure policy ──────────────
 //
-// Fail.fail never resumes; this handler prints the message and
-// exits through the WASI host. A test handler can swap in to
-// collect failures instead — the policy is the install, not the
-// call site.
+// Fail.fail never resumes; this handler writes the message to stderr and
+// exits 1 through the WASI host. Stdout is the program's product — a
+// compile's WAT among them — so a failure never lands inside it. A test
+// handler can swap in to collect failures instead — the policy is the
+// install, not the call site.
 handler fail_exit {
   fail(msg) => {
-    print_string(msg)
-    print_newline()
+    eprint_string("{msg}\n")
     proc_exit(1)
   },
 }

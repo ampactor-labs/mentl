@@ -110,10 +110,14 @@ import test
 // row-wise — this install IS the row cure and the live chain node the
 // stray performs dispatch through. Like every table, it is born holding
 // the medium's own vocabulary (intern.mn's state init).
+// A failure no route answers nearer is the process's: `fail_exit` says it on
+// stderr and exits 1. Every route's filesystem install performs `Fail` where
+// an op cannot do what it was asked, and its arms resolve outside the
+// install, so a path that does not read stops the verb naming the path.
 fn main(argv) = match parse_cli_args(argv) {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
-} ~> diagnostics_handler ~> intern_table
+} ~> diagnostics_handler ~> intern_table ~> fail_exit
 
 // dispatch_invocation — the substrate handlers (env/graph/diagnostics)
 // install ONCE at this outermost dispatch boundary: the program boundary
@@ -265,26 +269,21 @@ fn march_run() = match march_entry() {
     fs_mkdir(".build")
     fs_mkdir(".build/march")
     let fd = fs_create(new_path)
-    if fd == 0 {
-      print_string("march: cannot open {new_path} — no fresh generation written\n")
-      1
-    } else {
-      match march_emit(entry, fd) {
-        (names, errors) => {
-          fs_close(fd)
-          print_string("march: link {join(" ", names)}\n")
-          if errors > 0 {
-            fs_unlink(new_path)
-            print_string("march: {int_to_str(len(names))} modules · census {int_to_str(errors)}\n")
-            print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
-            1
-          } else {
-            fs_rename(new_path, wat_path)
-            print_string("march: {int_to_str(len(names))} modules · census 0 · the generation is {wat_path}\n")
-            0
-          }
-        },
-      }
+    match march_emit(entry, fd) {
+      (names, errors) => {
+        fs_close(fd)
+        print_string("march: link {join(" ", names)}\n")
+        if errors > 0 {
+          fs_unlink(new_path)
+          print_string("march: {int_to_str(len(names))} modules · census {int_to_str(errors)}\n")
+          print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
+          1
+        } else {
+          fs_rename(new_path, wat_path)
+          print_string("march: {int_to_str(len(names))} modules · census 0 · the generation is {wat_path}\n")
+          0
+        }
+      },
     }
   },
 } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
@@ -2019,10 +2018,6 @@ fn battery_step(path: String) = {
         (left, nerr, _) => match left {
           ArtifactRefused => {
             print_string("FAILC {stem}\n")
-            1
-          },
-          ArtifactUnwritable => {
-            print_string("FAIL(write) {stem}: cannot open {battery_wat_path(stem)}\n")
             1
           },
           // The verdict is the host's: the RUN line hands over the module,

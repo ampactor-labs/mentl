@@ -29,4 +29,4 @@ fn main(argv) = {
     persist(image_header(addr(thunk)), "/tmp/mn-persist-image.img")
     40
   }
-} ~> persist_to_disk ~> fail_exit ~> wasi_filesystem
+} ~> persist_to_disk ~> wasi_filesystem ~> fail_exit

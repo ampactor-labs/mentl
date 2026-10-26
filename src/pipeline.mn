@@ -254,9 +254,10 @@ fn gated_plan(lowered) = match gate_reads(lowered) {
 }
 
 // What a gated compile left at its artifact's path: the gate withheld the
-// module, the file could not be opened (a host fault, never a verdict on the
-// program), or the module is on disk.
-type Artifact = ArtifactRefused | ArtifactUnwritable | ArtifactWritten
+// module, or the module is on disk. A path that does not open is the
+// filesystem's failure, said where `fs_create` performs it — a host fault,
+// never a verdict on the program.
+type Artifact = ArtifactRefused | ArtifactWritten
 
 // The gate carried to a file, for the routes that write one rather than
 // stream to stdout: the module is streamed to `path` through wat_to_file, so
@@ -265,15 +266,11 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
   Withheld(_, _) => ArtifactRefused,
   Planned(plan) => {
     let fd = fs_create(path)
-    if fd == 0 {
-      ArtifactUnwritable
-    } else {
-      {
-        emit_planned(plan)
-      } ~> wat_to_file(fd)
-      fs_close(fd)
-      ArtifactWritten
-    }
+    {
+      emit_planned(plan)
+    } ~> wat_to_file(fd)
+    fs_close(fd)
+    ArtifactWritten
   },
 }
 

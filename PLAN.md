@@ -549,10 +549,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **Effect names lie about their ops** (§11.1): GraphRead holds writes,
   GraphWrite holds reads, and `Memory` holds pure word arithmetic, so a
   function doing only arithmetic on words is not `Pure`.
-- **Effect-op parameters are nameless, and a filesystem failure is silent**
-  (§11.5, §11.1): every filesystem operation is a `Filesystem` op whose implementation
-  is its handler's arm, but a path that does not read answers an empty string
-  and one that does not open answers fd 0.
+- **Effect-op parameters are nameless** (§11.5): an op's declaration types
+  its parameters positionally, `fs_read_file(String) -> String`, so a
+  handler's arm names each one itself and no two arms need agree.
 - **A module's init stores what one binder names** (§11.2): a module-scope
   let whose pattern is a discard, a literal or a destructure refuses where the
   program is emitted (`E_InternalInvariant`).
@@ -846,10 +845,7 @@ the face (step 3) cut the last three.
    modal rule, RED first, with its sound twin; the page's hop-by-hop unroll of
    a `!E` under polymorphism rides it (`Hβ.effects.sound-neg-under-poly`).
    (b) The row tells the whole truth — every way a computation can stop or
-   reach outward is a row fact the crown can negate. Every filesystem failure
-   performs `Fail` (`Hβ.io.filesystem-failure-is-said`), where an unreadable
-   path answers an empty string and one that does not open answers fd 0;
-   non-termination is a
+   reach outward is a row fact the crown can negate. Non-termination is a
    row fact beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); a bug trap
    performs `Trap` carrying the node, and the root answers it with the node's
    aspects and Reason chain, never a bare `unreachable`; an allocation's

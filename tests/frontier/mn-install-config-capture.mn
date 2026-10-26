@@ -47,4 +47,4 @@ fn main() = {
   } ~> to_fd(fd))
   fs_close(fd)
   proc_exit(byte_len(fs_read_file("/tmp/config-capture-probe.txt")))
-} ~> wasi_filesystem
+} ~> wasi_filesystem ~> fail_exit

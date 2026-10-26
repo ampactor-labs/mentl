@@ -11,7 +11,12 @@
 // Row semantics: `with Filesystem` declares the function MAY touch the
 // filesystem. `with !Filesystem` PROVES it does not — audit-driven linker
 // severance can drop path_open / fd_close / etc. imports from binaries with
-// proven !Filesystem.
+// proven !Filesystem. A failure is said: an op that cannot do what it was
+// asked — read, write, create — performs `Fail` naming the path and the
+// host's reason, so every install of `wasi_filesystem` carries `Fail` to
+// whatever answers it, and an op answering a question (fs_exists, fs_mkdir,
+// fs_list_dir, fs_unlink, fs_rename, fs_write_image) states the answer in
+// its type.
 //
 // Paths resolve against the preopen table (fs_at): a relative path against
 // the first dir preopen (the install shim preopens the caller's cwd first),
@@ -29,7 +34,9 @@ effect Filesystem {
   fs_exists(String) -> Bool
   fs_read_file(String) -> String
   fs_write_file(String, String)
-  fs_mkdir(String)
+  // Whether the directory stands once asked for: a cache a host cannot hold
+  // is skipped, and a write that needed the directory fails naming its path.
+  fs_mkdir(String) -> Bool
   // create+truncate for writing, returning the fd (WASI oflags CREAT|TRUNC,
   // write rights), for a writer that streams through the fd.
   fs_create(String) -> Int
@@ -65,57 +72,59 @@ handler wasi_filesystem {
   // through the stream loop a pipe needs touched 87 MB for an 18.7 MB file
   // (measured 2026-10-06 on the march verb reading back its own emission).
   // lookupflags 1 follows a symlink, so the size is the file's. A path that
-  // does not open answers the empty string; a caller tells the two apart with
-  // fs_exists.
+  // does not stat or open fails, naming the path and the host's reason: an
+  // absent file is never read as an empty one, and a caller that expects
+  // absence asks fs_exists first.
   resume(match fs_at(path) {
     (dfd, pp, plen) => {
       let stat = alloc(64)
       let fd_cell = alloc(4)
-      if path_filestat_get(dfd, 1, pp, plen, stat) != 0 {
-        str_of_buf(bytes_buf(0))
-      } else if path_open(dfd, 0, pp, plen, 0, 2, 2, 0, fd_cell) != 0 {
-        str_of_buf(bytes_buf(0))
-      } else {
-        let fd = load_i32(fd_cell)
-        let bytes = fd_read_sized(fd, load_i32(addr_at(stat, 32)))
-        fd_close(fd)
-        bytes
-      }
+      let stat_errno = path_filestat_get(dfd, 1, pp, plen, stat)
+      if stat_errno != 0 { fail(fs_failed("read", path, stat_errno)) }
+      let open_errno = path_open(dfd, 0, pp, plen, 0, 2, 2, 0, fd_cell)
+      if open_errno != 0 { fail(fs_failed("read", path, open_errno)) }
+      let fd = load_i32(fd_cell)
+      let bytes = fd_read_sized(fd, load_i32(addr_at(stat, 32)))
+      fd_close(fd)
+      bytes
     },
   }),
   fs_write_file(path, bytes) => // Open write+create+truncate (oflags 0x9, rights 0x40), write, close: the
-  // file at the path becomes these bytes.
+  // file at the path becomes these bytes, or the op fails naming the path —
+  // one that does not open, or a write that lands short of the bytes.
   {
     match fs_at(path) {
       (dfd, pp, plen) => {
         let fd_cell = alloc(4)
-        if path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell) == 0 {
-          let fd = load_i32(fd_cell)
-          fd_write_bytes(fd, str_payload(bytes), byte_len(bytes))
-          fd_close(fd)
-          ()
+        let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
+        if open_errno != 0 { fail(fs_failed("write", path, open_errno)) }
+        let fd = load_i32(fd_cell)
+        let landed = fd_write_bytes(fd, str_payload(bytes), byte_len(bytes))
+        fd_close(fd)
+        if landed != byte_len(bytes) {
+          fail("cannot write `{path}`: {int_to_str(landed)} of {int_to_str(byte_len(bytes))} bytes landed")
         }
       },
     }
     resume()
   },
-  fs_mkdir(path) => // Idempotent: an existing directory (errno 17) is the directory asked for.
-  {
-    match fs_at(path) {
-      (dfd, pp, plen) => {
-        path_create_directory(dfd, pp, plen)
-        ()
-      },
-    }
-    resume()
-  },
+  fs_mkdir(path) => // Idempotent: an existing directory (WASI EEXIST, 20) is the directory asked
+  // for, and a host that holds no directory there answers false.
+  resume(match fs_at(path) {
+    (dfd, pp, plen) => {
+      let errno = path_create_directory(dfd, pp, plen)
+      errno == 0 || errno == 20
+    },
+  }),
   fs_create(path) => // The streaming half of fs_write_file (the same flags), for a writer that
   // emits through the fd across a long extent instead of banking one buffer;
-  // 0 where the path does not open.
+  // a path that does not open fails, naming it.
   resume(match fs_at(path) {
     (dfd, pp, plen) => {
       let fd_cell = alloc(4)
-      if path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell) != 0 { 0 } else { load_i32(fd_cell) }
+      let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
+      if open_errno != 0 { fail(fs_failed("create", path, open_errno)) }
+      load_i32(fd_cell)
     },
   }),
   fs_close(fd) => // errno absorbed: closing a closed fd (EBADF) closes nothing.
@@ -188,10 +197,7 @@ handler fs_overlay(files: [(String, String)]) {
     fs_write_file(path, bytes)
     resume()
   },
-  fs_mkdir(path) => {
-    fs_mkdir(path)
-    resume()
-  },
+  fs_mkdir(path) => resume(fs_mkdir(path)),
   fs_create(path) => resume(fs_create(path)),
   fs_close(fd) => {
     fs_close(fd)
@@ -205,6 +211,21 @@ handler fs_overlay(files: [(String, String)]) {
 
 fn overlay_at(path: String, file) = match file {
   (p, _) => p == path,
+}
+
+// What a failed op says: what it was asked to do, the path, and the host's
+// reason in words where WASI names one a person meets.
+fn fs_failed(op: String, path: String, errno) = "cannot {op} `{path}`: {errno_says(errno)}"
+
+fn errno_says(errno) = match errno {
+  2 => "permission denied",
+  20 => "it already exists",
+  31 => "it is a directory",
+  44 => "no such file or directory",
+  54 => "a part of the path is not a directory",
+  63 => "the operation is not permitted",
+  76 => "it lies outside every directory the host opened",
+  _ => "WASI errno {int_to_str(errno)}",
 }
 
 // What the arms share: a String path's resolution against the preopen table,

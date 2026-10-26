@@ -63,4 +63,4 @@ fn main() = {
   let sbit = if stft_ok { 1 } else { 0 }
   let bbit = if bp_ok { 1 } else { 0 }
   base + sbit + bbit
-} ~> wasi_filesystem
+} ~> wasi_filesystem ~> fail_exit

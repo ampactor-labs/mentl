@@ -123,7 +123,6 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 - `!Trap` is false where the stack runs out (Status, above).
 - A program shares one namespace with everything it links, so a user cannot declare a name the library declares, and a dependency's capabilities cannot yet be stated at its import.
 - The absence proof is per effect instance, not yet per install: a closure minted under one handler and called under another is the open modal case (PLAN.md §4③).
-- A failed file read answers an empty string rather than failing.
 - Memory is one image, reclaimed only where an extent ends (`(body) ~> arena`); a warm start restores the analysed image and re-derives the compile over it.
 - The browser IDE keeps one resident compiler per page but recompiles the whole file on each edit, cannot yet play a lesson in the page, and needs cross-origin isolation for shared memory (`ide/README.md`).
 - The compile is single-threaded, and there is no native backend.

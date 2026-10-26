@@ -1,0 +1,26 @@
+// expect: 2
+// The program answers its own filesystem failures: each op that cannot do
+// what it was asked performs `Fail`, `fallback` meets it, and the install
+// answers -1 — a read never the empty string, a create never fd 0, a write
+// never silently absent — and a directory the host cannot hold answers
+// false. On boot 0e88fc39 the read, create and write answered 0, 0 and 1,
+// and mkdir answered nothing a program could test.
+import fs
+
+handler fallback(v) {
+  fail(_) => v,
+}
+
+fn read_len() =
+  byte_len(fs_read_file("no-such-dir/settings.conf")) ~> wasi_filesystem ~> fallback(-1)
+
+fn create_fd() = fs_create("no-such-dir/out.txt") ~> wasi_filesystem ~> fallback(-1)
+
+fn made() = if fs_mkdir("no-such-dir/sub") { 1 } else { -1 } ~> wasi_filesystem ~> fallback(-1)
+
+fn wrote() = {
+  fs_write_file("no-such-dir/out.txt", "abc")
+  1
+} ~> wasi_filesystem ~> fallback(-1)
+
+fn main() = read_len() + create_fd() + made() + wrote() + 6

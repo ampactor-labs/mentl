@@ -794,11 +794,11 @@ run_env_protocol() {
   else
     fail "$label: both set, exit=$rc out='$out', want 42 and 'sum 42'"
   fi
-  # The refusal is fail_exit's, which speaks on stdout; main's own line
-  # (`sum …`) must not appear beside it.
+  # The refusal is fail_exit's, which speaks on stderr; main's own line
+  # (`sum …`) must not appear on stdout.
   out=$(wt_run --env MN_A=30 --dir "$pdir::." "$pdir/main.wasm" 2> "$dir/$label.unset.err")
   rc=$?
-  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q '^MN_B is read at main:7:' \
+  if [ "$rc" -eq 1 ] && grep -q '^MN_B is read at main:7:' "$dir/$label.unset.err" \
       && ! printf '%s\n' "$out" | grep -q '^sum'; then
     pass "$label: MN_B unset — the launch gate names it and its read site, nothing of main ran"
   else
@@ -826,7 +826,7 @@ run_env_protocol() {
   fi
   out=$(env -u MN_B MN_A=30 MENTL_BOOT="$compiler" "$shim" run "$pdir/main" 2> "$dir/$label.shim-unset.err")
   rc=$?
-  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Eq '^MN_B is read at .*/main:7:[0-9]+ \(in total\) and is not set$' \
+  if [ "$rc" -eq 1 ] && grep -Eq '^MN_B is read at .*/main:7:[0-9]+ \(in total\) and is not set$' "$dir/$label.shim-unset.err" \
       && ! printf '%s\n' "$out" | grep -q '^sum'; then
     pass "$label: mentl run preserves pre-main refusal for an unset required name"
   else

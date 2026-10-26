@@ -9,4 +9,4 @@
 fn main() = {
   let h = persist_branch(() => 21 + 21)
   join_persist(h)
-} ~> persist_to_disk ~> wasi_filesystem
+} ~> persist_to_disk ~> wasi_filesystem ~> fail_exit

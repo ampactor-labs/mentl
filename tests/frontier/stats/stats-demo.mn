@@ -89,4 +89,4 @@ fn main() = {
   else if amax != 298 { 2 }
   else if above != 199 { 3 }
   else { 42 }
-} ~> wasi_filesystem
+} ~> wasi_filesystem ~> fail_exit

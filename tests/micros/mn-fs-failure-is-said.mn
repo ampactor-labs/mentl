@@ -1,0 +1,11 @@
+// expect: refuse E_EffectMismatch
+// A FILESYSTEM FAILURE IS SAID: a path that does not read performs `Fail`
+// from the filesystem's own arm, naming the path and the host's reason, so an
+// install of `wasi_filesystem` carries `Fail` to whatever answers it.
+// `settings` claims `!Fail` over that install: on boot 0e88fc39 it checked
+// clean and the program ran to 0, the missing file read as the empty string.
+import fs
+
+fn settings() with !Fail = fs_read_file("no-such-dir/settings.conf") ~> wasi_filesystem
+
+fn main() = byte_len(settings())

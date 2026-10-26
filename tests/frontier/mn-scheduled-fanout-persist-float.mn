@@ -7,6 +7,6 @@
 fn widen(x) = float_of_int(x) * 15.0
 
 fn main() = {
-  let (a, b) = (2 <| (widen, widen)) ~> persist_to_disk ~> wasi_filesystem
+  let (a, b) = (2 <| (widen, widen)) ~> persist_to_disk ~> wasi_filesystem ~> fail_exit
   float_to_int(a + b)
 }

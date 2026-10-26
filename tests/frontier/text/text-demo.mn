@@ -56,4 +56,4 @@ fn main() = {
   else if ct != 32 { 3 }
   else if top != 101 { 4 }            // 'e' is the most frequent letter
   else { 42 }
-} ~> wasi_filesystem
+} ~> wasi_filesystem ~> fail_exit

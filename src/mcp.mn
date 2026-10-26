@@ -93,7 +93,6 @@ fn mcp_verdict_text(text, nerr, left, wat_path) = {
   let head = match left {
     ArtifactRefused => "REFUSED — {int_to_str(nerr)} error(s) the medium reported; nothing was emitted\n",
     ArtifactWritten => "PROVEN — every claim discharged; artifact: {wat_path}\n",
-    ArtifactUnwritable => "PROVEN — every claim discharged; the artifact write failed at {wat_path}\n",
   }
   head ++ text
 }
