@@ -1,0 +1,8 @@
+// expect: 6
+// A STAGE'S STORE INTO MEMORY ITS OWN FRAME BUILT IS CONSTRUCTION, the twin
+// of mn-substrate-stage-pays-its-row.mn: `list_set` standing as a stage
+// carries the primitive's row, and the store it makes into a list `fresh`
+// allocated performs no `Mutate`, so `!Mutate` holds.
+fn fresh() with !Mutate = make_list(1) |> list_set(??, 0, 5)
+
+fn main() = fresh()[0] + 1

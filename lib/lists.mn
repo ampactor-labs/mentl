@@ -121,12 +121,13 @@ fn scalar_copy(dst, src, stride) = if stride == 2 {
 // make_list — allocate a flat tag=0 list of `count` slots (uninitialized).
 // Callers must fill slots with list_set before the list escapes.
 // The representation layer speaks TWO altitudes, and the names carry the
-// boundary: `alloc_list` is the RAW constructor (a count in, an address out —
-// the [len][tag][slots] record laid out by addr_at), used INSIDE this file's
-// raw walks; `make_list` is the TYPED name the substrate table projects as
-// `Int -> [a]` for every consumer above the boundary. One body, two names —
-// a raw body that CALLS a table-typed name would force the typed view onto
-// its own word-level locals (the List-vs-Int census class this split felled).
+// boundary: `alloc_list_sc` is the RAW constructor (a count and a stride class
+// in, an address out — the [len][tag][slots] record laid out by addr_at), used
+// INSIDE this file's raw walks; `make_list` is the TYPED name the substrate
+// table projects as `Int -> [a]` for every consumer above the boundary. One
+// body, two names — a raw body that CALLS a table-typed name would force the
+// typed view onto its own word-level locals (the List-vs-Int census class this
+// split felled).
 fn alloc_list_sc(count, sc) = {
   let t = alloc(8 + count * decode_stride(sc))
   store_i32(t, count)
@@ -134,10 +135,15 @@ fn alloc_list_sc(count, sc) = {
   t
 }
 
-fn alloc_list(count) = alloc_list_sc(count, 0)
+// A negative count is no length: it traps here, at the list's own
+// precondition, before the allocator could read it as exhausted memory. The
+// answer is the allocation alone, so the list is memory its caller built.
+fn make_list(count) = {
+  if count < 0 { out_of_range() }
+  alloc_list_sc(count, 0)
+}
 
-fn make_list(count) = alloc_list(count)
-
+// The constructor a packed list literal calls at its stride class.
 fn make_list_sc(count, sc) = alloc_list_sc(count, sc)
 
 // list_filled — a flat list with every slot holding v. The bucket-index
@@ -166,10 +172,11 @@ fn list_set(l, idx, val) = {
   // One tag-word read; 0 == pack_tag(0, 0), the flat word list — a direct
   // store. Byte lists route through store_strided so the 0..255 range trap
   // holds; wide slots keep the copy-from-reference protocol. The base
-  // refuses a structured tag LOUDLY: a snoc/concat/slice node has headers
-  // where flat elements would sit, and the old silent path wrote through
-  // them (the float-render bump stored a digit over a snoc's parent
-  // pointer) — corruption, never a wrong element.
+  // refuses a structured tag LOUDLY, and the list an index outside it: a
+  // snoc/concat/slice node has headers where flat elements would sit, and a
+  // slot past the end is the next allocation's — a store through either is
+  // corruption, never a wrong element.
+  if idx < 0 || load_i32(l) <= idx { out_of_range() }
   let tw = load_i32(addr_at(l, 4))
   let base = addr_at(l, if tw % 16 == 0 { 8 } else { out_of_range() })
   if tw == 0 {
@@ -219,13 +226,8 @@ fn list_copy_into(src, dst, i, count) = if i >= count {
 // O(1) for a flat list, O(log N) for a snoc chain, O(depth) for a concat or
 // a slice. An index out of range traps at this one boundary check, and the
 // traversal below it runs unchecked.
-fn list_index(ref list, i) = if i < 0 {
-  out_of_range()
-} else if i >= load_i32(list) {
-  out_of_range()
-} else {
-  list_index_unchecked(list, i)
-}
+fn list_index(ref list, i) =
+  if i < 0 || load_i32(list) <= i { out_of_range() } else { list_index_unchecked(list, i) }
 
 // The raw traversal — every entry already carries a discharged bounds
 // obligation: list_index's boundary check, or the judgment's proof of a
@@ -426,27 +428,31 @@ fn list_concat(a, b) = {
 
 // Slice — O(1) view
 //
-// slice — return a view into list[start..end) (exclusive end).
-// Clamps to valid range. Returns the empty list for an empty range.
-// Allocates a 16-byte slice node (tag=4) — no copying. `slice` is the
-// typed table name; `slice_raw` is the same operation at the raw
+// slice — a view into list[start..end) (exclusive end), a 16-byte slice node
+// (tag=4), no copying. Its precondition is `0 <= start <= end <= len(list)`:
+// a bound outside the list traps, as an index out of range does, and is
+// never clamped to a view the caller did not ask for.
+// `slice` is the typed table name; `slice_raw` is the cut at the raw
 // altitude, callable from this file's word-level walks.
-fn slice(list, start, end) = slice_raw(list, start, end)
+fn slice(list, start, end) = {
+  if start < 0 || end < start || load_i32(list) < end { out_of_range() }
+  slice_raw(list, start, end)
+}
 
-// A slice of a slice views the same base at the composed offset, so a list
+// The cut, its bounds already in range: an empty range is the empty list, and
+// a slice of a slice views the same base at the composed offset, so a list
 // cut again and again stays one hop from its elements.
-fn slice_raw(list, start, end) = {
-  let total = load_i32(list)
-  let cstart = if start < 0 { 0 } else if start > total { total } else { start }
-  let cend = if end < cstart { cstart } else if end > total { total } else { end }
-  let new_len = cend - cstart
-  if new_len <= 0 {
-    alloc_list_sc(0, seq_sc(list))
-  } else {
-    match addr_at(list, 4) |> load_i32 |> seq_shape {
-      SeqSlice => slice_node(load_addr(addr_at(list, 8)), load_i32(addr_at(list, 12)) + cstart, new_len, seq_sc(list)),
-      SeqFlat | SeqSnoc | SeqConcat => slice_node(list, cstart, new_len, seq_sc(list)),
-    }
+fn slice_raw(list, start, end) = if end - start <= 0 {
+  alloc_list_sc(0, seq_sc(list))
+} else {
+  match addr_at(list, 4) |> load_i32 |> seq_shape {
+    SeqSlice => slice_node(
+      load_addr(addr_at(list, 8)),
+      load_i32(addr_at(list, 12)) + start,
+      end - start,
+      seq_sc(list)
+    ),
+    SeqFlat | SeqSnoc | SeqConcat => slice_node(list, start, end - start, seq_sc(list)),
   }
 }
 

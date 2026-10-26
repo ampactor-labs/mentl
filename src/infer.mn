@@ -5279,15 +5279,18 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   // attribute at every call site. The 2026-07-17 revert's OOM was one
   // representation era stale (measured then on the 559k-line wheel against
   // the 4GB ceiling; the current wheel compiles at ~694MB peak — the
-  // re-measurement, not the arena, un-gated this). The Memory floor
-  // survives only for an unresolved callee (productive-under-error, the
-  // seq_op_sig None floor's twin).
-  match graph_chase(fh) {
-    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_at(handle, mutation_masked(handle, fh, crow, args)),
-    GNode(_, _) => inf_add_row_at(handle, mk_ef_closed([ENamed(intern_str("Memory"))])),
-  }
+  // re-measurement, not the arena, un-gated this).
+  inf_add_row_at(handle, mutation_masked(handle, fh, substrate_row(fh), args))
   // What the face writes, asked of the arguments it writes.
   ages_mutation_call(handle, fh, args)
+}
+
+// A substrate primitive's own declared row, read live off its callee; the
+// Memory floor survives only for an unresolved callee (productive-under-error,
+// the seq_op_sig None floor's twin).
+fn substrate_row(fh) = match graph_chase(fh) {
+  GNode(NBound(TFun(_, _, crow)), _) => crow,
+  GNode(_, _) => mk_ef_closed([ENamed(intern_str("Memory"))]),
 }
 
 // What a call's judgment built: the applied result, the product with holes —
@@ -5409,7 +5412,10 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
   // forces against), never from the env scheme: the scheme is the raw
   // body's own (list_set's `l + 8` types l Int), and typing a caller's
   // partial from it unified every `|> list_set(??, …)` pipe datum with
-  // Int the moment the lib-first order made the scheme visible.
+  // Int the moment the lib-first order made the scheme visible. The
+  // partial carries the primitive's own declared row, as the saturated
+  // call charges it, so a stage or a value built from it pays what the
+  // primitive costs where it is applied.
   else if reaches_substrate(func) {
     let elem = TVar(mint(Inferred("sequence element")))
     match seq_op_sig(cname, elem) {
@@ -5418,7 +5424,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
           args,
           build_ctor_params(ptys, 0),
           ret,
-          union_row(mk_ef_closed([ENamed(intern_str("Memory"))]), fold_face_value_row(cname, ptys)),
+          union_row(substrate_row(func), fold_face_value_row(cname, ptys)),
           handle,
           span,
           cname
@@ -10932,14 +10938,31 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
 fn sugar_calls(at, charged, name: String) = match env_resolve_linked(name) {
   Some(d) => {
     graph_ref_link(at, d)
-    match graph_published(d) {
-      Some((scheme, _, _)) => match instantiate(scheme) {
-        TFun(_, _, row) => inf_add_row_at(charged, row),
-        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
-      },
+    charge_published(charged, d)
+  },
+  None => (),
+}
+
+// A bound rest is linked to the slice it cuts with, and pays the row of the
+// cut beneath the slice's bounds check: the arm runs only where the list
+// holds the prefix, so that check never raises its `Trap`.
+fn rest_cuts(at, charged) = match env_resolve_linked(list_rest_callee()) {
+  Some(d) => {
+    graph_ref_link(at, d)
+    match env_resolve_linked(list_rest_cut()) {
+      Some(cut) => charge_published(charged, cut),
       None => (),
     }
+  },
+  None => (),
+}
+
+// A declaration's published row, charged where a construct's cost lands.
+fn charge_published(charged, d) = match graph_published(d) {
+  Some((scheme, _, _)) => match instantiate(scheme) {
+    TFun(_, _, row) => inf_add_row_at(charged, row),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
   },
   None => (),
 }
@@ -11282,8 +11305,8 @@ fn infer_pat_list(pat, pats, rest, parent_handle, span: ValidSpan) = {
     Some(r) => {
       infer_pat_part(r, list_ty, part_of(parent_handle, PartRest), Inferred("list rest pattern"), span)
       // a bound rest is cut as a slice at run time: the pattern calls the
-      // slice and the list it cuts pays what the slice costs
-      if rest_names_a_binder(rest) { sugar_calls(pat, parent_handle, list_rest_callee()) }
+      // slice and the list it cuts pays what the cut costs (`rest_cuts`)
+      if rest_names_a_binder(rest) { rest_cuts(pat, parent_handle) }
     },
   }
 }

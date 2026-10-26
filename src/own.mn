@@ -240,9 +240,11 @@ fn report_branch_collisions(ref deltas, ref span) = {
 // takes the deepest (innermost) region across a composite value's
 // fields — preventing inner-region pointers from escaping via the
 // composite.
-// The region index is the word-keyed map family (lib/imap.mn): a region tag
-// is keyed by a handle, and a handle is a word.
-handler region_tracker with region_stack = [], next_region = 0, region_index = wmap_new(65536) {
+// The region index is a column (lib/imap.mn's pt): a value's region tag is
+// the cell at its handle, the newest tag written over the one before. An
+// empty column is no table at all, so an install — one per fork — costs
+// nothing until a value is tagged, and a tag costs four loads and a store.
+handler region_tracker with region_stack = [], next_region = 0, region_index = pt_empty() {
   region_enter(span) => {
     // Push at the END — every Mentl stack does (§9's wrong-end class: the
     // old front-push met last/drop_last readers, an enter-front/pop-bottom
@@ -279,7 +281,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
         Region(_, s) => s,
       }
     }
-    resume() with region_index = wmap_add(region_index, value_handle, (install_span, rid))
+    resume() with region_index = pt_set(region_index, value_handle, (install_span, rid))
   },
   tag_alloc_join(value_handle, field_handles) => {
     // H4.1: composite values (record / variant with fields) take
@@ -304,7 +306,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
       }
     }
     let joined = join_field_regions(region_index, field_handles, cur_rid)
-    resume() with region_index = wmap_add(region_index, value_handle, (install_span, joined))
+    resume() with region_index = pt_set(region_index, value_handle, (install_span, joined))
   },
   check_escape(value_handle, escape_span) => {
     // The fn-return read, three verdicts (regions are LIVE — infer_fn
@@ -318,10 +320,10 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
     //   OUTER live region / region 0 → already outlives this return.
     //   DEAD region → the escape, reported with BOTH spans (where the
     //     region opened, where the value tried to leave).
-    let entry = wmap_get(region_index, value_handle)
-    match entry {
-      None => resume(),
-      Some(tag) => match tag {
+    // A value never tagged is the column's virgin cell, which no tag is.
+    let tag = pt_get(region_index, value_handle)
+    if slot_present(tag) {
+      match tag {
         (install_span, region_id) => {
           let depth = len(region_stack)
           let top_rid = if depth == 0 {
@@ -341,7 +343,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
                 Region(p, _) => p,
               }
             }
-            resume() with region_index = wmap_add(region_index, value_handle, (install_span, parent))
+            resume() with region_index = pt_set(region_index, value_handle, (install_span, parent))
           } else if region_on_stack(region_stack, region_id) {
             resume()
           } else {
@@ -353,7 +355,9 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
             resume()
           }
         },
-      },
+      }
+    } else {
+      resume()
     }
   },
 }
@@ -367,11 +371,13 @@ fn region_on_stack(ref stack, rid) = any({ Region(rid_on_stack, _) => rid_on_sta
 fn join_field_regions(ref tags, ref fields, current) = fold(
   current,
   (acc, fh) => {
-    let field_rid = match wmap_get(tags, fh) {
-      None => 0,
-      Some(t) => match t {
+    let t = pt_get(tags, fh)
+    let field_rid = if slot_present(t) {
+      match t {
         (_, rid) => rid,
-      },
+      }
+    } else {
+      0
     }
     if field_rid > acc { field_rid } else { acc }
   },

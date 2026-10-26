@@ -485,13 +485,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **A trap's kind is said nowhere** (§11.1): the wheel's own emit holds
   4,488 `unreachable` instructions, and nothing sorts them into a
   precondition the row states, an exhaustion `Alloc` states, the emit's
-  own invariant or a hole (measured 2026-10-26). So a primitive's failure
-  can read as another: `fn mk(n) with !Trap = make_list(n)` checks clean
-  and `mk(0 - 5)` traps in `alloc`'s overflow guard, a negative length
-  read as exhausted memory, and `slice(xs, 0 - 2, 2)` over three elements
-  answers two, a bound past the sequence clamped where an index refuses.
-  False proofs are found by a probe someone thought to write (§11.2, the
-  witness).
+  own invariant or a hole (measured 2026-10-26), so a run that stops at one
+  does not say which it was. False proofs are found by a probe someone
+  thought to write (§11.2, the witness).
 - **The program is the graph, and its one-write operations are not all built.**
   A node is its handle (`type Node = Int`), a body holds its children as handles,
   and everything the judgment learns about a node is a column at that handle;
@@ -852,18 +848,13 @@ the face (step 3) cut the last three.
    (b) The row tells the whole truth — every way a computation can stop or
    reach outward is a row fact the crown can negate. Every filesystem failure
    performs `Fail` (`Hβ.io.filesystem-failure-is-said`), where an unreadable
-   path answers an empty string and one that does not open answers fd 0; a
-   slice past its sequence is `Trap` as an index out of range is
-   (`Hβ.effects.index-partiality-is-a-row-fact`), where `slice` and
-   `str_slice` clamp a bound past their sequence today; non-termination is a
+   path answers an empty string and one that does not open answers fd 0;
+   non-termination is a
    row fact beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); a bug trap
    performs `Trap` carrying the node, and the root answers it with the node's
    aspects and Reason chain, never a bare `unreachable`; an allocation's
    exhaustion is `Alloc`'s, performed and answered at the root as a bug trap
-   is, and nothing else rides it, so a primitive's precondition is a claim on
-   its face — `make_list`'s length non-negative, as `float_to_int`'s argument
-   is `Truncatable` — where a negative length traps in `alloc`'s overflow
-   guard, a precondition read as exhaustion; and the gate is a census of the
+   is, and nothing else rides it; and the gate is a census of the
    bare `unreachable` instructions the emit writes, at zero, so a trap no row
    names is found by the board and never by a probe; an executable's row
    is `main`'s and its inits' (`Hβ.effects.executable-row-includes-inits`).
@@ -975,7 +966,11 @@ the face (step 3) cut the last three.
    its declaration (`Hβ.infer.seq-op-signature-driven`): the faces are a table
    in the judgment (`seq_op_sig`) today, and each becomes the primitive's own
    signature, its body typed through it, once a list's element crosses its
-   slot at its own width (step 2). A call's answer read off a tee — a fold's
+   slot at its own width (step 2). Its precondition is a claim on that face,
+   decided at every explicit call as `xs[i]`'s is — `make_list`'s count, a
+   slice's bounds, an index — so a call the fragment proves in range charges
+   no `Trap`, where every explicit call of one charges the `Trap` its body's
+   check can raise today. A call's answer read off a tee — a fold's
    accumulator, a handler's answer — is placed by the install's arms, as the
    value walk already reads them (`Hβ.effects.tee-answer-is-the-arms`), where
    today a function threading a table through a fold's result owes `Mutate`

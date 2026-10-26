@@ -1,0 +1,12 @@
+// expect: refuse E_EffectMismatch
+// A SEQUENCE PRIMITIVE STANDING AS A STAGE PAYS ITS OWN ROW, as its call does:
+// a substrate call with a hole charged `Memory` alone, so `head2` held
+// `!Alloc` over a slice that builds a view node and `poke` held `!Mutate`
+// over a store into its own parameter (boot 3e60dafe: both checked clean).
+// The partial carries the primitive's declared row, and the stage that
+// applies it pays what it costs (mn-substrate-stage-fresh.mn is the twin).
+fn head2(xs) with !Alloc = xs |> slice(??, 0, 1)
+
+fn poke(xs) with !Mutate = xs |> list_set(??, 0, 5)
+
+fn main() = len(head2([1, 2, 3])) + len(poke([1, 2]))

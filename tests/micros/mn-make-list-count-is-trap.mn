@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// A NEGATIVE COUNT IS NO LENGTH: `make_list` handed its count straight to the
+// allocator, whose overflow guard trapped as though memory were exhausted,
+// and no row said so — `mk` checked clean under `!Trap` and `mk(0 - 5)`
+// trapped (boot 3e60dafe). The count is the list's precondition, checked
+// before anything is allocated, and a call carries the `Trap` it can raise.
+fn mk(n) with !Trap = make_list(n)
+
+fn main() = len(mk(3))

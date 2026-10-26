@@ -1,0 +1,11 @@
+// expect: 2
+// A BOUND REST IS CUT IN BOUNDS BY ITS OWN PATTERN: the arm runs only where
+// the list holds the prefix, so the slice that cuts the rest cannot trap,
+// and `!Trap` holds over a function that binds one, though a slice past its
+// sequence traps (the twin of mn-slice-bound-is-trap.mn).
+fn tail_len(xs) with !Trap = match xs {
+  [_, ...rest] => len(rest),
+  [] => 0,
+}
+
+fn main() = tail_len([1, 2, 3])

@@ -1,0 +1,12 @@
+// expect: refuse E_EffectMismatch
+// A SLICE PAST ITS SEQUENCE IS A TRAP, as an index out of range is: `slice`
+// and `str_slice` clamped a bound outside the sequence to its nearer end, so
+// under `!Trap` `cut` answered a two-element view of a three-element list
+// and `snip` an empty string (boot 3e60dafe: both checked clean, and the
+// program ran to 2). The bounds are the slice's precondition, checked where
+// the view is cut, and a call carries the `Trap` that check can raise.
+fn cut(xs) with !Trap = slice(xs, -2, 2)
+
+fn snip(s) with !Trap = str_slice(s, 2, 1)
+
+fn main() = len(cut([1, 2, 3])) + byte_len(snip("abc"))

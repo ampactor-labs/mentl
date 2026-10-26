@@ -565,7 +565,7 @@ x |> double |> square
 
 **Type rule:** if `left: A` and `right: A -> B with E`, then `left |> right: B with E`. The chain's row unions all stage rows.
 
-**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> { v => v * 2 }`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free. The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes. A bare reference to a module-level function or op standing as a stage is its call: `x |> f` is the direct call `f(x)` and `x |> put` is the perform `put(x)`, in the frame the pipe stands in, one graph with the call it spells — never a call through the function's record (tests/micros/mn-pipe-into-op.mn; the derivative reading enters `x |> f` as it enters `f(x)`, frontier `derive-distort`).
+**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> { v => v * 2 }`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free. The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes. A bare reference to a module-level function or op standing as a stage is its call: `x |> f` is the direct call `f(x)` and `x |> put` is the perform `put(x)`, in the frame the pipe stands in, one graph with the call it spells — never a call through the function's record (tests/micros/mn-pipe-into-op.mn; the derivative reading enters `x |> f` as it enters `f(x)`, frontier `derive-distort`). A sequence primitive standing as a stage pays its declared row as its call does: `xs |> slice(??, 0, 1)` builds a view, which is `Alloc`, and `xs |> list_set(??, 0, 5)` stores into the piped list, which is `Mutate` where that list is older than the frame (tests/micros/mn-substrate-stage-pays-its-row.mn, mn-substrate-stage-fresh.mn).
 
 **A stage whose callee is not yet known is the Stage Law's product.** Where the callee's arrow is still a variable — a field of an unannotated record, a parameter, a forward local — `x |> rig.tone(320.0)` is judged as `rig.tone(320.0, x)`: the arguments written, then the piped value's slot. A callee whose arrow is known is completed by its own parameters, and one whose call is already complete and returns a function is applied whole.
 
@@ -2344,7 +2344,9 @@ alternation / type-variant separation and is never list-cons syntax. A
 bound list rest is CUT — the elements past the prefix, as a slice — so it
 costs what `slice` costs, `Memory + Alloc`, in the frame the match stands
 in, and `with !Alloc` refuses it (`tests/micros/mn-list-rest-alloc.mn`).
-`..._` cuts nothing.
+It never costs the `Trap` a slice's bounds can raise: the arm runs only
+where the list holds the prefix, so the cut is in bounds by the pattern's
+own test (`tests/micros/mn-rest-cut-is-in-bounds.mn`). `..._` cuts nothing.
 
 **A sub-pattern is the cell of the part it takes apart, and a binder is
 declared where it is written.** In `Pair(a, b) => a / b` the `b` the arm
@@ -2925,11 +2927,21 @@ at the largest Int (tests/micros/mn-path-*.mn). A read the judgment proves
 in bounds is the unchecked traversal, which dispatches on the list's shape
 and is total (tests/micros/mn-proven-read-is-total.mn).
 
+**A sequence primitive checks its own precondition.** `slice` and
+`str_slice` trap where a bound leaves the sequence, `0 <= start <= end <=
+len(xs)` failing, and never clamp it to a view the caller did not ask for;
+`make_list` traps at a negative count before anything is allocated, never
+reaching the allocator as exhausted memory; and `list_set` traps at an index
+outside its list, where a store past the end would overwrite the next
+allocation. Each check is in the primitive's own body, so an explicit call
+of one carries its `Trap` as an explicit `list_index` does
+(tests/micros/mn-slice-bound-is-trap.mn, mn-make-list-count-is-trap.mn).
+
 What the fragment cannot yet read, named: a bound a parameter takes from
 every call — `0 <= i` where each call hands `0` or `i + 1`
-(`Hβ.verify.parameter-is-what-its-calls-hand`) — and the other partial
-primitives, a slice past its sequence among them
-(`Hβ.effects.index-partiality-is-a-row-fact`). A destructuring pattern is
+(`Hβ.verify.parameter-is-what-its-calls-hand`) — and an explicit call of a
+sequence primitive, whose precondition is checked in its body rather than
+claimed at the call (`PLAN.md` §11, the face). A destructuring pattern is
 that law one form over: the shape it asserts is its precondition, decided by
 the same walk (§«Exhaustiveness»). Non-termination is not a trap and not in
 the row (`Hβ.effects.divergence-is-a-row-fact`).
