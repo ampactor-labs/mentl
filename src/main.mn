@@ -110,14 +110,16 @@ import test
 // row-wise — this install IS the row cure and the live chain node the
 // stray performs dispatch through. Like every table, it is born holding
 // the medium's own vocabulary (intern.mn's state init).
-// A failure no route answers nearer is the process's: `fail_exit` says it on
+// A failure no route answers nearer is the process's: `fail_said` says it on
 // stderr and exits 1. Every route's filesystem install performs `Fail` where
 // an op cannot do what it was asked, and its arms resolve outside the
 // install, so a path that does not read stops the verb naming the path.
+// Outermost, stderr has one writer: a live line where fd 2 is a terminal,
+// the full lines alone into a pipe (`progress_stderr`).
 fn main(argv) = match parse_cli_args(argv) {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
-} ~> diagnostics_handler ~> intern_table ~> fail_exit
+} ~> diagnostics_handler ~> intern_table ~> fail_said ~> progress_stderr(fd_is_tty(2))
 
 // dispatch_invocation — the substrate handlers (env/graph/diagnostics)
 // install ONCE at this outermost dispatch boundary: the program boundary
@@ -152,10 +154,7 @@ fn dispatch_invocation(verb) = match verb {
   // compile-stdin contract (`mentl < wheel.mn` — the fixpoint path,
   // untouched); a terminal is a human with no program yet — project
   // the welcome instead of hanging on a read that never comes.
-  // (Landed as the second rung of a two-step ladder: the ops' import
-  // tables crossed on the prior pin, so this generation's boot
-  // lowers the call it is about to execute.)
-  VCompileStdin => if stdin_is_tty() { welcome_run() } else { compile_stdin_run() },
+  VCompileStdin => if fd_is_tty(0) { welcome_run() } else { compile_stdin_run() },
   VRun(target, _) => run_run(target),
   VCheck(target) => check_run(target),
   VAt(target, line, col) => at_run(target, line, col),
@@ -193,8 +192,9 @@ fn edit_run(target_opt) = {
   // its value drops — and a completed session exits 0. The whole analysis
   // core installs as one bracket (infer_context); cursor_default is the
   // innermost projection handler, its arms performing Synth, Teach, Verify
-  // and Graph ops that reach the installs around them.
-  mentl_edit_session(entry_module) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context
+  // and Graph ops that reach the installs around them. The session draws its
+  // own screen, so the compile's steps are never drawn over it.
+  mentl_edit_session(entry_module) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
   0
 }
 
@@ -1038,7 +1038,7 @@ fn serve_run() = {
   // module, and the judgment's writes land in infer_context installed HERE,
   // at the session boundary, so the graph persists across every hover,
   // definition and reference the session answers.
-  lsp_session() ~> wasi_filesystem ~> infer_context
+  lsp_session() ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
   0
 }
 
@@ -2310,7 +2310,7 @@ fn teach_run(target_opt) = {
 fn repl_run() = {
   // The line-eval runs infer; the core installs as the one bracket (the
   // driverless-zero-state class the bounds trap unmasked lives in its law).
-  repl_eval_line(read_stdin_line()) ~> stdout_console ~> query_context ~> wasi_filesystem ~> infer_context
+  repl_eval_line(read_stdin_line()) ~> stdout_console ~> query_context ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
   0
 }
 

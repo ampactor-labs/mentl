@@ -2269,7 +2269,7 @@ fn name_strs_minus(names, mask) = filter({ n => !any(eff_name_is(n), mask) }, na
 // walk of the plan found when the cost ratchet refused a landing 22 MB
 // heavier at every other step's size, so it stands as a line of its own.
 fn reach_heap_line() = match diag_scope_of() {
-  ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the emitted reach settles\n"),
+  ScopeAll => said("heap: {heap_mark()} byte(s) when the emitted reach settles\n"),
   ScopeNone => (),
   ScopeProject(_) => (),
 }

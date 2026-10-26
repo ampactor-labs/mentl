@@ -172,8 +172,8 @@ function makeShim({ mem, argv, stdin, vfs, spawnFn, pull }) {
       if (nm in vfs) { stat(s, 4, vfs[nm].length); return 0; } if (isDir(nm)) { stat(s, 3, 0); return 0; } return 44; },
     fd_filestat_get(fd, s) { const h = fds.get(fd); if (!h) return 8; stat(s, h.dir ? 3 : 4, h.dir ? 0 : vfs[h.name].length); return 0; },
     // the streams are host buffers, neither a terminal nor a file: filetype
-    // unknown (0), so the wheel's terminal test (stdin_is_tty, lib/io.mn)
-    // reads a pipe and compiles what stdin holds
+    // unknown (0), so the wheel's terminal test (fd_is_tty, lib/io.mn)
+    // reads a pipe: it compiles what stdin holds and draws no live line
     fd_fdstat_get(fd, p) { const h = fds.get(fd); if (h) { dv().setUint8(p, h.dir ? 3 : 4); return 0; } if (fd >= 0 && fd <= 2) { dv().setUint8(p, 0); return 0; } return 8; },
     // A directory read over the vfs keys: the children of the handle's
     // directory, each a preview1 dirent ([d_next u64][d_ino u64][d_namlen

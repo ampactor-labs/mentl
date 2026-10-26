@@ -1384,22 +1384,6 @@ run_data_validator() {
   [ "$ok" = 1 ] && pass "$label cross-validation (${#expected[@]} facts agree with the oracle)"
 }
 
-compile_fixture() {
-  local compiler="$1" label="$2" source="$3" dir="$4"
-  local wat="$dir/$label.input.wat" err="$dir/$label.input.err"
-  local normalized="$dir/$label.input.normalized" rc errors
-
-  wt_run "$compiler" < "$source" > "$wat" 2> "$err"
-  rc=$?
-  normalize_errors "$err" > "$normalized"
-  errors=$(wc -l < "$normalized")
-  if [ "$rc" -eq 0 ] && [ "$errors" -eq 0 ]; then
-    pass "$label input check (no errors or proof debt)"
-  else
-    fail "$label input check (exit=$rc errors-or-debt=$errors; see $err)"
-  fi
-}
-
 # A hole-bearing fixture's input form is PRODUCTIVE, never executable
 # (SYNTAX §«Partial application»): the compile verb must REFUSE it honestly —
 # E_UnresolvedHole, nonzero exit, ZERO WAT bytes. The edit workflow then
@@ -2126,6 +2110,17 @@ for i in "${!compilers[@]}"; do
   # Configuration is an effect and the demand is the manifest (E1,
   # run_env_protocol's header).
   run_env_protocol "$compiler" "$dir"
+  # The compile says where it is (PLAN §11): at a terminal a check draws the
+  # link, each module parsed and the judging, then clears its row; into a pipe
+  # it writes no live line. RED on boot 30605949: 0 bytes at a terminal.
+  live=$(cd "$ROOT" && script -qec "$WT run ${WT_RUN_FLAGS[*]} --dir . --dir $ROOT::/mentl-home $compiler check examples/pulse/course/01-tone.mn" /dev/null)
+  piped=$(cd "$ROOT" && wt_run --dir . --dir "$ROOT::/mentl-home" "$compiler" check examples/pulse/course/01-tone.mn 2>&1 >/dev/null | grep -c $'\r')
+  linked=$(printf '%s' "$live" | grep -o 'linked [0-9]* modules' | grep -o '[0-9]*')
+  if [ -n "$linked" ] && [[ "$live" == *"parsing $linked/$linked modules"* && "$live" == *"judging 1/"* && "$live" == *$'\e[K' ]] && [ "$piped" = 0 ]; then
+    pass "the compile says where it is: $linked modules linked and parsed, the judging drawn, its row cleared; a pipe gets no live line"
+  else
+    fail "the compile's live line (linked='$linked', carriage returns into a pipe=$piped)"
+  fi
   # Real host-thread spawn over the shared image (the task-record substrate:
   # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
   # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.

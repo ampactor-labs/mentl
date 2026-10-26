@@ -278,7 +278,7 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
 // nothing on stdout.
 fn refuse_to_emit(refused) = {
   if refused > 0 {
-    eprint_string("mentl: refusing to emit — {int_to_str(refused)} error(s) the medium reported\n")
+    said("mentl: refusing to emit — {int_to_str(refused)} error(s) the medium reported\n")
   }
   proc_exit(1)
 }
@@ -307,14 +307,21 @@ fn report_holes(holes, i) = if i >= len(holes) {
 // reach walk's by the two added when the cost ratchet refused a landing
 // whose declarations had grown 3 MB and whose lowering had grown 90
 // (2026-09-30: the path-local wide-sequence type walk).
+// The steps it reaches are the compile's to say while they run; the live line
+// ends with the planning, before a byte of the module is written to its sink.
 fn compile_remainder() = {
+  phase("saturating")
   let sat = saturate_pass(link_program())
   heap_line("when saturation ends")
+  phase("lowering")
   let pre = lower_program(sat)
   heap_line("when the lowering pre-passes end")
   let lowered = reachable_from_main(pre)
   heap_line("when lowering ends")
-  match gated_plan(lowered) {
+  phase("planning")
+  let gated = gated_plan(lowered)
+  step_ended()
+  match gated {
     Planned(plan) => {
       heap_line("when the module is planned")
       emit_planned(plan)
@@ -329,7 +336,7 @@ fn compile_remainder() = {
 }
 
 fn heap_line(at: String) = match diag_scope_of() {
-  ScopeAll => eprint_string("heap: {heap_mark()} byte(s) {at}\n"),
+  ScopeAll => said("heap: {heap_mark()} byte(s) {at}\n"),
   ScopeNone => (),
   ScopeProject(_) => (),
 }
@@ -340,7 +347,7 @@ fn heap_line(at: String) = match diag_scope_of() {
 // ends, once the module is written or before a refusal says why it was not,
 // so one line counts them all.
 fn arena_line() = match diag_scope_of() {
-  ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
+  ScopeAll => said("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
   ScopeNone => (),
   ScopeProject(_) => (),
 }
@@ -352,7 +359,7 @@ fn arena_line() = match diag_scope_of() {
 // resolve through it, the executable gate's static demands ground in it,
 // and every post-swap dispatch walks the RESTORED world regardless.
 fn resume_image(img_path) = {
-  eprint_string("warm: restoring the persisted image\n")
+  said("warm: restoring the persisted image\n")
   image_resume(img_path)
   compile_remainder()
 } ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem ~> compile_context
@@ -731,7 +738,7 @@ handler diagnostics_handler with errors = 0, narrations = 0, scope = ScopeAll {
   if diag_severity(diag) == SError {
     // An error renders in EVERY scope — a broken claim anywhere in the
     // weave changes the answer's validity; the register never silences it.
-    eprint_string(diag_line(diag, msg, dmod))
+    said(diag_line(diag, msg, dmod))
     resume() with errors = errors + 1
   } else {
     // Narration is the register's business: ScopeAll (the census paths)
@@ -744,7 +751,7 @@ handler diagnostics_handler with errors = 0, narrations = 0, scope = ScopeAll {
     // duplicate copy, which the weave parse reports again where it can be
     // placed, so it is neither printed nor counted; a narration the project
     // register scoped away still counts, because the board reads the link.
-    if scope_hears(scope, diag, dlayer) { eprint_string(diag_line(diag, msg, dmod)) } else { () }
+    if scope_hears(scope, diag, dlayer) { said(diag_line(diag, msg, dmod)) } else { () }
     match scope {
       ScopeNone => resume(),
       ScopeAll | ScopeProject(_) => resume() with narrations = narrations + 1,
@@ -754,6 +761,78 @@ handler diagnostics_handler with errors = 0, narrations = 0, scope = ScopeAll {
   diag_narrations() => resume(narrations),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),
+}
+
+// THE COMPILE'S STDERR, ONE WRITER (PLAN §11, the compile says where it is).
+// Every line the compile says and every step it reaches arrives here. Where
+// `live`, a step draws one line at the terminal, redrawn in place each time a
+// counted step crosses a hundredth of its count; a full line clears it, is
+// written, and the step is drawn again beneath it, and the step's end clears
+// it, so a report never lands on a half-drawn row and stdout is never written
+// beside one. Otherwise only the full lines are written, byte for byte what a
+// reader of stderr has always read — the march's line peak, a battery's
+// refusal classes. `shown` is the line on the terminal now, `step` the
+// hundredths of the current count drawn so far, compared by multiplication so
+// no division stands in an arm, and `parsed` the modules told parsed in this
+// step, since the parse's map carries no index to tell.
+handler progress_stderr(live: Bool) with shown = None, step = 0, parsed = 0 {
+  linked(n) => if live {
+    resume() with shown = drawn("mentl · linked {int_to_str(n)} modules"), step = 0
+  } else {
+    resume()
+  },
+  parsing(n) => if live && parsed * 100 >= step * n {
+    resume() with shown = drawn("mentl · parsing {int_to_str(parsed + 1)}/{int_to_str(n)} modules"), step = step + 1, parsed = parsed + 1
+  } else {
+    resume() with parsed = parsed + 1
+  },
+  judging(i, n, name) => if live && i * 100 >= step * n {
+    resume() with shown = drawn(judging_line(i, n, name)), step = step + 1
+  } else {
+    resume()
+  },
+  phase(name) => if live { resume() with shown = drawn("mentl · {name}"), step = 0 } else { resume() },
+  said(line) => {
+    match shown {
+      Some(live_line) => eprint_string("{row_reset()}{line}{live_line}"),
+      None => eprint_string(line),
+    }
+    resume()
+  },
+  step_ended() => {
+    match shown {
+      Some(_) => eprint_string(row_reset()),
+      None => (),
+    }
+    resume() with shown = None, step = 0, parsed = 0
+  },
+}
+
+// A step's line drawn over the row, and the line now on it.
+fn drawn(line) = {
+  eprint_string("{row_reset()}{line}")
+  Some(line)
+}
+
+// The terminal's two controls the live line speaks: back to the row's start,
+// and erase to its end (ESC [ K).
+fn row_reset() = "{str_of_single_byte(13)}{str_of_single_byte(27)}[K"
+
+// A group led by a statement that declares no name is said by its count.
+fn judging_line(i, n, name) = if byte_len(name) == 0 {
+  "mentl · judging {int_to_str(i + 1)}/{int_to_str(n)} groups"
+} else {
+  "mentl · judging {int_to_str(i + 1)}/{int_to_str(n)} groups · {name}"
+}
+
+// The compiler's failure policy at the program boundary: the failure said
+// through the one stderr writer, so it never lands beside a live line, and
+// the process exits 1.
+handler fail_said {
+  fail(msg) => {
+    said("{msg}\n")
+    proc_exit(1)
+  },
 }
 
 // Every top-level FnStmt projected to `project(name, handle)`, the other

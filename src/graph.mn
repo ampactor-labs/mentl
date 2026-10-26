@@ -785,7 +785,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
           // residual past every bracket (the face-pollution root the
           // root-row gate refused: the wheel's own main carrying
           // GraphRead + Intern it never performs).
-          eprint_string("FRAGX {int_to_str(handle)} born-at {show_span(reason_span_or_zero(r0))} why-at {show_span(reason_span_or_zero(reason))}\n")
+          said("FRAGX {int_to_str(handle)} born-at {show_span(reason_span_or_zero(r0))} why-at {show_span(reason_span_or_zero(reason))}\n")
         } else {
           ()
         }

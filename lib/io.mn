@@ -328,12 +328,12 @@ fn read_line_loop(buf, offset, capacity) = match if offset + 1 > capacity {
   },
 }
 
-// stdin_is_tty — the fdstat filetype of fd 0 (character_device = 2). The
-// one read that lets a bare mentl command fork honestly: a terminal invocation
-// projects the welcome; a pipe or file IS the compile-stdin contract
-// (`mentl < wheel.mn` — the fixpoint path, byte-identical). The fdstat
-// record is 24 bytes; filetype is the u8 at offset 0.
-fn stdin_is_tty() = {
+// Whether a descriptor is a terminal: its fdstat filetype is character_device
+// (2). A bare mentl command forks on fd 0's — a terminal invocation projects
+// the welcome, a pipe or file IS the compile-stdin contract — and the
+// compile's live line on fd 2's. The fdstat record is 24 bytes; filetype is
+// the u8 at offset 0.
+fn fd_is_tty(fd) = {
   let stat = alloc(24)
-  fd_fdstat_get(0, stat) == 0 && load_i8(stat) == 2
+  fd_fdstat_get(fd, stat) == 0 && load_i8(stat) == 2
 }

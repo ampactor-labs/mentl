@@ -444,13 +444,14 @@ fn driver_judge_link(link, entries, entry_key: String, prelude_key, dscope) = {
   // compile's (pipeline.mn heap_line): where the heap stands once the walk
   // has read every module and lexed its header.
   match dscope {
-    ScopeAll => eprint_string("heap: {discovered} byte(s) when the link is discovered\n"),
+    ScopeAll => said("heap: {discovered} byte(s) when the link is discovered\n"),
     ScopeNone | ScopeProject(_) => (),
   }
   let start = graph_next()
   let keyed = fold([], mint_entry, entries)
   each(draw_entry_imports(keyed, ??), entries)
   let modules = map({ (_, mh) => mh }, keyed)
+  linked(len(modules))
   let entry = keyed_node(keyed, entry_key)
   link_register(link, entry, modules, keyed_opt(keyed, prelude_key))
   infer_modules_converged(modules, start)
@@ -581,7 +582,7 @@ fn driver_warm_ready(path) = if fs_exists(path) {
 fn driver_compile_entry(ref entry_module) = {
   let path = driver_warm_path(entry_module)
   if driver_warm_ready(path) {
-    eprint_string("warm: restoring the analyzed image\n")
+    said("warm: restoring the analyzed image\n")
     image_resume(path)
     driver_incremental()
   } else {
@@ -635,10 +636,10 @@ fn driver_incremental() = match link_entry() {
       (entries, prelude_key) => {
         let changed = changed_modules(link_text_pairs(), walked_text_pairs(entries))
         if len(changed) == 0 {
-          eprint_string("warm: inference restored — lowering and emit re-derive\n")
+          said("warm: inference restored — lowering and emit re-derive\n")
         } else {
           match edit_judged(entries, module_of(em).file, prelude_key, verify_forget) {
-            (n, m) => eprint_string("warm: re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s)\n"),
+            (n, m) => said("warm: re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s)\n"),
           }
           driver_warm_persist(entry_module)
         }

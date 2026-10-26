@@ -1394,6 +1394,7 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   let name_idx = layer_name_index(map(stmt_decl_name, stmts), 0, smap_new())
   let groups = scc_groups(frees_all, name_idx)
   trial_group_walk(stmts, groups, 0)
+  phase("settling the judgment")
   // The prose gate reads THIS judgment's own cells and nothing older: the
   // comment cells are the one generation the parse minted, [parse_start,
   // parse_end). The cold route parses from handle 0, so the range used to
@@ -1416,6 +1417,7 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // naming a label are decided here, once every declaration is judged.
   flow_settle()
   root_settle(stmts)
+  step_ended()
 } ~> judgment_core
 
 // THE EXECUTABLE ROOT, judged where the program is judged. `main`'s row is
@@ -1869,12 +1871,19 @@ fn served_named(name: String, s) = match s {
 // The modules arrive as their nodes, minted from `start` on, so the judgment's
 // own generation begins where its modules were minted.
 fn infer_modules_converged(ref modules, start) = {
-  let stmts = modules |> map(parse_one_module) |> flatten
+  let stmts = modules |> map(parse_reached(len(modules), ??)) |> flatten
+  step_ended()
   infer_program_once(stmts, start, graph_next())
   match diag_scope_of() {
-    ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the judgment ends\n"),
+    ScopeAll => said("heap: {heap_mark()} byte(s) when the judgment ends\n"),
     ScopeNone | ScopeProject(_) => (),
   }
+}
+
+// A module of the link parsed, the step said as it is reached.
+fn parse_reached(n, mh) = {
+  parsing(n)
+  parse_one_module(mh)
 }
 
 // Every stmt's free-name list, collected once from the parse tree.
@@ -2000,8 +2009,16 @@ fn imin(a, b) = if a < b { a } else { b }
 // intern table, and every store it makes into their older memory journals
 // itself, with the type the store knows, where it happens.
 fn trial_group_walk(ref stmts, ref groups, g) = {
-  fn judge_group(grp) = trial_judge_group(stmts, sort(grp)) ~> arena
-  each(judge_group, slice(groups, g, len(groups)))
+  let todo = slice(groups, g, len(groups))
+  // Each group is said as it is reached, by its first declaration's name; the
+  // fold's accumulator is the group's index, so the walk allocates nothing to
+  // count.
+  fn judge_group(k, grp) = {
+    judging(k, len(todo), stmt_decl_name(list_index(stmts, list_index(grp, 0))))
+    trial_judge_group(stmts, sort(grp)) ~> arena
+    k + 1
+  }
+  fold(0, judge_group, todo)
 }
 
 // A singleton judges once; a CYCLE iterates locally to its own fixpoint.
@@ -5727,7 +5744,7 @@ fn directional_step(span: ValidSpan, acc, entry) = match acc {
               None => acc,
             }
           } else {
-            eprint_string("B2-mixed-open arg-edge\n")
+            said("B2-mixed-open arg-edge\n")
             acc
           },
           EfRow(_, _, _) => acc,

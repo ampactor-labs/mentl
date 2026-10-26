@@ -5550,11 +5550,7 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
 // developer's own coordinate and the module rides the obligation, so scoping
 // is a compare of modules.
 fn debt_line(ref scope, entry) = match entry {
-  (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
-    eprint_string("verify: {obligation_text(modh, dspan, pred)}\n")
-  } else {
-    ()
-  },
+  (modh, dspan, pred, _) => if debt_in_scope(modh, scope) { said("verify: {obligation_text(modh, dspan, pred)}\n") } else { () },
 }
 
 // One open obligation said once: the ledger's summary lines and the Verify
