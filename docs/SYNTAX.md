@@ -1336,8 +1336,11 @@ Some(a)` — and costs nothing; refuted where one is built otherwise — `let
 Some(v) = None` is `E_RefinementRejected` at the let; and open otherwise, the
 match's own row carrying the `Trap` a mismatch is, so `with !Trap` refuses a
 destructure of a parameter until its shape is proven or its value is matched
-by arms of its own. The arms of a match of several stay the roster of what it
-handles. The law reads the patterns, never the spelling: the binder form
+by arms of its own. A run a mismatch reaches stops saying so, at the
+pattern's own address and with the constructor that arrived: `trap: a
+pattern's claim failed at shape:9:3 — Dot arrived`
+(tests/micros/mn-trap-claim-says.mn, mn-trap-claim-fielded.mn). The arms of
+a match of several stay the roster of what it handles. The law reads the patterns, never the spelling: the binder form
 `([h, ...t]) => h` and the arm list `mentl fmt` writes it as assert one shape
 with one meaning (tests/micros/mn-destructure-claim-proven.mn,
 mn-destructure-claim-open.mn, mn-destructure-claim-refuted.mn).
@@ -2865,10 +2868,15 @@ operands, with three outcomes:
 
 `Trap` is the effect the substrate performs when a partial primitive's
 precondition fails (`effect Trap { trap() -> ! }`, lib/memory.mn — its one
-op the deliberate trap, `out_of_range()`, which never returns and says so,
-so it stands where a value of any type is owed, as the
-complement arm of a match over a word the representation bounds; nothing
-handles it, and its absence is the whole point of naming it). It is a row
+op `trap()`, the deliberate stop, which never returns and says so, so it
+stands where a value of any type is owed, as the complement arm of a match
+over a word the representation bounds; nothing handles it, and its absence
+is the whole point of naming it). A run that reaches it stops saying why at
+the perform's own address — `trap: a precondition failed at lists:234:37` —
+as every stop the emit writes says its kind before the machine stops (`memory
+is exhausted`, a pattern's claim, the compiler's own invariant), and the
+board holds the instruction to the three places it follows a said stop
+(tests/micros/mn-oob-traps.mn, mn-trap-exhausted-says.mn). It is a row
 fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
 `-> Int with Trap` at the address surface), transitive through calls, and
 provable absent — `fn ratio(t, n) with !Trap = t / n` refuses

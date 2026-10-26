@@ -1725,7 +1725,7 @@ fn state_field_name(f: {init: Node, name: Node}) -> String = match graph_node_bo
   NPat(PVar(n)) => n,
   NName(StateWrite(n)) => n,
   NPat(_) | NName(_) | NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_)
-  | NRow(_) | NParam(_) => out_of_range(),
+  | NRow(_) | NParam(_) => trap(),
 }
 
 fn state_field_node(f: {init: Node, name: Node}) -> Node = f.name
@@ -1747,7 +1747,7 @@ fn handler_arm_op(a: {args: [Node], body: Node, op: Node}) -> Node = a.op
 fn handler_arm_op_name(a: {args: [Node], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
   NName(ArmOp(name)) => name,
   NName(RowEffect(_)) | NName(StateWrite(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_)
-  | NLink(_) | NTypeAnn(_) | NRow(_) | NParam(_) => out_of_range(),
+  | NLink(_) | NTypeAnn(_) | NRow(_) | NParam(_) => trap(),
 }
 
 fn handler_arm_arity(a: {args: [Node], body: Node, op: Node}) -> Int = len(a.args)

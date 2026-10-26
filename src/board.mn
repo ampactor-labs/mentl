@@ -436,7 +436,15 @@ fn board_bounds() = [
   // never matched left the prelude's strings and threading. 108 -> 85 the
   // same day: the markers over fabricating catch-alls left when each became
   // its roster, a demand or an invariant's refusal.
-  Bound({ceiling: 85, question: QCensus(CsProseClass(PcSilencer))})
+  Bound({ceiling: 85, question: QCensus(CsProseClass(PcSilencer))}),
+  // A STOP SAYS WHAT IT IS. Every literal that writes the instruction
+  // stopping the machine is one of three, each after a said stop: a site's
+  // call of the stop (the emitter's stopped_with), the stop's own end once
+  // its line is written, and the exit after Fail's line; the fourth is this
+  // question's own needle. A fifth is a stop that says nothing. Decided at
+  // four (2026-10-26), where 60 literals wrote 4,590 bare instructions into
+  // the wheel's own emit.
+  Bound({ceiling: 4, question: QCensus(CsText("(unreachable)"))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

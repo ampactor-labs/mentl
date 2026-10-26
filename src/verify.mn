@@ -5535,13 +5535,14 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   // the library's, while the lines beside the count filtered them out.
   let scope = diag_scope_of()
   debt |> each(debt_line(scope, ??))
-  // The summary is reported at the module of an obligation it counts — the
-  // project's own — never at whichever module the judgment entered last,
-  // which under the project register could be the library's and hide it.
+  // The summary stands at the first obligation it counts — the project's
+  // own, at its own coordinate — never at whichever module the judgment
+  // entered last, which under the project register could be the library's
+  // and hide it, nor at a line and column no obligation has.
   match filter({ (modh, _, _, _) => debt_in_scope(modh, scope) }, debt) {
     [] => (),
     [first, ...rest] => match first {
-      (modh, _, _, _) => report_at(modh, VPending(len(rest) + 1, span_zero())),
+      (modh, s, _, _) => report_at(modh, VPending(len(rest) + 1, s)),
     },
   }
 }

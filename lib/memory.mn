@@ -176,23 +176,19 @@ effect Mutate {}
 // precondition fails — an integer division by zero, INT_MIN / -1, an index
 // past its sequence — and a site whose precondition the judgment cannot
 // prove performs Trap, so `with !Trap` claims a function reaches no trap it
-// has not bounded. Its one operation is the instruction that stops the
-// machine: the substrate answers it (no handler is written in Mentl, as for
-// Memory), it never returns, and nothing intercepts it — its absence is the
-// point. Termination is not in this row: a function that never returns is
-// `!Trap` too (`Hβ.effects.divergence-is-a-row-fact`). The op never returns,
-// and says so: `!` is quantified per perform, so a deliberate trap stands
-// where a value of any type is owed — the complement arm of a match over a
-// word the representation bounds, `_ => out_of_range()`, with no value
-// fabricated after it.
+// has not bounded. Its one operation stops the machine where it is
+// performed: the root answers it (no handler is written in Mentl, as for
+// Memory) with the stop's said line, `trap: a precondition failed at` the
+// perform's own address, it never returns, and nothing intercepts it — its
+// absence is the point. Termination is not in this row: a function that
+// never returns is `!Trap` too (`Hβ.effects.divergence-is-a-row-fact`). The
+// op never returns, and says so: `!` is quantified per perform, so a
+// deliberate trap stands where a value of any type is owed — the complement
+// arm of a match over a word the representation bounds, `_ => trap()`, with
+// no value fabricated after it.
 effect Trap {
   trap() -> !
 }
-
-// A deliberate trap — the one home of the out-of-range refusal the runtime
-// makes where a structural contract breaks. It performs `Trap`, so every row
-// that reaches it says so and `!Trap` refuses it.
-fn out_of_range() = trap()
 
 // The live world's identity: the install chain from world_top() down, hashed
 // over each node's effect key and its handler's slot-0 arm word — a table

@@ -1,4 +1,4 @@
-// expect: 134
+// expect: 134 trap: a pattern's claim failed at tests/micros/mn-destructure-mismatch-traps:9:7
 // The Trap an open destructure carries is real: a list of three reaching a
 // pattern of two traps at the let. The last arm of an EXHAUSTIVE match runs
 // untested, so this pins that a destructure whose shape the walk cannot

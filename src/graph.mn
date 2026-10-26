@@ -244,7 +244,7 @@ fn canon_at(ref canon, seed, h) = {
 // day this column landed, as a trap on handle 1 whose module really was 0.
 fn module_at(ref module, seed, handle) = {
   let cell = col_get(handle, module, seed, version_module)
-  if cell == 0 { out_of_range() } else { 0 }
+  if cell == 0 { trap() } else { 0 }
   cell - 1
 }
 
@@ -258,7 +258,7 @@ fn module_name(ref program, seed, m) = match body_at(program, seed, m) {
   NModule(mm) => mm.path,
   NLink(_) => "<link>",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
-    out_of_range()
+    trap()
     ""
   },
 }
@@ -617,7 +617,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
       // restore could take back, so a speculation registering a module — an
       // open version, or an instance seeded from a live graph — is a defect
       // in the caller and traps.
-      NModule(m) => match if seed.next > 0 { out_of_range() } else { smap_get(modules_now, m.file) } {
+      NModule(m) => match if seed.next > 0 { trap() } else { smap_get(modules_now, m.file) } {
         Some(old) => if old == handle {
           resume() with program = program2, parent = parent2
         } else {
@@ -953,7 +953,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // traps rather than storing a fact outside what the restore reverts to.
   // The read is graph_bind's.
   {
-    if seed.next > 0 { out_of_range() } else { 0 }
+    if seed.next > 0 { trap() } else { 0 }
     resume() with accepted = push(accepted, (path, span, text, proof))
   },
   graph_install_note(h, ish) => // The install-shape column: a cell at the install node's handle, written
@@ -1925,7 +1925,7 @@ fn product_arity_at(h) = match graph_node_body(h) {
 fn share_stages(right) = match graph_node_body(right) {
   NExpr(MakeTupleExpr(elems)) => elems,
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => out_of_range(),
+  | NRow(_) | NParam(_) => trap(),
 }
 
 // The one arm whose tuple pattern binds every part of the product it
@@ -2045,7 +2045,7 @@ fn module_cells() with !Mutate = link_modules() |> fold([], module_cell_of)
 // A member of the link's cell. A link holds modules alone.
 fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
   NModule(m) => push(acc, (h, m.path, m.span, m.decls)),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => trap(),
 }
 
 // The program the graph holds, read off its link: its modules, the module a
@@ -2070,14 +2070,14 @@ fn link_prelude() with !Mutate = match graph_link() {
 // link.
 fn link_of(l) with !Mutate = match graph_node_body(l) {
   NLink(k) => k,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => trap(),
 }
 
 // A module's own record at its handle; an import edge and a member of the
 // link reach a module.
 fn module_of(mh) with !Mutate = match graph_node_body(mh) {
   NModule(m) => m,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => trap(),
 }
 
 // The program's declarations, every module's in the link's order: what a

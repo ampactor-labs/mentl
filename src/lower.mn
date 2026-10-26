@@ -725,7 +725,7 @@ fn callee_symbol(c) = match c {
 // reaching one here is a defect in the caller.
 fn decl_symbol(d) = match enclosing_decl(d) {
   Some(s) => ls_decl_symbol(s),
-  None => out_of_range(),
+  None => trap(),
 }
 
 // The symbol a name of the compiler's own vocabulary is emitted under: the

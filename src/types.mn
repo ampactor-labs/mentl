@@ -3240,13 +3240,13 @@ type Pat
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
   NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_)
-  | NParam(_) => out_of_range(),
+  | NParam(_) => trap(),
 }
 
 // The parameter at a node; every handle a parameter list holds is one.
 fn param_of(h) = match graph_node_body(h) {
   NParam(p) => p,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => trap(),
 }
 
 fn param_pat(h) = param_of(h).pat
@@ -3275,7 +3275,7 @@ fn param_annotated(h) = match param_ann(h) {
 // The type a parameter's annotation node holds.
 fn ann_ty_of(a) = match graph_node_body(a) {
   NTypeAnn(t) => t,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => trap(),
 }
 
 // The constructors a catch-all over a sum stands for, read off the arms
@@ -5310,7 +5310,7 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.path,
   NLink(_) => "<link>",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
-    out_of_range()
+    trap()
     ""
   },
 }
@@ -5321,7 +5321,7 @@ fn module_layer_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.layer,
   NLink(l) => l.layer,
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
-    out_of_range()
+    trap()
     User
   },
 }

@@ -171,8 +171,8 @@ wt_rooted() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$@"; }
 # with no code of ours in it, until native — so the runs go nproc-wide:
 # each verdict is one short line appended atomically, and the verdicts come
 # out sorted by fixture, so the stream is deterministic.
-wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> — one RUN line's verdict
-  local stem="$1" path="$2" want="$3" nerr="$4" base exit
+wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> [said] — one RUN line's verdict
+  local stem="$1" path="$2" want="$3" nerr="$4" said="${5:-}" base exit
   base="${path%.wat}"
   # A program's exit is what the WASI host reports, and the stock engine
   # reports [0..126) — `proc_exit(200)` is "exit with invalid exit status
@@ -191,10 +191,10 @@ wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> — one 
   fi
   timeout 300 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$base.wasm" < /dev/null > "$base.out" 2> "$base.run.err"
   exit=$?
-  if [ "$exit" -eq "$want" ]; then
+  if [ "$exit" -eq "$want" ] && [[ "$(head -1 "$base.run.err")" == "$said"* ]]; then  # a stop says its line first
     echo "PASS $stem: exit=$exit (expected $want) diags=$nerr"
   else
-    echo "FAIL(run) $stem: exit=$exit expected=$want diags=$nerr"
+    echo "FAIL(run) $stem: exit=$exit expected=$want diags=$nerr${said:+ said: $(head -1 "$base.run.err") wanted: $said}"
   fi
 }
 wt_battery_host() {
@@ -207,8 +207,8 @@ wt_battery_host() {
     esac
   done
   n=0; max=$(nproc 2>/dev/null || echo 2)
-  while read -r stem path want nerr; do
-    wt_battery_run_one "$stem" "$path" "$want" "$nerr" >> "$verdicts" &
+  while read -r stem path want nerr said; do
+    wt_battery_run_one "$stem" "$path" "$want" "$nerr" "$said" >> "$verdicts" &
     n=$((n + 1))
     if [ "$n" -ge "$max" ]; then wait -n; n=$((n - 1)); fi
   done < "$runs"

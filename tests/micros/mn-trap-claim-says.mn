@@ -1,0 +1,12 @@
+// expect: 134 trap: a pattern's claim failed at tests/micros/mn-trap-claim-says:9:3 — Dot arrived
+// A one-arm match is the author's claim about a value's shape, and a value
+// the claim does not hold for stops the run saying so: the claim, its
+// address, and the constructor that arrived. On boot 5addc081 the run stopped
+// at a bare unreachable, the engine's backtrace all it said.
+type Shape = Dot | Line(Int) | Box(Int, Int)
+
+fn width(s) = match s {
+  Box(w, _) => w,
+}
+
+fn main() = width(Dot)

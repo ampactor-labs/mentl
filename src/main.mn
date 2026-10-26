@@ -1514,7 +1514,9 @@ fn test_check_run(entry_module) =
 // rename verb's, decided as the verb decides it with nothing written: the
 // names it writes, or `refuses <word>` for why it writes none.
 type Expect
-  = ExpectRun(Int)
+  // the exit, and the prefix of the line a stop must say on fd 2 ("" when
+  // the contract names none)
+  = ExpectRun(Int, String)
   | ExpectRefuse(String)
   | ExpectCheckRefuse(String)
   | ExpectPropose(Int, Int, ProposeWant)
@@ -1569,7 +1571,10 @@ fn battery_expect(src) = {
     if byte_len(src) >= 18 && str_eq(str_slice(src, 11, 18), "refuse ") {
       Some(ExpectRefuse(battery_expect_word(src, 18, 18)))
     } else {
-      Some(ExpectRun(battery_expect_digits(src, 11, 0)))
+      Some(ExpectRun(
+        battery_expect_digits(src, 11, 0),
+        battery_expect_said(src, 11 + byte_len(battery_expect_word(src, 11, 11)))
+      ))
     }
   }
 }
@@ -1585,6 +1590,12 @@ fn battery_expect_word(src, start, i) = if i >= byte_len(src) {
     battery_expect_word(src, start, i + 1)
   }
 }
+
+// What a run that stops must say, after its exit: the rest of the first line
+// past one space, the prefix of the line the stop writes on fd 2 — empty
+// where the contract names none.
+fn battery_expect_said(src, i) =
+  if i < byte_len(src) && byte_at(src, i) == 32 { battery_line_rest(src, i + 1, i + 1) } else { "" }
 
 fn battery_expect_digits(src, i, acc) = if i >= byte_len(src) {
   acc
@@ -1860,7 +1871,7 @@ fn battery_reach_step(stem, path: String, want: String) = {
     print_string("PASS {stem}: unreachable {want}\n")
     0
   } else {
-    print_string("FAIL(unreachable) {stem}: wanted {want}, got {dead}\n")
+    print_string("FAIL(dead) {stem}: wanted {want}, got {dead}\n")
     1
   }
 }
@@ -2025,18 +2036,19 @@ fn battery_step(path: String) = {
       ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, path_to_module(path), line, col, dline, dcol),
       ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
-      ExpectRun(want) => match battery_compile(path_to_module(path), stem) {
+      ExpectRun(want, said) => match battery_compile(path_to_module(path), stem) {
         (left, nerr, _) => match left {
           ArtifactRefused => {
             print_string("FAILC {stem}\n")
             1
           },
           // The verdict is the host's: the RUN line hands over the module,
-          // the exit it must answer and the error count, which the gate has
-          // already held at zero; the command that invoked the battery runs
-          // the module and prints PASS or FAIL(run) in this line's place.
+          // the exit it must answer, the error count, which the gate has
+          // already held at zero, and the line a stop must say; the command
+          // that invoked the battery runs the module and prints PASS or
+          // FAIL(run) in this line's place.
           ArtifactWritten => {
-            print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)}\n")
+            print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
             0
           },
         },

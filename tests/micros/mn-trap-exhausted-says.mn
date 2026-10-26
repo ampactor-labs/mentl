@@ -1,0 +1,6 @@
+// expect: 134 trap: memory is exhausted
+// An allocation the host cannot grow memory for is Alloc's exhaustion, and
+// the run says so where it stops: two lists of two billion bytes each ask
+// more of a wasm32 memory than its four billion. On boot 5addc081 the run
+// stopped at a bare unreachable in the allocator, like any other stop.
+fn main() = len(make_list(536870909)) + len(make_list(536870909))

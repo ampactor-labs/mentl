@@ -482,12 +482,12 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **`!Trap` is false under deep recursion** (§11.2): running out of stack
   is a trap no row shows, so a `!Trap` recursion a person writes a million
   calls deep checks clean and traps with "call stack exhausted".
-- **A trap's kind is said nowhere** (§11.1): the wheel's own emit holds
-  4,488 `unreachable` instructions, and nothing sorts them into a
-  precondition the row states, an exhaustion `Alloc` states, the emit's
-  own invariant or a hole (measured 2026-10-26), so a run that stops at one
-  does not say which it was. False proofs are found by a probe someone
-  thought to write (§11.2, the witness).
+- **A stop at the engine's own instruction says no address** (§11.1): every
+  stop the emit writes says its kind and its node's address on fd 2 before
+  it stops, but an integer division or a `float_to_int` whose claim stays
+  open traps in the instruction, the engine naming the kind alone. False
+  proofs are found by a probe someone thought to write (§11.2, the
+  witness).
 - **The program is the graph, and its one-write operations are not all built.**
   A node is its handle (`type Node = Int`), a body holds its children as handles,
   and everything the judgment learns about a node is a column at that handle;
@@ -846,14 +846,12 @@ the face (step 3) cut the last three.
    a `!E` under polymorphism rides it (`Hβ.effects.sound-neg-under-poly`).
    (b) The row tells the whole truth — every way a computation can stop or
    reach outward is a row fact the crown can negate. Non-termination is a
-   row fact beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); a bug trap
-   performs `Trap` carrying the node, and the root answers it with the node's
-   aspects and Reason chain, never a bare `unreachable`; an allocation's
-   exhaustion is `Alloc`'s, performed and answered at the root as a bug trap
-   is, and nothing else rides it; and the gate is a census of the
-   bare `unreachable` instructions the emit writes, at zero, so a trap no row
-   names is found by the board and never by a probe; an executable's row
-   is `main`'s and its inits' (`Hβ.effects.executable-row-includes-inits`).
+   row fact beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); an open
+   integer division and an open conversion check their claim and stop said,
+   as every stop the emit writes does, so no program reaches the engine's own
+   trap with nothing said — the division and `float_to_int` with a claim the
+   fragment left open stop today at the instruction itself; an executable's
+   row is `main`'s and its inits' (`Hβ.effects.executable-row-includes-inits`).
    An op lives where its behaviour belongs
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`): a `*Write` effect's ops write and a

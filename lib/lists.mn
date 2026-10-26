@@ -86,14 +86,14 @@ fn load_strided(base, i, stride) = if stride == 1 {
   addr_word(addr_at(base, i * stride))
 }
 
-// The stride-1 store carries the byte RANGE trap (out_of_range, the list_index
+// The stride-1 store carries the byte RANGE trap (Trap's op, the list_index
 // bounds-trap precedent): a word outside 0..255 entering a byte slot would
 // otherwise wrap silently (i32.store8 masks to the low byte) — the narrowing
 // corruption class §4① band D names. Runtime-total; the compile-time ground
 // discharge on top is the named refinement tier
 // (Hβ.infer.byte-narrowing-ground-discharge).
 fn store_strided(base, i, stride, val) = if stride == 1 {
-  store_i8(addr_at(base, i * stride), if val < 0 || val > 255 { out_of_range() } else { val })
+  store_i8(addr_at(base, i * stride), if val < 0 || val > 255 { trap() } else { val })
 } else if stride == 4 {
   store_i32(addr_at(base, i * stride), val)
 } else // Wide slot: val is the reference punned to a word (the word face of a
@@ -135,11 +135,15 @@ fn alloc_list_sc(count, sc) = {
   t
 }
 
-// A negative count is no length: it traps here, at the list's own
-// precondition, before the allocator could read it as exhausted memory. The
-// answer is the allocation alone, so the list is memory its caller built.
+// A negative count is no length, nor is one whose four-byte slots no word
+// holds past the header: it traps here, at the list's own precondition,
+// before the allocator could read it as exhausted memory or the byte count
+// could wrap to a small allocation claiming every element it was asked for.
+// A literal's count and a cut's are bounded where they are made, so the
+// constructors they call carry no such claim. The answer is the allocation
+// alone, so the list is memory its caller built.
 fn make_list(count) = {
-  if count < 0 { out_of_range() }
+  if count < 0 || count > 536870909 { trap() }
   alloc_list_sc(count, 0)
 }
 
@@ -176,9 +180,9 @@ fn list_set(l, idx, val) = {
   // snoc/concat/slice node has headers where flat elements would sit, and a
   // slot past the end is the next allocation's — a store through either is
   // corruption, never a wrong element.
-  if idx < 0 || load_i32(l) <= idx { out_of_range() }
+  if idx < 0 || load_i32(l) <= idx { trap() }
   let tw = load_i32(addr_at(l, 4))
-  let base = addr_at(l, if tw % 16 == 0 { 8 } else { out_of_range() })
+  let base = addr_at(l, if tw % 16 == 0 { 8 } else { trap() })
   if tw == 0 {
     store_i32(addr_at(base, idx * 4), val)
   } else {
@@ -227,7 +231,7 @@ fn list_copy_into(src, dst, i, count) = if i >= count {
 // a slice. An index out of range traps at this one boundary check, and the
 // traversal below it runs unchecked.
 fn list_index(ref list, i) =
-  if i < 0 || load_i32(list) <= i { out_of_range() } else { list_index_unchecked(list, i) }
+  if i < 0 || load_i32(list) <= i { trap() } else { list_index_unchecked(list, i) }
 
 // The raw traversal — every entry already carries a discharged bounds
 // obligation: list_index's boundary check, or the judgment's proof of a
@@ -435,7 +439,7 @@ fn list_concat(a, b) = {
 // `slice` is the typed table name; `slice_raw` is the cut at the raw
 // altitude, callable from this file's word-level walks.
 fn slice(list, start, end) = {
-  if start < 0 || end < start || load_i32(list) < end { out_of_range() }
+  if start < 0 || end < start || load_i32(list) < end { trap() }
   slice_raw(list, start, end)
 }
 

@@ -1,0 +1,7 @@
+// expect: 134 trap: a precondition failed at lists:
+// A count whose bytes no word holds is no length a list can have: a billion
+// four-byte elements trap at the list's own precondition. On boot 5addc081
+// the byte count wrapped, the allocation came back small, and the list
+// answered a length of a billion over memory it did not own (exit 1, the
+// host refusing a billion as an exit status).
+fn main() = len(make_list(1000000000))

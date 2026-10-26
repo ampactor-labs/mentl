@@ -1,0 +1,12 @@
+// expect: 134 trap: a pattern's claim failed at tests/micros/mn-trap-claim-fielded:9:3 — Line arrived
+// The constructor that arrived is read off the value itself: a fielded one
+// carries its tag in the record, and the stop names it as it names a nullary
+// constructor, whose tag is the value. On boot 5addc081 the run stopped at a
+// bare unreachable, saying nothing of what arrived.
+type Shape = Dot | Line(Int) | Box(Int, Int)
+
+fn area(s) = match s {
+  Box(w, h) => w * h,
+}
+
+fn main() = area(Line(3))
