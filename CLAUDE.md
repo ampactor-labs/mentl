@@ -19,6 +19,13 @@ Write for a capable engineer who has never opened this repository.
   and the five pipe operators are precise. Plain English is not vague.
 - No slogans, no aphorisms, no inverted or poetic word order, and no chains
   of abstract nouns.
+- Say it literally. A metaphor in place of a plain statement, such as "the
+  reflex" for the fast decision, makes the reader decode it. When a literal
+  phrase exists, use it.
+- Avoid the habits that mark machine-written text: a "not X but Y" contrast
+  that only adds weight, a one-line closer that repeats the point, ideas
+  forced into threes, bold on every list item, and dashes where a period,
+  comma, colon or parentheses would do.
 - Give every number its unit and say what it measures.
 
 This covers everything a person reads: commit messages, comments,

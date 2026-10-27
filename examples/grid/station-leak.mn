@@ -12,7 +12,7 @@
 //   E_EffectMismatch: declared as decide; Network enters … through `price_m`
 //     → through `fetch_param` → declared as fetch_param, an op of Network
 //
-// The error names the whole path, one call at a time, from the promise in
+// The error names the whole path, one call at a time, from the restriction in
 // the signature of `decide` to the network operation, rather than saying
 // only that the network is used somewhere. The price belongs in the hour's
 // plan, read before the fast decision runs. A lookup inside the decision

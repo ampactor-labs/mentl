@@ -1,8 +1,8 @@
 # Mentl
 
-**Mentl closes the gap between what a person means and what they are forced to write.** Most languages make you spell out what their compiler could have worked out — borrows, error plumbing, async-ness, which effects a function has. Mentl's compiler infers those, so the source holds only your decisions: what a function must never do, what bound a value keeps, what width a number needs. At any line it says what is true there and why; at a hole (`??`) it proposes the next move it can prove, and when two proven moves mean different things it asks which one you meant instead of guessing. A claim you write is proven or the program does not build — which also means the same guarantees hold for code you did not write yourself.
+**Mentl closes the gap between what a person means and what they are forced to write.** Most languages make you spell out what their compiler could have worked out: borrows, error plumbing, whether code is async, which effects a function has. Mentl's compiler infers those, so the source holds only your decisions: what a function must never do, what bound a value keeps, what width a number needs. At any line the compiler can tell you what is true there and why. At a hole (`??`) it proposes code it can prove, and when two proven options mean different things, it asks which one you meant instead of guessing. A claim you write is either proven or the program does not build, so the same guarantees hold for code you did not write yourself.
 
-Mentl is a programming language and self-hosting compiler with an algebraic effect system, compiled to WebAssembly. An effect is something a function does besides return a value — allocating, printing, reaching the network — and each function's type carries them. A negated effect such as `!Network` is a claim the compiler proves through every call, or it refuses to build. The compiler is written in Mentl: the pinned binary in `boot/` compiles `src/` and `lib/` into a compiler that reproduces it byte for byte, and that fixed point is the release.
+Mentl is a programming language and self-hosting compiler with an algebraic effect system, compiled to WebAssembly. An effect is something a function does besides returning a value, such as allocating memory, printing or reaching the network, and each function's type lists its effects. A negated effect such as `!Network` is a claim the compiler proves through every call, or it refuses to build. The compiler is written in Mentl: the pinned binary in `boot/` compiles `src/` and `lib/` into a compiler that reproduces it byte for byte, and that byte-identical binary is what gets released.
 
 ## See it
 
@@ -26,11 +26,11 @@ declared as banner; Net enters at quiet:9:29 through `headline` → at quiet:7:3
 `fetch` → declared as fetch, an op of Net declared at quiet:1:1
 ```
 
-Write `banner` as `greeting(name)` and the claim holds. The network then has a meaning only where a handler gives it one — `len(banner("ada") ++ headline("ada")) ~> offline`, with `offline` answering `fetch` by resuming `"(offline)"`, runs and exits 29.
+Write `banner` as `greeting(name)` and the claim holds. A network operation then does something only where a handler says what it does. For example, `len(banner("ada") ++ headline("ada")) ~> offline`, where the handler `offline` answers `fetch` by resuming with `"(offline)"`, runs and exits with code 29.
 
 ## Status
 
-Working, and changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending debt and the program still builds. One false proof is known: a recursion a person writes deep enough to exhaust the stack traps although its function says `!Trap`, since running out of stack is a trap no row shows yet (PLAN.md §7). The language and the command surface may still change.
+Mentl works, and it is still changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending, and the program still builds. `mentl audit` lists those pending claims, but today its count per function can change with the file's layout, and a claim can drop off its list (PLAN.md §11). One false proof is known: a function that says `!Trap` can still trap when a person writes recursion deep enough to run out of stack, because no effect row shows running out of stack yet (PLAN.md §7). The language and its commands may still change.
 
 ## Quick start
 
@@ -43,13 +43,13 @@ bash tools/install.sh       # writes ~/.local/bin/mentl, a live pointer to boot/
 mentl run examples/pulse/course/01-tone.mn > 01.wav
 ```
 
-The last command compiles the course's first lesson, proves its claims and renders three seconds of a 220 Hz sine, 48 kHz stereo, as a WAV on standard output. `mentl new hello` writes a one-file project and `mentl run hello` runs it; a bare `mentl` lists the `.mn` files in the directory and the verbs that apply to each. The shim points into the checkout, so a re-pin of `boot/mentl.wasm` is the installed command with no further step. Three verbs belong to the shim because each needs what a WASI module cannot create: `run` a process for the module the compiler emits, `space` a listening socket for the page, and `session` a resident process over stdin.
+The last command compiles the course's first lesson, proves its claims and renders three seconds of a 220 Hz sine, 48 kHz stereo, as a WAV on standard output. `mentl new hello` writes a one-file project and `mentl run hello` runs it; a bare `mentl` lists the `.mn` files in the directory and the verbs that apply to each. The installed command runs whatever `boot/mentl.wasm` the checkout holds, so a new pin takes effect without reinstalling. Three commands are handled by the shim because each needs something a WASI module cannot create: `run` needs a process for the module the compiler emits, `space` needs a listening socket for the page, and `session` needs a long-running process that reads stdin.
 
 ## Learn it
 
-The course in `examples/pulse/course` is ten programs on one growing audio chain — each lesson a verb or a proof you hear — written to be read first and heard second. It grows into two scores: Pulse (`examples/pulse/render`) and Wasatch "Inversion" (`examples/wasatch`), a piece whose parameters are readings of Salt Lake and whose per-sample path is proven unable to reach the network or allocate.
+The course in `examples/pulse/course` is ten programs that build one audio chain step by step. Each lesson adds a language feature or a proof whose effect you can hear, and each is written to be read before it is played. The course leads to two full pieces: Pulse (`examples/pulse/render`) and Wasatch "Inversion" (`examples/wasatch`). Wasatch's parameters are readings from Salt Lake, and the code that runs for every sample is proven unable to reach the network or allocate memory.
 
-The medium answers questions about a program directly:
+The mentl command answers questions about a program directly:
 
 ```
 mentl examples/pulse/course/01-tone.mn:38      # the caret: type, effects, ownership, the Reason chain
@@ -87,13 +87,13 @@ A target is a module name or a file path, from any directory. `mentl mcp` serves
 
 ## How it works
 
-Source becomes one graph: every node is a handle, a node's body holds its children as handles, a reference is linked to the declaration it resolved to, and a comment is attached to the node it precedes. Type inference is the graph's only writer. It infers types in the Hindley-Milner style and beside each writes the effect row, the ownership grade, the refinement obligations and a Reason for every binding. Everything else — a diagnostic, the caret, the formatter, the IDE, lowering and the WebAssembly emitter (`src/backends/wasm.mn`) — reads that graph, so no tool holds a second copy of a fact that could drift from the first.
+Source becomes one graph: every node is a handle, a node's body holds its children as handles, a reference is linked to the declaration it resolved to, and a comment is attached to the node it precedes. Type inference is the graph's only writer. It infers types in the Hindley-Milner style and beside each writes the effect row, the ownership grade, the refinement obligations and a Reason for every binding. Everything else reads that graph: diagnostics, the caret, the formatter, the IDE, lowering and the WebAssembly emitter (`src/backends/wasm.mn`). So no tool keeps a second copy of a fact that could drift from the first.
 
-Effects are algebraic: an `effect` names operations, code calls them like functions, and a handler installed with `~>` gives them meaning and subtracts them from the expression's row. A row has a Boolean algebra (`+`, `-`, `&`, `!`, `Pure`), and a negated name is an obligation that the operation is unreachable, through every callee and every stored closure. A handler's state, its closure and a captured continuation share one heap record, so a paused computation is saved by copying bytes (`lib/persist.mn`, `mentl resume`). Refinement types (`type Percent = Int where 0 <= self && self <= 100`) add predicates the verifier discharges where it can decide them; information flow is the same walk, so an `Untrusted` value reaching a `Trusted` sink refuses.
+Effects are algebraic: an `effect` names operations, code calls them like functions, and a handler installed with `~>` gives them meaning and subtracts them from the expression's row. A row has a Boolean algebra (`+`, `-`, `&`, `!`, `Pure`), and a negated name is an obligation that the operation is unreachable, through every callee and every stored closure. A handler's state, its closure and a captured continuation share one heap record, so a paused computation is saved by copying bytes (`lib/persist.mn`, `mentl resume`). Refinement types (`type Percent = Int where 0 <= self && self <= 100`) add predicates the verifier discharges where it can decide them; information flow is checked by the same walk, so the compiler refuses a program in which an `Untrusted` value reaches a `Trusted` sink.
 
-Self-hosting is tested by the fixed point. `boot/mentl.wasm` compiles `src/` and `lib/` into a second compiler; that compiler compiles the same source again, and the two outputs must be identical byte for byte. The hand-written seed that first produced such a binary was deleted on 2026-07-10, so the pinned binary is the only bootstrap. Each re-pin appends an entry to `boot/PROVENANCE.md` with the sha256 read from the file it copied, the cost of the self-compile and the board's verdicts, and `tools/doc-truth.sh` compares that entry with the binary on every verify.
+Self-hosting is tested by a fixed point. `boot/mentl.wasm` compiles `src/` and `lib/` into a second compiler; that compiler compiles the same source again, and the two outputs must be identical byte for byte. The hand-written seed that first produced such a binary was deleted on 2026-07-10, so the pinned binary is the only bootstrap. Each re-pin appends an entry to `boot/PROVENANCE.md` with the sha256 read from the file it copied, the cost of the self-compile and the board's verdicts, and `tools/doc-truth.sh` compares that entry with the binary on every verify.
 
-The open work converges on five mechanisms (PLAN.md §4⑧): every declaration publishes one summary its callers read (the face); one walk answers every reachability question (the reach); one speculative primitive serves proposals, fixes, refactors and the solver (the fork); the effect row tells every way a computation can stop (the whole-truth row); and the graph has two projections, the compile and an evaluator that is its reference meaning.
+The open work builds five mechanisms (PLAN.md §4⑧): every declaration publishes one summary its callers read (the face); one walk answers every reachability question (the reach); one speculative primitive serves proposals, fixes, refactors and the solver (the fork); the effect row tells every way a computation can stop (the whole-truth row); and the graph has two projections, the compile and an evaluator that is its reference meaning.
 
 ## Testing
 
@@ -123,7 +123,7 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 
 - `!Trap` is false where the stack runs out (Status, above).
 - A program shares one namespace with everything it links, so a user cannot declare a name the library declares, and a dependency's capabilities cannot yet be stated at its import.
-- The absence proof is per effect instance, not yet per install: a closure minted under one handler and called under another is the open modal case (PLAN.md §4③).
+- The absence proof is per effect instance, not yet per install: a closure created under one handler and called under another is the open modal case (PLAN.md §4③).
 - Memory is one image, reclaimed only where an extent ends (`(body) ~> arena`); a warm start restores the analysed image and re-derives the compile over it.
 - The browser IDE keeps one resident compiler per page but recompiles the whole file on each edit, cannot yet play a lesson in the page, and needs cross-origin isolation for shared memory (`ide/README.md`).
 - The compile is single-threaded, and there is no native backend.
@@ -134,7 +134,7 @@ PLAN.md §11 is the one ordered list, each step reading only what an earlier one
 
 1. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality, every trap the emit writes said), the reach one walk.
 2. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle and a witness that searches boundary inputs.
-3. The face: one published summary per declaration, which verification reads — the course and the scores judged clean.
+3. The face: one published summary per declaration, which verification reads, with the course and the scores judged clean.
 4. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
 5. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
 6. Edits that cost what they change, and the page that plays the course.
@@ -144,7 +144,7 @@ PLAN.md §11 is the one ordered list, each step reading only what an earlier one
 
 ## Documents
 
-Three documents are the read-path: [CLAUDE.md](CLAUDE.md), the method for changing the compiler, read whole; [PLAN.md](PLAN.md), the thesis, the design decisions, what the code has not reached (§7) and the open work (§11); and [docs/SYNTAX.md](docs/SYNTAX.md), the authority on the language's form — the last two read by part through `mentl map`. [lib/dsp/README.md](lib/dsp/README.md) shows the feedback verb `<~` on audio, [lib/ml/README.md](lib/ml/README.md) the derivative reading, and [ide/README.md](ide/README.md) the browser IDE. History is `git log`.
+Three documents explain the project: [CLAUDE.md](CLAUDE.md), the method for changing the compiler, read whole; [PLAN.md](PLAN.md), the thesis, the design decisions, what the code has not reached (§7) and the open work (§11); and [docs/SYNTAX.md](docs/SYNTAX.md), the authority on how the language is written. The last two are read one part at a time through `mentl map`. [lib/dsp/README.md](lib/dsp/README.md) shows the feedback verb `<~` on audio, [lib/ml/README.md](lib/ml/README.md) the derivative reading, and [ide/README.md](ide/README.md) the browser IDE. History is `git log`.
 
 ## License
 

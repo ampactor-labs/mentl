@@ -16,7 +16,7 @@
 //   mentl run examples/grid/listen.mn < samples/hum_480.txt
 //   {"hz_learned":60.000312}
 //
-// There are two stages, and a function makes each one. Both promise
+// There are two stages, and a function makes each one. Both are declared
 // `!Alloc`, so no memory is allocated while they run. `smoother` makes a
 // four-pole low-pass filter at 80 Hz, so the hum's harmonics, which would
 // bend a two-sample predictor by about a hertz, reach the learner 40 dB

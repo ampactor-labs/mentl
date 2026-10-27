@@ -3,7 +3,7 @@
 //
 // It reads one line from the ear on stdin every 50 ms and writes one
 // decision line for each. The function `decide` makes the decision, and its
-// signature makes four promises that the compiler proves through every
+// signature declares four restrictions that the compiler proves through every
 // function it calls: it allocates no memory (`!Alloc`), it never reaches
 // the network (`!Network`) or a file (`!Filesystem`), and it calls nothing
 // outside the program at all (`!WASI`). Each power command passes through a
