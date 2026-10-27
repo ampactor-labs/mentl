@@ -1,0 +1,90 @@
+// listen.mn — the learner: the hum's frequency, learned by a gradient the compiler derives
+//
+// One sample of the hum per stdin line, 480 of them a second (the ear's
+// decimated band, samples/hum_480.txt in the HUM repository), and one
+// coefficient that learns the frequency. A sinusoid obeys
+// x[n] = a·x[n−1] − x[n−2] with a = 2·cos(ω), so one number carries the
+// pitch: the error between that prediction and the sample, squared, is the
+// chain the reading differentiates — `d(e * e)` under `~> grad(a)` — and the
+// coefficient moves against the slope each sample, exactly as lesson 09's
+// filter learns. No tape records the run, no second copy of the arithmetic
+// exists to drift. Once a second it prints the frequency the coefficient
+// encodes:
+//
+//   mentl run examples/grid/listen.mn < samples/hum_480.txt
+//   {"hz_learned":60.000312}
+//
+// Two stages, each a maker, each `!Alloc`: the heap does not move while
+// they run. `smoother` mints a four-pole low-pass at 80 Hz, so the hum's
+// harmonics — which bend a two-tap predictor by a hertz — reach the learner
+// forty decibels down. `learner` mints the step that owns the coefficient's
+// line and the line that smooths the energy it normalizes by. The two
+// previous samples are the stream's to hand in.
+import io
+
+import math
+
+import ml/grad
+
+import strings
+
+fn rate() -> Float with Pure = 480.0
+
+// The slope of the squared prediction error with respect to the
+// coefficient, asked of the same arithmetic the predictor runs.
+fn slope(a: Float, x1: Float, x2: Float, x: Float) -> Float = {
+  let e = x - (a * x1 - x2)
+  d(e * e)
+} ~> grad(a)
+
+// Four one-pole sections in series at one corner, each its own line.
+fn smoother(corner: Float) = {
+  let al = 1.0 - exp(0.0 - two_pi() * corner / rate())
+  fn stage(x: Float) -> Float with !Alloc = {
+    let y1 = { y => y + al * (x - y) } <~ delay(1)
+    let y2 = { y => y + al * (y1 - y) } <~ delay(1)
+    let y3 = { y => y + al * (y2 - y) } <~ delay(1)
+    { y => y + al * (y3 - y) } <~ delay(1)
+  }
+  stage
+}
+
+// The learner: the step moves the coefficient against the slope,
+// normalized by the smoothed energy of the samples it predicts from, so a
+// loud hum and a quiet one learn at the same pace and the harmonics' beat
+// does not lean on the step.
+fn learner(mu: Float) = {
+  fn stage(x2: Float, x1: Float, x: Float) -> Float with !Alloc = {
+    let energy = { en => en + (x1 * x1 + x2 * x2 - en) * 0.02 } <~ delay(1)
+    { a => a - mu * slope(a, x1, x2, x) / (energy + 0.000001) } <~ delay(1)
+  }
+  stage
+}
+
+// The frequency a coefficient encodes: a = 2·cos(ω), ω = acos(a / 2), in
+// hertz at the stream's rate. The cosine is held inside its range so the
+// root is always real.
+fn hz_of(a: Float) -> Float with Pure = {
+  let c0 = a / 2.0
+  let c = if c0 > 1.0 { 1.0 } else if c0 < -1.0 { -1.0 } else { c0 }
+  atan2(sqrt(1.0 - c * c), c) * rate() / two_pi()
+}
+
+// The stream: each line one sample, smoothed, the two before it carried
+// along.
+fn step(smooth, learn, n: Int, x2: Float, x1: Float) = {
+  let line = read_stdin_line()
+  if byte_len(line) == 0 {
+    ()
+  } else {
+    let x = smooth(parse_float(line))
+    let a = learn(x2, x1, x)
+    if n % 480 == 0 { print_string("\{\"hz_learned\":{float_to_str(hz_of(a))}\}\n") } else { () }
+    step(smooth, learn, n + 1, x1, x)
+  }
+}
+
+fn main() = {
+  step(smoother(80.0), learner(0.005), 1, 0.0, 0.0)
+  0
+}
