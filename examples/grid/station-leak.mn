@@ -104,7 +104,7 @@ fn pulse_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
 // mode; the rest is written into `out`: 1 Spin's watts, 2 Pulse's watts, 3
 // and 4 the two states of charge per mille, 5 the reason's code and 6 the
 // number the reason names.
-fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, clean: Int, out) -> Mode with !Alloc + !Network + !Filesystem = {
+fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, clean: Int, out) -> Mode with !Alloc + !Network + !Filesystem + !WASI = {
   let n = { k => k + 1 } <~ delay(1)
   let first = n == 1
   // The level's ten-second mean, set by the first reading heard and frozen
