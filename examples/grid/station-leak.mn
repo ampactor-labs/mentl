@@ -189,13 +189,14 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   let price =
     price_m("https://api.eia.gov/v2/electricity/rto/region-data/data/?facets[respondent][]=PACE")
   // What Pulse is asked for: the building's load in an island, rush-hour
-  // power set by the price, a charge in a clean hour, plus whatever Spin's
-  // top-up draws.
+  // power set by the price, a charge in a clean hour unless the grid is
+  // short of power (the fast rules are pushing), plus whatever Spin's top-up
+  // draws.
   let pulse_ask = if island == 1 {
     if island_t <= 40 { draw - spin_w } else { draw }
   } else if rush == 1 {
     if price > 50000 { 300000 } else { 200000 }
-  } else if clean >= 400 {
+  } else if clean >= 400 && fast <= 0 {
     -150000
   } else {
     0

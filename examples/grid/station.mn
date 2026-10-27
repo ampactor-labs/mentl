@@ -38,8 +38,10 @@
 //
 // The slow rules act on the hour. In the rush-hour window Pulse runs the
 // building at 300 kW, and the mode reads RUSH. In a clean hour outside the
-// window, Pulse charges at 150 kW up to 95 percent. When nothing else is
-// happening, Spin tops itself up from Pulse at 20 kW.
+// window, Pulse charges at 150 kW up to 95 percent, but never while the fast
+// rules say the grid is short of power, since charging would add load to a
+// grid that is already falling. When nothing else is happening, Spin tops
+// itself up from Pulse at 20 kW.
 //
 // ISLAND means the hum was heard and then lost: for six lines in a row
 // (300 ms) there is no reading, or the level is 30 dB under its ten-second
@@ -207,13 +209,13 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   let spin_e = { e => spin_tick(e, first, spin_ask, out) } <~ delay(1)
   let spin_w = list_index(out, 1)
   // What Pulse is asked for: the building's load in an island, full power
-  // in rush hour, a charge in a clean hour, plus whatever Spin's top-up
-  // draws.
+  // in rush hour, a charge in a clean hour unless the grid is short of power
+  // (the fast rules are pushing), plus whatever Spin's top-up draws.
   let pulse_ask = if island == 1 {
     if island_t <= 40 { draw - spin_w } else { draw }
   } else if rush == 1 {
     300000
-  } else if clean >= 400 {
+  } else if clean >= 400 && fast <= 0 {
     -150000
   } else {
     0
