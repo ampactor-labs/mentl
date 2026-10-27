@@ -1,279 +1,324 @@
 # NATIVE.md — Mentl's native machine, graph to silicon
 
-> Working artifact (band N, `§5.R`), not read-path. The three-doc contract
-> stands; this is the design + build plan for the native backend, hardened by a
-> 24-agent design/refute/critique pass (2026-07-11). Interrogate, don't absorb.
+> This is a working document for band N (`§5.R`), not required reading, and the
+> three-document contract still holds. It is the design and build plan for the
+> native backend, which 24 agents designed, tried to refute and critiqued
+> (2026-07-11). Question its claims before you rely on them.
 
 ## §0 · The thesis, and the one correction that made it real
 
-Native is not "lower to assembly." **The graph image is the machine; the cursor
-is execution; native code is the cursor's cached projection.** Ten layers were
-designed from that thesis and each adversarially refuted, and the refutations
-converged — unanimously — on one correction. By PLAN §0's convergence law (N
-independent proposals collapsing onto one attractor *is* the truth signal), that unanimity
-is the design, not a setback:
+In this design, native code generation is not "lower to assembly." The thesis
+is that the graph image is the machine, the cursor is execution, and native
+code is the cursor's cached projection. Ten layers were designed from that
+thesis, and an adversary then tried to refute each one. Every refutation
+arrived at the same correction. PLAN §0's convergence law says that when N
+independent proposals arrive at one answer, that agreement is the signal that
+the answer is true. By that law, the shared correction is the design, not a
+setback:
 
-> **The addressing/projection substrate is right and sharper than first stated;
-> "there is no stack" is a slogan its own hot path falsifies.** The graph-image
-> memory model, the handle-as-offset, the eight-aspect projection, the
-> assembler-as-a-handler — all hold. But "every frame is a heap record in the
-> monotonic image, never freed" is SML/NJ heap-CPS *without its GC* — a loop or a
-> server exhausts the image, and five layers quietly reach for `%rsp` anyway.
+> The addressing and projection substrate is right, and it is sharper than
+> first stated. But "there is no stack" is false on the design's own hot path.
+> The graph-image memory model, the handle as an offset, the eight-aspect
+> projection and the assembler as a handler all hold. "Every frame is a heap
+> record in the monotonic image, never freed" is SML/NJ's heap-allocated CPS
+> without its garbage collector. A loop or a server would exhaust the image,
+> and five layers use `%rsp` anyway without saying so.
 
-The correction is not to bolt a stack back on. It is to read what the kernel
-already has:
+The correction adds no stack back. It reads what the kernel already has:
 
-**Frame representation is the resume-cardinality/ownership grade, and the
-activation spine is the graph's own trail.** This is the whole machine's pivot,
-and it is derivable *today* from verified artifacts:
+The resume-cardinality/ownership grade decides how each frame is represented,
+and the graph's own trail is the activation spine. The rest of the machine
+depends on this decision, and it can be derived today from verified artifacts:
 
-- **OneShot activations** (the ~85% grade) are **LIFO-reclaimable**. They live in
-  the one monotonic image; a delimited segment's exit reclaims its frames with
-  `graph.mn`'s own `graph_rollback` (O(M), the trail-checkpoint that already
-  captures `trail_len` at O(1)). Loops stay O(1), servers stay bounded, there is
-  no GC and no imported SysV stack — reclamation is a move *inside* the medium,
-  so `!Outside` holds. The hardware `%rsp` is not the activation spine; it is
-  **demoted** to a bounded per-core scratch the CPU mandates for trap/interrupt
-  frame delivery, and nothing else.
-- **MultiShot (captured) continuations** materialize as persistent image records
-  — the unified `handler = state = closure = continuation` shape, unchanged. The
-  captured *segment* (the frame chain between perform and handler) is the
-  continuation; `k` owns it, freed at `k`'s use-count 0. And *now* "continuation
-  = memcpy" is finally true, because every frame including the OneShot callers is
-  in the image — so persist = memcpy, fork-to-a-core = memcpy, exactly as the
-  value layer promised (`§5.U`).
+- OneShot activations (about 85% of activations are in this grade) can be
+  reclaimed in LIFO order. They live in the one monotonic image. When a
+  delimited segment exits, it reclaims its frames with `graph.mn`'s own
+  `graph_rollback`, which costs O(M) and is the trail checkpoint that already
+  records `trail_len` in O(1). Loops stay O(1), servers stay bounded, and there
+  is no GC and no imported SysV stack. Reclamation happens inside the medium,
+  so `!Outside` holds. The hardware `%rsp` is not the activation spine. Its
+  only remaining use is a bounded per-core scratch area, which the CPU requires
+  for delivering trap and interrupt frames.
+- MultiShot (captured) continuations become persistent image records with the
+  unified `handler = state = closure = continuation` shape, unchanged. The
+  continuation is the captured segment, the chain of frames between the
+  perform and the handler. `k` owns it, and it is freed when `k`'s use count
+  reaches 0. With this correction, "continuation = memcpy" becomes true,
+  because every frame, including the OneShot callers, is in the image.
+  Persisting a continuation is a memcpy, and so is forking it to a core,
+  exactly as the value layer (`§5.U`) describes.
 
-The cardinality lattice this session landed (`resume grade = ownership grade`,
-one use-count) decides *whether* a continuation forks and, by the same read, the
-**frame representation** for the entire machine. `own`/OneShot →
-hardware-scratch or trail-reclaimed image frame; `ref`/MultiShot → captured image
-record. The same read, one more consumer, and it dissolves five layers' primary
-breaks at once.
+The cardinality lattice that this session landed
+(`resume grade = ownership grade`, one use count) decides whether a
+continuation forks. The same read also decides the frame representation for
+the entire machine. An `own`/OneShot frame is hardware scratch or a
+trail-reclaimed image frame, and a `ref`/MultiShot frame is a captured image
+record. Adding this one consumer of the same read fixes the primary break in
+five layers at once.
 
 ## §1 · The two keystones
 
-**Keystone 1 — frame representation from the cardinality/ownership lattice, with
-the trail as the activation spine.** One decision fixes: whether a call uses
-hardware-scratch or an image record; whether a value may be register-only or
-needs an image home; whether "continuation = memcpy" is true at all; whether
-reclamation is kernel-internal (so `!Outside` holds); and whether native
-first-light is even *expressible*. Made right, it dissolves the call-model civil
-war, the register-model split, and the never-free break simultaneously. Made
-wrong at either extreme, the machine either cannot checkpoint (OneShot on `%rsp`
-with no image home) or cannot loop (frames never freed).
+**Keystone 1: frame representation from the cardinality/ownership lattice, with
+the trail as the activation spine.** This one decision settles all of these:
+whether a call uses hardware scratch or an image record; whether a value may
+live only in a register or needs a home in the image; whether "continuation =
+memcpy" is true at all; whether reclamation stays inside the kernel (so
+`!Outside` holds); and whether native first light (see S13) can even be
+expressed. Made right, it resolves the conflict between the call models, the
+split between the register models and the problem of frames that are never
+freed, all at once. Made wrong in either direction, the machine either cannot
+checkpoint (OneShot frames on `%rsp` with no home in the image) or cannot loop
+(frames are never freed).
 
-**Keystone 2 — deterministic handle-space partitioning.** `native_m3 ==
-native_m4` requires the encoder's byte output to be a pure deterministic function
-of the graph, which requires handle assignment — and therefore code layout and
-every emitted rel-offset — to be independent of core scheduling and allocation
-order. Fixed per-core `(arena_id, offset)` partition; work-stealing is a
-value-reproducible-only `~> Schedule` handler **never installed on the
-self-hosting path** (the same handler-swap logic as persistence, `§4④`). This
-kills the "two determinism modes" header flag — a drift-8 tell (a flag = an
-unbuilt ADT/handler) the critic caught in three layers.
+**Keystone 2: deterministic handle-space partitioning.** `native_m3 ==
+native_m4` requires the encoder's byte output to be a pure, deterministic
+function of the graph. That requires handle assignment, and therefore code
+layout and every emitted relative offset, to be independent of core scheduling
+and allocation order. Each core gets a fixed `(arena_id, offset)` partition.
+Work stealing is a `~> Schedule` handler whose results are reproducible only as
+values, and it is never installed on the self-hosting path (the same
+handler-swap logic as persistence, `§4④`). This removes the "two determinism
+modes" header flag. That flag is a drift-8 sign, a flag standing in for an ADT
+or handler that was never built, and the critic found it in three layers.
 
-The keystones compound: keystone 1 makes the memcpy'd continuation *true*,
-keystone 2 makes its bytes *reproducible*. Together they earn "image = binary =
-process = checkpoint."
+The two keystones build on each other. Keystone 1 makes the memcpy'd
+continuation correct, and keystone 2 makes its bytes reproducible. Together
+they make "image = binary = process = checkpoint" true.
 
 ## §2 · The four systemic drifts, killed once at the substrate
 
-The refuters found the same foreign-fluency in ≥3 layers each. Each is resolved
-once here and inherited, never re-litigated:
+The refuters found each of these habits, carried over from other languages and
+compilers, in ≥3 layers. Each is resolved once here and inherited by every
+layer, so it is not debated again:
 
-- **`call`/`ret`/`%rsp` creeping back in.** The root is real: the CPU's
-  Return-Stack-Buffer predictor makes `call`/`ret` cheap and an indirect
-  `jmp [cursor]` trashes it — a genuine misprediction cliff the "control edge"
-  abstraction never priced. The honest resolution is not denial: **use hardware
-  `call`/`ret` exactly where the cardinality read proves a frame is OneShot,
-  non-captured, and bounded-depth** — there the RSB is a legitimate hardware
-  cache of the return-edge the graph already knows — and cross to image-frames at
-  the perform/prompt boundary. State once, inherit everywhere.
-- **Register allocation as a pass, renamed.** Belady's MIN (registers),
-  linear-scan (target-isa), next-use eviction (codegen) — each rejects
-  graph-coloring then imports its equivalent. The kernel-honest form: **residency
-  is the use-count read; eviction is e-graph rematerialization** — a value that
-  cannot fit is recomputed from its still-live e-graph producer (a pure `LConst`,
-  an `LFieldLoad` from a live record) at the extraction cost the e-graph already
-  computes, never round-tripped through a spill slot. No Belady, no second
-  source of truth.
-- **The global mode flag** (determinism modes, warm/cold call modes,
-  substrate-effect-set-as-name-list). Every one is drift-8. A flag becomes an ADT
-  or a `~>` handler.
-- **The host OS primitive reached for to block** (`futex`/`MWAIT` at the "medium
-  IS the OS" layer). A blocked-join cursor **reifies via the Yield/memcpy
-  machinery it already owns and re-enters the gradient argmax** — a waiting cursor
-  is just a cursor not currently selected.
+- **`call`/`ret`/`%rsp` creeping back in.** The cause is real. The CPU's
+  Return-Stack-Buffer predictor makes `call`/`ret` cheap, and an indirect
+  `jmp [cursor]` defeats it. That causes a sharp rise in mispredictions, a cost
+  the "control edge" abstraction never accounted for. The resolution is to use
+  hardware `call`/`ret` exactly where the cardinality read proves a frame is
+  OneShot, not captured and of bounded depth. There the RSB is a legitimate
+  hardware cache of the return edge that the graph already records. At the
+  perform/prompt boundary, the code switches to image frames. This rule is
+  stated once here, and every layer inherits it.
+- **Register allocation as a pass, renamed.** The registers layer proposed
+  Belady's MIN, the target-isa layer linear scan, and the codegen layer
+  next-use eviction. Each rejects graph coloring and then brings back its
+  equivalent. The form that fits the kernel: residency is the use-count read,
+  and eviction is e-graph rematerialization. A value that does not fit is
+  recomputed from its e-graph producer, which is still live (a pure `LConst`,
+  or an `LFieldLoad` from a live record), at the extraction cost the e-graph
+  already computes. It is never stored to a spill slot and loaded back. This
+  needs no Belady and no second source of truth.
+- **The global mode flag** (determinism modes, warm/cold call modes, and the
+  substrate's effect set kept as a list of names). Each of these is drift-8.
+  The fix turns the flag into an ADT or a `~>` handler.
+- **The host OS primitive reached for to block** (`futex`/`MWAIT` at the
+  "medium IS the OS" layer). A cursor blocked on a join is reified through the
+  Yield/memcpy machinery it already has, and then it re-enters the gradient
+  argmax. A waiting cursor is simply a cursor that is not currently selected.
 
-And two deferrals recurred verbatim and are consolidated:
+Two deferrals also appeared word for word in several layers, and they are
+combined here:
 
-- **"the exact liveness/register-assignment computation"** appeared in *five*
-  layers. It is ONE analysis — the escaping-row/ownership read extended to
-  register-liveness at every call/perform crossing — built once as S2 below.
-- **"gate on band-A `sound-neg-under-poly`"** is *honest* sequencing but its scope
-  must be loud: **native codegen can SHIP before band A; its safety story —
-  capability confinement, parallel-safety, IFC, `!Thread`/`!Alloc` transitivity —
-  cannot be PROVEN until band A closes.** Buildable ≠ verifiable.
+- **"the exact liveness/register-assignment computation"** appeared in five
+  layers. It is one analysis: the escaping-row/ownership read, extended to
+  register liveness at every call/perform crossing. S2 below builds it once.
+- **"gate on band-A `sound-neg-under-poly`"** is correct sequencing, but its
+  scope must be stated plainly. Native codegen can ship before band A, but its
+  safety claims (capability confinement, parallel safety, IFC, and
+  `!Thread`/`!Alloc` transitivity) cannot be proven until band A closes.
 
 ## §3 · The layers, corrected (the salvaged cores)
 
-- **Image model.** Handle = a 32-bit image-base-relative *offset*, not a pointer;
-  the image base lives in one reserved register (`r15`/`x28`), so every deref is
-  one `mov reg,[base + h + disp]` and the whole range is relocatable by memcpy
-  with zero fixups. `fn_ptr@0` reinterprets table-index → callee handle,
-  byte-compatible with the WASM record. The image-map fold replaces the three
-  magic region bases; the header is the fold's memoized limits, so the image is
-  self-describing and needs no ELF section table. Page 0 (below `heap_base`) is
-  `PROT_NONE` — the sentinel/heap discriminant becomes a hardware MMU guard, and
-  every allocation is the allocator's, so nothing below the line is ever
-  addressed. **Correction:** the
-  persisted/shipped image is DATA-ONLY (arch-neutral); code is a runtime-only
-  cache the receiving node re-projects (self-hosting projector), which is what
-  keeps W^X honest and the image portable.
-- **Frames / no-stack.** See §0/keystone 1 — the corrected form. Salvaged: FRAME
-  = the unified record + `[cursor_edge@0][parent_frame@4][result_slot@8]`
-  (cursor-as-PC, parent-edge-as-return, hole-as-perform-result). This is the one
-  novel move that pays.
-- **Continuations.** OneShot = call/return, no reification; MultiShot = own the
-  captured frame segment, memcpy-clone only for parallel-to-a-core and
-  durable-to-disk. Reification is *not* a stack copy — the frames already are
-  data in the image. The `TCont` world-tag (last record field) rides the memcpy
-  and is checked at rehydrate → `E_ResumeWorldMismatch`.
+- **Image model.** A handle is a 32-bit offset relative to the image base, not
+  a pointer. The image base lives in one reserved register (`r15`/`x28`), so
+  every dereference is one `mov reg,[base + h + disp]`, and the whole range can
+  be relocated by memcpy with zero fixups. `fn_ptr@0` reinterprets a table
+  index as a callee handle, byte-compatible with the WASM record. The image-map
+  fold replaces the three magic region bases. The header holds the fold's
+  memoized limits, so the image describes itself and needs no ELF section
+  table. Page 0 (below `heap_base`) is `PROT_NONE`, so the sentinel/heap
+  discriminant becomes a hardware MMU guard. Every allocation comes from the
+  allocator, so nothing below that line is ever addressed. **Correction:** the
+  image that is persisted or shipped holds only data and does not depend on the
+  architecture. Code is a runtime-only cache that the receiving node projects
+  again (with the self-hosting projector). This keeps W^X intact and the image
+  portable.
+- **Frames / no-stack.** §0/keystone 1 gives the corrected form. The part kept
+  from this layer: a frame is the unified record plus
+  `[cursor_edge@0][parent_frame@4][result_slot@8]` (the cursor as the PC, the
+  parent edge as the return, the hole as the perform's result). This is the one
+  new idea here that pays for itself.
+- **Continuations.** A OneShot continuation is a plain call and return, with no
+  reification. A MultiShot continuation owns the captured frame segment, and it
+  is cloned by memcpy only to run in parallel on a core or to persist to disk.
+  Reification does not copy a stack, because the frames are already data in the
+  image. The `TCont` world tag (the record's last field) travels with the
+  memcpy and is checked at rehydration; a mismatch is `E_ResumeWorldMismatch`.
 - **Registers.** `repr_regclass(Repr) → GPR|FP|VEC` is a clean third terminal
-  projection beside `repr_wat`/`repr_width`. Residency from `use_profile`;
-  eviction via e-graph remat (§2). Inside any MultiShot-capturable region, no
-  value may be register-only (it needs an image home to flush at capture).
-- **Codegen.** Native instruction selection is the same total deterministic
-  projection `emit_expr` already is — `native.mn` a peer `~> NativeOut {
+  projection beside `repr_wat`/`repr_width`. Residency comes from
+  `use_profile`, and eviction uses e-graph rematerialization (§2). Inside any
+  region that a MultiShot continuation can capture, no value may live only in
+  a register, because it needs a home in the image to be flushed to at capture.
+- **Codegen.** Native instruction selection is the same total, deterministic
+  projection that `emit_expr` already is. `native.mn` is a peer `~> NativeOut {
   emit_bytes([Byte]) }` handler on the same LowIR, identical `emit_module` driver,
-  the Reason table a sixth projection over `project_emit_state`. Law 7: every
-  WASM path byte-identical.
-- **Compilation.** Per-fn epoch-memoized projection cell — `proj_epoch` widening
-  `project_queue_merger`'s single global `last_epoch` to fn granularity;
-  re-project one fn when `proj_epoch < subtree_epoch`. AOT/JIT/REPL/hot-reload =
-  one cursor at different cache-warmth (the fixed point at the compilation scale).
-- **Effects / OS.** perform = edge-follow = syscall (io.mn's WASI-as-effect is the
-  proven template, WASM backend the peer). The substrate boundary is a **per-
-  effect-declaration graph property** (an `EffectDeclKind` arm declares whether
-  the op's bottom projects to an instruction) — not a name-list. Privilege = the
-  row + the hardware cash-out of a trust-crossing install (PMP on bare metal).
-- **Cores.** N cursors on the shared image; the `Schedule` is a `~>` peer handler
-  catching the unchanged `LPerform(spawn/join)`; the fixed thread-record side-
-  table dissolves into per-branch `[done_i][result_i]` slots on the fanout frame
-  (Carried-Truth, kills the drift-7 array). **The effect-state race is a real
-  soundness hole:** `$<hname>_state_g` is a mutable global, so a stateful effect
-  inside `>< ~> Thread` has two cores racing one word. Race-freedom must be proven
-  over the FULL row (input ownership AND effect state); a stateful effect in a
-  parallel fanout is a compile-time refusal unless the handler is replicated-per-
-  branch-and-merged (monoidal join) or the branches are proven `!<effect>`. This
-  is the native face of band-A `sound-neg-under-poly`.
-- **Verification.** Proof-carrying native: a position-independent ReasonMap keyed
-  on region+handle (not absolute offset) maps each instruction range to its graph
-  edge, so a fault projects back to the source (`mentl why` at the metal).
-  Refinement checks Verify discharged are elided; negation is enforced by making
-  the forbidden primitive un-selectable in the subgraph
-  (`E_ForbiddenPrimitiveSelected`) — the negative proven by construction. GATED
-  behind band A for the soundness certificate.
-- **Target ISA / bootstrap.** Direct per-ISA byte encoders as `~>` handlers, peers
-  of `wat_to_string` on the same LowIR; `MachineOp` is a projection *view*
-  (generated-and-consumed, never a stored second IR). The linker is the image-map
-  fold; the loader is `mmap`/self-locate. WASM stays the portability peer.
+  and the Reason table is a sixth projection over `project_emit_state`. Law 7
+  holds: every WASM path stays byte-identical.
+- **Compilation.** Each function has a projection cell memoized by epoch.
+  `proj_epoch` widens `project_queue_merger`'s single global `last_epoch` to
+  per-function granularity, and one function is projected again when
+  `proj_epoch < subtree_epoch`. AOT, JIT, REPL and hot reload are one cursor at
+  different levels of cache warmth (the fixed point at the scale of
+  compilation).
+- **Effects / OS.** A perform is an edge-follow, and the edge-follow is the
+  syscall (io.mn's WASI-as-effect is the proven template, and the WASM backend
+  is the peer). The substrate boundary is a graph property of each effect
+  declaration, not a list of names: an `EffectDeclKind` arm declares whether
+  the op's bottom projects to an instruction. Privilege is the row plus the
+  hardware enforcement of an install that crosses a trust boundary (PMP on
+  bare metal).
+- **Cores.** N cursors run on the shared image. The `Schedule` is a `~>` peer
+  handler that catches the unchanged `LPerform(spawn/join)`. The fixed
+  thread-record side table is replaced by per-branch `[done_i][result_i]` slots
+  on the fanout frame (by the Carried-Truth Law; this removes the drift-7
+  array). **The effect-state race is a real soundness hole:**
+  `$<hname>_state_g` is a mutable global, so a stateful effect inside
+  `>< ~> Thread` has two cores racing on one word. Race freedom must be proven
+  over the full row, which covers both input ownership and effect state. The
+  compiler refuses a stateful effect in a parallel fanout unless the handler is
+  replicated per branch and merged (a monoidal join) or the branches are proven
+  `!<effect>`. This is how band-A `sound-neg-under-poly` appears in the native
+  backend.
+- **Verification.** Native code carries its proofs. A position-independent
+  ReasonMap, keyed on region and handle (not on absolute offset), maps each
+  instruction range to its graph edge, so a fault traces back to the source
+  (`mentl why` at the machine level). Refinement checks that Verify has
+  discharged are left out of the code. Negation is enforced by making the
+  forbidden primitive impossible to select in the subgraph
+  (`E_ForbiddenPrimitiveSelected`), so the negative is proven by construction.
+  The soundness certificate waits on band A.
+- **Target ISA / bootstrap.** Each ISA has a direct byte encoder written as a
+  `~>` handler, a peer of `wat_to_string` on the same LowIR. `MachineOp` is a
+  projection view: it is generated and consumed, and never stored as a second
+  IR. The linker is the image-map fold, and the loader is `mmap` or
+  self-location. WASM remains the peer that provides portability.
 
 ## §4 · Missing concerns the critique surfaced (none deferred)
 
-- **FP/SIMD determinism — the silent fixpoint-killer.** The wheel computes floats
-  during its own compilation; native x87 80-bit intermediates and FMA contraction
-  are not bit-identical to WASM's strict IEEE-754, so `native_m3 != native_m4` on
-  the first float unless native FP is pinned **SSE-only, no-FMA-contraction,
-  round-to-nearest-even, defined NaN/denormal** (S10). SIMD lane groups must be
-  seen by `use_profile` as one vector value or lanes mis-spill.
-- **Foreign interop.** `~> Foreign` bottom handler, maximal-unknown row (`!Pure`),
-  values copied at the boundary (ownership unprovable across it) — the one named
-  `!Outside` seam for the un-Mentl world before it is all Mentl (S15).
-- **Error/trap unwinding is trail-rollback** — Abort and refinement traps unwind
-  by `graph_rollback` to the handler's checkpoint + a cursor reposition, the same
-  primitive as MultiShot backtrack. Free, once §0 lands.
-- **Self-hosting the encoder** — the WASM wheel cross-compiles `native.mn`
-  (WASM-host → native-target) before it self-hosts; a backend swap, so
-  m2≠m3-by-design across it, `native_m3 == native_m4` the check (S13),
-  diverse-double-compilation (band J) closing trusting-trust.
-- **Live observability + metal hot-reload** (band M) — the ReasonMap + capture-
-  flush discipline make a running native cursor inspectable; concurrent code-patch
-  is a real cross-core i-cache barrier with a quiescence rule keyed on
-  `world_tag` epoch == `proj_epoch` (S18).
+- **FP/SIMD determinism, which can break the fixpoint without any warning.**
+  The wheel computes floats during its own compilation. Native x87 80-bit
+  intermediates and FMA contraction are not bit-identical to WASM's strict
+  IEEE-754, so `native_m3 != native_m4` at the first float unless native FP is
+  pinned to SSE only, no FMA contraction, round-to-nearest-even, and defined
+  NaN/denormal handling (S10). `use_profile` must treat each group of SIMD
+  lanes as one vector value, or the lanes are spilled incorrectly.
+- **Foreign interop.** A `~> Foreign` bottom handler has the maximal unknown
+  row (`!Pure`) and copies values at the boundary, because ownership cannot be
+  proven across it. It is the one named `!Outside` boundary with code that is
+  not Mentl, until everything is written in Mentl (S15).
+- **Error/trap unwinding is trail-rollback.** Abort and refinement traps unwind
+  with `graph_rollback` to the handler's checkpoint and then reposition the
+  cursor, using the same primitive as MultiShot backtracking. Once §0 lands,
+  this needs no extra work.
+- **Self-hosting the encoder.** The WASM wheel cross-compiles `native.mn` (from
+  a WASM host to a native target) before the native compiler hosts itself.
+  That is a backend swap, so m2≠m3 by design across it, and the check is
+  `native_m3 == native_m4` (S13). Diverse double-compilation (band J) closes
+  the trusting-trust gap.
+- **Live observability + metal hot-reload** (band M). The ReasonMap and the
+  capture-flush discipline make a running native cursor inspectable. Patching
+  code while it runs needs a real cross-core i-cache barrier, with a
+  quiescence rule keyed on `world_tag` epoch == `proj_epoch` (S18).
 
 ## §5 · The build spine — WASM wheel to native fixed point, no deferrals
 
-Everything through **S12 is verifiable in the WASM peer before native exists** —
-prove each projection against the standing `m3 == m4`, then swap the backend and
-re-prove the fixpoint. That is the discipline's whole point.
+Every step through S12 can be verified in the WASM peer before the native
+backend exists. Each projection is proven against the standing `m3 == m4`, and
+then the backend is swapped and the fixpoint is proven again. That is the
+purpose of this build order.
 
-- **S0** Reserved-register manifest + per-ISA Target descriptor (image-base,
-  frontier, cursor/PC registers, the bounded-`%rsp` trap-scratch role,
-  RegClass→physical-file table). One ADT, so three layers cannot pin different
-  sets.
-- **S1** `repr_regclass(Repr) → RegClass` — pure terminal beside
-  `repr_wat`/`repr_width`. Law-7 no-op for WASM. The cleanest first cut.
-- **S2** `use_profile` generalizing `count_uses` (own.mn:369, a bare Int-sum) to
-  `(grade, sorted-use-positions, escape-bit)`, reading the escape set from lower's
-  already-computed capture set — zero new escape analysis. THE one liveness
-  analysis five layers needed.
-- **S3** The cardinality→frame-representation classifier (**keystone 1**) —
-  labels each activation HardwareScratch vs ImageRecord from the cardinality
-  lattice + delimited-region containment. Verify in the WASM peer (assert it
-  matches the existing tier selection). **← the WASM multi-shot work lands here.**
-- **S4** Trail-as-activation-spine reclamation — segment exit does
-  `graph_rollback`; a captured `k` owns its segment, freed at use-count 0. Loops
-  O(1), no GC, no `%rsp`. Instrument the existing trail in the WASM peer to prove
-  it. **← and here.**
-- **S5** `native.mn` as a `~> NativeOut` peer handler, one ISA, LEAF fragment
-  only. Milestone: a native leaf fn runs and returns.
-- **S6** Call/return codegen for the two frame representations (keystone 1 →
-  bytes); register-flush-at-capture at every MultiShot perform.
-- **S7** Register residency + e-graph-remat eviction; max-materialized-set pre-
-  sized over `use_profile`; clobber set as a monotone fixpoint (escaping_row
-  precedent). Replaces Belady/linear-scan.
-- **S8** The hardware-scratch trap seam — `%rsp` = a bounded per-core interrupt-
-  frame arena; the trap handler marshals the CPU frame into an image continuation
-  record, then the graph model resumes. The irreducible silicon seam, one copy.
-- **S9** Eight-aspect selection completion (repr→regclass, verb→control,
-  ownership→residency, row→capability gate at emit, reason→ReasonMap,
-  refinement→elision, gradient→widths). Soundness certificate gated on band A.
-- **S10** FP/SIMD determinism pinning — or the fixpoint fails on the first float.
-- **S11** Deterministic handle-space partition (**keystone 2**); work-stealing a
-  value-reproducible-only handler off the self-hosting path. Kills the mode flag.
-- **S12** Effect-state parallel-safety gate — stateful effect in `>< ~> Thread` =
-  a compile-time refusal unless replicated-and-merged or `!<effect>`. Native face
-  of band A.
-- **S13** WASM→native cross-compile — **NATIVE FIRST LIGHT**: `native_m3 ==
-  native_m4`, micros + repro native, diverse-double-compilation closing
-  trusting-trust. The machine is real here.
-- **S14** Remaining ISAs as encoder-leaf swaps (explicit per-target selection, no
-  false-uniform claim).
-- **S15** `~> Foreign` bottom handler; hosted `~> Syscall` the minimal residue,
-  bare-metal `~> Mmio`/`~> Hardware`.
-- **S16** Address-space commitment — flat handle-addressed physical (PMP, explicit
-  guards, COW=memcpy) for bare-metal; hosted static-PIE+mmap a peer
-  `~> HostedImage` handler. 4GB is the RI32 floor, RI64 a repr cash-out.
-- **S17** Boot/entry as one sequence — hosted (static-PIE → set base → partition
-  arenas → find main's handle → first cursor step) and bare-metal (mask-ROM →
-  DRAM-init firmware, the named `!Outside` → self-locate → first step).
-- **S18** Live observability + metal hot-reload (band M) — `mentl where` live,
-  per-fn re-projection, concurrent-patch i-cache barrier.
+- **S0** A manifest of reserved registers and a Target descriptor for each ISA
+  (the image-base, frontier and cursor/PC registers, the bounded-`%rsp`
+  trap-scratch role, and the table from RegClass to physical register file).
+  It is one ADT, so three layers cannot pin different sets.
+- **S1** `repr_regclass(Repr) → RegClass`, a pure terminal beside
+  `repr_wat`/`repr_width`. Under Law-7 it is a no-op for WASM. It is the
+  cleanest first step.
+- **S2** `use_profile` generalizes `count_uses` (own.mn:369, a bare Int sum) to
+  `(grade, sorted-use-positions, escape-bit)`. It reads the escape set from the
+  capture set that lower has already computed, so it adds no new escape
+  analysis. This is the single liveness analysis that five layers needed.
+- **S3** The classifier from cardinality to frame representation (keystone 1).
+  It labels each activation HardwareScratch or ImageRecord from the cardinality
+  lattice and delimited-region containment. Verify it in the WASM peer by
+  asserting that it matches the existing tier selection. The WASM multi-shot
+  work lands here.
+- **S4** Reclamation with the trail as the activation spine. A segment's exit
+  runs `graph_rollback`, and a captured `k` owns its segment, which is freed
+  when its use count reaches 0. Loops stay O(1), with no GC and no `%rsp`.
+  Instrument the existing trail in the WASM peer to prove it. The WASM
+  multi-shot work also lands here.
+- **S5** `native.mn` as a `~> NativeOut` peer handler, for one ISA and the leaf
+  fragment only. Milestone: a native leaf function runs and returns.
+- **S6** Call/return codegen for the two frame representations (keystone 1
+  turned into bytes), with registers flushed at capture at every MultiShot
+  perform.
+- **S7** Register residency and eviction by e-graph rematerialization. The
+  maximum materialized set is sized in advance from `use_profile`, and the
+  clobber set is a monotone fixpoint (following the escaping_row precedent).
+  This replaces Belady and linear scan.
+- **S8** The hardware-scratch boundary for traps. `%rsp` is a bounded per-core
+  arena for interrupt frames. The trap handler marshals the CPU frame into an
+  image continuation record, and then the graph model resumes. This is the one
+  boundary with the hardware that cannot be removed, and crossing it costs one
+  copy.
+- **S9** Complete the selection over the eight aspects (repr→regclass,
+  verb→control, ownership→residency, row→capability gate at emit,
+  reason→ReasonMap, refinement→elision, gradient→widths). The soundness
+  certificate waits on band A.
+- **S10** Pin FP/SIMD determinism. Without it, the fixpoint fails on the first
+  float.
+- **S11** Deterministic handle-space partition (keystone 2), with work stealing
+  as a handler that reproduces only values, kept off the self-hosting path.
+  This removes the mode flag.
+- **S12** A parallel-safety gate for effect state: the compiler refuses a
+  stateful effect in `>< ~> Thread` unless it is replicated and merged or
+  `!<effect>`. This is band A as it appears in the native backend.
+- **S13** WASM→native cross-compile, which is native first light: `native_m3 ==
+  native_m4`, the micros and repro run natively, and diverse double-compilation
+  closes the trusting-trust gap. The native machine exists from this step on.
+- **S14** The remaining ISAs, each added by swapping the encoder leaf (with
+  explicit selection per target and no false claim that targets are uniform).
+- **S15** The `~> Foreign` bottom handler. Hosted, `~> Syscall` is the minimal
+  remainder; on bare metal it is `~> Mmio`/`~> Hardware`.
+- **S16** Commit to an address space. On bare metal it is flat physical memory
+  addressed by handle (PMP, explicit guards, COW=memcpy). Hosted, it is
+  static-PIE+mmap in a peer `~> HostedImage` handler. 4GB is the RI32 floor,
+  and RI64 is a repr cash-out.
+- **S17** Boot and entry as one sequence. Hosted: static-PIE → set base →
+  partition arenas → find main's handle → first cursor step. Bare metal:
+  mask-ROM → DRAM-init firmware (the named `!Outside`) → self-locate → first
+  step.
+- **S18** Live observability and hot reload on the metal (band M): `mentl where`
+  on a running program, re-projection per function, and the i-cache barrier
+  for concurrent patching.
 
-The load-bearing pivots are S3/S4 (keystone 1) and S11 (keystone 2). The FP gap
-(S10) is the fixpoint-killer no single layer watched. Band A is the verifiability
-ceiling under everything from S9 on: ship before it, prove after it.
+The steps the rest depends on are S3/S4 (keystone 1) and S11 (keystone 2). The
+FP gap (S10) can break the fixpoint, and no single layer was checking for it.
+Band A limits what can be verified from S9 on: those steps can ship before
+band A closes, but they can be proven only after it.
 
 ## §6 · Where the WASM work fits — S3/S4, proven in the peer today
 
-The multi-shot the WASM peer runs is S3/S4 *in that peer*: the resume grade is
-inferred from each arm's body (SYNTAX §«Resume discipline»), a tail resume is a
-direct call, a held or multi-shot perform reifies the frame's REMAINDER as a
-record — the lowered frame zipped at the position, every value it reads after
-the perform captured beside the world the perform ran in — and an arm that
-never resumes unwinds the perform to the install whose arm answers. The native
-frame classifier (S3) reads the same grade: a tail-resumed frame is hardware
-scratch and a reified remainder is an image record, and the body an install
-runs is the frame's own function, entered through the install's record (handler
-= state = closure). Both are verifiable against `m3 == m4`.
+The multi-shot support that the WASM peer runs is S3/S4 inside that peer. The
+resume grade is inferred from each arm's body (SYNTAX §«Resume discipline»). A
+tail resume is a direct call. A held or multi-shot perform reifies the rest of
+the frame as a record: the lowered frame, zipped at the current position, with
+every value it reads after the perform captured beside the world the perform
+ran in. An arm that never resumes unwinds the perform to the install whose arm
+answers it. The native frame classifier (S3) reads the same grade: a frame
+resumed in tail position is hardware scratch, and a reified remainder is an
+image record. The body that an install runs is the frame's own function,
+entered through the install's record (handler = state = closure). Both can be
+verified against `m3 == m4`.

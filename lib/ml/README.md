@@ -1,35 +1,36 @@
 # lib/ml — learning is a reading of the chain you already wrote
 
-A model is an ordinary Mentl chain. Learning asks how its output changes
-with a parameter, and that question is a READING of the chain, not a second
-program beside it:
+A model is an ordinary Mentl chain. Learning uses the rate at which the
+model's output changes with a parameter. Mentl computes that rate with a
+reading of the chain itself, so no second program is written beside it:
 
 ```
 (w - rate * d(loss(w, xs))) ~> grad(w)
 ```
 
-The body evaluates exactly as it would without the install. `d(v)` asks for
-∂v/∂w, and the medium answers from a derivative program it derives from the
-chain's own graph and emits beside the forward one. Nothing records a tape,
-no operator is overloaded, and no hand-written backward pass can drift from
-the forward pass it mirrors, because none exists.
+The body evaluates exactly as it would if the handler were not installed.
+`d(v)` requests ∂v/∂w. The medium computes it with a derivative program, which
+it derives from the chain's own graph and emits beside the forward program.
+Nothing records a tape and no operator is overloaded. There is also no
+hand-written backward pass, so none can drift out of step with the forward
+pass.
 
-- `grad.mn` — the `Derivative` effect and the `grad` reading.
-- `tensor.mn` — the matrix floor the models stand on.
+- `grad.mn` holds the `Derivative` effect and the `grad` reading.
+- `tensor.mn` holds the basic matrix code that the models are built on.
 
-What the reading covers today and what it refuses (naming the construct that
-would lose a derivative, never answering zero) is SYNTAX's §«`~>` — tee»,
-the derivative reading.
+The part of SYNTAX's §«`~>` — tee» on the derivative reading lists what the
+reading covers today and what it refuses. A refusal names the construct that
+would lose a derivative; the reading never returns zero in its place.
 
 ## The receipts
 
-The learning workloads are gated in `bash tools/frontier-gate.sh`, each
-cross-validated against an independent oracle over the same data: the
-`ml-crucible` leg runs batch gradient descent on 32 points and converges to
-the planted weights (3, 1) exactly; the `adaptive-crucible` leg is a 2-tap
-LMS filter learning a channel *online* — feedback, float math and learning in
-one loop. Both write their gradients by hand; the `derive-lms` leg runs the
-same filter with its step asked for as `d(e * e)` and judged by the same
-oracle facts, and the `derive-shape` leg checks the slope of the distortion
-scene 1 renders against the finite difference of the same function
+`bash tools/frontier-gate.sh` checks the learning workloads, and it compares
+each one with an independent oracle run on the same data. The `ml-crucible`
+leg runs batch gradient descent on 32 points and converges exactly to the
+planted weights (3, 1). The `adaptive-crucible` leg is a 2-tap LMS filter that
+learns a channel *online*, so feedback, float math and learning run in one
+loop. Both legs write their gradients by hand. The `derive-lms` leg runs the
+same filter but requests its step as `d(e * e)`, and checks it against the
+same oracle facts. The `derive-shape` leg checks the slope of the distortion
+that scene 1 renders against the finite difference of the same function
 (`tests/frontier/derive-crucible/`).

@@ -1,121 +1,137 @@
 # Mentl Space — the web IDE
 
-The page runs THE FIXPOINT COMPILER ITSELF in your browser: `boot/mentl.wasm`,
-the pinned boot, unmodified, judging in a worker. Nothing leaves the browser,
-no server computes anything, and no toolchain is installed — the compiler is
-one WebAssembly module and the page is its host.
+The page runs the fixpoint compiler itself in your browser. It is
+`boot/mentl.wasm`, the pinned boot, unmodified, and it runs its type and
+effect checks in a web worker. Nothing leaves the browser, no server computes
+anything, and you install no toolchain, because the compiler is one
+WebAssembly module and the page is its host.
 
     bash tools/space-stage.sh            # stage the site into .build/space (the page + every file it fetches)
     python3 tools/space-serve.py         # serve it with the two isolation headers at http://127.0.0.1:7397/
 
-WHAT THE SITE IS has one home, `ide/space.manifest`: the compiler, the runtime
-modules the driver links (`lib/*.mn`, `src/types.mn`) and the projects — Pulse's
-renderer, the course (`examples/pulse/course`) and Wasatch's score
-(`examples/wasatch`). The page reads the manifest to know what to fetch; the staging
-script copies exactly those files beside the page; the deploy workflow
-(`.github/workflows/deploy-space.yml`) and the IDE gate serve THAT directory —
-so a file the page needs and the deploy lacks is a red gate before it is a 404
-in production. A missing file is a loud boot refusal, never an empty string.
+One file, `ide/space.manifest`, lists everything the site contains: the
+compiler, the runtime modules the driver links (`lib/*.mn`, `src/types.mn`)
+and the projects, which are Pulse's renderer, the course
+(`examples/pulse/course`) and Wasatch's score (`examples/wasatch`). The page
+reads the manifest to know what to fetch, and the staging script copies
+exactly those files next to the page. The deploy workflow
+(`.github/workflows/deploy-space.yml`) and the IDE gate both serve that same
+directory. So if the page needs a file that the deploy lacks, the IDE gate
+fails before production can return a 404 for it. A missing file stops the
+page from booting with a visible error; it is never read as an empty string.
 
-THE PAGE ISOLATES ITSELF. Shared WebAssembly memory needs the document to be
-cross-origin isolated, which takes two response headers a plain static host
-does not set. `ide/isolate.js` is a service worker the page registers on
-every secure host: it adds the headers to every response and keeps a copy of
-everything fetched, so the page works on any static host (GitHub Pages, the
-python server above, a directory on a stick) and opens again offline. Where
-the host set no headers the first open reloads once under the worker; a host
-that sets them (the local server, Cloudflare in front of Pages) needs no
-reload and the worker is belt and braces.
+The page sets up cross-origin isolation itself. Shared WebAssembly memory
+requires the document to be cross-origin isolated, which takes two response
+headers that a plain static host does not set. `ide/isolate.js` is a service
+worker that the page registers on every secure host. It adds the headers to
+every response and keeps a copy of everything fetched. As a result the page
+works on any static host (GitHub Pages, the python server above, a directory
+on a USB stick) and opens again offline. If the host sets no headers, the
+page reloads once under the worker the first time it opens. A host that does
+set them (the local server, or Cloudflare in front of Pages) needs no
+reload, and the worker is then a second safeguard.
 
-THE LOOP IS THE RESIDENT SESSION. One worker runs `mentl session` for the
-page's life (ide/wheel-worker.js, ide/session-client.js — the same two files
-the node twin drives). An edit sends the changed text with the caret's
-address: the session re-judges the moved cone and answers the eight aspects
-at the caret AND the program's diagnostics in one reply (~100 ms); a caret
-move alone is a read of the graph the session already holds (~20 ms). The
-emitted WebAssembly text is rendered on demand (the Module tab), never per
+The editing loop runs in one resident session. One worker runs
+`mentl session` for as long as the page is open (ide/wheel-worker.js and
+ide/session-client.js, the same two files the node twin drives). An edit
+sends the changed text with the caret's address. The session re-checks the
+part of the program that the edit changed (the moved cone), and it returns
+both the eight aspects at the caret and the program's diagnostics in one
+reply, in about 100 ms. Moving the caret without an edit only reads the graph
+the session already holds, in about 20 ms. The page renders the emitted
+WebAssembly text only on demand, in the Module tab, and never on each
 keystroke.
 
-The surfaces, each a projection of the compiler's own answer (docs/MENTL_SPACE.md
-is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
-`ide/tokens.css`):
+The page has these surfaces, and each one is a projection of the compiler's
+own answer (docs/MENTL_SPACE.md describes the interaction architecture, and
+docs/DESIGN_SYSTEM.md the tokens, which live in `ide/tokens.css`):
 
-- **The Canvas** — the program painted from the wheel's own projection of
-  it (`mentl space main.mn:0`, the module's View, carries the canvas;
-  `canvas_of`, src/space.mn): every token at the span the one lexer answers,
-  in its kernel role's hue (the five verbs sky, types gold, keywords blue,
-  `own`/`ref`/`resume` magenta, literals and `!E` and the `??` socket
-  vermillion). The page holds no lexer; it slices the source at the wheel's
-  spans, so every character the hand typed is on the screen, and paints only
-  the lines in view. The gutter carries THE ASPECT STRIP — eight cells a
-  line, one per aspect (τ a declaration's type, ⬡ a hole, a verb glyph for
-  each stage, ◇ an effect the line requires of its callers and ◆ one an
-  install grants, ●/○ an owned parameter and its consume, ✓ ◌ ✗ a claim
-  proven, open or refuted, ↑ the gradient's step, ¶ a lede or an accept; ✗ in
-  any column a refusal of that aspect) — each a door into the ring, then the
-  line numbers. Over the text: the verb frames and the `~>` enclosure read
-  from the graph's verb sites, the proof marks at their claims, the amber
-  trace of an owned value down to its consume, the references a find
-  follows. Find by edge: the caret's View carries the references of what it
-  names; the find box asks `mentl space main.mn:L:C <name>` for a name's
-  references and the string literals holding it (the Refs tab). On idle the
-  formatter's canon replaces the buffer; the accept and the formatter write
-  as ONE native undo step each.
-- **The Aspect ring** — the eight facets at the caret, read off the View the
-  wheel renders (`mentl space main.mn:L:C` → `space_view`, src/space.mn — the
-  same facts `mentl main.mn:L:C` prints as text): graph
-  (the node's type, with its lede), propose (a `??`'s proven survivor, or the
-  install that serves a perform), topology, effects, ownership, verify (every
-  open obligation at the node), teach, why (the Reason chain). A row is `real`
-  when the compiler answered it; `surface` only before the first read.
-- **The Lens** — every banked diagnostic as the kind it is at its own site,
-  the caret's module first and the linked modules folded under a count, the
-  lead sentence the wheel's own; click to jump. Telemetry (`heap:`, `arena:`,
-  `session:`) is cost and never enters the View.
-- **The proposal strip** — at a `??` whose Propose facet returned ONE proven
-  survivor, Tab accepts it through `mentl accept main.mn:L:C`: a graph edge
-  first, the text its projection (the reply carries the rewritten file). A
-  tie never proposes — the medium renders the computed question instead.
-- **The Ledger** — the declarations nearest the caret by the graph's own
-  proximity, each with its inferred row, the open obligations and the
-  tightenings the medium would author. The Why chain is the ring's eighth
+- **The Canvas** shows the program, painted from the wheel's own projection
+  of it. `mentl space main.mn:0` returns the module's View, which carries the
+  canvas (`canvas_of`, src/space.mn). Each token is drawn at the span that the
+  compiler's one lexer reports, in the color of its kernel role: the five
+  verbs in sky, types in gold, keywords in blue, `own`/`ref`/`resume` in
+  magenta, and literals, `!E` and the `??` socket in vermillion. The page has
+  no lexer of its own. It cuts the source at the wheel's spans, so every
+  character the person typed is on the screen, and it paints only the lines
+  in view. The gutter holds the aspect strip and then the line numbers. The
+  aspect strip has eight cells per line, one for each aspect. τ marks a
+  declaration's type, ⬡ a hole, and a verb glyph each stage. ◇ marks an
+  effect the line requires of its callers and ◆ one that an install grants.
+  ●/○ mark an owned parameter and its consume, and ✓ ◌ ✗ a claim that is
+  proven, open or refuted. ↑ marks the gradient's step, and ¶ a lede or an
+  accept. A ✗ in any column marks a refusal of that aspect. Each cell is a
+  link into the ring. Drawn over the text are the verb frames and the `~>`
+  enclosure, read from the graph's verb sites, the proof marks at their
+  claims, the amber trace from an owned value down to its consume, and the
+  references a find follows. Find follows edges: the caret's View carries the
+  references of whatever the caret names, and the find box queries
+  `mentl space main.mn:L:C <name>` for a name's references and the string
+  literals that contain it (the Refs tab). When the editor is idle, the
+  formatter's canonical text replaces the buffer. An accept and a formatter
+  rewrite each count as one native undo step.
+- **The Aspect ring** shows the eight facets at the caret, read from the View
+  the wheel renders (`mentl space main.mn:L:C` → `space_view`, src/space.mn).
+  These are the same facts that `mentl main.mn:L:C` prints as text. The facets
+  are graph (the node's type, with its lede), propose (a `??`'s proven
+  survivor, or the install that serves a perform), topology, effects,
+  ownership, verify (every open obligation at the node), teach, and why (the
+  Reason chain). A row is `real` when the compiler has answered it, and
+  `surface` only before the first read.
+- **The Lens** lists every stored diagnostic, shown as its own kind at its own
+  site. The caret's module comes first, and the linked modules are folded
+  under a count. Each lead sentence is the wheel's own text, and clicking a
+  diagnostic jumps to its site. Telemetry (`heap:`, `arena:`, `session:`)
+  measures cost and never enters the View.
+- **The proposal strip** appears at a `??` whose Propose facet returned
+  exactly one proven survivor. Tab accepts it through
+  `mentl accept main.mn:L:C`, which writes a graph edge first and then the
+  text as that edge's projection (the reply carries the rewritten file). A
+  tie produces no proposal; the medium shows the computed question instead.
+- **The Ledger** lists the declarations nearest the caret, measured by
+  distance in the graph, each with its inferred row, its open obligations and
+  the tightenings the medium would write. The Why chain is the ring's eighth
   facet.
-- **The programs** — the projects the manifest names, each member under its
-  own path: Pulse's renderer, the course's ten lessons (`examples/pulse/course`,
-  the module they share beside them) and Wasatch's score; a scratch buffer;
-  drafts persist in the browser; `mentl space <dir>` opens a folder of your
-  own the same way.
-  Density is computed from the caret, never configured; ◐ switches the
-  ground (obsidian / parchment, the system preference by default).
+- **The programs** are the projects the manifest names, each member under
+  its own path: Pulse's renderer, the course's ten lessons
+  (`examples/pulse/course`, with the module they share next to them) and
+  Wasatch's score. There is also a scratch buffer, and drafts persist in the
+  browser. `mentl space <dir>` opens a folder of your own the same way.
+  Density is computed from the caret and is never configured. ◐ switches the
+  ground (the background) between obsidian and parchment, and it follows the
+  system preference by default.
 
-What does not exist yet, each named: RUNNING the compiled program in the page
-— `mentl asm` assembles the wheel's own output, and the worker instantiating
-those bytes so a lesson plays to the speaker is PLAN §11, the page plays the
-course, where the graph's evaluator runs a lesson at once; until
-then a lesson renders in the terminal (`mentl run … > lesson.wav`); the
-row-flow tint and the sealed `!E` wall over the
-canvas (docs/MENTL_SPACE.md §8, named next); fill-and-resume and reality
-scrubbing (band B); the transitive `!E` proof (band A's crown).
+Several things do not exist yet. The page cannot yet run the compiled
+program. `mentl asm` assembles the wheel's own output, and having the worker
+instantiate those bytes so that a lesson plays through the speaker is the
+PLAN §11 work named "the page plays the course", where the graph's evaluator
+runs a lesson at once. Until then, a lesson renders in the terminal
+(`mentl run … > lesson.wav`). Also missing are the row-flow tint and the
+sealed `!E` wall over the canvas (named as next work in docs/MENTL_SPACE.md
+§8), fill-and-resume and reality scrubbing (band B), and the transitive `!E`
+proof (band A's crown).
 
-The gate is `bash tools/ide-gate.sh`: the node twin (`node ide/test-shim.mjs`)
-drives ide/wheel-worker.js and ide/session-client.js — the SAME execution
-host the page uses — through its faces (compile-stdin, the stub-spawn control,
-the address CursorView, the `??` Propose socket, the resident session); then
-`ide/browser-leg.mjs` drives headless Chrome over its debugging pipe: it loads
-the STAGED site at `/?smoke`, prints the page's own console wire as it arrives
-— the View's (`SMOKE-VIEW`: the first lesson's View from the session, eight
-ring facts, no refusing lens fact), the project's (`SMOKE-PROJECT`: Pulse
-opened as a project, its member mounted at its path, zero refusals) and the
-product's (`SMOKE-PRODUCT`: render fidelity, no `undefined` in the chrome,
-eight real ring rows, a Warning in the Lens at its line, a mismatch at its
-own site) and the canvas's (`SMOKE-CANVAS`: no tokenizer in the page,
-every painted token the source sliced at the canvas's span, every strip cell
-the View's own, frames and marks drawn, the references at a caret drawn and
-a needle's listed, the formatter's canon on idle, the accept one undo step)
-— and captures the loaded
-page in both grounds (`.build/space.png`, `.build/space-parchment.png`) once
-the page says `SPACE-READY`. (Chrome's own `--screenshot` captures the load
-event, before the wheel has booted, and never returns under a virtual-time
-budget on this page, since the session's worker blocks inside the wheel's
-read.) `tools/contrast.py` measures every text/ground pairing of the tokens
-against WCAG.
+The gate is `bash tools/ide-gate.sh`. First the node twin
+(`node ide/test-shim.mjs`) drives ide/wheel-worker.js and
+ide/session-client.js, the same execution host the page uses, through each
+of its faces: compile-stdin, the stub-spawn control, the address CursorView,
+the `??` Propose socket and the resident session. Then
+`ide/browser-leg.mjs` drives headless Chrome over its debugging pipe. It
+loads the staged site at `/?smoke` and prints the page's own console lines
+as they arrive. `SMOKE-VIEW` reports the View: the first lesson's View from
+the session, eight ring facts, and no refusal among the lens facts.
+`SMOKE-PROJECT` reports the project: Pulse opened as a project, its member
+mounted at its path, and zero refusals. `SMOKE-PRODUCT` reports the product:
+render fidelity, no `undefined` in the page chrome, eight real ring rows, a
+Warning in the Lens at its line, and a mismatch at its own site.
+`SMOKE-CANVAS` reports the canvas: no tokenizer in the page, every painted
+token equal to the source sliced at the canvas's span, every strip cell taken
+from the View, frames and marks drawn, the references at a caret drawn and a
+needle's references listed, the formatter's canonical text on idle, and the
+accept as one undo step. Once the page prints `SPACE-READY`, the browser leg
+captures the loaded page in both grounds (`.build/space.png`,
+`.build/space-parchment.png`). (Chrome's own `--screenshot` captures the
+page at the load event, before the wheel has booted. Under a virtual-time
+budget it never returns on this page, because the session's worker blocks
+inside the wheel's read.) `tools/contrast.py` measures every pairing of text
+and ground in the tokens against WCAG.
