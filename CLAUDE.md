@@ -1,74 +1,172 @@
-# Mentl — CLAUDE.md · how to work
+# How to work on Mentl
 
-Three documents. This one, the method, is read whole every session.
-**`PLAN.md`** (the substance — thesis, kernel, decisions, §7 the state, §11 the
-one list of open work) and **`docs/SYNTAX.md`** (the surface — the authority on
-the language's form) are read by part: the session starts with their map, a
-line per heading and per §11 step with its line and size (`mentl map`), and
-`mentl map <id, title or word>` serves one part (`mentl map §11.1`, `mentl map
-"Resume discipline"`, a label; the same read over `mentl mcp`). A landing reads
-PLAN §0 and its §11 step, then every part it touches, before it acts; an agent
-is briefed with the parts it reads, never the documents whole. Nothing else is
-read-path. History is `git log`; the pin chain is `boot/PROVENANCE.md`; what
-the program has not reached is measured by the medium itself (`mentl verify`,
-`mentl query`), never kept as prose. The map stands while landings read
-through it spend less context than loading the documents whole did (363,609
-bytes at every session's start, 2026-10-26) and land as well.
+## Write in plain English
 
-## The one law
+This rule comes first because every model copies the voice of what it reads.
+Much of this repository is written in a compressed, slogan-like voice that a
+newcomer cannot follow: older parts of PLAN.md and SYNTAX.md, the commit
+history, and the compiler's printed messages. Do not imitate it. When you
+edit a passage written that way, rewrite that passage plainly.
 
-**One graph. Two operations: draw an edge (the judgment writes), project
-(everything else reads).** A fact computed, copied, cached, filed under a
-name, or re-derived anywhere it could be read live is the bug, and its fix is
-less code. A reader holding a node follows the node's edges; a name is looked
-up once, at the writer, where it resolves in its scope — or at the text
-boundary, where a person typed it.
+Write for a capable engineer who has never opened this repository.
 
-**Five mechanisms carry the law** (PLAN §4⑧): a declaration's face, the
-reach, the fork, the whole-truth row and two projections. A new summary, walk,
-trial, unreported exit or backend is a reader of one of them; a sixth built
-beside them is the drift.
+- Say who or what does what, and why it matters: subject, verb, object.
+- Put one idea in each sentence. Prefer short sentences and common words.
+- Use a term this project coined only after saying what it means in ordinary
+  words, or point to where it is defined. The glossary below covers the
+  common ones.
+- Keep exact technical terms. Effect, row, handler, refinement, ownership
+  and the five pipe operators are precise. Plain English is not vague.
+- No slogans, no aphorisms, no inverted or poetic word order, and no chains
+  of abstract nouns.
+- Give every number its unit and say what it measures.
 
-## The thesis is the acceptance test
+This covers everything a person reads: commit messages, comments,
+documentation, chat replies, and the messages the compiler prints. A printed
+message says what is wrong, where, and what to do about it. When you change
+one, update the fixtures that cite its text in the same commit.
 
-Mentl closes the gap between what a person means and what they are forced to
-write (PLAN §0). A landing is done when a person at the keyboard can see it: a
-`mentl` verb on a user program shows the property it advances — proof beats
-review, the negative is provable, intent is lossless, computation is durable,
-systems explain themselves. The user program is a course lesson
-(`examples/pulse/course`, ten programs on one audio chain) or one of the two
-scores (`examples/pulse/render`, `examples/wasatch`) wherever one can show the
-property: `mentl verify` counts the lessons the medium cannot yet judge clean
-(the `QOwed` bounds, `src/board.mn`), and a landing that turns one green
-lowers that ceiling and names the lesson in its commit. The commit message
-names the property, the verb that shows it, the measurement that was RED
-before, and the pin. A change no person can feel at the keyboard is either
-infrastructure a named PLAN §11 landing stands on, or it is not done.
+Before and after, from this repository:
+
+- Before: "The negative is provable at a sink: information flow is the
+  verifier's own walk." After: "`mentl check` now refuses code where an
+  untrusted value can reach a trusted output, even through a branch, and says
+  where the value came from."
+- Before: "severs beyond the module: Alloc — unlocks Real-time safe (proven
+  zero allocation)". After: "This function never allocates memory, so it is
+  safe to call from a real-time loop."
+- Before: "A gate is obeyed, never satisfied." After: "When a check fails,
+  fix what it measures. Do not change the check so that it passes."
+- Before: "Intent is lossless across a rename." After: "`mentl rename`
+  updates every use, label and comment that refers to a declaration, and
+  refuses a rename that would change what any of them refers to."
+
+Before you commit text, reread it as that newcomer. If they could not say
+back what changed and why after one reading, rewrite it.
+
+### Glossary
+
+- **Landing:** one complete, committed piece of work, usually one PLAN §11
+  step.
+- **The wheel:** the compiler's own source, `src/` and `lib/`.
+- **The boot, a pin:** the pinned compiler binary, `boot/mentl.wasm`. Each
+  pin is one entry in its chain, recorded in `boot/PROVENANCE.md`.
+- **The candidate:** the compiler built from the source in your working tree.
+- **The march:** the self-compile check. The boot compiles the wheel into m2,
+  m2 compiles it into m3, and m2 must equal m3 byte for byte.
+- **The board:** the limits `mentl verify` checks, kept in `src/board.mn`.
+- **The judgment:** the type and effect checker.
+- **The medium:** Mentl's compiler together with its `mentl` commands.
+- **Edge, projection:** a fact the compiler records in its graph, and a view
+  of the graph that something prints or uses.
+- **A gate:** a check that must pass before a commit or a pin.
+- **Red:** failing.
+
+## What to read
+
+Three documents guide the work. Read this one in full every session. Read the
+other two in parts.
+
+- `PLAN.md` holds the design: the thesis, the kernel, the decisions, the
+  current state (§7) and the only list of open work (§11).
+- `docs/SYNTAX.md` is the authority on how Mentl code is written.
+
+A session starts with `mentl map`, which lists every heading of both
+documents and every §11 step with its line number and size. `mentl map <id,
+title or word>` prints one part, such as `mentl map §11.1` or `mentl map
+"Resume discipline"`, and `mentl mcp` serves the same reads. Before acting, a
+landing reads PLAN §0, its own §11 step, and every part it touches. Brief an
+agent with the parts it needs, never the whole documents.
+
+Nothing else is required reading. History is `git log`. The chain of pins is
+`boot/PROVENANCE.md`. What the compiler cannot do yet is measured by the
+compiler itself (`mentl verify`, `mentl query`), never kept as prose. Reading
+by parts stays the rule while landings that read this way use less context
+than loading both documents whole did (363,609 bytes at the start of every
+session, measured 2026-10-26) and succeed as often.
+
+## The main design rule
+
+The compiler keeps one graph of facts about the program. Only the judgment
+writes to it, by adding an edge when it decides something. Everything else,
+from diagnostics to the editor to code generation, reads the graph and
+presents a view of it.
+
+So a fact is never computed a second time, copied, cached, stored under a
+name, or re-derived anywhere it could be read from the graph. Each of those
+is a bug, and its fix is less code. Code that holds a node follows the node's
+edges. A name is looked up once: by the writer, in the scope where it
+resolves, or at the text boundary where a person typed it.
+
+Five mechanisms implement this rule, described in PLAN §4⑧: a declaration's
+face, the reach, the fork, the whole-truth row and the two projections.
+Anything new, such as a summary, a traversal, a trial run, an exit that goes
+unreported, or a backend, is built as a reader of one of these five. A sixth
+mechanism built beside them is drift.
+
+## When a change is done
+
+Mentl's goal (PLAN §0) is to close the gap between what a person means and
+what a language forces them to write. A landing is done when a person at the
+keyboard can see the difference: a `mentl` command run on a real program
+shows one of five benefits. PLAN gives them short names. In commits and docs,
+use the plain words.
+
+- "Proof beats review": the compiler proves a property, so nobody has to
+  check it by reading the code.
+- "The negative is provable": you can prove what a program never does, such
+  as never touching the network.
+- "Intent is lossless": what you meant survives edits and renames exactly.
+- "Computation is durable": a running program can be saved and resumed.
+- "Systems explain themselves": the compiler can say why any fact about the
+  program holds.
+
+The real program is a course lesson (`examples/pulse/course`, ten programs on
+one audio chain) or one of the two scores (`examples/pulse/render`,
+`examples/wasatch`), whichever can show the benefit. `mentl verify` counts
+the lessons the compiler cannot yet check cleanly (the `QOwed` bounds in
+`src/board.mn`). A landing that makes one pass lowers that limit and names
+the lesson in its commit.
+
+A commit message's first line says, in plain words, what a person can now do
+or see. The body names the command that shows it, the measurement that
+failed before the change, and the new pin. A change that no person can
+notice at the keyboard must be groundwork that a named PLAN §11 landing
+depends on. Otherwise it is not done.
 
 ## The hooks
 
-`.claude/settings.json` wires the hooks, and each refusal states its rule and
-the way past it; there is no flag past any of them. A search of `.mn` source
-by hand and a shell write to it are refused (`tools/hooks/medium_first.py`); a
-wheel file is edited only after a `mentl` command naming its path ran this
-session (`tools/consult-gate.sh`); an edited `.mn` is drift-audited
-(`tools/hooks/post_edit_drift.sh`); a session starts with the map.
+`.claude/settings.json` installs the hooks. Each refusal states its rule and
+the way past it. No flag skips any of them.
 
-**The commit boundary** (`.githooks/pre-commit`, installed by
-`tools/setup-git-hooks.sh`; never `--no-verify`) runs the obey gate
-(`tools/obey-gate.py`: a raised ceiling, a deleted bound, a new expected red or
-silencer, a record of a partial landing, a new script or `.md` file, or more
-lines under `tools/` refuses), formats each staged `src/` and `lib/` file,
-drift-audits each staged `.mn`, runs `tools/verify.sh` when compiler source is
-staged, and needs `.build/frontier-stamp` to equal the boot's sha for a
-compiler commit, which only a green `tools/frontier-gate.sh` writes. A
-docs-only commit runs the obey gate alone: run `bash tools/doc-truth.sh`
-yourself.
+- Searching `.mn` source by hand, or writing to it from the shell, is refused
+  (`tools/hooks/medium_first.py`). Ask the compiler instead, as the working
+  loop below shows.
+- A wheel file can be edited only after a `mentl` command naming its path has
+  run in this session (`tools/consult-gate.sh`).
+- Every edited `.mn` file is checked for drift
+  (`tools/hooks/post_edit_drift.sh`).
+- A session starts by printing the map.
 
-## The candidate compiler
+At commit time `.githooks/pre-commit` runs. Install it with
+`tools/setup-git-hooks.sh`, and never commit with `--no-verify`.
 
-`mentl` runs the pinned boot. A change to the wheel is judged by the compiler
-the changed source produces:
+- The obey gate (`tools/obey-gate.py`) refuses a commit that raises a limit,
+  deletes a bound, adds an expected failure or a silencer, records a partly
+  finished landing, adds a script or a `.md` file, or adds lines under
+  `tools/`.
+- It formats each staged file in `src/` and `lib/`, and drift-checks each
+  staged `.mn` file.
+- When compiler source is staged, it runs `tools/verify.sh` and requires
+  `.build/frontier-stamp` to equal the boot's hash. Only a passing
+  `tools/frontier-gate.sh` writes that stamp.
+- A commit that changes only documentation runs the obey gate alone, so run
+  `bash tools/doc-truth.sh` yourself.
+
+## Testing with the candidate
+
+`mentl` runs the boot. A change to the wheel is judged by the compiler that
+the changed source builds:
 
 ```
 source tools/wt-env.sh; C=$(wt_m2_ensure) && wt_m2_place "$C" .build/probe
@@ -76,167 +174,212 @@ MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl check src/main.mn
 wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
 ```
 
-- A failed build empties `.build/m2cache/key` and leaves `.build/probe` STALE:
-  read `.build/m2cache/m2.err` before anything else.
-- `mentl check` refuses what the compile refuses at the executable root: an
-  effect reaching `main` or a module value's init with no handler is
-  `E_EffectUnhandled` at the end of the judgment, naming where it enters, so
-  a compiler effect nobody handles at the root is found by checking
-  `src/main.mn`, never only by building.
-- A fixture's `// expect: N` is an exit code below 126 (134 is a trap), or its
-  refusal class on the first line. Every battery runs through `wt_battery
-  <compiler> <dir>` (micros, syntax, proposals, teach, frontier): `mentl test`
-  judges a directory and prints each fixture's RUN line, and the host runs it;
-  `tests/crown` leak-*/sound-* by `E_EffectMismatch` count
-  (`tools/crown-gate.sh`); `tests/proposals`, `tests/teach` and
-  `tests/frontier` carry their contract on the first line (`// propose L:C:`
-  and `// teach N:` cite the fixture's own lines). What no contract names yet
-  — a verb's text, an edit workflow, a project route — is a leg of
-  `tools/frontier-gate.sh`, and a leg cites fixture lines, so a line added to
-  a fixture's head moves them; history goes at the tail.
-- `mentl fmt --check` of a fixture using a form the boot cannot parse runs
-  through the candidate. A probe (`.build/probe/m2.wat`) is comparable only
-  within one binary; patch probes there, never in the wheel's source.
-- `mentl land` takes every gate through the candidate; by hand a gate takes it
-  as `fresh`: `bash tools/proof-exactness-gate.sh fresh`, `bash
-  tools/frontier-gate.sh --compiler fresh`, `MENTL_BOOT=… bash
+- A failed build empties `.build/m2cache/key` and leaves `.build/probe` out
+  of date. Read `.build/m2cache/m2.err` before anything else.
+- `mentl check` refuses what compiling an executable refuses. An effect that
+  reaches `main`, or a module value's initializer, with no handler is
+  `E_EffectUnhandled`, and the error names where the effect enters. So check
+  `src/main.mn` to find a compiler effect that nothing handles. Building alone
+  does not show it.
+- A fixture states what it expects on its first line. `// expect: N` is an
+  exit code below 126, where 134 means a trap. Otherwise the first line names
+  the class of error that should refuse it.
+- Every test directory runs through `wt_battery <compiler> <dir>`: micros,
+  syntax, proposals, teach and frontier. `mentl test` checks a directory and
+  prints each fixture's RUN line, and the host runs it. `tests/crown` counts
+  `E_EffectMismatch` refusals for its leak-* and sound-* fixtures
+  (`tools/crown-gate.sh`). `tests/proposals`, `tests/teach` and
+  `tests/frontier` state their contract on the first line, where
+  `// propose L:C:` and `// teach N:` refer to lines of the fixture itself.
+- Behavior that no first-line contract covers yet, such as a command's
+  printed text, an editing workflow or a project route, is checked by a leg
+  of `tools/frontier-gate.sh`. A leg refers to fixture line numbers, so a
+  line added near the top of a fixture shifts them. Add history at the end.
+- `mentl fmt --check` on a fixture that uses syntax the boot cannot parse
+  must run through the candidate. A probe (`.build/probe/m2.wat`) can be
+  compared only with output of the same binary. Patch probes there, never
+  the wheel.
+- `mentl land` runs every gate through the candidate. To run one gate by hand
+  against the candidate, pass `fresh`: `bash tools/proof-exactness-gate.sh
+  fresh`, `bash tools/frontier-gate.sh --compiler fresh`, `MENTL_BOOT=… bash
   tools/crown-gate.sh`, `MENTL_BOOT=… mentl verify`.
 
-## The loop
+## The working loop
 
-1. **Choose and ground.** The work is PLAN §11's first step unless a red gate
-   or a measured false proof a real program hits preempts it — a program in
-   `examples/`, `lib/` or the wheel; a shape only a fixture writes joins the
-   step that owns its mechanism, its fixture that step's RED (PLAN §11).
-   `mentl land --quick` (where the tree stands: git, the stamps, verify),
-   then ask the medium about every file the landing touches: `mentl check <file>`, `mentl <file>:<line>`,
-   `mentl query src/main.mn "refs of NAME"`, `mentl where src/main.mn NAME`,
-   `mentl why <file> <fn> [<Effect>]`, `mentl query src/main.mn "census
-   <shape>"`, `"provider of OP"`, `"writes of FIELD"`, `"text NEEDLE"`,
-   `"prose NEEDLE"`, `unreachable`, `heads`, `env`, `reports`.
-2. **RED first.** The fixture or bound is measured failing on the pinned boot
-   before the change; its output goes in the commit message. A claim about
-   behaviour bound for a document, a comment or a commit is a probe's output
-   (a scratch `.mn` through `mentl check` and `mentl run`), never memory.
-3. **Build the whole landing in `.mn`**, hardest piece first; a dependency the
-   form needs is built in the same arc, never handed back as a question.
-4. **Prove it: `mentl land`.** It builds the candidate and judges it cheapest
-   first, stopping at the first red: `mentl check src/main.mn`; `mentl fmt
-   --check src lib examples` (the boot's check once passed a formatter that
-   lost every handler arm's prose, 2026-10-16); `mentl verify`'s bounds; the
-   march's ratchets and fixed point; the batteries; crown, proof-exactness,
-   frontier, effect identity, instrument, threads, ide. Every verdict is kept
-   by the bytes it judged, so a run after a fix pays only for what the fix
-   moved. It runs in the background, one wheel-scale run at a time, and its
-   output is read, never predicted. A count that fell stops it at the bounds:
-   lower its ceiling (`src/board.mn`, with a dated reason;
-   `tools/verify-baseline.txt` for the cost keys) and run it again; a count
-   that would rise means the landing is reshaped.
-5. **Repin: `mentl land` pins once, when every gate is green.** The march
-   rules CLEAN (m2 == m3, repin from m2), TRANSITION (m3 == m4, repin from
-   m3) or BROKEN, and holds the candidate's image line peak and wall against
-   the boot on the same wheel; on a trap, diff the two emits first (PLAN §8,
-   forensics). It stops for the one narrative line replacing the march's
-   placeholder in `boot/PROVENANCE.md`; `mentl land` again reads the board on
-   the new boot back from the kept verdicts.
-6. **Record.** The landed text leaves PLAN §11 and §7 is trued; SYNTAX where
-   the surface moved; every changed claim checked against the artifact with a
-   verb; a file outside PLAN cites a §11 step by its name, never its number.
-7. **Commit on main through the hooks and push** (`git push -u origin main`).
-   No branches, no pull requests unless asked. The tree is clean when the
-   session ends, and the last message says what changed and what measured.
+1. **Choose the work and check the ground.** The work is PLAN §11's first
+   step, unless a failing gate comes first, or a measured false proof that a
+   real program hits, in `examples/`, in `lib/` or in the wheel. A problem
+   that only a test fixture shows joins the §11 step that owns its mechanism,
+   and the fixture becomes that step's failing test. Run `mentl land --quick`
+   to see where the tree stands: git, the stamps and verify. Then ask the
+   compiler about every file you will touch: `mentl check <file>`,
+   `mentl <file>:<line>`, `mentl query src/main.mn "refs of NAME"`,
+   `mentl where src/main.mn NAME`, `mentl why <file> <fn> [<Effect>]`, and
+   the queries `"census <shape>"`, `"provider of OP"`, `"writes of FIELD"`,
+   `"text NEEDLE"`, `"prose NEEDLE"`, `unreachable`, `heads`, `env` and
+   `reports`.
+2. **Show the failure first.** Before the change, measure the fixture or
+   bound failing on the boot, and put its output in the commit message. Any
+   claim about behavior that goes into a document, a comment or a commit
+   comes from a probe's output, a scratch `.mn` file run through
+   `mentl check` and `mentl run`, never from memory.
+3. **Build the whole landing in `.mn`,** hardest piece first. If it needs
+   something that does not exist yet, build that in the same landing instead
+   of handing it back as a question.
+4. **Prove it with `mentl land`.** It builds the candidate and checks it
+   cheapest first, stopping at the first failure: `mentl check src/main.mn`;
+   `mentl fmt --check src lib examples`, since on 2026-10-16 the boot's check
+   passed a formatter that dropped every handler arm's comments;
+   `mentl verify`'s bounds; the march's ratchets and fixed point; the test
+   directories; then the crown, proof-exactness, frontier, effect identity,
+   instrument, threads and ide gates. Each result is kept with the exact
+   bytes it checked, so a run after a fix redoes only what the fix changed.
+   It runs in the background, one compiler-sized run at a time. Read its
+   output; never predict it. When a count falls, it stops at the bounds:
+   lower that limit, in `src/board.mn` with a dated reason or in
+   `tools/verify-baseline.txt` for the cost keys, and run it again. If a
+   count would rise, reshape the landing.
+5. **Pin once, with `mentl land`, when every gate passes.** The march reports
+   CLEAN (m2 equals m3, pin m2), TRANSITION (m3 equals m4, pin m3) or BROKEN.
+   It also requires the candidate's peak arena memory, the "line peak" its
+   self-compile prints, and its wall-clock time to stay within the boot's on
+   the same wheel. On a trap, diff the two emitted modules first (PLAN §8,
+   forensics). It then stops for you to replace its placeholder line in
+   `boot/PROVENANCE.md` with one sentence describing the change. Running
+   `mentl land` again reads the results back on the new boot.
+6. **Record it.** Remove the finished text from PLAN §11 and bring §7 up to
+   date. Update SYNTAX if the language's surface changed. Check every
+   changed claim against the artifact with a command. A file outside PLAN
+   names a §11 step by its title, never its number.
+7. **Commit on main through the hooks and push** (`git push -u origin
+   main`). No branches and no pull requests unless asked. Leave the tree
+   clean when the session ends, and end with a message that says what
+   changed and what was measured.
 
-## The cost law at the cursor
+## Performance
 
-PLAN §5.O: the cost of an operation is the size of the answer it was asked
-for. Derivation is O(1) amortized — a fact is computed once and read forever
-after; delivery is O(what was asked). At every write ask: what does this read
-per operation, and is any of it a fact an edge already carries? A list indexed
-in a loop, a name looked up where a handle is in hand, a type cloned where a
-correspondence edge belongs, a fixpoint re-run per reader, a whole-subtree fold
-per node: each is the Carried-Truth Law broken at the performance scale, and
-its fix is the edge. Measure before asserting: `bash tools/profile-self.sh`
-samples the self-compile and `tools/guest-profile.py` names the callers; eight
-readers once missed the cost that one profile found in a minute. A change
-justified by a number and not a law is the wrong change; the board's cost
-ceilings only fall, and the image's line peak is held against the pinned boot
-compiling the same wheel, so it measures the compiler and never the wheel's
-size, and nothing a commit writes moves it.
+PLAN §5.O sets the rule: an operation costs no more than the size of the
+answer it was asked for. A fact is computed once and then only read, so
+deriving it costs a constant amount over time, and delivering an answer
+costs in proportion to what was asked.
 
-## Mentl builds Mentl — enforced, not requested
+Whenever you write code, ask what it reads each time it runs, and whether
+any of that is a fact the graph already carries. These patterns break the
+main design rule at the performance level, and the fix for each is to follow
+an edge instead:
 
-- **Every question about the program is a verb.** `mentl query`, `where`,
-  `why`, `check`, `audit`, `teach`, `verify`, `test`, `<file:line>`. A gap is
-  confessed with `# verb-gap:` and the facet grown in `src/` in the same
-  landing.
-- **Every capability lives in the medium's own source.** No new scripts, no new
-  documents, no growth of `tools/`: the scripts that remain are scaffolds the
-  medium has not absorbed; absorbing one into a verb is always in scope.
-- **The wheel's source is the first user program**, written the way SYNTAX asks
-  a person to write: verbs over index loops, handlers over flags, edges over
-  name lookups, the authored text holding decisions while the medium projects
-  the rest. Dead code, side indexes, compensations, decoration and archaeology
-  are deleted on sight (`mentl query src/main.mn unreachable`, `census`,
-  `mentl verify`).
-- **Agents are for breadth only** — reading, fixtures — with the model passed
-  explicitly, starting from the map and the parts their brief names; never to
-  review a design or a document. The artifact is the refuter.
+- indexing a list inside a loop;
+- looking up a name when you already hold a handle to the thing;
+- copying a type where an edge between the two belongs;
+- rerunning a fixpoint for every reader;
+- folding over a whole subtree for every node.
+
+Measure before you claim a cause. `bash tools/profile-self.sh` samples the
+compiler compiling itself, and `tools/guest-profile.py` names the callers.
+Eight read-throughs once missed a cost that one profile found in a minute. A
+change justified by a number but by no rule is the wrong change. The board's
+cost limits only go down. The line peak is compared with the boot compiling
+the same wheel, so it measures the compiler rather than the size of its
+source, and nothing a commit writes can move it.
+
+## Mentl builds Mentl
+
+The hooks and gates enforce these rules. They are not suggestions.
+
+- **Every question about the program has a `mentl` command:** `query`,
+  `where`, `why`, `check`, `audit`, `teach`, `verify`, `test` and
+  `<file:line>`. Where a question has none, record the gap with
+  `# verb-gap:` and add the query to `src/` in the same landing.
+- **New capabilities go into the compiler's own source.** No new scripts, no
+  new documents and no growth of `tools/`. The scripts that remain are
+  scaffolding the compiler has not absorbed yet, and turning one into a
+  `mentl` command is always in scope.
+- **The wheel is the first real Mentl program.** Write it the way SYNTAX asks
+  anyone to write Mentl: the five pipe operators instead of index loops,
+  handlers instead of flags, edges instead of name lookups. The written source
+  holds the decisions, and the compiler derives the rest. Delete dead code,
+  side indexes, workarounds, decoration and leftovers from history on sight
+  (`mentl query src/main.mn unreachable`, `census`, `mentl verify`).
+- **Use agents only for breadth,** such as reading many files or writing
+  fixtures. Pass the model explicitly, and start each agent from the map and
+  the parts its brief names. Never use an agent to review a design or a
+  document. Running the artifact is what proves a design wrong.
 
 ## No unfinished work
 
-- **A landing is committed whole.** No "first pin", no "remaining" list: an arc
-  too large for one commit is split into landings each whole in itself, each a
-  PLAN §11 item.
-- **Foundations first, by dependency.** Before a landing starts, every fact it
-  reads is carried by an edge already landed; a fact it needs that no landing
-  carries is the landing built first. Nothing is left pending, "may" or half
-  done because a later landing is missing — the order is chosen so each
-  landing is whole when it lands.
-- **PLAN §11 is the only list of open work.** A gap found inside the arc is
-  fixed inside the arc; nothing is parked anywhere else.
-- **A gate is obeyed, never satisfied.** When a gate goes red, the work is what
-  it measures. Deleting the symptom where its cause is fixable is the same
-  move as raising the ceiling.
-- **A ceiling above zero is a landing's RED, never a resting place.** An
-  expected-red entry, a silencer, a diagnostic class named and unborn, and a
-  landing named outside PLAN §11 are the same thing in four spellings; each
-  is attached to the landing that zeroes it.
-- **The artifact is the refuter.** Measure before asserting a cause; when the
-  cause is unmeasured, build the instrument.
+- **Commit each landing whole.** No first pass and no list of what remains.
+  Split work too large for one commit into landings that are each complete,
+  and make each one a PLAN §11 step.
+- **Build foundations first.** Before a landing starts, every fact it reads
+  must already be carried by an edge from earlier work. A fact it needs that
+  nothing carries yet is the landing to build first. Order the work so that
+  nothing is left pending, half done or marked "may" while it waits for
+  something later.
+- **PLAN §11 is the only list of open work.** Fix a gap you find inside the
+  work as part of the work. Never park it anywhere else.
+- **When a gate fails, fix what it measures.** Deleting the symptom when its
+  cause can be fixed is the same as raising the limit.
+- **A limit above zero is a landing's failing test, never a resting place.**
+  An expected-failure entry, a silenced warning, an error class that is named
+  but never produced, and a landing named outside PLAN §11 are one problem in
+  four forms. Attach each to the landing that brings it to zero.
+- **Running the artifact settles it.** Measure before you claim a cause. If
+  the cause cannot be measured yet, build the tool that measures it.
 
-## The forms
+## Writing Mentl code
 
-The five verbs name the topology of every flow, in code and in prose: `|>`
-sequential · `<|` one input fanned to branches · `><` independent pipelines ·
-`~>` the handler governing everything to its left · `<~` feedback. `|>` is
-never optional: `y |> f |> g`, never `let x = f(y); g(x)`.
+The five pipe operators name the shape of every flow. Use them in code, and
+use them to describe a flow in prose.
 
-The eight questions at every cursor: **Graph** (does an edge already carry
-this?) · **Handler** (which handler projects it, with what resume
-cardinality?) · **Verb** · **Row** (`+ - & ! Pure`) · **Ownership**
-(`own`/`ref`) · **Refinement** · **Gradient** (what annotation unlocks a
-capability?) · **Reason** (what edge does the Why walk follow?).
+- `|>` runs stages in sequence.
+- `<|` sends one input to several branches.
+- `><` runs independent pipelines side by side.
+- `~>` installs a handler over everything to its left.
+- `<~` feeds back a value from the previous step.
 
-The drift tells, each the one law broken: a closure as a vtable · scope as a
-frame stack · effect names as flat strings · a handler chain as a monad stack
-· `__closure`/`__ev` beside each other instead of one state · a primitive
-special-cased because it is small · N parallel lists where one record was
-native · a flag as an int (`mode == 0/1/2`) · claiming done with sub-handles
-uncommitted · a `_ =>` arm fabricating a value.
+Always write a sequence with `|>`: `y |> f |> g`, never
+`let x = f(y); g(x)`.
 
-Red flags — stop and restructure: "for now" · "a later pass" · "the smallest
-correct change" · "ultimate form reachable now" · "option A vs the safer
-option B" (decide it) · "look X up by name" when an edge connects it · a fix
-that adds code to compensate rather than deleting what made the compensation
-necessary.
+Ask eight questions at every line you write:
+
+- **Graph:** does an edge already carry this fact?
+- **Handler:** which handler produces it, and how many times does it resume?
+- **Verb:** which of the five operators is this flow?
+- **Row:** which effects does it have (`+ - & ! Pure`)?
+- **Ownership:** is the value owned (`own`) or borrowed (`ref`)?
+- **Refinement:** what range or property must the value keep?
+- **Gradient:** which annotation would unlock a capability?
+- **Reason:** which edge does `mentl why` follow to explain it?
+
+Signs of drift, each a break of the main design rule:
+
+- a closure used as a vtable;
+- scope modeled as a stack of frames;
+- effect names kept as plain strings;
+- a handler chain treated as a monad stack;
+- `__closure` and `__ev` kept side by side instead of as one state;
+- a primitive special-cased because it is small;
+- several parallel lists where one record belongs;
+- a flag stored as an integer (`mode == 0/1/2`) instead of a type with named
+  cases;
+- calling work done while parts of it are uncommitted;
+- a `_ =>` match arm that invents a value.
+
+Phrases that mean stop and restructure: "for now", "a later pass", "the
+smallest correct change", "the ultimate form is reachable now", "option A
+versus the safer option B" (decide it instead), "look X up by name" when an
+edge already connects it, and any fix that adds code to compensate instead
+of deleting what made the compensation necessary.
 
 ## Conventions
 
-- Never attribute the model in a commit; no model identifiers in any artifact.
-- Comments state what IS and why, in the developer's voice; a backticked name
-  is an edge and must resolve in the module's own reach. History is git's.
-- Shell commands that run wheel-scale work (the march, the board, a profile)
-  run one at a time.
-- Decisions are made, not deferred: full authority was granted; a design
-  question is answered by the eight questions and the artifact, and the
-  answer is built.
+- Never credit an AI model in a commit, and never put a model identifier in
+  any file.
+- Comments say what the code does and why, in plain English, as the
+  developer would explain it. A name in backticks is a reference and must
+  resolve to a declaration visible from that module. Leave history to git.
+- Run compiler-sized jobs, such as the march, the board or a profile, one at
+  a time.
+- Make decisions instead of deferring them. You have full authority. Answer a
+  design question with the eight questions and by running the artifact, then
+  build the answer.
