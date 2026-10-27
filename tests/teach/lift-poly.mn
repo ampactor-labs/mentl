@@ -1,0 +1,9 @@
+// teach 5: lift k: Int
+// A pin lifts from a polymorphic head too: `k + 1` grounds k, x stays the
+// variable it was, and the face — (Int, a) -> (Int, a) — holds up to the
+// renaming of its one variable.
+fn pair(k: Int, x) = (k + 1, x)
+
+fn main() = match pair(1, 2) {
+  (a, b) => a + b,
+}

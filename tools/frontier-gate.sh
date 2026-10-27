@@ -698,8 +698,8 @@ run_course() {
              replacement='  let t = time()\n  let label = int_to_str(n)'; class=E_EffectMismatch;;
       rate)  file=rate.mn; entry=05-silence; pattern='^fn now() with Sample(48000) = current_sample()$'
              replacement='fn now() with Sample(44100) = current_sample()'; class=E_EffectMismatch;;
-      range) file=07-bounds.mn; entry=07-bounds; pattern='^fn cutoff_at(t: Float) -> Hz = 600.0 + 400.0 \* sin(two_pi() \* 0.5 \* t)$'
-             replacement='fn cutoff_at(t: Float) -> Hz = 30000.0'; class=E_RefinementRejected;;
+      range) file=07-bounds.mn; entry=07-bounds; pattern='^fn cutoff_at(t) -> Hz = 600.0 + 400.0 \* sin(two_pi() \* 0.5 \* t)$'
+             replacement='fn cutoff_at(t) -> Hz = 30000.0'; class=E_RefinementRejected;;
     esac
     tdir="$dir/course-$twin.proj"; rm -rf "$tdir"; mkdir -p "$tdir"; cp "$src"/*.mn "$tdir"/
     if [ "$(grep -c "$pattern" "$src/$file")" != "1" ]; then

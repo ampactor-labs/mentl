@@ -36,7 +36,7 @@ import rate
 fn seconds() with Pure = 4
 
 // The score: A3, C4, E4, A4 — one a second.
-fn note_hz(k: Int) -> Hz = match k {
+fn note_hz(k) -> Hz = match k {
   0 => 220.0,
   1 => 261.63,
   2 => 329.63,
@@ -64,7 +64,7 @@ handler limiter_at(ceiling: Float) with env = 0.0 {
 // name is the installs of its members, innermost first.
 handler rack = spectral_flux_distort ~> limiter_at(0.6)
 
-fn frame(buf, rig, n: Int) = {
+fn frame(buf, rig, n) = {
   let t = time()
   let k = n / rate()
   let tn = t - float_of_int(k)
@@ -73,7 +73,7 @@ fn frame(buf, rig, n: Int) = {
   wav_frame(buf, n, s, s)
 }
 
-fn build_rig(sr: Int) = {voice: saw_voice(sr)}
+fn build_rig(sr) = {voice: saw_voice(sr)}
 
 fn main() = {
   {

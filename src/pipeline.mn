@@ -158,7 +158,7 @@ handler infer_context = judgment_ledgers ~> lookup_ty_graph ~> env_handler(env_r
 // unhandled floor on every march the verb ran — the wheel unable to judge
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
-handler emit_context = string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
+handler emit_context = string_table ~> line_registry ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
@@ -878,6 +878,7 @@ fn teach_result_text(name: String, result, tights) = match result {
   TeachAdd(_) => "→ {show_teaching(result)}",
   TeachAsk(_) => "→ {show_teaching(result)}",
   TeachNeed(_, _, _) => "→ {show_teaching(result)}",
+  TeachLift(_) => "→ {show_teaching(result)}",
 }
 
 // The judgment's banked T_OverDeclared for a declaration, by the name the

@@ -1,0 +1,8 @@
+// teach 6: lift k: Int
+// A parameter's written type the body alone decides is an inventory: `k * 2`
+// grounds k at Int whether or not the head says so, so the declaration judged
+// without the pin publishes the same face, and the gradient offers the lift.
+// On boot b28a494d the line read `(no next-step annotation)`.
+fn scale(k: Int, x) = k * 2 + x
+
+fn main() = scale(1, 2)

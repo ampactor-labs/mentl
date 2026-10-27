@@ -48,24 +48,24 @@ fn seconds() with Pure = 4
 // The chord: A3, C4, E4, A4, each voice placed from left to right.
 fn notes() = [220.0, 261.63, 329.63, 440.0]
 
-fn place(v: Int) -> Float with Pure = -0.6 + 0.4 * float_of_int(v)
+fn place(v) with Pure = -0.6 + 0.4 * float_of_int(v)
 
 // One voice, whole: its oscillator and its filter are minted here, in the
 // branch that renders it, and the list of its samples is the branch's answer.
-fn render_voice(sr: Int, frames: Int, hz: Float) = {
+fn render_voice(sr, frames, hz) = {
   let voice = saw_voice(sr)
   let tone = lowpass_filter(sr)
-  fn sample(i: Int) with !Alloc = {
+  fn sample(i) with !Alloc = {
     let t = float_of_int(i) / float_of_int(sr)
     voice(hz) * adsr(0.02, 0.4, 0.5, 1.0, 4.0, t) |> tone(1200.0)
   }
   range(0, frames) |> map(sample)
 }
 
-fn render(sr: Int, frames: Int) = fanout(render_voice(sr, frames), notes()) ~> parallel_compose
+fn render(sr, frames) = fanout(render_voice(sr, frames), notes()) ~> parallel_compose
 
 // The mix: each voice at its place, as a stereo pair per frame.
-fn placed(v: Int, samples) =
+fn placed(v, samples) =
   map({ s => (0.3 * s * pan_left(place(v)), 0.3 * s * pan_right(place(v))) }, samples)
 
 fn add_pair(a, b) = match (a, b) {

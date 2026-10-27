@@ -1,0 +1,8 @@
+// teach 6: none
+// A pin the body does not decide is a decision, not an inventory: nothing in
+// `pick` reads a, so without `a: Int` the declaration generalizes and its face
+// changes. The pin stays, and with nothing owed and no clause standing on the
+// row there is no next step.
+fn pick(a: Int, b) = b
+
+fn main() = pick(1, 2)

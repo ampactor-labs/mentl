@@ -241,6 +241,7 @@ fn accept_fill(handle, survivor, proof) with !Mutate = {
 // nothing to accept says so. Answers whether anything was written.
 fn accept_teaching(handle, teach) = match teach {
   TeachAdd(s) => accept_annotation(handle, s),
+  TeachLift(lifts) => written(lifted_module_text(handle, lifts)),
   TeachAsk(_) => {
     eprint_string("mentl accept: {show_teaching(teach)}\n")
     false
@@ -269,37 +270,68 @@ fn accept_teaching(handle, teach) = match teach {
 // literal or a comment is not written.
 fn accept_annotation(handle, s) = match s {
   AnnotationSuggestion(ann, _, _) => match graph_node_body(handle) {
-    NStmt(FnStmt(name, params, retty, effs, body)) => {
-      let module = module_name_of_handle(graph_module_of(handle))
-      match driver_module_path(module) {
-        None => {
-          eprint_string("mentl edit: `{module}` resolves to no file — nothing written\n")
-          false
-        },
-        Some(path) => match splice_decl_head(
-          fs_read_file(path),
-          graph_span_of(handle),
-          graph_span_of(body),
-          annotated_head(ann, name, params, graph_node_body(retty), effs),
-          stated_by(ann, params)
-        ) {
-          Some(edited) => {
-            write_module(module, edited)
-            true
-          },
-          None => {
-            eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
-            false
-          },
-        },
-      }
-    },
+    NStmt(FnStmt(name, params, retty, effs, body)) => written(head_module_text(
+      handle,
+      name,
+      body,
+      annotated_head(ann, name, params, graph_node_body(retty), effs),
+      stated_by(ann, params)
+    )),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => {
       eprint_string("mentl edit: the suggestion's position is not a declaration — nothing written\n")
       false
     },
   },
+}
+
+// A LIFT IS A HEAD THE FORMATTER WRITES TOO: the declaration re-rendered
+// without the pins the judgment derives (`lifted_head`), spliced over the head
+// it replaces, the atoms the pins spelled admitted to the conservation census
+// as the lifted ones. The module and its new text, or none where the position
+// is no declaration or the splice refused.
+fn lifted_module_text(handle, lifts) = match graph_node_body(handle) {
+  NStmt(FnStmt(name, params, retty, effs, body)) => head_module_text(
+    handle,
+    name,
+    body,
+    lifted_head(name, params, retty, body, effs, lifts),
+    lift_names(lifts)
+  ),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => {
+    eprint_string("mentl edit: the position is not a declaration — nothing written\n")
+    None
+  },
+}
+
+// A head spliced into the text of the file its declaration's module resolves
+// to: the module and the text, or none, said aloud, where the module has no
+// file or the head would not render conserved.
+fn head_module_text(handle, name: String, body, head: String, stated) = {
+  let module = module_name_of_handle(graph_module_of(handle))
+  match driver_module_path(module) {
+    None => {
+      eprint_string("mentl edit: `{module}` resolves to no file — nothing written\n")
+      None
+    },
+    Some(path) => match splice_decl_head(fs_read_file(path), graph_span_of(handle), graph_span_of(body), head, stated) {
+      Some(edited) => Some((module, edited)),
+      None => {
+        eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
+        None
+      },
+    },
+  }
+}
+
+// The edit written through the patch effect; answers whether anything was.
+fn written(edit) = match edit {
+  Some((module, text)) => {
+    write_module(module, text)
+    true
+  },
+  None => false,
 }
 
 // The head an annotation writes: the declaration re-rendered with the
@@ -344,37 +376,6 @@ fn written_base(pname: String, contract, p) = match param_ann(p) {
   },
   None => [],
 }
-
-// The head is the source from the declaration's start to the whitespace
-// before its body; the new head replaces it and the whitespace stays, so
-// a body on the next line stays there. The splice answers None when the
-// replaced head held a comment or any name or literal the new head does
-// not and the annotation does not state — the conservation census the fmt
-// verb answers to.
-fn splice_decl_head(ref source, decl_sp, body_sp, ref head: String, stated: [String]) = {
-  let n = byte_len(source)
-  match decl_sp {
-    Span(dl, dc, _, _) => match body_sp {
-      Span(bl, bc, _, _) => {
-        let start = line_start(source, dl) + (dc - 1)
-        let body_at = line_start(source, bl) + (bc - 1)
-        let head_end = fold(
-          body_at,
-          (e, i) => if is_space_byte(byte_at(source, i)) && i + 1 == e { i } else { e },
-          reverse(range(start, body_at))
-        )
-        let old_toks = lex(str_slice(source, start, head_end))
-        if count_comment_tokens(old_toks, 0, 0) > 0 || len(lost_atoms_beside(old_toks, lex(head), stated)) > 0 {
-          None
-        } else {
-          Some("{str_slice(source, 0, start)}{head}{str_slice(source, head_end, n)}")
-        }
-      },
-    },
-  }
-}
-
-fn is_space_byte(b) with Pure = b == 32 || b == 10 || b == 9 || b == 13
 
 // The extent the accepted text occupies after the splice: the hole's own
 // start, and the text's width past it. Every candidate renders on one line

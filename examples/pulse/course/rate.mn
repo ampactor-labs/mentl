@@ -17,7 +17,7 @@ fn now() with Sample(48000) = current_sample()
 fn advance() with Sample(48000) = advance_sample()
 
 // How many frames `s` seconds last at the installed rate.
-fn frames_of(s: Int) = rate() * s
+fn frames_of(s) = rate() * s
 
 // The time, in seconds, the clock has reached.
 fn time() = float_of_int(now()) / float_of_int(rate())
@@ -25,7 +25,7 @@ fn time() = float_of_int(now()) / float_of_int(rate())
 // The render loop: the frame is handed the index of the sample it renders,
 // and the clock advances after it. Tail-recursive, so it is a loop in the
 // emitted code.
-fn play(frames: Int, frame) with !Alloc + !Sample(44100) = if now() >= frames {
+fn play(frames, frame) with !Alloc + !Sample(44100) = if now() >= frames {
   ()
 } else {
   frame(now())

@@ -1,0 +1,8 @@
+// teach 6: lift a: Int
+// Of two pins each derivable from the other, one is lifted: without `a: Int`
+// the body still grounds a through b, so that lift holds; without both the
+// declaration generalizes to (a, a) -> Bool, a different face, so `b: Int`
+// stays. The pins are tried left to right over the lifts already held.
+fn same(a: Int, b: Int) = a == b
+
+fn main() = if same(1, 1) { 1 } else { 0 }

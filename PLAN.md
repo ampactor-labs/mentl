@@ -533,9 +533,13 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **A dropped value is silent** outside the stage of `each` (§11.5).
 - **Early exit cannot be said and every cycle is hand recursion** (§11.7):
   `any`, `all`, `find` and `take` visit every element.
-- **Teach answers locks and preconditions, and little else** (§11.5): no
-  refinement at a part, no call with argument holes, no record proposed for a
-  positional product.
+- **Teach answers locks, preconditions and lifts, and little else** (§11.5):
+  no refinement at a part, no call with argument holes, no record proposed
+  for a positional product. A precondition says the row it frees of `Trap`; a
+  lift — a written base type the body alone decides — is proven by the fork
+  alone, the declaration read again from its lines without the pin, since the
+  cells hold the pinned type whichever side decided it. The course's heads
+  are lifted; the wheel's are not.
 - **The course and the scores are owed** (`mentl verify`, the `QOwed` bounds;
   §11.3): a Nyquist bound that reads the installed rate
   inside its predicate is left pending (lesson 6), a division by a value
@@ -1076,8 +1080,9 @@ the face (step 3) cut the last three.
    product; one obligation value rendered once for the caret, teach, audit and
    smt (smt asserting the negation with its declarations); a declaration's Why
    its signature's, and a module a lede of its own; the self-proposal
-   benchmark; topology proposed under the race rule's proof; and a base-type
-   pin equal to what inference derives narrated as the inventory it is. The
+   benchmark; topology proposed under the race rule's proof; and the wheel's
+   own heads lifted of the types the judgment derives, as the course's are
+   (`mentl tighten`). The
    Why's thin hops name a call argument's flow (`Hβ.why.flow-naming-at-call`)
    and a refined alias's provenance (`Hβ.why.refinement-provenance`) and elide
    the trivial ones (`Hβ.viz.why-walk-elides-trivial-hops`).

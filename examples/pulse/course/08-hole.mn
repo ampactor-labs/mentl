@@ -15,7 +15,7 @@
 // back to the proposal. Until the hole is filled the file does not run — an
 // executable with a hole refuses by law, E_UnresolvedHole at the hole —
 // while `mentl check` judges it clean, since a hole is productive. Declare a second stage
-// of the same type, `fn darken(x: Float) -> Float`, and the fan holds two
+// of the same shape, `fn darken(x) with Pure = x - 0.3 * x * x * x`, and the fan holds two
 // survivors: a tie in meaning is a question, and the medium asks which
 // behaviour is meant rather than guess (PLAN §5). The frontier gate accepts
 // this lesson's survivor into a scratch copy and renders it, so the
@@ -37,13 +37,13 @@ import rate
 fn seconds() with Pure = 3
 
 // The score: A3 then E4, a second and a half each.
-fn note_hz(k: Int) -> Hz = if k == 0 { 220.0 } else { 329.63 }
+fn note_hz(k) -> Hz = if k == 0 { 220.0 } else { 329.63 }
 
 // A soft brightening: the signal plus a little of its cube, which adds the
 // third harmonic without moving the peak much.
-fn brighten(x: Float) -> Float with Pure = x + 0.3 * x * x * x
+fn brighten(x) with Pure = x + 0.3 * x * x * x
 
-fn frame(buf, rig, n: Int) with !Alloc = {
+fn frame(buf, rig, n) with !Alloc = {
   let t = time()
   let k = n * 2 / 3 / rate()
   let tn = t - 1.5 * float_of_int(k)
@@ -51,7 +51,7 @@ fn frame(buf, rig, n: Int) with !Alloc = {
   wav_frame(buf, n, lead, lead)
 }
 
-fn build_rig(sr: Int) = {voice: sine_voice(sr)}
+fn build_rig(sr) = {voice: sine_voice(sr)}
 
 fn main() = {
   {

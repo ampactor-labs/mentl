@@ -17,13 +17,13 @@
 // since the verifier reads no demand through a function-typed field. Honest
 // debt, never a silent assumption: `mentl verify` counts this lesson owed.
 //
-// The gradient PROPOSES the annotation that discharges a claim. `frames_per`
-// divides by its parameter, so its row carries `Trap` until the divisor is
-// bounded. Put the caret on its declaration and the Teach facet names the
-// refinement in reach that discharges it, and the accept verb writes it:
+// The gradient PROPOSES the annotation that discharges a claim, and says what
+// it buys: `frames_per` divides by its parameter, so its row carries `Trap`
+// while nothing bounds the divisor, and two refinements in reach bound it.
+// Each takes `Trap` off the row, and they mean different things — a count of
+// notes is no sample rate — so the medium asks which is meant, never guesses:
 //
-//   mentl examples/pulse/course/07-bounds.mn:48         Teach: add `notes: Positive`
-//   mentl accept examples/pulse/course/07-bounds.mn:48:1
+//   mentl examples/pulse/course/07-bounds.mn:48    Teach: `notes: Rate` or `notes: Positive` … which is meant?
 import audio/wav
 
 import dsp/clock
@@ -50,16 +50,16 @@ fn frames_per(notes) = frames_of(seconds()) / notes
 // The lead's filter opens and closes between 200 Hz and 1 kHz twice a second.
 // The result is claimed `Hz` here, where the value is made, so the filter
 // receives a frequency the type bounds.
-fn cutoff_at(t: Float) -> Hz = 600.0 + 400.0 * sin(two_pi() * 0.5 * t)
+fn cutoff_at(t) -> Hz = 600.0 + 400.0 * sin(two_pi() * 0.5 * t)
 
-fn note_hz(k: Int) -> Hz = match k {
+fn note_hz(k) -> Hz = match k {
   0 => 220.0,
   1 => 261.63,
   2 => 329.63,
   _ => 440.0,
 }
 
-fn frame(buf, rig, per_note: Int, n: Int) with !Alloc = {
+fn frame(buf, rig, per_note, n) with !Alloc = {
   let t = time()
   let k = n / per_note
   let tn = float_of_int(n - k * per_note) / float_of_int(rate())
@@ -68,7 +68,7 @@ fn frame(buf, rig, per_note: Int, n: Int) with !Alloc = {
   wav_frame(buf, n, s, s)
 }
 
-fn build_rig(sr: Int) = {lead: saw_voice(sr), tone: lowpass_filter(sr)}
+fn build_rig(sr) = {lead: saw_voice(sr), tone: lowpass_filter(sr)}
 
 fn main() = {
   {

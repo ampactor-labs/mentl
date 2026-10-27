@@ -1,0 +1,7 @@
+// teach 5: lift x: Float, -> Float
+// The parameter and the return are both pins the body decides — `x / 2.0` is a
+// Float on both sides — so the two lift together, proven as one edit: the
+// head without either publishes the face the live one does.
+fn half(x: Float) -> Float = x / 2.0
+
+fn main() = if half(4.0) > 1.0 { 1 } else { 0 }

@@ -1,0 +1,9 @@
+// teach 5: add with !Alloc
+// A proof outranks a lift: `g` declares `!Alloc` and stands on f, so the lock
+// is the next step although `x: Int` is a pin the body derives; the lift is
+// the step after the clause is written.
+fn f(x: Int) = x + 1
+
+fn g(x) with !Alloc = f(x)
+
+fn main() = g(1)

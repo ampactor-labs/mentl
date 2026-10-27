@@ -51,13 +51,13 @@ fn nyquist() = float_of_int(rate()) / 2.0
 // A frequency the installed rate can carry.
 type Hz48 = Float where 0.0 < self && self < nyquist()
 
-fn note_hz(k: Int) -> Hz48 = match k {
+fn note_hz(k) -> Hz48 = match k {
   0 => 220.0,
   1 => 277.18,
   _ => 329.63,
 }
 
-fn frame(buf, rig, n: Int) with !Alloc + !Sample(44100) = {
+fn frame(buf, rig, n) with !Alloc + !Sample(44100) = {
   let t = time()
   let k = n / rate()
   let tn = t - float_of_int(k)
@@ -67,7 +67,7 @@ fn frame(buf, rig, n: Int) with !Alloc + !Sample(44100) = {
   wav_frame(buf, n, s, s)
 }
 
-fn build_rig(sr: Int) = {bass: square_voice(sr), lead: saw_voice(sr), tone: lowpass_filter(sr)}
+fn build_rig(sr) = {bass: square_voice(sr), lead: saw_voice(sr), tone: lowpass_filter(sr)}
 
 fn main() = {
   {

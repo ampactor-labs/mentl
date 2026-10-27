@@ -257,6 +257,7 @@ fn gradient_position(i) = match graph_node_body(i) {
       TeachAdd(_) => true,
       TeachAsk(_) => true,
       TeachNeed(_, _, _) => true,
+      TeachLift(_) => true,
     },
     LetStmt(_, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _) | HandlerDeclStmt(_, _, _, _, _, _)
     | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _)
@@ -310,6 +311,8 @@ fn position_score(handle: Handle, caret, reach) -> (Float, Float) with !Mutate =
       [s, ..._] => suggestion_gains(s, prox),
     },
     TeachNeed(_, _, _) => (prox, 0.0),
+    // a lift pays no debt and locks no guarantee: it is listed, at no gain
+    TeachLift(_) => (0.0, 0.0),
   }
 }
 

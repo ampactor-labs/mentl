@@ -38,8 +38,8 @@ fn seconds() with Pure = 3
 // sample, so the filter can sweep; α follows it (lib/dsp/feedback.mn's
 // `compute_alpha`). The signal is the stage's last parameter, so
 // `x |> lp(cutoff)` filters x.
-fn one_pole(sr: Int) = {
-  fn stage(cutoff: Hz, x: Float) with !Alloc = {
+fn one_pole(sr) = {
+  fn stage(cutoff: Hz, x) with !Alloc = {
     let a = compute_alpha(cutoff, sr)
     { prev => a * x + (1.0 - a) * prev } <~ delay(1)
   }
@@ -47,7 +47,7 @@ fn one_pole(sr: Int) = {
 }
 
 // One frame: the sawtooth, then each channel through its own filter.
-fn frame(buf, rig, n: Int) = {
+fn frame(buf, rig, n) = {
   let saw = rig.voice(220.0) * 0.4
   let l = saw |> rig.dark(300.0) |> soft_clip
   let r = saw |> rig.bright(3000.0) |> soft_clip
@@ -55,7 +55,7 @@ fn frame(buf, rig, n: Int) = {
 }
 
 // Everything with memory is made here, once, before a sample renders.
-fn build_rig(sr: Int) = {bright: one_pole(sr), dark: one_pole(sr), voice: saw_voice(sr)}
+fn build_rig(sr) = {bright: one_pole(sr), dark: one_pole(sr), voice: saw_voice(sr)}
 
 fn main() = {
   {

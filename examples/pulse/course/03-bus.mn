@@ -35,14 +35,14 @@ import rate
 fn seconds() with Pure = 4
 
 // The score: A3 for two seconds, then E4.
-fn note_hz(t: Float) -> Hz = if t < 2.0 { 220.0 } else { 329.63 }
+fn note_hz(t) -> Hz = if t < 2.0 { 220.0 } else { 329.63 }
 
 // A note swells in over 20 ms and fades over its last half second, so the
 // two notes are two events and not one tone that moves.
-fn shape(tn: Float) -> Float with Pure =
+fn shape(tn) with Pure =
   if tn < 0.02 { tn / 0.02 } else if tn > 1.5 { (2.0 - tn) / 0.5 } else { 1.0 }
 
-fn frame(buf, rig, n: Int) = {
+fn frame(buf, rig, n) = {
   let t = time()
   let tn = if t < 2.0 { t } else { t - 2.0 }
   let dry = rig.voice(note_hz(t)) * 0.5 * shape(tn)
@@ -52,7 +52,7 @@ fn frame(buf, rig, n: Int) = {
   wav_frame(buf, n, l, r)
 }
 
-fn build_rig(sr: Int) = {echo: echo(0.4), room: room_left(), voice: sine_voice(sr)}
+fn build_rig(sr) = {echo: echo(0.4), room: room_left(), voice: sine_voice(sr)}
 
 fn main() = {
   {

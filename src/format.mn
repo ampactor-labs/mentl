@@ -656,6 +656,65 @@ fn fn_head_text(name, plist, ann, effs) with !Mutate =
 fn render_fn_head(name, params, ann, effs) with !Mutate =
   fn_head_text(name, render_param_list(params), ann, effs)
 
+// The head with its derived pins lifted: each lifted parameter renders bare of
+// its type, a lifted return renders no arrow (the body's node stands where the
+// absent annotation would), and every other part renders as written — the
+// head `mentl accept` and `mentl tighten` write for a lift, and the one the
+// gradient judges in its fork.
+fn lifted_head(name, params, retty, body, effs, lifts) with !Mutate = fn_head_text(
+  name,
+  join(", ", map(lifted_param(lifts, ??), params)),
+  if any(lifts_return, lifts) { graph_node_body(body) } else { graph_node_body(retty) },
+  effs
+)
+
+fn lifted_param(lifts, p) with !Mutate = if any(lifts_param(p, ??), lifts) {
+  render_param_typed(param_of(p), "")
+} else {
+  render_one_param(p)
+}
+
+fn lifts_param(p: Int, l) = match l {
+  LiftParam(q) => q == p,
+  LiftReturn(_) => false,
+}
+
+fn lifts_return(l) = match l {
+  LiftReturn(_) => true,
+  LiftParam(_) => false,
+}
+
+// The head is the source from the declaration's start to the whitespace
+// before its body; the new head replaces it and the whitespace stays, so
+// a body on the next line stays there. The splice answers None when the
+// replaced head held a comment or any name or literal the new head does
+// not and the annotation does not state — the conservation census the fmt
+// verb answers to.
+fn splice_decl_head(source, decl_sp, body_sp, head: String, stated: [String]) = {
+  let n = byte_len(source)
+  match decl_sp {
+    Span(dl, dc, _, _) => match body_sp {
+      Span(bl, bc, _, _) => {
+        let start = line_start(source, dl) + (dc - 1)
+        let body_at = line_start(source, bl) + (bc - 1)
+        let head_end = fold(
+          body_at,
+          (e, i) => if is_space_byte(byte_at(source, i)) && i + 1 == e { i } else { e },
+          reverse(range(start, body_at))
+        )
+        let old_toks = lex(str_slice(source, start, head_end))
+        if count_comment_tokens(old_toks, 0, 0) > 0 || len(lost_atoms_beside(old_toks, lex(head), stated)) > 0 {
+          None
+        } else {
+          Some("{str_slice(source, 0, start)}{head}{str_slice(source, head_end, n)}")
+        }
+      },
+    },
+  }
+}
+
+fn is_space_byte(b) with Pure = b == 32 || b == 10 || b == 9 || b == 13
+
 // The arms of a declaration whose only parameter an arm-list literal
 // minted — never a parameter an author named, since `fn f(o) = match o
 // { … }` is written that way on purpose.

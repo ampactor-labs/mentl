@@ -38,16 +38,16 @@ import rate
 fn seconds() with Pure = 4
 
 // The score: a lead that rises, a bass under every second note.
-fn note_hz(k: Int) -> Hz = match k {
+fn note_hz(k) -> Hz = match k {
   0 => 220.0,
   1 => 261.63,
   2 => 329.63,
   _ => 440.0,
 }
 
-fn bass_hz(k: Int) -> Hz = if k < 2 { 55.0 } else { 65.41 }
+fn bass_hz(k) -> Hz = if k < 2 { 55.0 } else { 65.41 }
 
-fn frame(buf, rig, n: Int) with !Alloc = {
+fn frame(buf, rig, n) with !Alloc = {
   let t = time()
   let k = n / rate()
   let tn = t - float_of_int(k)
@@ -62,7 +62,7 @@ fn frame(buf, rig, n: Int) with !Alloc = {
 
 // Every stateful stage, built once: the record is the instrument, the loop
 // plays it.
-fn build_rig(sr: Int) = {
+fn build_rig(sr) = {
   bass: square_voice(sr),
   hat_tone: highpass_filter(sr),
   hiss: noise_source(),

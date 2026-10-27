@@ -811,6 +811,25 @@ fn rewrite_module(keyed, e) = {
 
 fn retract_stmt(s) = stmt_names(s) |> each(env_retract(??, s))
 
+// A module's text with one edit made, judged as a question: the lines the
+// edit moved are read again as `edit_round` reads them, the statements they
+// replace leave the scope, and what was read is judged by the cold route's
+// machine — beside the program as it stands, since the caller stands in a
+// fork (`speculate`) and a fork writes columns of its own over the version
+// below, rewriting nothing beneath it. The gradient asks what a declaration
+// publishes without a pin this way, so the live cells, which hold the pinned
+// type whichever side decided it, are never asked to answer a counterfactual.
+// Answers the statements read again.
+fn rewritten_judged(mh, text) = {
+  let m = module_of(mh)
+  let start = graph_next()
+  let e = read_runs(diff_edit(mh, m.decls, m.text, text))
+  edit_gone(e) |> each(retract_stmt)
+  let fresh = edit_read(e)
+  infer_program_once(fresh, start, graph_next())
+  fresh
+}
+
 // The module path's walk edges, as the downstream closure reads them.
 fn entries_dag(entries) = map({ e => (module_path_of(e), module_imports_of(e)) }, entries)
 

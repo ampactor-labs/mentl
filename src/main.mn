@@ -348,7 +348,7 @@ fn fmt_run(mode, targets) = {
   let stamps = fmt_stamps_read(key)
   let verdicts = map(fmt_target_verdict(smap_from_pairs(stamps), ??), files)
   fmt_settle(mode, key, stamps, verdicts)
-} ~> wasi_filesystem ~> mentl_default
+} ~> wasi_filesystem
 
 // What one target named: a file to judge, or nothing at all.
 type FmtTarget = FmtPath(String) | FmtNothing(String)
@@ -736,19 +736,55 @@ fn tighten_run(target_opt) = {
     // row the parser cannot read back. Per file, patch bottom-up so line
     // offsets hold.
     let n = apply_tightenings(cands)
+    // The pins the judgment derives, lifted: every function declaration of the
+    // project's own layer, the nested among them, asked for its lifts — each
+    // proven in a fork of the judgment (`teach_lifts`) — and its head written
+    // without them. A head renders on its own line, so the clause patches
+    // above and the rosters below read the lines they judged.
+    let lifted = project_decls() |> fold(0, apply_lift)
     // The catch-alls over sums last: each is written at its arm's pattern
     // node and the module rendered whole, which moves lines, so every patch
     // that reads a line number has run by now; a module those patches
     // changed is refused here and rewritten by the next run's judgment.
     let rostered = apply_pattern_tightenings(rosters)
-    if len(cands) + len(rosters) == 0 && released == 0 {
-      print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, and no catch-all stands over a sum\n")
+    if len(cands) + len(rosters) == 0 && released == 0 && lifted == 0 {
+      print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head pins a type the judgment derives, and no catch-all stands over a sum\n")
       0
     } else {
-      print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
-      if n + released + rostered > 0 { 0 } else { 1 }
+      print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(lifted)} head(s) lifted of the types the judgment derives, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
+      if n + released + lifted + rostered > 0 { 0 } else { 1 }
     }
   } ~> wasi_filesystem ~> mentl_default ~> infer_context
+}
+
+// THE PINS THE JUDGMENT DERIVES, LIFTED. The function declarations of the
+// entry's own layer, read off the decls column so a nested declaration is
+// among them; each head with lifts is written without them, the file read
+// again for each so one file's heads patch in turn, and the lifts said as the
+// gradient says them.
+fn project_decls() = decl_handles() |> filter(is_fn_decl) |> filter(in_project_layer)
+
+fn is_fn_decl(h) = match graph_node_body(h) {
+  NStmt(FnStmt(_, _, _, _, _)) => true,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
+fn in_project_layer(h) = match diag_scope_of() {
+  ScopeProject(layer) => module_layer_of_handle(graph_module_of(h)) == layer,
+  ScopeAll | ScopeNone => true,
+}
+
+fn apply_lift(acc, h) = match teach_lifts(h) {
+  [] => acc,
+  lifts => match lifted_module_text(h, lifts) {
+    Some((module, text)) => {
+      module_write(module, text)
+      print_string("tighten: {body_decl_name(graph_node_body(h))} ({module}:{int_to_str(decl_start_line(h))})  {show_teaching(TeachLift(lifts))}\n")
+      acc + 1
+    },
+    None => acc,
+  },
 }
 
 // THE CATCH-ALLS OVER SUMS, WRITTEN AS THEIR ROSTERS (Morgan, 2026-10-13: a
@@ -1532,7 +1568,7 @@ type Expect
 // a question naming its alternatives in rank order, a need, or nothing. The
 // annotation's own source projection is compared, never the rendered line,
 // so the voice may change without a fixture moving.
-type TeachWant = WantAdd(String) | WantAskOf(String) | WantNeed | WantNoTeach
+type TeachWant = WantAdd(String) | WantAskOf(String) | WantNeed | WantLift(String) | WantNoTeach
 
 // A proposal fixture's contract (C7): what the medium must answer at the
 // hole — one proven survivor whose source is the text, a tie whose
@@ -1640,6 +1676,8 @@ fn battery_teach_expect(src) = {
     Some(ExpectTeach(line, WantAskOf(battery_line_rest(src, rest_start, rest_start))))
   } else if str_eq(word, "need") {
     Some(ExpectTeach(line, WantNeed))
+  } else if str_eq(word, "lift") {
+    Some(ExpectTeach(line, WantLift(battery_line_rest(src, rest_start, rest_start))))
   } else if str_eq(word, "none") {
     Some(ExpectTeach(line, WantNoTeach))
   } else {
@@ -1766,7 +1804,7 @@ fn battery_refs_step(stem, path: String, name: String, want: String) = {
 // and the contract holds when the render is the fixture. A render that would
 // change it names the first line it changes.
 fn battery_fmt_step(stem, path: String, src: String) = {
-  let verdict = fmt_render_file(path, src) ~> mentl_default
+  let verdict = fmt_render_file(path, src)
   match verdict {
     FmtCanonical(_, _) => {
       print_string("PASS {stem}: canonical\n")
@@ -1893,27 +1931,23 @@ fn battery_view(path: String, line, col, judge) = judge(match address_node(drive
 fn teach_meets(want, teach) = match want {
   WantAdd(text) => match teach {
     TeachAdd(s) => str_eq(suggestion_text(s), text),
-    TeachAsk(_) => false,
-    TeachNeed(_, _, _) => false,
-    TeachNone => false,
+    TeachAsk(_) | TeachNeed(_, _, _) | TeachLift(_) | TeachNone => false,
   },
   WantAskOf(texts) => match teach {
     TeachAsk(ss) => str_eq(join(" or ", map(suggestion_text, ss)), texts),
-    TeachAdd(_) => false,
-    TeachNeed(_, _, _) => false,
-    TeachNone => false,
+    TeachAdd(_) | TeachNeed(_, _, _) | TeachLift(_) | TeachNone => false,
   },
   WantNeed => match teach {
     TeachNeed(_, _, _) => true,
-    TeachAdd(_) => false,
-    TeachAsk(_) => false,
-    TeachNone => false,
+    TeachAdd(_) | TeachAsk(_) | TeachLift(_) | TeachNone => false,
+  },
+  WantLift(texts) => match teach {
+    TeachLift(ls) => str_eq(join(", ", map(lift_text, ls)), texts),
+    TeachAdd(_) | TeachAsk(_) | TeachNeed(_, _, _) | TeachNone => false,
   },
   WantNoTeach => match teach {
     TeachNone => true,
-    TeachAdd(_) => false,
-    TeachAsk(_) => false,
-    TeachNeed(_, _, _) => false,
+    TeachAdd(_) | TeachAsk(_) | TeachNeed(_, _, _) | TeachLift(_) => false,
   },
 }
 
@@ -1925,6 +1959,7 @@ fn show_teach_want(want) = match want {
   WantAdd(text) => "add {text}",
   WantAskOf(texts) => "ask {texts}",
   WantNeed => "need",
+  WantLift(texts) => "lift {texts}",
   WantNoTeach => "none",
 }
 
@@ -2109,7 +2144,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  audit(target) ~> stdout_console ~> wasi_filesystem ~> verify_ledger ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
 }
 
@@ -2122,7 +2157,7 @@ fn audit_run(target) = {
 fn query_run(target, question) = match driver_dir_path(dir_base(target)) {
   Some(dir) => query_dir(dir, question),
   None => query(target, question),
-} ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // Every program in the directory judged on its own fresh chain, each inside
 // an arena so the walk's peak is one judgment's live set, and asked the

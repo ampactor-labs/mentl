@@ -39,7 +39,7 @@ fn seconds() with Pure = 3
 
 // The slope of the squared error with respect to the coefficient, asked of
 // the same arithmetic the filter runs.
-fn slope(a: Float, x: Float, yprev: Float, want: Float) -> Float = {
+fn slope(a, x, yprev, want) = {
   let e = want - (a * x + (1.0 - a) * yprev)
   d(e * e)
 } ~> grad(a)
@@ -48,8 +48,8 @@ fn slope(a: Float, x: Float, yprev: Float, want: Float) -> Float = {
 // line moves against the slope of the error between this filter and the
 // signal it is told to match, then the output line ticks with the new
 // coefficient.
-fn learner(mu: Float) = {
-  fn stage(want: Float, x: Float) with !Alloc = {
+fn learner(mu) = {
+  fn stage(want, x) with !Alloc = {
     prev => {
       let a = { aprev => aprev - mu * slope(aprev, x, prev, want) } <~ delay(1)
       a * x + (1.0 - a) * prev
@@ -58,14 +58,14 @@ fn learner(mu: Float) = {
   stage
 }
 
-fn frame(buf, rig, n: Int) with !Alloc = {
+fn frame(buf, rig, n) with !Alloc = {
   let saw = rig.voice(220.0) * 0.5
   let want = saw |> rig.teacher(600.0)
   let got = rig.learner(want, saw)
   wav_frame(buf, n, soft_clip(want), soft_clip(got))
 }
 
-fn build_rig(sr: Int) = {learner: learner(0.05), teacher: lowpass_filter(sr), voice: saw_voice(sr)}
+fn build_rig(sr) = {learner: learner(0.05), teacher: lowpass_filter(sr), voice: saw_voice(sr)}
 
 fn main() = {
   {

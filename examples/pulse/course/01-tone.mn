@@ -34,7 +34,7 @@ import rate
 fn seconds() with Pure = 3
 
 // One frame: the voice at 220 Hz, through the gain, into both channels.
-fn frame(buf, tone, n: Int) = {
+fn frame(buf, tone, n) = {
   let s = tone(220.0) |> gain(0.3) |> soft_clip
   wav_frame(buf, n, s, s)
 }

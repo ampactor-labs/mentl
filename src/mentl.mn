@@ -14,7 +14,11 @@ import types
 
 import choice
 
+import driver
+
 import effects
+
+import format
 
 import graph
 
@@ -76,6 +80,9 @@ type Context = Context([(String, Binding, Reason, SchemeKind, Int)], EffRow, Opt
 // promises.
 effect Teach {
   teach_gradient(Int) -> Teaching
+  // the pins a declaration's head authors that the judgment derives, every
+  // one proven lifted together — the read `mentl tighten` writes from
+  teach_lifts(Int) -> [Lift]
   teach_why(Int) -> [Reason]
 }
 
@@ -99,6 +106,7 @@ effect Synth {
 // clauses that stand on the declaration (T2, 2026-10-13).
 handler mentl_default {
   teach_gradient(handle) => resume(gradient_next(handle)),
+  teach_lifts(handle) => resume(lifts_at(handle)),
   teach_why(handle) => resume(why_from_handle(handle)),
 }
 
@@ -118,17 +126,30 @@ handler mentl_default {
 // clause while no row is authored (a row the author wrote is either tight or
 // proven over-declared, and that proof — T_OverDeclared, banked for `mentl
 // tighten` — is what the render layer reads instead).
-fn gradient_next(handle) = match graph_node_body(handle) {
+fn gradient_next(handle) = match gradient_decl(handle) {
+  Some(d) => decl_teaching(d),
+  None => TeachNone,
+}
+
+// The lifts alone, for the verb that writes every head of a project.
+fn lifts_at(handle) = match gradient_decl(handle) {
+  Some(Decl(f)) => lifts_of(f),
+  None => [],
+}
+
+// The declaration the gradient reads at a node: a function declaration the
+// judgment bound to a function type, or nothing.
+fn gradient_decl(handle) = match graph_node_body(handle) {
   NStmt(FnStmt(name, params, retty, effs, body)) => match graph_chase(handle) {
     GNode(NBound(ty), anchor) => match ty {
-      TFun(_, ret, _) => decl_teaching(Decl({anchor, body, effs, handle, name, params, ret, retty, ty})),
+      TFun(_, ret, _) => Some(Decl({anchor, body, effs, handle, name, params, ret, retty, ty})),
       TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => TeachNone,
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => None,
     },
-    GNode(_, _) => TeachNone,
+    GNode(_, _) => None,
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => TeachNone,
+  | NRow(_) | NParam(_) => None,
 }
 
 // One declaration as the gradient reads it: its handle and name, the
@@ -152,9 +173,9 @@ fn decl_teaching(d) = match d {
     let rows = if len(f.effs) > 0 { [] } else { row_suggestions(f) }
     let proven = precondition_suggestions(f, owed) ++ return_suggestions(f) ++ rows
     match rank_suggestions(proven) {
-      [] => need_or_none(f, owed),
+      [] => need_or_lift(f, owed),
       [best, ...rest] => if lev_discharged(best) == 0 && has_need(f, owed) {
-        need_or_none(f, owed)
+        need_or_lift(f, owed)
       } else {
         teaching_from(best, rest)
       },
@@ -646,21 +667,22 @@ fn same_base(a, b) = match a {
 fn precondition_counts(f, owed, b, i, alias) = match alias {
   (_, contract) => {
     restate_param(b, contract)
-    let discharged = owed |> filter(obligation_holds) |> len
+    let paid = owed |> filter(obligation_holds)
     let broken = owed |> filter(obligation_refuted) |> len
     let verdicts =
       latest_applications(graph_applies_of(f.handle)) |> map(claim_at_call(contract, i, ??))
     (
-      discharged,
+      len(paid),
       broken,
       verdicts |> filter(verdict_refuted) |> len,
-      verdicts |> filter(verdict_open) |> len
+      verdicts |> filter(verdict_open) |> len,
+      trap_leaves(f, paid)
     )
   },
 }
 
 fn precondition_proven(i, name: String, counted) = match counted {
-  ((aname, contract), (discharged, broken, refuted, opened)) => if discharged == 0 || broken > 0 {
+  ((aname, contract), (discharged, broken, refuted, opened, trap_free)) => if discharged == 0 || broken > 0 {
     []
   } else {
     let ann = ARefined({alias: aname, contract, param: name})
@@ -669,13 +691,44 @@ fn precondition_proven(i, name: String, counted) = match counted {
         SiteParam(i),
         AnnotationSuggestion(
           ann,
-          Leverage({discharged, locks: [], opened, refuted, stands: []}),
+          Leverage({discharged, locks: unlocked_labels(trap_free), opened, refuted, stands: []}),
           suggestion_reason(ann)
         )
       )
     ]
   },
 }
+
+// WHAT THE DEBT PAID UNLOCKS. A precondition that pays every open claim Trap
+// enters the declaration by takes Trap off its row — `!Trap` becomes a clause
+// the body proves — and the voice says so beside the debt, in the developer's
+// words: the guarantee the annotation buys, never the count alone. Trap
+// leaves when it enters at all and every chain it enters by ends at a site
+// whose claim the candidate pays, so nothing else charges it; a chain through
+// a callee's open claim keeps it.
+fn trap_leaves(f, paid) = match effect_entries_of(f.handle) |> filter(chain_enters("Trap", ??)) {
+  [] => false,
+  chains => all(chain_paid(paid, ??), chains),
+}
+
+fn chain_paid(paid, chain) = chain_sites(chain) |> any({ site => any(pays(site, ??), paid) })
+
+fn pays(site, o) = match o {
+  (_, sp, _, _) => span_overlaps(graph_span_of(site), sp),
+}
+
+// The site a chain ends at — the construct that charges the effect itself —
+// as a list, empty for a reason that is no chain.
+fn chain_sites(chain) = match chain {
+  EffectEnters(eff, site, next) => if chain_enters(eff, next) { chain_sites(next) } else { [site] },
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => [],
+}
+
+fn unlocked_labels(trap_free) = if trap_free { capability_labels([CTrapFree]) } else { [] }
 
 fn restate_param(b, contract) = match graph_binder_of(b) {
   Some(fact) => match fact {
@@ -872,6 +925,167 @@ fn rest_refuted(r) = match r {
   (pred, _) => verdict_refuted(predicate_decide(pred)),
 }
 
+// THE PIN THE JUDGMENT DERIVES, LIFTED.
+//
+// A type written on a parameter or the return that the body alone decides is
+// an inventory — the projected type written by hand, the row inventory's twin
+// — and a type is authored at an intent boundary alone: a refinement, an
+// ownership marker, a width (SYNTAX §«The Intent Boundary Rule for
+// Parameters»). Whether the body decides it is a question only a judgment
+// without the pin answers, and the live cells cannot: they hold the pinned
+// type whichever side decided it. So the candidate is the edit itself, judged
+// in a fork — the head rendered without the pin, the declaration read again
+// from its lines and judged as an edit is (`rewritten_judged`), the type it
+// is bound to compared with the live one up to renaming — and kept only where
+// the face holds. The pins are tried left to right, the return last, each over
+// the lifts already held, so the set proposed was proven lifted together:
+// `fn same(a: Int, b: Int) = a == b` lifts `a: Int`, which `b` still grounds,
+// and keeps `b: Int`, since without both the declaration generalizes.
+fn lifts_of(f) = pins_of(f) |> fold([], lift_held(f, ??, ??))
+
+fn lift_held(f, held, pin) = if face_holds_without(f, held ++ [pin]) { held ++ [pin] } else { held }
+
+// The pins a head authors that are no intent boundary: each written parameter
+// type and the written return, unless a refinement, a width or a row stands
+// inside what was written. The boundary is read off the WRITTEN type, each
+// name it spells resolved to what it declares, never off the cell the
+// judgment bound: a parameter handed to a callee that demands the refinement
+// learns it, so its cell holds the base alone while the head's `cutoff: Hz`
+// is the author's decision to state the contract where the callee merely
+// implies it (lesson 2's filter, measured 2026-10-27).
+fn pins_of(f) = flat_map(param_pin, f.params) ++ return_pin(f.retty)
+
+fn param_pin(p) = match param_ann(p) {
+  Some(a) => if written_boundary(ann_ty_of(a)) { [] } else { [LiftParam(p)] },
+  None => [],
+}
+
+fn return_pin(retty) = match graph_node_body(retty) {
+  NTypeAnn(t) => if written_boundary(t) { [] } else { [LiftReturn(retty)] },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => [],
+}
+
+fn written_boundary(t) = match t {
+  // a name written in a type is a cell of its own whose node holds the name
+  // (`written_cells`); the cell's binding is the base, so the node is read
+  TVar(h) => match graph_node_body(h) {
+    NTypeAnn(inner) => written_boundary(inner),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => false,
+  },
+  // the name resolves in the type namespace, as the judgment links it
+  TName(n, args) => any(written_boundary, args) || match published_at(type_decl_named(n)) {
+    Some((sch, _, _)) => declared_boundary(judgment_ty(sch)),
+    None => false,
+  },
+  TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) => true,
+  TAlias(_, inner) => written_boundary(inner),
+  TList(e) => written_boundary(e),
+  TTuple(es) => any(written_boundary, es),
+  TRecord(fs) => any({ (_, ft) => written_boundary(ft) }, fs),
+  TRecordOpen(fs, _) => any({ (_, ft) => written_boundary(ft) }, fs),
+  TFun(ps, r, row) => any({ p => written_boundary(param_ty(p)) }, ps) || written_boundary(r) || row_authored(row),
+  TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => false,
+}
+
+// What a name declares, as a boundary: a refinement or a width anywhere in it,
+// where a sum or a record type is a base the body may derive.
+fn declared_boundary(t) = match t {
+  TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) => true,
+  TAlias(_, inner) => declared_boundary(inner),
+  TList(e) => declared_boundary(e),
+  TTuple(es) => any(declared_boundary, es),
+  TRecord(fs) => any({ (_, ft) => declared_boundary(ft) }, fs),
+  TRecordOpen(fs, _) => any({ (_, ft) => declared_boundary(ft) }, fs),
+  TFun(ps, r, row) => any({ p => declared_boundary(param_ty(p)) }, ps) || declared_boundary(r) || row_authored(row),
+  TInt | TFloat | TUnit | TByte | TAddr | TVar(_) | TName(_, _) | TValue(_) => false,
+}
+
+// A row written inside a type names an effect or negates one: a claim.
+fn row_authored(row) = match row {
+  EfRow(present, absent, _) => len(absent) > 0 || any(effect_named, present),
+}
+
+// The face holds without the pins when the declaration, read again from its
+// module's text with the head rendered without them and judged in a fork of
+// its own, is bound to a type alpha-equal to the live one. The head is spliced
+// by the formatter's own rule, so a head the conservation census would refuse
+// to write is never judged.
+fn face_holds_without(f, lifted) = {
+  let m = module_of(graph_module_of(f.handle))
+  let head = lifted_head(f.name, f.params, f.retty, f.body, f.effs, lifted)
+  match splice_decl_head(m.text, graph_span_of(f.handle), graph_span_of(f.body), head, lift_names(lifted)) {
+    None => false,
+    Some(text) => {
+      let live = chase_deep(f.ty)
+      let held = {
+        let edited = choose([text])
+        [fresh_face_holds(f, live, edited)]
+      } ~> speculate ~> judgment_core
+      any({ h => h }, held)
+    },
+  }
+}
+
+// In the fork: the edit judged, and the type the fresh declaration of the
+// name is bound to — found in the statements read again, a nested declaration
+// inside the one enclosing it — against the live face: alpha-equal, and
+// rendered the same, since the alpha comparison reads a refinement by its base
+// alone and the render names the alias.
+fn fresh_face_holds(f, live, text) = match rewritten_judged(graph_module_of(f.handle), text) |> flat_map(decls_named(f.name, ??)) {
+  [fresh, ..._] => match graph_chase(fresh) {
+    GNode(NBound(ty), _) => {
+      let face = chase_deep(ty)
+      match ty_alpha_eq(face, live, []) {
+        (held, _) => held && str_eq(show_type(face), show_type(live)),
+      }
+    },
+    GNode(_, _) => false,
+  },
+  [] => false,
+}
+
+// The function declarations of a name in a statement's subtree.
+fn decls_named(name: String, h) = match graph_node_body(h) {
+  NStmt(FnStmt(n, _, _, _, _)) => if n == name { [h] } else { children_named(name, graph_node_body(h)) },
+  body @ (
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_)
+  ) => children_named(name, body),
+}
+
+fn children_named(name: String, body) = body_child_handles(body) |> flat_map(decls_named(name, ??))
+
+// Every atom a lifted annotation spelled, as the conservation census keys it,
+// so the splice admits their loss and nothing else's.
+fn lift_names(lifted) = lifted |> flat_map(lift_written) |> flat_map(type_atoms)
+
+fn lift_written(l) = match l {
+  LiftParam(p) => match param_ann(p) {
+    Some(a) => [ann_ty_of(a)],
+    None => [],
+  },
+  LiftReturn(r) => [ann_ty_of(r)],
+}
+
+fn type_atoms(t) = lex(render_type_tokens(t)) |> flat_map(atom_keyed)
+
+fn atom_keyed(tok) = match atom_key(tok) {
+  Some(k) => [k],
+  None => [],
+}
+
+// A lift as its head spelled it — `n: Int`, `-> Float` — the text the teach
+// battery's contract names.
+fn lift_text(l) = match l {
+  LiftParam(p) => "{param_binder(p)}: {written_type(param_ann(p))}",
+  LiftReturn(r) => "-> {render_type_tokens(ann_ty_of(r))}",
+}
+
+fn written_type(ann) = match ann {
+  Some(a) => render_type_tokens(ann_ty_of(a)),
+  None => "",
+}
+
 // ── The answer ─────────────────────────────────────────────────────────
 //
 // THE RANKING: what a suggestion proves, read lexicographically — debt
@@ -939,9 +1153,14 @@ fn suggestion_of(p) = match p {
 // A NEED: an open obligation leaning on a parameter that states no
 // precondition, where no alias the module reaches discharges it — the
 // predicate the parameter must carry, said where it is owed. It outranks a
-// lock: the unproven part of a declaration is where the next move is.
-fn need_or_none(f, owed) = match owed |> flat_map(need_of(f, ??)) {
-  [] => TeachNone,
+// lock: the unproven part of a declaration is where the next move is. Where
+// nothing is owed and no clause stands on the row, the next move is the lift:
+// the pins the judgment derives, which decide nothing.
+fn need_or_lift(f, owed) = match owed |> flat_map(need_of(f, ??)) {
+  [] => match lifts_of(f) {
+    [] => TeachNone,
+    lifts => TeachLift(lifts),
+  },
   [n, ..._] => n,
 }
 
@@ -1139,16 +1358,19 @@ fn show_capability(cap) = match cap {
   CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
 }
 
-// What a suggestion buys, in the developer's words: the debt it discharges
-// and what it asks of the callers, or the guarantees it locks and who
-// stands on them.
+// What a suggestion buys, in the developer's words: the debt it discharges,
+// what it asks of the callers and the guarantee the paid debt unlocks, or the
+// guarantees it locks and who stands on them.
 fn show_leverage(lev) = match lev {
   Leverage(l) => if l.discharged > 0 {
-    "discharges {counted(l.discharged, "open obligation")}{refuted_clause(l.refuted)}{opened_clause(l.opened)}"
+    "discharges {counted(l.discharged, "open obligation")}{refuted_clause(l.refuted)}{opened_clause(l.opened)}{unlocked_clause(l.locks)}"
   } else {
     "locks {join(", ", l.locks)} — {stood_on(l.stands)}"
   },
 }
+
+fn unlocked_clause(locks) =
+  if len(locks) == 0 { "" } else { "; then the row is {join(" and ", locks)}" }
 
 // The declarations whose clauses stand on a lock, named. A lock is built
 // only from its dependents, so the empty case is the record's own word.
@@ -1180,6 +1402,7 @@ fn show_teaching(t) = match t {
   TeachNeed(param, pred, sp) => match sp {
     Span(line, _, _, _) => "`{param}` must make {show_predicate(pred)} hold (line {int_to_str(line)}), and no refinement in reach states it — declare one and annotate `{param}`",
   },
+  TeachLift(ls) => "lift {join(", ", map(backticked, map(lift_text, ls)))} — the judgment derives {if len(ls) == 1 { "it" } else { "each" }}, so the pin decides nothing; a type is written at an intent boundary alone: a refinement, an ownership marker, a width",
   TeachNone => "(no next-step annotation)",
 }
 

@@ -860,6 +860,8 @@ fn teach_fact(h, teach, tights) = match teach {
   TeachAdd(_) => RingFact(ATeach(show_teaching(teach), TmAdd), []),
   TeachAsk(_) => RingFact(ATeach(show_teaching(teach), TmAsk), []),
   TeachNeed(_, _, _) => RingFact(ATeach(show_teaching(teach), TmNeed), []),
+  // a lift is a tightening the head's types owe, as a row's residue is
+  TeachLift(_) => RingFact(ATeach(show_teaching(teach), TmTighten), []),
 }
 
 // The Why: the node's own chain, then the chain its type is read from when
