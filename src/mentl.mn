@@ -416,6 +416,7 @@ fn row_suggestion(c) = match c {
         locks: capability_labels(capabilities_for_annotation(ann)),
         opened: 0,
         refuted: 0,
+        safe: [],
         stands,
       }),
       suggestion_reason(ann)
@@ -676,13 +677,14 @@ fn precondition_counts(f, owed, b, i, alias) = match alias {
       broken,
       verdicts |> filter(verdict_refuted) |> len,
       verdicts |> filter(verdict_open) |> len,
-      trap_leaves(f, paid)
+      trap_leaves(f, paid),
+      map(made_safe, paid)
     )
   },
 }
 
 fn precondition_proven(i, name: String, counted) = match counted {
-  ((aname, contract), (discharged, broken, refuted, opened, trap_free)) => if discharged == 0 || broken > 0 {
+  ((aname, contract), (discharged, broken, refuted, opened, trap_free, safe)) => if discharged == 0 || broken > 0 {
     []
   } else {
     let ann = ARefined({alias: aname, contract, param: name})
@@ -691,11 +693,22 @@ fn precondition_proven(i, name: String, counted) = match counted {
         SiteParam(i),
         AnnotationSuggestion(
           ann,
-          Leverage({discharged, locks: unlocked_labels(trap_free), opened, refuted, stands: []}),
+          Leverage({discharged, locks: unlocked_labels(trap_free), opened, refuted, safe, stands: []}),
           suggestion_reason(ann)
         )
       )
     ]
+  },
+}
+
+// What paying an obligation makes safe, in the developer's words: the
+// instruction whose precondition the claim guards, else the claim itself.
+fn made_safe(o) = match o {
+  (_, _, pred, _) => match pred {
+    PTotalDiv(_, _, _) => "the division cannot fail",
+    PInBounds(_, _) => "the index stays in bounds",
+    PWithSelf(_, _) | PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_)
+    | PPatternMatch(_, _) | PProvides(_) => "the claim holds",
   },
 }
 
@@ -891,7 +904,14 @@ fn return_proven(counted) = match counted {
         SiteReturn,
         AnnotationSuggestion(
           ann,
-          Leverage({discharged, locks: [], opened: 0, refuted, stands: []}),
+          Leverage({
+            discharged,
+            locks: [],
+            opened: 0,
+            refuted,
+            safe: ["what its callers claim of the result holds"],
+            stands: [],
+          }),
           suggestion_reason(ann)
         )
       )
@@ -925,27 +945,28 @@ fn rest_refuted(r) = match r {
   (pred, _) => verdict_refuted(predicate_decide(pred)),
 }
 
-// THE PIN THE JUDGMENT DERIVES, LIFTED.
+// THE ANNOTATION THE JUDGMENT DERIVES, LIFTED.
 //
 // A type written on a parameter or the return that the body alone decides is
 // an inventory — the projected type written by hand, the row inventory's twin
 // — and a type is authored at an intent boundary alone: a refinement, an
 // ownership marker, a width (SYNTAX §«The Intent Boundary Rule for
 // Parameters»). Whether the body decides it is a question only a judgment
-// without the pin answers, and the live cells cannot: they hold the pinned
-// type whichever side decided it. So the candidate is the edit itself, judged
-// in a fork — the head rendered without the pin, the declaration read again
-// from its lines and judged as an edit is (`rewritten_judged`), the type it
-// is bound to compared with the live one up to renaming — and kept only where
-// the face holds. The pins are tried left to right, the return last, each over
-// the lifts already held, so the set proposed was proven lifted together:
-// `fn same(a: Int, b: Int) = a == b` lifts `a: Int`, which `b` still grounds,
-// and keeps `b: Int`, since without both the declaration generalizes.
-fn lifts_of(f) = pins_of(f) |> fold([], lift_held(f, ??, ??))
+// without the annotation answers, and the live cells cannot: they hold the
+// written type whichever side decided it. So the candidate is the edit
+// itself, judged in a fork — the head rendered without the annotation, the
+// declaration read again from its lines and judged as an edit is
+// (`rewritten_judged`), the type it is bound to compared with the live one up
+// to renaming — and kept only where the face holds. The annotations are tried
+// left to right, the return last, each over the lifts already held, so the
+// set proposed was proven lifted together: `fn same(a: Int, b: Int) = a == b`
+// lifts `a: Int`, which `b` still grounds, and keeps `b: Int`, since without
+// both the declaration generalizes.
+fn lifts_of(f) = written_types(f) |> fold([], lift_held(f, ??, ??))
 
-fn lift_held(f, held, pin) = if face_holds_without(f, held ++ [pin]) { held ++ [pin] } else { held }
+fn lift_held(f, held, one) = if face_holds_without(f, held ++ [one]) { held ++ [one] } else { held }
 
-// The pins a head authors that are no intent boundary: each written parameter
+// The types a head writes that are no intent boundary: each written parameter
 // type and the written return, unless a refinement, a width or a row stands
 // inside what was written. The boundary is read off the WRITTEN type, each
 // name it spells resolved to what it declares, never off the cell the
@@ -953,14 +974,14 @@ fn lift_held(f, held, pin) = if face_holds_without(f, held ++ [pin]) { held ++ [
 // learns it, so its cell holds the base alone while the head's `cutoff: Hz`
 // is the author's decision to state the contract where the callee merely
 // implies it (lesson 2's filter, measured 2026-10-27).
-fn pins_of(f) = flat_map(param_pin, f.params) ++ return_pin(f.retty)
+fn written_types(f) = flat_map(written_param, f.params) ++ written_return(f.retty)
 
-fn param_pin(p) = match param_ann(p) {
+fn written_param(p) = match param_ann(p) {
   Some(a) => if written_boundary(ann_ty_of(a)) { [] } else { [LiftParam(p)] },
   None => [],
 }
 
-fn return_pin(retty) = match graph_node_body(retty) {
+fn written_return(retty) = match graph_node_body(retty) {
   NTypeAnn(t) => if written_boundary(t) { [] } else { [LiftReturn(retty)] },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => [],
 }
@@ -1353,24 +1374,25 @@ fn show_capability(cap) = match cap {
   CRealTime => "Real-time safe (proven zero allocation)",
   CIsolated => "Isolated (proven no file or console I/O)",
   CSandbox => "Sandbox (proven no network access)",
-  CTrapFree => "Trap-free (proven: no partial primitive it reaches can fail; termination unproven)",
+  CTrapFree => "Trap-free (nothing it reaches can trap; termination unproven)",
   CPure => "Pure (proven to perform no effect at all)",
   CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
 }
 
-// What a suggestion buys, in the developer's words: the debt it discharges,
-// what it asks of the callers and the guarantee the paid debt unlocks, or the
-// guarantees it locks and who stands on them.
+// What a suggestion buys, in the developer's words: what it makes safe, what
+// that unlocks and what it asks of the callers; or what it unlocks and who
+// stands on it. Never the ledger's count — "annotate this and you unlock
+// that" is the sentence a person reads (Morgan, 2026-10-27).
 fn show_leverage(lev) = match lev {
   Leverage(l) => if l.discharged > 0 {
-    "discharges {counted(l.discharged, "open obligation")}{refuted_clause(l.refuted)}{opened_clause(l.opened)}{unlocked_clause(l.locks)}"
+    "{join(" and ", unique(l.safe))}{unlocked_clause(l.locks)}{refuted_clause(l.refuted)}{opened_clause(l.opened)}"
   } else {
-    "locks {join(", ", l.locks)} — {stood_on(l.stands)}"
+    "unlocks {join(", ", l.locks)}; {stood_on(l.stands)}"
   },
 }
 
 fn unlocked_clause(locks) =
-  if len(locks) == 0 { "" } else { "; then the row is {join(" and ", locks)}" }
+  if len(locks) == 0 { "" } else { ", which unlocks {join(" and ", locks)}" }
 
 // The declarations whose clauses stand on a lock, named. A lock is built
 // only from its dependents, so the empty case is the record's own word.
@@ -1384,10 +1406,9 @@ fn backticked(n: String) = "`{n}`"
 
 fn counted(n, noun: String) = if n == 1 { "1 {noun}" } else { "{int_to_str(n)} {noun}s" }
 
-fn refuted_clause(n) =
-  if n == 0 { "" } else { "; then {counted(n, "call")} that break the requirement refuse" }
+fn refuted_clause(n) = if n == 0 { "" } else { "; {counted(n, "call")} break it and will refuse" }
 
-fn opened_clause(n) = if n == 0 { "" } else { "; {counted(n, "call")} would owe it, unproven" }
+fn opened_clause(n) = if n == 0 { "" } else { "; {counted(n, "call")} must still show it" }
 
 // THE GRADIENT'S ANSWER AS TEXT — one home for every surface that speaks it
 // (the address surface's Teach facet, `mentl teach`, the edit session's
@@ -1398,11 +1419,11 @@ fn show_teaching(t) = match t {
   TeachAdd(s) => match s {
     AnnotationSuggestion(ann, lev, _) => "add `{show_annotation(ann)}` — {show_leverage(lev)}",
   },
-  TeachAsk(ss) => "{join(" or ", map(quoted_annotation, ss))} — each {tie_leverage(ss)}; they mean different things, so which is meant?",
+  TeachAsk(ss) => "{join(" or ", map(quoted_annotation, ss))} — either way {tie_leverage(ss)}; they mean different things, so which is meant?",
   TeachNeed(param, pred, sp) => match sp {
     Span(line, _, _, _) => "`{param}` must make {show_predicate(pred)} hold (line {int_to_str(line)}), and no refinement in reach states it — declare one and annotate `{param}`",
   },
-  TeachLift(ls) => "lift {join(", ", map(backticked, map(lift_text, ls)))} — the judgment derives {if len(ls) == 1 { "it" } else { "each" }}, so the pin decides nothing; a type is written at an intent boundary alone: a refinement, an ownership marker, a width",
+  TeachLift(ls) => "lift {join(", ", map(backticked, map(lift_text, ls)))} — the body already fixes {if len(ls) == 1 { "it" } else { "each" }}, so the type adds nothing; a type written here should claim more: a bound, ownership or a width",
   TeachNone => "(no next-step annotation)",
 }
 

@@ -736,11 +736,11 @@ fn tighten_run(target_opt) = {
     // row the parser cannot read back. Per file, patch bottom-up so line
     // offsets hold.
     let n = apply_tightenings(cands)
-    // The pins the judgment derives, lifted: every function declaration of the
-    // project's own layer, the nested among them, asked for its lifts — each
-    // proven in a fork of the judgment (`teach_lifts`) — and its head written
-    // without them. A head renders on its own line, so the clause patches
-    // above and the rosters below read the lines they judged.
+    // The written types the judgment derives, lifted: every function
+    // declaration of the project's own layer, the nested among them, asked for
+    // its lifts — each proven in a fork of the judgment (`teach_lifts`) — and
+    // its head written without them. A head renders on its own line, so the
+    // clause patches above and the rosters below read the lines they judged.
     let lifted = project_decls() |> fold(0, apply_lift)
     // The catch-alls over sums last: each is written at its arm's pattern
     // node and the module rendered whole, which moves lines, so every patch
@@ -748,7 +748,7 @@ fn tighten_run(target_opt) = {
     // changed is refused here and rewritten by the next run's judgment.
     let rostered = apply_pattern_tightenings(rosters)
     if len(cands) + len(rosters) == 0 && released == 0 && lifted == 0 {
-      print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head pins a type the judgment derives, and no catch-all stands over a sum\n")
+      print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head writes a type the judgment derives, and no catch-all stands over a sum\n")
       0
     } else {
       print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(lifted)} head(s) lifted of the types the judgment derives, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
@@ -757,9 +757,9 @@ fn tighten_run(target_opt) = {
   } ~> wasi_filesystem ~> mentl_default ~> infer_context
 }
 
-// THE PINS THE JUDGMENT DERIVES, LIFTED. The function declarations of the
-// entry's own layer, read off the decls column so a nested declaration is
-// among them; each head with lifts is written without them, the file read
+// THE WRITTEN TYPES THE JUDGMENT DERIVES, LIFTED. The function declarations
+// of the entry's own layer, read off the decls column so a nested declaration
+// is among them; each head with lifts is written without them, the file read
 // again for each so one file's heads patch in turn, and the lifts said as the
 // gradient says them.
 fn project_decls() = decl_handles() |> filter(is_fn_decl) |> filter(in_project_layer)

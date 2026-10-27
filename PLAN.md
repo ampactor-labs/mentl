@@ -537,9 +537,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   no refinement at a part, no call with argument holes, no record proposed
   for a positional product. A precondition says the row it frees of `Trap`; a
   lift — a written base type the body alone decides — is proven by the fork
-  alone, the declaration read again from its lines without the pin, since the
-  cells hold the pinned type whichever side decided it. The course's heads
-  are lifted; the wheel's are not.
+  alone, the declaration read again from its lines without the annotation,
+  since the cells hold the written type whichever side decided it. The
+  course's heads are lifted; the wheel's are not.
 - **The course and the scores are owed** (`mentl verify`, the `QOwed` bounds;
   §11.3): a Nyquist bound that reads the installed rate
   inside its predicate is left pending (lesson 6), a division by a value

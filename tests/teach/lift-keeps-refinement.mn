@@ -1,8 +1,8 @@
 // teach 10: none
 // A refinement a callee would imply is still the author's decision: without
 // `n: Pos` the parameter learns Pos from `inv`'s demand and the face holds,
-// yet the pin stays — a refinement, a width or a row is written at an intent
-// boundary, never lifted. Measured lifted on the landing's first candidate
+// yet the annotation stays — a refinement, a width or a row is written at an
+// intent boundary, never lifted. Measured lifted on the landing's first candidate
 // (2026-10-27), which read the boundary off the cell, where the base alone
 // stands once the refinement is a claim.
 type Pos = Int where 0 < self

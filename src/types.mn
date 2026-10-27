@@ -2242,7 +2242,17 @@ type Annotation
 // standing_clauses). Debt discharged is what makes a program more proven, so
 // it ranks first; a lock changes no proof today and ranks last, the one more
 // declarations stand on first.
-type Leverage = {discharged: Int, locks: [String], opened: Int, refuted: Int, stands: [String]}
+// `safe` says what the paid debt makes safe in the developer's words — the
+// division cannot fail, the index stays in bounds — since a count of
+// obligations is the ledger's view and never the sentence a person reads.
+type Leverage = {
+  discharged: Int,
+  locks: [String],
+  opened: Int,
+  refuted: Int,
+  safe: [String],
+  stands: [String],
+}
 
 // What the gradient proposes at a position: the annotation PROVEN there,
 // what it buys, and why it leads. The annotation is the fact an accept
@@ -2264,14 +2274,15 @@ type AnnotationSuggestion = AnnotationSuggestion(Annotation, Leverage, Reason)
 // discharges it is a NEED: the medium states the predicate the parameter
 // must carry and that no declared type says it — the missing vocabulary,
 // taught.
-// A pin the judgment derives, lifted from the head: a parameter whose written
-// type the body alone decides, by its node, or the return annotation's node.
-// A type is written at an intent boundary alone — a refinement, an ownership
-// marker, a width (SYNTAX §«The Intent Boundary Rule for Parameters») — and
-// one the judgment would infer is the projected type written by hand, the
-// row inventory's twin. Proven in a fork: the declaration read again from its
-// lines without the pin and judged as an edit is, its published face
-// alpha-equal to the live one, so the lift changes nothing the program means.
+// A type annotation the judgment derives, lifted from the head: a parameter
+// whose written type the body alone decides, by its node, or the return
+// annotation's node. A type is written at an intent boundary alone — a
+// refinement, an ownership marker, a width (SYNTAX §«The Intent Boundary Rule
+// for Parameters») — and one the judgment would infer is the projected type
+// written by hand, the row inventory's twin. Proven in a fork: the
+// declaration read again from its lines without the annotation and judged as
+// an edit is, its published face alpha-equal to the live one, so the lift
+// changes nothing the program means.
 type Lift = LiftParam(Int) | LiftReturn(Int)
 
 type Teaching
@@ -2279,7 +2290,7 @@ type Teaching
   | TeachAsk([AnnotationSuggestion])
   // the parameter, the open predicate it must make hold, where it is owed
   | TeachNeed(String, Predicate, Span)
-  // the pins the judgment derives, proven lifted together
+  // the written types the judgment derives, proven lifted together
   | TeachLift([Lift])
   | TeachNone
 

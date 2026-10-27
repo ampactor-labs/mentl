@@ -134,7 +134,7 @@ Mentl uses Hindley-Milner type inference. **You do not need to annotate base typ
 
 Do not write `fn name(a: Int)` when the graph can infer it. Do write `fn name(pos: ValidOffset)` to erect a graph-backed semantic contract — and `fn name(s: f32)` only when a narrower-than-inferred width is the control decision.
 
-A pin the judgment derives is an inventory — the projected type written by hand, the row inventory's twin — and the medium says so rather than refuse it. `mentl teach` answers `lift n: Int` at a declaration whose body alone decides the parameter's type, the caret's Teach facet says the same, `mentl accept` writes the head without it, and `mentl tighten` lifts every such pin of a project. The lift is proven, never read off the cells: the declaration is read again from its lines without the pin and judged in a fork of the judgment, and the pin lifts only where the face it publishes is the live one. A refinement, an ownership marker or a width is never lifted — each is the decision this rule reserves the annotation for, whether or not a callee would imply it.
+A type annotation the judgment derives is an inventory — the projected type written by hand, the row inventory's twin — and the medium says so rather than refuse it. `mentl teach` answers `lift n: Int` at a declaration whose body alone decides the parameter's type, the caret's Teach facet says the same, `mentl accept` writes the head without it, and `mentl tighten` lifts every such annotation of a project. The lift is proven, never read off the cells: the declaration is read again from its lines without the annotation and judged in a fork of the judgment, and the annotation lifts only where the face it publishes is the live one. A refinement, an ownership marker or a width is never lifted — each is the decision this rule reserves the annotation for, whether or not a callee would imply it.
 
 **An ownership marker has ONE position: before the parameter's name** — `ref nodes`, `own ast: Node`. It is the one spelling that reads the same with a type and without one, which is why the parser reads the marker there (`parse_one_param`). The marker after the colon (`ast: own Node`) is the redundant spelling of the same parameter, so it is format-liftable to the name's side; the parser refuses it in type position today (`P_UnexpectedToken`), and the formatter landing parses it and lifts it.
 
@@ -232,7 +232,7 @@ mn-effect-name-nested-fn-type.mn).
 fn id(x: A) = x   // return type inferred
 ```
 
-The `-> RetTy` clause is optional; absent = inferred. Most user code does NOT annotate return types. Mentl's gradient may suggest annotating when capabilities depend on the return type being explicit, and lifts a written base return the body alone decides (`lift -> Float`) as it lifts a parameter's pin (§«The Intent Boundary Rule for Parameters»); a return contract such as `-> Hz` is a claim and stays.
+The `-> RetTy` clause is optional; absent = inferred. Most user code does NOT annotate return types. Mentl's gradient may suggest annotating when capabilities depend on the return type being explicit, and lifts a written base return the body alone decides (`lift -> Float`) as it lifts a parameter's annotation (§«The Intent Boundary Rule for Parameters»); a return contract such as `-> Hz` is a claim and stays.
 
 ### Default parameter values
 
