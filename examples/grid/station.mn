@@ -275,7 +275,7 @@ fn reason_text(code: Int, number: Int, spin_w: Int, pulse_w: Int) -> String = if
 } else if code == 6 {
   "rush hour, hour {number}: Pulse carries the building at {pulse_w / 1000} kW"
 } else if code == 7 {
-  "clean hour, {number} per mille clean: Pulse charging at {0 - pulse_w / 1000} kW"
+  "clean hour, {number / 10} percent clean: Pulse charging at {0 - pulse_w / 1000} kW"
 } else if code == 8 {
   "within 36 mHz of 60; Spin topping up from Pulse at {0 - spin_w / 1000} kW"
 } else if code == 9 {
