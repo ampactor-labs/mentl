@@ -990,9 +990,16 @@ the face (step 3) cut the last three.
    it guards charged at the install (`Hβ.verify.handler-is-a-judgment-unit`).
    A Float carries its range — a sine's [-1, 1], affine combinations, a clamp
    — so a frequency computed from a sine or a product is decided (Pulse,
-   Wasatch). The gate is the course and the two scores judged clean, the
-   `QOwed` bounds falling to zero, and the wheel's open obligations falling
-   with each piece.
+   Wasatch). A comment must not change what is owed. Measured on
+   2026-10-27: adding one comment line at the top of
+   examples/grid/station.mn, with no change to its code, takes the pending
+   obligation of its find_from function off `mentl audit`'s list, so 13
+   pending claims become 12. The audit prints only a count per declaration,
+   so whether that obligation was proven or dropped cannot be seen yet. This
+   step makes the pending set independent of comments and has the audit
+   name each claim it counts. The gate is the course and the two scores
+   judged clean, the `QOwed` bounds falling to zero, and the wheel's open
+   obligations falling with each piece.
 
 4. **A module is a scope, and a package carries its judgment**
    (`Hβ.driver.per-module-env-overlay`, `Hβ.query.facets-read-the-link`,
