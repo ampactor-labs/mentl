@@ -52,11 +52,18 @@ fn smoother(corner: Float) = {
 // The learner: the step moves the coefficient against the slope,
 // normalized by the smoothed energy of the samples it predicts from, so a
 // loud hum and a quiet one learn at the same pace and the harmonics' beat
-// does not lean on the step.
+// does not lean on the step. The line starts at zero, which encodes 120 Hz;
+// the first tick seeds it at the nominal 60 Hz, 2·cos(2π·60/480), so the
+// readout begins where the grid lives and moves from there.
 fn learner(mu: Float) = {
   fn stage(x2: Float, x1: Float, x: Float) -> Float with !Alloc = {
     let energy = { en => en + (x1 * x1 + x2 * x2 - en) * 0.02 } <~ delay(1)
-    { a => a - mu * slope(a, x1, x2, x) / (energy + 0.000001) } <~ delay(1)
+    {
+      a => {
+        let seeded = if a == 0.0 { 1.4142135623730951 } else { a }
+        seeded - mu * slope(seeded, x1, x2, x) / (energy + 0.000001)
+      },
+    } <~ delay(1)
   }
   stage
 }
