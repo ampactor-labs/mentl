@@ -1,3 +1,4 @@
+// expect: refuse E_DuplicateTypeName
 // ARMED-CLASS refusal fixture — E_DuplicateTypeName.
 // Two `type Signal` in one namespace silently MERGE: each decl's ctors tag
 // from 0, so Halt (tag 0 of the second decl) matches the FIRST decl's Go arm

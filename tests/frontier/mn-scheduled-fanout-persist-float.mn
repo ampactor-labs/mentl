@@ -1,8 +1,11 @@
+// expect: 60
 // Persist scheduler representation contract. The branch payload is Float, but
 // the scheduler transports only the exact one-field carrier authored by
 // inference. `persist_branch` returns an opaque PersistHandle and
 // `join_persist` recovers the same generic carrier before field 0 is projected.
-// Expected exit: 60.
+import io
+
+import persist
 
 fn widen(x) = float_of_int(x) * 15.0
 

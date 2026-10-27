@@ -1,3 +1,4 @@
+// expect: 42
 // The annotation boundary, pinned before the TString dissolution (A.4
 // step 1): a map-built byte sequence satisfies a `: String` parameter —
 // the exact edge parse_type_atom's mint flip rewires (today the

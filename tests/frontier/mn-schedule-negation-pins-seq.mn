@@ -1,3 +1,4 @@
+// expect: 1
 // B4 (2026-09-30), the control: a callee declared `!Thread` keeps its own
 // frame's schedule. `both` proves it performs no `Thread`, so a caller's
 // `parallel_compose` never reaches its fanout — the branches run in the

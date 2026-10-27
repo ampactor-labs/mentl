@@ -1,4 +1,5 @@
-// expect: 42 — SYNTAX §Indexing's tuple form judges and runs: a receiver
+// expect: 42
+// SYNTAX §Indexing's tuple form judges and runs: a receiver
 // chased to a tuple, indexed by a literal, types as that position's
 // element (the judge's half of the dispatch lower always carried — its
 // LFieldLoad prefix-sum). Both receiver shapes: the literal and the

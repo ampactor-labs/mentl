@@ -1,3 +1,4 @@
+// expect: 96
 // The `><` value-branch quartet (PLAN §11 Phase 2.2): four spellings of
 // the same fanout, every branch : Int, every form emitting correct
 // values. The gate asserts the compile carries ZERO diagnostics and the

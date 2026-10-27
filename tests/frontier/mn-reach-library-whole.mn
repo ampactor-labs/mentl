@@ -1,3 +1,4 @@
+// expect: 0
 // The library pin (the relocation's written decision): a module with no
 // main seeds ALL decls — every declaration constructs and emits, source
 // order, so an importer's link set is never a demand guess. beta is

@@ -1,3 +1,4 @@
+// expect: 42
 // Effect-polymorphic stored functions — a first-class CLOSURE carrying its own
 // effect row, stored in an ADT field and later called. This is the capability
 // the mentl verb table rests on (main.mn: VerbSpec holds each verb's builder as

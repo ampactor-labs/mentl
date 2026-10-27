@@ -1,3 +1,4 @@
+// expect: 0
 // The structural census's gate fixture (Hβ.query.structural-census —
 // PLAN §11 Phase 0.3): one site per countable shape at a KNOWN line, so
 // the frontier leg asserts each census answer contains this file's own
@@ -12,7 +13,7 @@ fn dup(x) = (x) <| (inc, inc)
 fn par(a, b) = (a |> inc) >< (b |> inc)
 fn tee(x) = inc(x) ~> ticker
 fn lam(x) = pick((a) => a + 1, x)
-fn fb(x) = x <~ inc(1)
+fn fb(x) = ((prev) => prev + x) <~ Delay(1)
 fn pick(f, x) = f(x)
 effect Tick {
   tick() -> Int

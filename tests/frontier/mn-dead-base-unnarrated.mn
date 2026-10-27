@@ -1,3 +1,4 @@
+// expect: 46
 // A row-polymorphic helper whose every call is keyed to a twin: `pick` reads
 // two fields of a nominal record and of an anonymous one, each call site
 // proves its own layout, and nothing calls the base body — whose row never

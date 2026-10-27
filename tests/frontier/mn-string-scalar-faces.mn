@@ -1,3 +1,4 @@
+// expect: 42
 // The string scalar faces, pinned before the TString dissolution (A.4
 // step 1): to_string is identity on a String, hash is self-consistent
 // and discriminating, ordering is lexicographic byte order. These pin

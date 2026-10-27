@@ -1,3 +1,4 @@
+// expect: refuse E_TypeMismatch
 // A pair-destructuring arm literal handed where a two-argument callback is
 // called REFUSES (E_TypeMismatch — the function-arity face). The literal
 // takes ONE parameter, the pair its arm matches; `apply2` calls its

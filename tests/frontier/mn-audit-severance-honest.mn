@@ -1,8 +1,9 @@
-// expect: severance tells the truth — `allocates` (Alloc live in its row)
+// expect: 5
+// Severance tells the truth — `allocates` (Alloc live in its row)
 // is never offered "Real-time safe (proven zero allocation)"; `quiet`
 // (a Pure body) still earns the full severance set. The reached set
 // reads the CHASED row, the same resolution the row render walks.
-fn allocates() with Memory + Alloc = len(make_list(3))
+fn allocates() = len(make_list(3))
 
 fn quiet(x) = x + 1
 

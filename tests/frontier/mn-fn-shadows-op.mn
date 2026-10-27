@@ -1,3 +1,4 @@
+// expect: refuse E_FnShadowsOp
 // `spawn` is an op of lib/threading's Thread effect, and a program
 // links that module through the manifest. Declaring a function by the same
 // name was silent: the env is append-only and read last-write-wins, and an

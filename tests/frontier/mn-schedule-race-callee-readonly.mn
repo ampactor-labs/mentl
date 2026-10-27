@@ -1,3 +1,4 @@
+// expect: 10
 // B4 (2026-09-30): the sound twin of the race refusal through a callee —
 // the callback's handler only READS its state, so two spawned instances
 // share one immutable record and the demand runs `tally`'s fanout threaded.

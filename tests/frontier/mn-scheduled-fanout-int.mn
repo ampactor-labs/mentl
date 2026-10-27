@@ -1,3 +1,4 @@
+// expect: 60
 // Scheduler representation control: an Int result crosses each synthesized
 // branch thunk, sequential_compose, its result list, and the fanout collector.
 // Expected exit: 60.

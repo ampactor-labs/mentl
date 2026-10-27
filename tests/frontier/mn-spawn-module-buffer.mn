@@ -1,3 +1,4 @@
+// expect: 18
 // A module value is the root's, initialized once: a spawned instance reads
 // the module's buffer the root has since updated in place, exactly as a
 // branch under no schedule does — one source, two schedules, one answer.

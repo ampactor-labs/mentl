@@ -1,3 +1,4 @@
+// expect: 5
 // AN-2 — the same fanout under the degree-1 schedule: `sequential_compose`'s
 // spawn arm runs the thunk inline, the thunk's abandon returns into the arm
 // with the flag raised, the arm's call boundary unwinds it, the spawn

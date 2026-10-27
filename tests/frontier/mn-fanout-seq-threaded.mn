@@ -1,3 +1,4 @@
+// expect: 3
 // B4 (2026-09-30): the sequence fanout under a caller's schedule. `ids` fans
 // its list out through a branch that asks the thread's id; `main` installs
 // `parallel_compose` over the call, so each element's branch runs on its own

@@ -1,3 +1,4 @@
+// expect: 0
 // LSP hover fixture — the serve transport infers this on didOpen, then a hover
 // reads the live type off the one graph. double's body forces x : Int (x + x),
 // so a hover over an identifier projects a concrete type: null on a driverless

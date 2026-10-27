@@ -1,3 +1,4 @@
+// expect: 42
 // The replay VALUE barrier (the row half's sibling, one landing later):
 // a frame-declared authored `own` FREE in a persist_branch thunk crosses
 // the wire as bytes while the duty to finish it stays behind — each
@@ -5,7 +6,9 @@
 // axis. T_OwnAcrossReplay names `buf` at risky's call edge; safe's
 // self-contained thunk stays silent. Narration tier (the census arming
 // law), so the whole checkpoint+run+join loop still runs.
-// Expected exit: 42.
+import io
+
+import persist
 
 fn risky(own buf) = {
   let h = persist_branch(() => len(buf))

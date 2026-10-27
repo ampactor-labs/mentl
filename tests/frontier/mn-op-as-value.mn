@@ -1,3 +1,4 @@
+// expect: 6
 // AN EFFECT OP IS A FUNCTION VALUE, or it refuses — never both compiling
 // clean and dying at the assembler. The op face of
 // Hβ.emit.nonfn-binding-as-function-value, born RED 2026-09-09: `each(note,

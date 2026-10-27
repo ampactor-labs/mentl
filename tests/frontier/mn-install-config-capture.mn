@@ -18,6 +18,8 @@
 // its authored positive rows caps, which refused its own WASI callback.
 import io
 
+import fs
+
 effect Out {
   put(s: String)
 }

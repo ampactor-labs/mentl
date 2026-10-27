@@ -3,7 +3,9 @@
 // any install: `fail_exit` prints and exits through proc_exit, and the
 // install's answer is the body's. Until proc_exit declared `-> !` the arm
 // answered `()`, and once an install met an arm's answer this refused
-// E_TypeMismatch (Int against ()). Linked with lib/io (the frontier's io leg).
+// E_TypeMismatch (Int against ()).
+import io
+
 fn main() = {
   let n: Int = (fail("stop")) ~> fail_exit
   n

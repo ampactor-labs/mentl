@@ -1,3 +1,4 @@
+// expect: 1
 // CROWN (real vocabulary) — `<~` IS PURE TOPOLOGY, so a negation survives the
 // cycle. The feedback site performs nothing itself: SYNTAX §«`<~` — feedback»
 // states that a delay line's slots are DECLARED, never allocated, so "depth

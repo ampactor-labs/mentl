@@ -1,9 +1,10 @@
+// expect: 42
 fn observe_then_take(own value) with Pure = {
   let seen = observe(value)
-  seen + take(value)
+  seen + consume(value)
 }
 
 fn observe(ref value) with Pure = value
-fn take(own value) with Pure = value
+fn consume(own value) with Pure = value
 
 fn main() = observe_then_take(21)

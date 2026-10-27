@@ -1,4 +1,5 @@
-// expect: audit names the |> shape the bindings draw — `chained` reports a
+// expect: 15
+// Audit names the |> shape the bindings draw — `chained` reports a
 // 2-step let-chain (each name consumed once, by exactly the next stmt);
 // `forked` stays silent (a is used twice — `<|` territory, never a pipe
 // invite); `single` stays silent (the one-step exception).

@@ -1,3 +1,4 @@
+// expect: 42
 // hash(x)'s user face, typed and agreeing with eq. Before this build the
 // name `hash` had NO declaration anywhere — E_MissingVariable at every user
 // call; the entire lower hash surface was unreachable. The declaration

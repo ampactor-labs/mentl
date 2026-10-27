@@ -683,13 +683,14 @@ mentl <file>:<line>[:<col>]         # the eight aspects at the caret, with the L
 mentl map [<id, title or word>]     # the read path by part: PLAN and SYNTAX by heading and §11 step; a name serves one
 bash tools/march.sh                 # the fixed point: boot→m2→m3, m4 on a difference, TRANSITION or BROKEN; MARCH_REPIN=1 pins
 bash tools/march-gate.sh --micros   # the rungs and the micro battery through the boot's m2
-bash tools/frontier-gate.sh         # the scheduled matrix and the authoring workflows (--compiler fresh for the current wheel)
+bash tools/frontier-gate.sh         # what no fixture contract names yet: the verbs' text, the authoring workflows, the project routes (--compiler fresh for the current wheel)
 bash tools/crown-gate.sh            # leaks refuse, sounds accept
 bash tools/proof-exactness-gate.sh  # a hole refuses, debt surfaces, a suspension runs
 bash tools/ide-gate.sh              # the resident session: the node twin, then headless Chrome over the page
 bash tools/verify.sh                # what no verb has absorbed: micros through the host, the sha chain, doc-truth
 mentl test tests/proposals          # each fixture's first line is its contract at the hole
 mentl test tests/teach              # each fixture's first line is its contract at the declaration
+mentl test tests/frontier           # each fixture's first line is its contract: the exit it answers, the class it refuses, or what the hole proposes
 source tools/wt-env.sh; wt_battery C.wasm tests/micros   # a battery compiled, run and judged by compiler C; `mentl test` judges and lists the RUN lines, the host runs them
 mentl space                         # the page, localhost:7397
 python3 tools/emit-diff.py A.wat B.wat [--trap]   # the divergence pinner — first on any m3 trap
@@ -1132,7 +1133,11 @@ the face (step 3) cut the last three.
    flow (a parameter threaded ±k into an index read), with let-chains,
    nested-call pipes, `<|`/`><` invitations, repeated install suffixes and
    partial eta (`(row) => dot(row, x)`) as shapes, the multi-parameter lambda
-   retiring into a reference (`Hβ.syntax.multi-param-lambda-is-a-reference`);
+   retiring into a reference (`Hβ.syntax.multi-param-lambda-is-a-reference`),
+   a `match` whose one arm takes a product apart written as the `let` it is,
+   and a `match` over `Some`/`None` as the stage or handler that answers the
+   absence (the census counts both: `match-destructure`, `match-option`;
+   6,123 `match` sites against 857 `|>` on 2026-10-27);
    tighten rewrites by edge, each rewrite a candidate kept only when every
    declaration it touches publishes the face it published, the prelude's
    datum-first signatures (`reduce`, `scanl`, `nth`, `clamp`) among them.
@@ -1302,7 +1307,12 @@ the face (step 3) cut the last three.
    independent projections and compares them; and every scaffold under
    tools/ is absorbed into a verb — the march is `mentl march`, the board
    `mentl verify` and the landing pass `mentl land`, so the loop names no
-   script; the gates `mentl land` sequences on the host are next.
+   script; the gates `mentl land` sequences on the host are next. The
+   frontier's run and refusal legs are fixture contracts (`mentl test
+   tests/frontier`, a battery of the landing pass, 2026-10-27); the gate
+   keeps what no contract names yet — a verb's text, an edit workflow, a
+   project route — and each is a contract the battery grows, until the gate
+   is empty.
 
 ---
 

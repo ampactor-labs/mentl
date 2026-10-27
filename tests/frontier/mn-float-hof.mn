@@ -1,3 +1,4 @@
+// expect: 42
 // The float-evidence-ft class, killed: a NAMED f64-signature fn used as a
 // VALUE (its table slot holds the word wrapper), and an f64 CAPTURE crossing
 // into a closure record's word slot by reference — the two crossings that

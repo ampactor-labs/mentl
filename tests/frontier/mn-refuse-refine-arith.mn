@@ -1,3 +1,4 @@
+// expect: refuse E_RefinementRejected
 // ARMED-CLASS refusal fixture — E_RefinementRejected via the R3 arithmetic
 // fragment. `self + 1 <= 10` with self = 15 decides FALSE (16 <= 10) at
 // compile time: the medium PROVES the construction violates its refinement

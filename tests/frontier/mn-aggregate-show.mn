@@ -1,3 +1,4 @@
+// expect: 42
 // The generated show leaf, END TO END in a minimal module — three
 // pre-existing breaks closed by the LShow build, each of which made this
 // exact program fail before it: (1) the aggregate call is now a DIRECT

@@ -1,3 +1,4 @@
+// expect: refuse E_ConstructorArity
 effect Sample(rate: Int) {
   tick() -> Int
 }

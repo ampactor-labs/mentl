@@ -1,3 +1,4 @@
+// expect: 15
 // Phase 4.2 (Hβ.infer.grade-is-join-and-mode): the ownership grade reads
 // a (consume, read) Usage pair — ⊗ across sequence, ⊔ across
 // alternatives, mode deciding which component a mention feeds. Pre-fix

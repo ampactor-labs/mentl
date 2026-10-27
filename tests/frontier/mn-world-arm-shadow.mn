@@ -1,3 +1,4 @@
+// expect: 40
 // Band N's arm-internal-perform-scope as a fixture: an install INSIDE the
 // governed body must shadow the outer handler. Both handlers carry pick
 // (evidence-dispatched). Correct answer: 40.

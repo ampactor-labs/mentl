@@ -1,3 +1,4 @@
+// expect: 0
 // A function crossing an argument edge carries its PARAMETERS' refinements
 // the other way: the lambda hands its argument to `alpha`, so it demands an
 // `Hz` of every value it is called with, and `drive` calls it with

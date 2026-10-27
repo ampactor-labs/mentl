@@ -1,3 +1,4 @@
+// expect: refuse E_DeclaredRowContradiction
 // The decl-site row contradiction (band L's
 // Hβ.diag.declared-row-contradiction): `with E + !E` asserts one name
 // present AND absent — unsatisfiable as written, and the pre-diagnostic

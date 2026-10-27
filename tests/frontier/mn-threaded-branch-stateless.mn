@@ -1,3 +1,4 @@
+// expect: 14
 // B1 (2026-09-27): an effect performed INSIDE a spawned branch. The branch
 // runs in the world it was spawned in — the task record carries the live
 // install chain, the fresh instance installs it before the closure runs —

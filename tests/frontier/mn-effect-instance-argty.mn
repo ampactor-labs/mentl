@@ -1,3 +1,4 @@
+// expect: refuse E_TypeMismatch
 effect Sample(rate: Int) {
   tick() -> Int
 }

@@ -1,3 +1,4 @@
+// expect: 0
 // `==` over a POLYMORPHIC sum, proven to the bottom. This fixture was born RED
 // on 2026-09-18 and turned green the same day by proof, which is the whole
 // life of an expected-red entry and worth keeping visible.

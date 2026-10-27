@@ -1,3 +1,4 @@
+// expect: 12
 // B4 (2026-09-30): the SEQUENCE FANOUT. `fanout(f, xs)` applies `f` to each
 // element as an independent branch and collects the results in order; with
 // no schedule installed it runs sequentially and IS `map` — the prelude

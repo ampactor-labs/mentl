@@ -1,5 +1,6 @@
+// expect: 90
 // Product control: branch results remain exact when the scheduled value is a
-// tuple containing both an Int and a Float. Expected exit: 90.
+// tuple containing both an Int and a Float.
 
 fn bundle(x) = (x * 10, float_of_int(x) + 0.5)
 

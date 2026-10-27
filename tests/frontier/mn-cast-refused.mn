@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // !Cast severs the word-face projection: a body performing addr under a
 // declared !Cast is a row-algebra violation — the user-effect class the
 // capability gate exists for. The severed fn never runs; the medium

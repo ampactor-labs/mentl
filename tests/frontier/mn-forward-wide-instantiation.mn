@@ -1,3 +1,4 @@
+// expect: 42
 // A MONO caller forward-references a generic callee at a wide instantiation:
 // before the heal, the caller's site held the PRE-registered scheme's frozen
 // instance (loose vars the callee's later inference never reached), so the

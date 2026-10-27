@@ -1,3 +1,4 @@
+// expect: refuse E_ArithOnAggregate
 // A product is not a number. `{x: 1} * {x: 2}` type-checks (arithmetic
 // unifies its operands) and, until 2026-09-27, emitted i32.mul over the two
 // record ADDRESSES with zero diagnostics — measured on boot 5bf55b68:

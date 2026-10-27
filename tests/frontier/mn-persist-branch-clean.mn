@@ -1,10 +1,13 @@
+// expect: 42
 // The resume barrier ADMITS the replay-exact branch (the persist_branch row:
 // `() -> a with !WASI + !Filesystem + !Network`, lib/persist.mn §4④).
 // A branch thunk whose row severs image-external effects re-runs exactly on a
 // crash re-entry, so the argument edge admits it by subsumption — pass, no
 // bind — and the whole loop runs: checkpoint written, branch executed, join
 // read from the live accumulator.
-// Expected exit: 42.
+import io
+
+import persist
 
 fn main() = {
   let h = persist_branch(() => 21 + 21)

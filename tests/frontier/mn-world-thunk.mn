@@ -1,3 +1,4 @@
+// expect: 42
 // The thunk crosses into a world it was not minted in: body is created
 // where no Ask handler is installed, then called under one. Two handlers
 // carry ask, so the op is evidence-dispatched — the mint-time snapshot

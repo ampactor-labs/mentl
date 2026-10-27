@@ -1,3 +1,4 @@
+// expect: refuse E_ArithOnAggregate
 // The same product arithmetic reached through a GENERIC fn. `a * b` gates
 // scale's quantified var numeric (NumericGate on the cell); the call
 // instantiates the scheme and the copy carries the gate, so binding it to

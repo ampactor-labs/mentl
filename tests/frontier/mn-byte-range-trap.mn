@@ -1,3 +1,4 @@
+// expect: 134
 // The stride-1 store RANGE trap: an Int outside 0..255 entering a byte slot
 // traps loudly (store_strided's guard — the bounds-trap precedent), never a
 // silent wrap to 44. When the compile-time ground narrowing gate lands

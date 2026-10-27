@@ -1,3 +1,4 @@
+// propose 14:24: ask value 40 or 2 or 1
 // The intent ranker's contract: the fan orders survivors by LOCAL
 // INTENT read from the graph — a name already USED near the hole
 // outranks a nearer-declared but unused sibling. kerning is declared

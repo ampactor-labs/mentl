@@ -1,3 +1,4 @@
+// expect: refuse E_EffectUnhandled
 // The evidence hole, no handler in scope — the gate's third read. Ping
 // reaches the executable root with no absorbing install and no declared
 // handler; the compile REFUSES (E_EffectUnhandled at main's span, exit 1,

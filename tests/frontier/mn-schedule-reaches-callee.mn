@@ -1,3 +1,4 @@
+// expect: 14
 // B4 (2026-09-30): THE SCHEDULE REACHES A CALLEE'S FANOUT. `both` fans out
 // with no install of its own; `main` installs `parallel_compose` over the
 // CALL, so the demand reaches `both` through the direct call and its two

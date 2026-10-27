@@ -1,3 +1,4 @@
+// expect: 60
 // Scheduler representation frontier: the same topology as the Int control,
 // but every branch returns Float. The synthesized thunk and scheduler must
 // retain f64 all the way to the fanout result. Expected exit: 60.

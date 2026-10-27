@@ -1,3 +1,4 @@
+// expect: 42
 // A Float POSITIONAL constructor field filled from an unannotated parameter.
 // The field type is a fact the ctor scheme proves (MkBox : Float -> Box), so
 // `g` must infer Float from its use as MkBox's argument — as a pattern binds a

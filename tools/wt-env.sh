@@ -189,7 +189,8 @@ wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> [said] â
     echo "FAIL(asm) $stem: the module did not assemble (see $base.asm.err)"
     return 0
   fi
-  timeout 300 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$base.wasm" < /dev/null > "$base.out" 2> "$base.run.err"
+  # The mounts `mentl run` gives a program (the cwd and a /tmp), the /tmp a private directory per fixture: the persist handler checkpoints under /tmp by name, and the runs go nproc-wide.
+  mkdir -p "$base.tmp" && timeout 300 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . --dir "$base.tmp::/tmp" "$base.wasm" < /dev/null > "$base.out" 2> "$base.run.err"
   exit=$?
   if [ "$exit" -eq "$want" ] && [[ "$(head -1 "$base.run.err")" == "$said"* ]]; then  # a stop says its line first
     echo "PASS $stem: exit=$exit (expected $want) diags=$nerr"

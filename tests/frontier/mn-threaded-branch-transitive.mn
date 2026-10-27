@@ -1,3 +1,4 @@
+// expect: refuse E_ThreadedBranchEffect
 // B1's race rule, the TRANSITIVE refusal: `h` absorbs the branch's E at the
 // fanout's frame and is stateless — but its arm performs `bump`, an arm runs
 // in the performing (spawned) instance, and its performs resolve OUTER of

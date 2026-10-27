@@ -1,3 +1,4 @@
+// expect: 72
 // The holed SUBSTRATE call is the product-with-holes built from the FACE
 // (seq_op_sig), never from the raw body's env scheme: list_set's `l + 8`
 // types l Int, and the partial minted from that scheme unified the pipe

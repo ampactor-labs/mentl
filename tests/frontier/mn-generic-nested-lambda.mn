@@ -1,3 +1,4 @@
+// expect: 42
 // Named-generic monomorphization, face 5 — a lambda BORN INSIDE a generic
 // body. The lambda inherits the parent's vars, so it twins under the same
 // instantiation: the parent's demand contributes every record nested in its

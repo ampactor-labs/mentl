@@ -1,3 +1,4 @@
+// propose 9:25: fill double
 // ONE fitting function in scope: the stage hole FILLS with it. The empty
 // lambda skeleton used to stand beside every reference, so a stage hole
 // could never fill (REFERENCE BEFORE MINT — the skeleton is offered only

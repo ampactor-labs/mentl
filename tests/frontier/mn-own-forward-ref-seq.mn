@@ -1,11 +1,12 @@
+// expect: 0
 fn grow(own nodes, min_size) =
-  if len(nodes) >= min_size { nodes }
+  if size(nodes) >= min_size { nodes }
   else {
-    let old_len = len(nodes)
-    list_copy_into(nodes, [], 0, old_len)
+    let old_size = size(nodes)
+    copy_into(nodes, [], 0, old_size)
   }
 
-fn len(ref xs) = 0
-fn list_copy_into(own src, dst, i, count) = src
+fn size(ref xs) = 0
+fn copy_into(own src, dst, i, count) = src
 
 fn main() = 0

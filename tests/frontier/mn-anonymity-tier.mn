@@ -1,3 +1,4 @@
+// expect: 0
 // The anonymity tier's gate fixture (Hβ.audit.anonymity-tier, PLAN §11
 // Phase 2.3): one convicting eta-wrapper, one convicting effectful
 // lambda, one silent pure-local lambda. The leg asserts the audit

@@ -1,3 +1,4 @@
+// expect: 42
 // The two absence theorems, told apart — this leg pins TODAY'S: !Ping is
 // RESIDUAL absence. An install of Ping inside a !Ping fn absorbs its own
 // performs; the residual row is clean; the declaration holds and the

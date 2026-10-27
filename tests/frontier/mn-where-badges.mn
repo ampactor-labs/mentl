@@ -1,3 +1,4 @@
+// expect: 0
 // The where verb's gate fixture (Hβ.cli.where-verb, PLAN §11 Phase
 // 3.2): one repr-pinned value, one inferred-repr value, one effect op,
 // one fn with a scheduled fanout and one with the bare default. The leg

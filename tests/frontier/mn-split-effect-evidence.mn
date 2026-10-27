@@ -1,3 +1,4 @@
+// expect: refuse E_HandlerInexhaustive
 // THE RUNTIME WALK'S EMPTY ARM SLOT IS UNCONSTRUCTIBLE (L5, 2026-09-30).
 // This shape reached the evidence walk with a handler whose arm region had
 // a gap: `call_b` put the perform behind a frame fence, a second declarer

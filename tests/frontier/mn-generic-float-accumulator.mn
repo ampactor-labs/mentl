@@ -1,3 +1,4 @@
+// expect: 42
 // Named-generic monomorphization, face 1 — the unannotated recursive
 // accumulator. `sum_acc` threads `acc` with no annotation; inference leaves it
 // a var, and before per-site specialization the fn compiled ONCE at the RI32

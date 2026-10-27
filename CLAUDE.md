@@ -85,13 +85,15 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   `src/main.mn`, never only by building.
 - A fixture's `// expect: N` is an exit code below 126 (134 is a trap), or its
   refusal class on the first line. Every battery runs through `wt_battery
-  <compiler> <dir>` (micros, syntax, proposals, teach): `mentl test` judges a
-  directory and prints each fixture's RUN line, and the host runs it;
+  <compiler> <dir>` (micros, syntax, proposals, teach, frontier): `mentl test`
+  judges a directory and prints each fixture's RUN line, and the host runs it;
   `tests/crown` leak-*/sound-* by `E_EffectMismatch` count
-  (`tools/crown-gate.sh`); `tests/proposals` and `tests/teach` carry their
-  contract on the first line; `tests/frontier` legs live in
-  `tools/frontier-gate.sh`. Frontier fixtures bank exact spans, so a line added
-  to a fixture's head moves its coordinates; history goes at the tail.
+  (`tools/crown-gate.sh`); `tests/proposals`, `tests/teach` and
+  `tests/frontier` carry their contract on the first line (`// propose L:C:`
+  and `// teach N:` cite the fixture's own lines). What no contract names yet
+  — a verb's text, an edit workflow, a project route — is a leg of
+  `tools/frontier-gate.sh`, and a leg cites fixture lines, so a line added to
+  a fixture's head moves them; history goes at the tail.
 - `mentl fmt --check` of a fixture using a form the boot cannot parse runs
   through the candidate. A probe (`.build/probe/m2.wat`) is comparable only
   within one binary; patch probes there, never in the wheel's source.

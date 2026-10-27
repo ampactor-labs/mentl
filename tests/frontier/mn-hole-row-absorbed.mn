@@ -1,3 +1,4 @@
+// propose 16:21: ask row
 // A HOLE'S ALLOWED ROW IS WHAT ITS CONTEXT ABSORBS, NOT THE AUTHORED CLAUSE.
 // `main` declares no row, and the hole sits under `~> h`, which absorbs E —
 // so a candidate performing E is admissible there: the handler around the

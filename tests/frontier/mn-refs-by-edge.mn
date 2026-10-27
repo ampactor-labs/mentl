@@ -1,3 +1,4 @@
+// expect: 8
 // A reference names a declaration, never a spelling: the two calls of
 // `width` in `twice` are its references, and the `let width` in `shadowed`
 // is a declaration of its own, whose read on line 11 is no reference to the

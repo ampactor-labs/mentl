@@ -1,3 +1,4 @@
+// expect: 3
 // The Mycroft fragment (§11 5.3): UNSIG'D polymorphic recursion,
 // INFERRED — no annotation anywhere. Round 1 refuses with the poly
 // fingerprint, round 2 judges under the general assumption, round 3

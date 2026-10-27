@@ -1,5 +1,6 @@
+// expect: 34
 // Function control: scheduled branch results can themselves be closures with
-// captures, and remain callable after collection. Expected exit: 34.
+// captures, and remain callable after collection.
 
 fn make_adder(x) = (y) => x + y
 

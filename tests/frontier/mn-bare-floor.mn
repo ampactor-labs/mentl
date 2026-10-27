@@ -1,3 +1,4 @@
+// expect: 7
 // The prelude floor's own fixture: a program that asks the medium for
 // nothing. Whatever `mentl query mn-bare-floor.mn "cost"` reports is the
 // vocabulary the medium processes before it can compile a constant.

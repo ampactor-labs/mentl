@@ -1,3 +1,4 @@
+// expect: refuse E_MissingVariable
 // An extent's memory is reclaimed by an arena and by nothing else: there is
 // no raw rewind of the heap line beside `heap_mark`, so no program can drop
 // a region that something older still points into. RED on every boot through

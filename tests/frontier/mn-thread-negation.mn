@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // !Thread transitivity: worker performs Thread's spawn; f declares
 // !Thread and reaches it through a call — the refusal is transitive.
 import threading

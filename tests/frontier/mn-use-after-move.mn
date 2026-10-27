@@ -1,3 +1,4 @@
+// expect: refuse E_UseAfterMove
 // Phase 4.1 (Hβ.own.use-after-move): a borrow-read of a name the affine
 // ledger already moved is E_UseAfterMove — the read half of affine, and it
 // REFUSES. This line used to end "narration until the wheel's own census

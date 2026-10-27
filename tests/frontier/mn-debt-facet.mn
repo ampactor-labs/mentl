@@ -1,7 +1,8 @@
-// The debt facet's gate (the verification query renders WHAT is owed):
-// the chained comparison degrades to an opaque pending (SYNTAX's own
-// documented shape), and the query lists it LOCATED with its predicate
-// — a count alone is not an instrument.
-type Chained = Float where -1.0 <= self <= 1.0
-fn accept_ch(s: Chained) = 1
-fn main() = accept_ch(0.5)
+// expect: 1
+// The debt facet's gate (the verification query renders WHAT is owed): a
+// claim on a value no constant decides is honest debt at the call edge, and
+// the query lists it LOCATED with its predicate — a count alone is not an
+// instrument.
+type Bounded = Float where -1.0 <= self && self <= 1.0
+fn accept(s: Bounded) = 1
+fn main(argv) = accept(float_of_int(len(argv)))

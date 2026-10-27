@@ -1,3 +1,4 @@
+// expect: 42
 // A fn-TYPE row is a GATE at the argument edge: a param typed
 // `() -> Int with !WASI` meets each argument's row by SUBSUMPTION — the
 // negation row judges, never binds — where the old equality-unify arm
@@ -7,7 +8,7 @@
 // mn-hof-row-gate-noisy.mn since E_EffectMismatch was ARMED (2026-09-25):
 // the two faces can no longer share a compile, because the noisy edge is
 // a refusal now, not a report beside a run.
-// Expected: exit 42 with zero E_EffectMismatch.
+import io
 
 fn quiet() = 42
 

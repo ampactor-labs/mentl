@@ -1,3 +1,4 @@
+// expect: refuse E_DuplicateFnName
 // ARMED-CLASS refusal fixture — E_DuplicateFnName.
 // Two `fn dup` in one namespace: the emitter would pick one silently
 // (CLAUDE.md §9's own bug list; measured pre-refusal: exit 0 and a WAT

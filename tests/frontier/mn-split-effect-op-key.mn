@@ -1,3 +1,4 @@
+// expect: refuse E_HandlerInexhaustive
 // A HANDLER IS EXHAUSTIVE OVER EVERY EFFECT ITS ARMS ANSWER (L5,
 // 2026-09-30). Two handlers covering one effect's DISJOINT op sets, both
 // installed, was the shape the op-keyed dispatch walk of 2026-09-09 served

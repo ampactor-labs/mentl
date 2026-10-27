@@ -1,3 +1,4 @@
+// expect: 42
 // R3 · the decidable arithmetic Verify fragment (true case).
 // `self + 1 <= 10` with self = 5 decides TRUE (6 <= 10) at compile time — the
 // construction is discharged, NO proof debt. Pre-R3 the NESTED `self` inside

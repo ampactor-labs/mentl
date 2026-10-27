@@ -1,3 +1,4 @@
+// expect: 42
 // Ownership, four ways the affine ledger must NOT flag safe code, no
 // runtime linked so the gate tests only the ledger:
 //  - tally: an `own` value read in BOTH arms of an `if` is ONE consume on

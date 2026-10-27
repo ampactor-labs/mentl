@@ -1,3 +1,4 @@
+// propose 9:37: fill 1
 // One candidate can satisfy this hole. Integer synthesis seeds 0, 1, and -1;
 // the Positive refinement rejects 0 and -1, leaving 1. The frontier gate
 // requires the editor projection to expose that survivor and its Reason, apply

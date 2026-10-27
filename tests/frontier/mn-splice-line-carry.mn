@@ -1,3 +1,4 @@
+// expect: 40
 // The lexer's line carry: a splice spanning newlines resumes the outer
 // scan at the TRUE line, so every node after this string keeps a
 // truthful span and the address below resolves to its own decl. RED on
@@ -5,7 +6,7 @@
 // the splice's height, and the whole-module address query collapsed to
 // the module placeholder.
 fn pad(a, b) with Pure = a + b
-fn banner() with Pure = "v({pad(
+fn banner() = "v({pad(
   1,
   2
 )})"

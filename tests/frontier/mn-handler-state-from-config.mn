@@ -1,3 +1,4 @@
+// expect: 3
 // A handler's state initializer reading its own config parameter.
 //
 // DIRECT assignment (`n = start`) is the shape the wheel already uses —

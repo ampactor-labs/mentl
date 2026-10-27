@@ -1,3 +1,4 @@
+// expect: 11
 // The unused-wide-param gate (Hβ.emit.unused-wide-param-floor): a fn
 // whose wide-typed param is UNUSED must still sign at its real width —
 // the body-usage scan once floored it to i32 while the caller pushed

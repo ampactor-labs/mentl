@@ -1,3 +1,4 @@
+// expect: 42
 // The GREEN sibling of the two evidence-hole refusals: the install
 // absorbs Ping (the triple's subtraction rides the row's mask even when
 // the body's tail is unresolved at install time), main's residual row is

@@ -1,3 +1,4 @@
+// propose 17:11: ask type
 // The tie whose question is the TYPE — the first divergence read off the
 // trail (C6). The hole's own cell is FREE: nothing in `main` narrows `x`, so
 // each survivor's segment binds that cell — `one()` to Int, `word()` to

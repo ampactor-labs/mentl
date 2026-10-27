@@ -1,3 +1,4 @@
+// expect: 42
 // Handler-config DEFAULT values — the parameter-product law at the handler
 // decl (SYNTAX §«Handler declarations» + §«Default parameter values»: the
 // config list IS a parameter product, and a product field carries a

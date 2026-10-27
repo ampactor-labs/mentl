@@ -1,3 +1,4 @@
+// expect: 14
 // B4 (2026-09-30): A THREAD OP INSIDE A SPAWNED BRANCH. `current_id()` is an
 // op of the schedule's own effect, answered by the `parallel_compose`
 // installed at the fanout's frame — so a branch asking which instance it

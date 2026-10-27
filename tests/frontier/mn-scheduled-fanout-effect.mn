@@ -1,5 +1,6 @@
+// expect: 25
 // Evidence control: the scheduled branch thunk retains the exact Counter
-// install while also crossing the scheduler install. Expected exit: 25.
+// install while also crossing the scheduler install.
 
 effect Counter {
   bump(x: Int) -> Int

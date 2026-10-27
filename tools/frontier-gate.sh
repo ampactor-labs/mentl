@@ -1005,29 +1005,10 @@ run_warm_incremental() {
   fi
 }
 
-# An ARMED class's contract: the diagnostic fires AND the executable refuses —
-# nonzero exit, ZERO WAT bytes (the refusal law, PLAN §11 col 2). run_diagnostic
-# asserts the productive form (exit 0, diagnostics on stderr); an armed class's
-# fixture moves HERE in the same commit that arms it.
-run_refusal() {
-  local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
-  local wat="$dir/$label.wat" err="$dir/$label.compile.err"
-  local rc count size
-
-  wt_run "$compiler" < "$source" > "$wat" 2> "$err"
-  rc=$?
-  count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
-  size=$(wc -c < "$wat" 2>/dev/null || echo 0)
-  if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
-    judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
-  else
-    judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
-  fi
-}
-
-# run_refusal's runtime-linked sibling: the fixture links lib/ (a schedule
-# handler, the prelude) and must still refuse — no WAT, nonzero exit, the
-# class named at least once.
+# A refusal leg a function or loop drives: the fixture links lib/ (a schedule
+# handler, the prelude) and must refuse — no WAT, nonzero exit, the class named
+# at least once. A fixture of its own carries this as its contract instead
+# (`// expect: refuse E_X`, judged by `mentl test tests/frontier`).
 run_refusal_linked() {
   local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
   local link_runtime="${6:-yes}"
@@ -1570,7 +1551,7 @@ run_census() {
   # Spawn phase: the census queries fly concurrently into per-writer files;
   # the judge below stays serial. Files carry the child pid so duplicate
   # line numbers (two shapes judged at one site) never clobber each other.
-  for spec in '|>:10' '<|:11' '><:12' '~>:13' 'anonymous:14' '<~:15' 'eta:24' 'effectful-lambda:25' 'iteration:26' 'wildcard-zero:27' 'failure-mask:28' 'print-in-report:31' 'wildcard-fabricates:32' 'underscore-retain:33' 'flag-as-int:34' 'parallel-arrays:35' 'parallel-arrays:37' 'vtable-record:36' 'env-frame:38' 'default-param:39' 'record-pattern:40' 'declared-row-hof:41'; do
+  for spec in '|>:11' '<|:12' '><:13' '~>:14' 'anonymous:15' '<~:16' 'eta:25' 'effectful-lambda:26' 'iteration:27' 'wildcard-zero:28' 'failure-mask:29' 'print-in-report:32' 'wildcard-fabricates:33' 'underscore-retain:34' 'flag-as-int:35' 'parallel-arrays:36' 'parallel-arrays:38' 'vtable-record:37' 'env-frame:39' 'default-param:40' 'record-pattern:41' 'declared-row-hof:42'; do
     printf '%s\0' "$spec"
   done | DOC="$doc" CENSUS_ART="$compiler" CENSUS_DIR="$dir" CENSUS_ROOT="$ROOT" \
         xargs -0 -n 1 -P "${FRONTIER_POOL:-$(nproc)}" bash -c '
@@ -1584,7 +1565,7 @@ run_census() {
           wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" query "$DOC" "census $q" \
             > "$CENSUS_DIR/census-$ln-$$.out" 2> "$CENSUS_DIR/census-$ln-$$.err" \
             || printf "%s\n" "$?" > "$CENSUS_DIR/census-$ln-$$.rc"' census-child
-  for spec in '|>:10' '<|:11' '><:12' '~>:13' 'anonymous:14' '<~:15' 'eta:24' 'effectful-lambda:25' 'iteration:26' 'wildcard-zero:27' 'failure-mask:28' 'print-in-report:31' 'wildcard-fabricates:32' 'underscore-retain:33' 'flag-as-int:34' 'parallel-arrays:35' 'parallel-arrays:37' 'vtable-record:36' 'env-frame:38' 'default-param:39' 'record-pattern:40' 'declared-row-hof:41'; do
+  for spec in '|>:11' '<|:12' '><:13' '~>:14' 'anonymous:15' '<~:16' 'eta:25' 'effectful-lambda:26' 'iteration:27' 'wildcard-zero:28' 'failure-mask:29' 'print-in-report:32' 'wildcard-fabricates:33' 'underscore-retain:34' 'flag-as-int:35' 'parallel-arrays:36' 'parallel-arrays:38' 'vtable-record:37' 'env-frame:39' 'default-param:40' 'record-pattern:41' 'declared-row-hof:42'; do
     q="${spec%%:*}"; line="${spec##*:}"
     if ! cat "$dir"/census-"$line"*.out 2>/dev/null | grep -q "mn-census-verbs:$line"; then
       ok=0
@@ -1742,16 +1723,6 @@ for i in "${!compilers[@]}"; do
   # against a python oracle (PLAN §11 col 4's research half, filter-based).
   capture_signal_shadow "$compiler" "$dir" || continue
   run_signal_crucible "$compiler" "$dir"
-  # THE STAGE LAW IN lib/dsp (V2): configuration first, the datum last, so
-  # `(0 - 2) |> clip(0.5)` clips the signal and a fanout merges into `mix`.
-  # Born RED on boot d956687d: the processors were datum-first, the pipe
-  # filled the threshold (clip(0.5, -2.0) = 0.5), and a pair could not fill
-  # a two-slot stage at all (arity mismatch).
-  run_program "$compiler" stage-law-dsp "$ROOT/tests/frontier/mn-stage-law-dsp.mn" 40 signal "$dir"
-  # The same law at the string vocabulary (`"a,b,c" |> split(",")` splits
-  # the data, never the separator). Written 2026-07-31 and run by nothing
-  # until the verbs landing found it unwired.
-  run_program "$compiler" stage-law-strings "$ROOT/tests/frontier/mn-stage-law-strings.mn" 42 yes "$dir"
   # Two more on-disk data validators, cross-validated against numpy/python (the
   # representation-stress the m3==m4 fixpoint is structurally blind to):
   #  - native [Float] statistics: fold-sum mean, comparison-reduction argmin/
@@ -1790,14 +1761,6 @@ for i in "${!compilers[@]}"; do
   run_program "$compiler" dsp-crucible \
     "$ROOT/tests/frontier/dsp-crucible/dsp-demo.mn" 42 math "$dir"
 
-  # The `<~` line is a ring in the image owned by the record that holds the
-  # cycle (L2, 2026-09-27): a 24,000-deep echo driven 2,000,000 ticks. The
-  # verdict is the value (84 = ⌈2,000,000 / 24,000⌉); the ticks per second
-  # print beside it as the board's number for the cost of a deep line — a
-  # wall clock is a host fact and is never ratcheted. On boot 542ea5a3 the
-  # line was 24,000 module globals shifted per tick.
-  run_program "$compiler" feedback-deep-line \
-    "$ROOT/tests/frontier/mn-feedback-deep-line.mn" 84 yes "$dir"
   if [ -f "$dir/feedback-deep-line.wasm" ]; then
     dl_t0=$(date +%s%N)
     "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/feedback-deep-line.wasm" >/dev/null 2>&1 || true
@@ -1920,109 +1883,29 @@ for i in "${!compilers[@]}"; do
     run_refusal_linked "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" E_TypeMismatch "$dir" arena
   done
-  run_program "$compiler" scheduled-int \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" 60 yes "$dir"
-  run_program "$compiler" scheduled-float \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-float.mn" 60 yes "$dir"
-  run_program "$compiler" scheduled-tuple \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-tuple.mn" 90 yes "$dir"
-  run_program "$compiler" scheduled-closure \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-closure.mn" 34 yes "$dir"
-  run_program "$compiler" scheduled-effect \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-effect.mn" 25 yes "$dir"
-  # ── B1: an effect performed INSIDE a spawned branch (2026-09-27) ──
-  # A branch runs in the world it was spawned in (the task record carries
-  # the live install chain; the fresh instance installs it before the
-  # closure runs), so a perform inside a branch walks to the handler at
-  # the fanout's frame. The RACE RULE at lowering: that handler must be
-  # provable at the fanout's own frame and stateless, or installed inside
-  # the branch — a stateful one is two instances resuming on one shared
-  # record, one beyond the frame fence is unprovable (E_ThreadedBranchEffect,
-  # armed, born at zero). RED on the prior boot: the stateless case faulted
-  # at the 0x100000000 belt (world 0 in the branch), the refusals compiled.
-  run_program "$compiler" threaded-branch-stateless \
-    "$ROOT/tests/frontier/mn-threaded-branch-stateless.mn" 14 yes "$dir"
-  run_program "$compiler" threaded-branch-inner-install \
-    "$ROOT/tests/frontier/mn-threaded-branch-inner-install.mn" 10 yes "$dir"
-  run_refusal_linked "$compiler" threaded-branch-stateful \
-    "$ROOT/tests/frontier/mn-threaded-branch-stateful.mn" E_ThreadedBranchEffect "$dir"
-  run_refusal_linked "$compiler" threaded-branch-caller \
-    "$ROOT/tests/frontier/mn-threaded-branch-caller.mn" E_ThreadedBranchEffect "$dir"
-  run_refusal_linked "$compiler" threaded-branch-transitive \
-    "$ROOT/tests/frontier/mn-threaded-branch-transitive.mn" E_ThreadedBranchEffect "$dir"
-  # AN-2 — an abandon inside a branch: the thread entry banks the op and its
-  # argument area in the task record, the join re-raises it in the joiner
-  # (first in join order wins), and the unwind continues from the join to
-  # the install whose arm answers. RED on boot 311479e1: the branch thread
-  # trapped at the thunk's floor (134). The sequential twin runs the thunk
-  # inline in the spawn arm and unwinds through the arm's own call boundary.
-  run_program "$compiler" abandon-threaded \
-    "$ROOT/tests/frontier/mn-abandon-threaded.mn" 5 yes "$dir"
-  run_program "$compiler" abandon-sequential \
-    "$ROOT/tests/frontier/mn-abandon-sequential.mn" 5 yes "$dir"
-  # A held resume through a `!Alloc` callee runs the remainder inside the
-  # callee's extent, and the remainder carries the op's own multi-shot cost.
-  # The resume performs its continuation's world (the handler's remainder
-  # cell, gated by the callee through the callback's row), and the install
-  # judges that gate against its own remainder: refused, naming `plus_one`.
-  # It compiled and ran to 21 on every boot through 477bb667, declared red
-  # (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume, CLOSED).
-  run_refusal_linked "$compiler" spine-callee-alloc \
-    "$ROOT/tests/frontier/mn-spine-callee-alloc.mn" E_EffectMismatch "$dir"
-  run_program "$compiler" threaded-branch-readonly-state \
-    "$ROOT/tests/frontier/mn-threaded-branch-readonly-state.mn" 10 yes "$dir"
-  # ── RACE (2026-10-06): the race rule reads EVERY write an arm makes ──
-  # An arm's in-place store into its state (`list_set(buf, …)`) is the
-  # field's second writer, read off the same StateFact the arena's install
-  # demand reads; the refusal names the store. RED on boot c8ba5799: the
-  # store crucible compiled and ran (exit 3); the read control runs.
-  run_refusal_linked "$compiler" threaded-branch-state-store \
-    "$ROOT/tests/frontier/mn-threaded-branch-state-store.mn" E_ThreadedBranchEffect "$dir"
-  if grep -q 'an in-place store into `buf`' "$dir/threaded-branch-state-store.compile.err" 2>/dev/null; then
+  # The refusal's words and the run's stdout — what a fixture contract cannot
+  # name yet — read off a compile and a run of the leg's own.
+  wt_entry "$ROOT/tests/frontier/mn-threaded-branch-state-store.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/threaded-branch-state-store.compile.err"
+  if grep -q 'an in-place store into `buf`' "$dir/threaded-branch-state-store.compile.err"; then
     pass "threaded-branch-state-store names the in-place store"
   else
     fail "threaded-branch-state-store refusal does not name the in-place store (see $dir/threaded-branch-state-store.compile.err)"
   fi
-  run_program "$compiler" threaded-branch-state-read \
-    "$ROOT/tests/frontier/mn-threaded-branch-state-read.mn" 14 yes "$dir"
-  # Two branches storing into ONE buffer they both capture: a race read off the
-  # store's target, older than the branch (exit 3 on boot 65e2f966).
-  run_refusal_linked "$compiler" threaded-branch-captured-store \
-    "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" E_ThreadedBranchEffect "$dir"
-  if grep -q 'stores into memory older than itself at' "$dir/threaded-branch-captured-store.compile.err" 2>/dev/null; then
+  wt_entry "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/threaded-branch-captured-store.compile.err"
+  if grep -q 'stores into memory older than itself at' "$dir/threaded-branch-captured-store.compile.err"; then
     pass "threaded-branch-captured-store names the store"
   else
     fail "threaded-branch-captured-store refusal does not name the store (see $dir/threaded-branch-captured-store.compile.err)"
   fi
-  # A spawned instance takes the ROOT's module values through the task
-  # record and never re-runs an init: the buffer the root updated reads the
-  # same in both branches (exit 0 on boot c8ba5799 — each branch read a
-  # fresh copy), an init that prints prints once (three times on the boot),
-  # and the record stands past the abandon words in a yielding module
-  # (exit 3 on the boot).
-  run_program "$compiler" spawn-module-buffer \
-    "$ROOT/tests/frontier/mn-spawn-module-buffer.mn" 18 yes "$dir"
-  run_program "$compiler" spawn-module-values-yielding \
-    "$ROOT/tests/frontier/mn-spawn-module-values-yielding.mn" 17 yes "$dir"
-  run_program "$compiler" spawn-module-init-once \
-    "$ROOT/tests/frontier/mn-spawn-module-init-once.mn" 10 io-rec "$dir"
+  wt_entry "$ROOT/tests/frontier/mn-spawn-module-init-once.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/spawn-module-init-once.wat" 2> /dev/null \
+    && wt_asm "$dir/spawn-module-init-once.wat" "$dir/spawn-module-init-once.wasm" 2> /dev/null \
+    && wt_run "$dir/spawn-module-init-once.wasm" > "$dir/spawn-module-init-once.run.out" 2> /dev/null
   init_lines=$(grep -c '^init$' "$dir/spawn-module-init-once.run.out" 2>/dev/null || true)
   if [ "${init_lines:-0}" -eq 1 ]; then
     pass "spawn-module-init-once: the init ran once across the root and both branches"
   else
     fail "spawn-module-init-once: the init ran ${init_lines:-0} time(s) — a spawned instance re-ran a module init"
   fi
-  # ── SPACE.1 (2026-10-06): instance segments ──
-  # Four spawned branches of a million small allocations each, timed beside
-  # the same branches under sequential_compose. Each instance bumps in its
-  # own run and touches the shared frontier once per 64 KB chunk; on boot
-  # c8ba5799 every allocation was a compare-exchange on one cell and the
-  # threaded run took 278–300 ms against the sequential 48–57 ms. The wall
-  # clock is printed, never ratcheted; the answers are judged.
-  run_program "$compiler" spawn-alloc-contention \
-    "$ROOT/tests/frontier/mn-spawn-alloc-contention.mn" 4 yes "$dir"
-  run_program "$compiler" spawn-alloc-contention-seq \
-    "$ROOT/tests/frontier/mn-spawn-alloc-contention-seq.mn" 4 yes "$dir"
   for leg in spawn-alloc-contention spawn-alloc-contention-seq; do
     if [ -f "$dir/$leg.wasm" ]; then
       t0=$(date +%s%N)
@@ -2031,42 +1914,6 @@ for i in "${!compilers[@]}"; do
       echo "  time $leg: $(( (t1 - t0) / 1000000 )) ms"
     fi
   done
-  # ── B4: the schedule reaches a callee's fanout (2026-09-30) ──
-  # A `~> parallel_compose` install reaches every `><` and `fanout` in its
-  # extent's direct-call reach: the callee is emitted as a schedule twin
-  # (`spec_call_name`), its fanout's spawning form selected by the bracket,
-  # and the race rule reads each branch's row at the INSTANTIATING site (a
-  # callback parameter's row is the argument's). A callee declared `!Thread`
-  # keeps its own frame's schedule. RED on boot 6f2ce437: the frame fence made
-  # every callee's fanout sequential (reaches-callee exited 1, the race
-  # refusal ran to 11), and `fanout` did not exist.
-  run_program "$compiler" schedule-reaches-callee \
-    "$ROOT/tests/frontier/mn-schedule-reaches-callee.mn" 14 yes "$dir"
-  # the schedule's own ops answer inside a spawned branch: the task record
-  # carries the world of the perform, not the spawn arm's (134 on 6f2ce437)
-  run_program "$compiler" threaded-branch-thread-op \
-    "$ROOT/tests/frontier/mn-threaded-branch-thread-op.mn" 14 yes "$dir"
-  run_program "$compiler" fanout-seq-values \
-    "$ROOT/tests/frontier/mn-fanout-seq-values.mn" 12 yes "$dir"
-  run_program "$compiler" fanout-seq-threaded \
-    "$ROOT/tests/frontier/mn-fanout-seq-threaded.mn" 3 yes "$dir"
-  run_program "$compiler" schedule-negation-pins-seq \
-    "$ROOT/tests/frontier/mn-schedule-negation-pins-seq.mn" 1 yes "$dir"
-  run_refusal_linked "$compiler" schedule-race-through-callee \
-    "$ROOT/tests/frontier/mn-schedule-race-through-callee.mn" E_ThreadedBranchEffect "$dir"
-  run_program "$compiler" schedule-race-callee-readonly \
-    "$ROOT/tests/frontier/mn-schedule-race-callee-readonly.mn" 10 yes "$dir"
-  # A branch's `<~` line is the enclosing record's under a caller's spawning
-  # schedule too: the thunk's slot holds the line `step` owns (exit 7 when
-  # the thunk minted its own, reborn every call).
-  run_program "$compiler" fanout-branch-line-threaded \
-    "$ROOT/tests/frontier/mn-fanout-branch-line-threaded.mn" 40 yes "$dir"
-  # ...and one line whichever schedule a call runs under (exit 7 when the
-  # schedule twin's static line was keyed by its own symbol).
-  run_program "$compiler" fanout-branch-line-mixed \
-    "$ROOT/tests/frontier/mn-fanout-branch-line-mixed.mn" 40 yes "$dir"
-  run_program "$compiler" scheduled-persist-float \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-persist-float.mn" 60 persist "$dir"
   # The rooted-image persist (B-i landing 1): ONE build, TWO processes. Leg A
   # persists the whole image mid-computation (exit 40); leg B — a fresh
   # process of the SAME wasm — passes the build-key + world-fingerprint
@@ -2121,89 +1968,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "the compile's live line (linked='$linked', carriage returns into a pipe=$piped)"
   fi
-  # Real host-thread spawn over the shared image (the task-record substrate:
-  # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
-  # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.
-  run_program "$compiler" real-spawn \
-    "$ROOT/tests/frontier/mn-real-spawn.mn" 60 yes "$dir"
-  run_program "$compiler" real-spawn-float \
-    "$ROOT/tests/frontier/mn-real-spawn-float.mn" 60 yes "$dir"
-  run_program "$compiler" real-spawn-identity \
-    "$ROOT/tests/frontier/mn-real-spawn-identity.mn" 60 yes "$dir"
-  run_program "$compiler" refined-alias-nonatomic \
-    "$ROOT/tests/frontier/mn-refined-alias-nonatomic.mn" 3 yes "$dir"
-  run_program "$compiler" refined-alias-forward-ref \
-    "$ROOT/tests/frontier/mn-refined-alias-forward-ref.mn" 42 no "$dir"
-  run_program "$compiler" own-alternative-branches \
-    "$ROOT/tests/frontier/mn-own-alternative-branches.mn" 42 no "$dir"
-  run_program "$compiler" own-call-arg-borrow \
-    "$ROOT/tests/frontier/mn-own-call-arg-borrow.mn" 42 no "$dir"
-  run_program "$compiler" own-forward-ref-seq \
-    "$ROOT/tests/frontier/mn-own-forward-ref-seq.mn" 0 no "$dir"
-  # A Float POSITIONAL constructor field filled from an unannotated param: `g`
-  # must infer Float from its use as the ctor's argument (the mirror of a
-  # pattern binding a sub-pattern to the field type). Before expect_same chased
-  # the arg's live binding, the scalar CLOBBERED the NBound(TVar(binder))
-  # reference, `g` stayed an unresolved var → i32 floor, and the f64 call site
-  # dispatched through an all-i32 $ft — indirect-call trap. RED (run 134) on the
-  # pre-fix boot, 42 on this one.
-  run_program "$compiler" ctor-float-param \
-    "$ROOT/tests/frontier/mn-ctor-float-param.mn" 42 no "$dir"
-  # §4① String = [byte] — THE BEHAVIORAL BATTERY (2026-07-21). The fixpoint
-  # oracle is structurally BLIND to string corruption (the wheel is
-  # byte_at-disciplined and never maps a string), so these output-checked runs
-  # are the load-bearing gate for the ontology: generic combinators over text,
-  # the O(1) concat rope, cross-stride structural ==, the text-view render,
-  # and the stride-1 store range trap (exit 134 = the loud narrowing refusal).
-  # RED on the pre-merge boot by construction — the merge is what makes
-  # map-over-String type at all.
-  run_program "$compiler" string-map \
-    "$ROOT/tests/frontier/mn-string-map.mn" 42 yes "$dir"
-  run_program "$compiler" string-fold \
-    "$ROOT/tests/frontier/mn-string-fold.mn" 42 yes "$dir"
-  run_program "$compiler" string-generic \
-    "$ROOT/tests/frontier/mn-string-generic.mn" 42 yes "$dir"
-  run_program "$compiler" string-eq-concat \
-    "$ROOT/tests/frontier/mn-string-eq-concat.mn" 42 yes "$dir"
-  run_program "$compiler" string-slice-index \
-    "$ROOT/tests/frontier/mn-string-slice-index.mn" 42 yes "$dir"
-  run_program "$compiler" string-show-interp \
-    "$ROOT/tests/frontier/mn-string-show-interp.mn" 42 yes "$dir"
-  run_program "$compiler" string-cross-stride \
-    "$ROOT/tests/frontier/mn-string-cross-stride.mn" 42 yes "$dir"
-  run_program "$compiler" string-parse \
-    "$ROOT/tests/frontier/mn-string-parse.mn" 42 yes "$dir"
-  run_program "$compiler" byte-range-trap \
-    "$ROOT/tests/frontier/mn-byte-range-trap.mn" 134 yes "$dir"
-  # §5.U wide-element cash-out — [Float] as a first-class packed sequence: the
-  # literal is born stride-8 (make_list_sc), a concrete read derefs the
-  # element's reference, structural == compares VALUES (list_eq_f64, never the
-  # references), map/fold/filter/any cross the polymorphic boundary by
-  # reference, a NAMED f64 fn and an f64 CAPTURE reach the table through their
-  # $wf$ word wrappers, and show renders through float_to_str. RED on the
-  # pre-wide-element boot by construction — before the word-protocol boundary
-  # these did not even ASSEMBLE (f64.const into an i32 slot).
-  run_program "$compiler" float-list \
-    "$ROOT/tests/frontier/mn-float-list.mn" 42 yes "$dir"
-  run_program "$compiler" float-map \
-    "$ROOT/tests/frontier/mn-float-map.mn" 42 yes "$dir"
-  run_program "$compiler" float-hof \
-    "$ROOT/tests/frontier/mn-float-hof.mn" 42 yes "$dir"
-  run_program "$compiler" float-show \
-    "$ROOT/tests/frontier/mn-float-show.mn" 42 yes "$dir"
-  # Named-generic monomorphization (the §5.U scalar half): a generic fn whose
-  # site instantiates ONE wide type gets a demand-driven twin emitted under
-  # the spec_wty state — recursive accumulators, higher-order named comparators,
-  # and the transitive sort→merge web. RED (run 1, silent-wrong) on the
-  # pre-spec boot; Int instantiations stay at the byte-identical floor.
-  run_program "$compiler" generic-float-accumulator \
-    "$ROOT/tests/frontier/mn-generic-float-accumulator.mn" 42 yes "$dir"
-  run_program "$compiler" generic-float-comparator \
-    "$ROOT/tests/frontier/mn-generic-float-comparator.mn" 42 yes "$dir"
-  run_program "$compiler" generic-nested-lambda \
-    "$ROOT/tests/frontier/mn-generic-nested-lambda.mn" 42 yes "$dir"
-  run_program "$compiler" generic-multitype \
-    "$ROOT/tests/frontier/mn-generic-multitype.mn" 42 yes "$dir"
   # C5 — partiality is a row fact: the absorb rewrite x * 0 ≡ 0 keeps a
   # division whose precondition stays open (it carries `Trap`), so
   # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the engine).
@@ -2213,160 +1977,12 @@ for i in "${!compilers[@]}"; do
   # gate dropped the operand and the program answered 0.
   run_open_claim "$compiler" absorb-keeps-trap \
     "$ROOT/tests/frontier/mn-absorb-keeps-trap.mn" 134 "$dir"
-  # A tuple destructure in a generic body: offsets/widths project at emit
-  # through the spec bracket (pat_elem_repr / pat_tuple_off), and the
-  # destructure is itself a worthiness witness. RED on the pre-fix boot
-  # twice over: the worthy twin's WAT did not assemble ($x.f64 undefined
-  # local), and the non-worthy floor read an f64's high word as the next
-  # element (invalid exit status, zero diagnostics).
-  run_program "$compiler" generic-wide-tuple-pattern \
-    "$ROOT/tests/frontier/mn-generic-wide-tuple-pattern.mn" 42 yes "$dir"
-  # The effect-instance boundary: a declared-row fn's callers must read its
-  # row's INSTANCE args (subst_row's closed-tail arm — the old arm returned
-  # the empty row with the var tail, so every caller of every declared-row
-  # fn read a BARE row and no effect instance ever crossed a fn boundary).
-  # RED for twelve dig iterations: reverse over (Float, Int) pairs returned
-  # an element-orphaned type, the destructure took the uniform floor, and
-  # the f64 high word came back as the tag (invalid exit, zero diagnostics).
-  run_program "$compiler" forward-wide-instantiation \
-    "$ROOT/tests/frontier/mn-forward-wide-instantiation.mn" 42 yes "$dir"
-  # The holed substrate call types from the FACE (seq_op_sig), never the raw
-  # body's env scheme — RED on the pre-face boot (Int-vs-List at every
-  # `|> list_set(??, …)` stage under the callee-first blob).
-  run_program "$compiler" seq-op-holed-pipe \
-    "$ROOT/tests/frontier/mn-seq-op-holed-pipe.mn" 72 yes "$dir"
-  run_program "$compiler" generic-show \
-    "$ROOT/tests/frontier/mn-generic-show.mn" 42 yes "$dir"
-  run_program "$compiler" aggregate-show \
-    "$ROOT/tests/frontier/mn-aggregate-show.mn" 42 yes "$dir"
-  run_program "$compiler" aggregate-hash \
-    "$ROOT/tests/frontier/mn-aggregate-hash.mn" 42 yes "$dir"
-  # The raw rewind is unsayable: an extent's memory is reclaimed by an arena
-  # and nothing else. RED on every boot through fb8921e3, where this ran to
-  # 42 (the region verb it called is the one P2 deleted).
-  run_refusal_linked "$compiler" raw-rewind-unsayable \
-    "$ROOT/tests/frontier/mn-raw-rewind-unsayable.mn" E_MissingVariable "$dir"
-  run_program "$compiler" top-level-let \
-    "$ROOT/tests/frontier/mn-top-level-let.mn" 42 yes "$dir"
-  # A nominal record satisfies a structural field demand by its own
-  # declaration, read through the env edge (the TName-vs-TRecordOpen unify
-  # arm). RED on the pre-arm boot: `p.age` on a let-bound Person raised a
-  # false E_TypeMismatch (Person vs {age: t | r}) on the canonical SYNTAX
-  # form, and a row-polymorphic `{age: Int, ...}` parameter refused a
-  # Person outright.
-  # SYNTAX §Indexing's tuple form judges and runs: a receiver chased to a
-  # tuple, indexed by a literal, types as that position's element (the
-  # judge's half of the dispatch lower always carried). RED on the
-  # pre-route boot: `p[1]` on a let-bound tuple raised E_TypeMismatch
-  # (the index sugar forced every receiver to List — the census's own
-  # conviction at audit_walk).
-  run_program "$compiler" tuple-index \
-    "$ROOT/tests/frontier/mn-tuple-index.mn" 42 yes "$dir"
-  run_program "$compiler" nominal-field-access \
-    "$ROOT/tests/frontier/mn-nominal-field-access.mn" 42 yes "$dir"
-  run_program "$compiler" rowpoly-accepts-nominal \
-    "$ROOT/tests/frontier/mn-rowpoly-accepts-nominal.mn" 42 yes "$dir"
-  # The A.4 oracle wave (step 1 of the TString dissolution): these pin
-  # TODAY'S string routes — show/hash/ordering scalar faces, the byte
-  # faces inside record fields and ADT payloads, and the `: String`
-  # annotation boundary — because the fixpoint is structurally blind to
-  # a string-route regression. The remaining planned leg is the
-  # String-typed hole proposing string literals (the edit-harness
-  # shape), landing with A.4 step 4's synth rewrite.
-  run_program "$compiler" string-scalar-faces \
-    "$ROOT/tests/frontier/mn-string-scalar-faces.mn" 42 yes "$dir"
-  run_program "$compiler" string-in-aggregates \
-    "$ROOT/tests/frontier/mn-string-in-aggregates.mn" 42 yes "$dir"
-  run_program "$compiler" string-annotation-boundary \
-    "$ROOT/tests/frontier/mn-string-annotation-boundary.mn" 42 yes "$dir"
-  # The Cast capability (phase-A vocabulary): addr erases at lower to its
-  # operand, so the row carries the whole meaning — the green leg proves
-  # word-face facts through the erase (RED on the pre-Cast boot: the op
-  # lowered as a handler-less demand and the executable gate refused).
-  run_program "$compiler" cast-addr \
-    "$ROOT/tests/frontier/mn-cast-addr.mn" 42 yes "$dir"
-  # !Cast severance REFUSES (E_EffectMismatch at the declaration — ARMED
-  # 2026-09-25, the crown's own verdict; before that it reported and the
-  # program ran). The leg asserts the diagnostic fires.
-  wt_entry "$ROOT/tests/frontier/mn-cast-refused.mn" "${RTLIBS[@]}" \
-    | wt_rooted "$compiler" > /dev/null 2> "$dir/cast-refused.err"
-  if grep -q "E_EffectMismatch error" "$dir/cast-refused.err"; then
-    pass "cast-refused severance reported (E_EffectMismatch at the decl)"
-  else
-    fail "cast-refused severance silent (see $dir/cast-refused.err)"
-  fi
-  run_refusal "$compiler" effect-unhandled \
-    "$ROOT/tests/frontier/mn-effect-unhandled.mn" E_EffectUnhandled "$dir"
-  # ARMED 2026-08-18 (wheel census 0 at birth): a fn whose name is an op of
-  # a LINKED effect is unreachable — the env is append-only, read
-  # last-write-wins, and the effect decl re-registers its ops after the
-  # entry module's declarations.
-  #
-  # It CANNOT use run_refusal, and finding out why cost this leg its first
-  # red: run_refusal pipes the fixture in on stdin, which is the BLOB path,
-  # whose link has no lib/threading and therefore no collision to
-  # find. The defect only exists through the MANIFEST, so the leg drives
-  # the compiler the way a person does — a verb and a path.
-  # SEEN RED A SECOND TIME 2026-09-17, at the single-pass pin: the check
-  # lived at the op's env write and read a PRIOR fn — an order the second
-  # pass supplied (fn sigs pre-registered by the trial, ops re-registered
-  # by the final). With one pass effects register first, so the fn WON
-  # silently (exit 0, 35KB of WAT, E_TypeMismatch noise in threading). The
-  # check now runs at the fn's own write too; this leg is what caught it.
-  fso_err="$dir/fn-shadows-op.err"
-  fso_wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" \
-    "$compiler" compile "$ROOT/tests/frontier/mn-fn-shadows-op.mn" 2> "$fso_err")
-  fso_rc=$?
-  fso_count=$(printf '%s' "$fso_err" >/dev/null; grep -c 'E_FnShadowsOp error:' "$fso_err" 2>/dev/null || true)
-  if [ "$fso_rc" -ne 0 ] && [ "$fso_count" -gt 0 ] && [ -z "$fso_wat" ]; then
-    pass "fn-shadows-op refusal (E_FnShadowsOp=$fso_count exit=$fso_rc wat=0B, through the manifest)"
-  else
-    fail "fn-shadows-op refusal (exit=$fso_rc E_FnShadowsOp=$fso_count wat=${#fso_wat}B; see $fso_err)"
-  fi
-  run_refusal "$compiler" effect-stateful-uninstalled \
-    "$ROOT/tests/frontier/mn-effect-stateful-uninstalled.mn" E_EffectUnhandled "$dir"
-  # ARMED 2026-08-08 (the decl-site licence, wheel census 0 at birth): an
-  # unsatisfiable `with E + !E` clause never reaches an executable — born
-  # RED against the pre-arm pin (diagnostic on stderr, WAT still emitted).
-  run_refusal "$compiler" row-contradiction \
-    "$ROOT/tests/frontier/mn-row-contradiction.mn" E_DeclaredRowContradiction "$dir"
-  # An unprovable field offset REFUSES (ARMED 2026-09-28, R0″): the plan's
-  # settle point asks it under the bracket the body is emitted in, before the
-  # gate reads the ledger, so the compile exits 1 with zero WAT bytes. It
-  # REPORTED as narration from 2026-09-15, born RED against that pin: the same
-  # three lines had compiled with ZERO errors and 4500B of WAT carrying the
-  # floor, and the program trapped at an instruction no diagnostic mentioned.
-  # RED again on boot dbbfd107 as a refusal: a warning and a full module.
-  run_refusal "$compiler" field-offset-unprovable \
-    "$ROOT/tests/frontier/mn-field-offset-unprovable.mn" E_FieldOffsetUnprovable "$dir"
   # A base whose every call is keyed to a twin is not emitted (the emitted
   # reach, 2026-09-28), so its floors are never settled, let alone refused:
   # RED on boot c5439637, which answered 46 and warned twice about `pick`'s
   # base.
   run_unnarrated "$compiler" dead-base-unnarrated \
     "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 E_FieldOffsetUnprovable "$dir"
-  # A handler's arms run under the key of the install that runs them (R0b,
-  # 2026-09-28) — its config record's layout, its config value's width. RED
-  # on boot b29e319b: the record read trapped (134) and the Float config
-  # rendered as its box's address (0). The micros hold the prelude-free
-  # shapes (two layouts, a walked perform, a multi-shot driver, Float state).
-  run_program "$compiler" arm-config-record \
-    "$ROOT/tests/frontier/mn-arm-config-record.mn" 42 yes "$dir"
-  run_program "$compiler" arm-config-show-float \
-    "$ROOT/tests/frontier/mn-arm-config-show-float.mn" 1 yes "$dir"
-  # A config argument that is a captured variable arrives intact, now that a
-  # handler's state inits are its own init fn and the install's config
-  # arguments are plain expressions of its frame (R0c, 2026-09-28). RED on
-  # boot 30a35888: exit 0, the config slot written with itself. Banked
-  # unregistered since the march_emit dig; registered with the fix.
-  run_program "$compiler" install-config-capture \
-    "$ROOT/tests/frontier/mn-install-config-capture.mn" 12 io-rec "$dir"
-  # AN-1: a never-returning op answers a bare variable, so fail_exit's arm
-  # answers any install; the body's Int is the install's answer and the
-  # process exits 1 through proc_exit (refused E_TypeMismatch while proc_exit
-  # answered unit and no install had met an arm's answer).
-  run_program "$compiler" "never-op-answer" \
-    "$ROOT/tests/frontier/mn-never-op-answer.mn" 1 io-rec "$dir"
   # The root-row governance gate's three tiers, each pinned: an
   # EVIDENCE-floor demand refuses even with an install elsewhere (a
   # dead-chain perform walks garbage evidence, no belt — the one strict
@@ -2397,43 +2013,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "effect-escaped-install (rc=$esc_rc wat=$(wc -c < "$dir/effect-escaped-install.wat"); see $dir/effect-escaped-install.err)"
   fi
-  run_program "$compiler" effect-residual-absence \
-    "$ROOT/tests/frontier/mn-effect-residual-absence.mn" 42 no "$dir"
-  run_program "$compiler" effect-absorbed \
-    "$ROOT/tests/frontier/mn-effect-absorbed.mn" 42 no "$dir"
-  # The sequence-of-struct fold leaves (Hβ.emit.seq-struct-eq-leaf,
-  # RESOLVED): structural ==/hash/ordering over lists whose element is
-  # a product / nested list / computed string. RED on the pre-leaf
-  # boot three ways — [(1,2,3)] == [(1,2,3)] exit 7 (per-element word
-  # compare = pointer identity), top-level hash([1,2]) an undefined-
-  # $hash_li assembly break, list-of-struct ordering by pointer. The
-  # generated walkers key on the FOLD BOUNDARY (chase_deep at every
-  # entry), whose collision the paired-types program measured: two
-  # TList(TVar) sites with different bindings shared one raw-sig
-  # walker and the second site's elements walked the wrong protocol.
-  run_program "$compiler" list-tuple-eq \
-    "$ROOT/tests/frontier/mn-list-tuple-eq.mn" 42 yes "$dir"
-  run_program "$compiler" list-tuple-fold \
-    "$ROOT/tests/frontier/mn-list-tuple-fold.mn" 42 yes "$dir"
-  run_program "$compiler" rope-list-pattern \
-    "$ROOT/tests/frontier/mn-rope-list-pattern.mn" 42 yes "$dir"
-  run_program "$compiler" seq-rep-license \
-    "$ROOT/tests/frontier/mn-seq-rep-license.mn" 42 yes "$dir"
-  # E_OwnershipViolation armed 2026-07-18 — the double-move fixture moved from
-  # run_diagnostic (productive exit 0) to the armed-class refusal contract.
-  run_refusal "$compiler" own-call-arg-move \
-    "$ROOT/tests/frontier/mn-own-call-arg-move.mn" E_OwnershipViolation "$dir"
-  # E_UseAfterMove ARMED 2026-09-15 — the same move the E_OwnershipViolation
-  # leg above made in July, and the condition was stated by the fixture
-  # itself: "narration until the wheel's own census reaches 0 (the arming
-  # law)". The census reached 0 at the Phase 4.1 landing and stayed there, so
-  # the narration had become a counter held at zero — a proxy for a proof the
-  # medium can hold directly (diag_refuses' own licence: "born at ZERO on
-  # every program measured, which is the point"). Reading a value the affine
-  # ledger already moved is not something to report and proceed through;
-  # before the arena it is a stale read, after it a use-after-free.
-  run_refusal "$compiler" use-after-move \
-    "$ROOT/tests/frontier/mn-use-after-move.mn" E_UseAfterMove "$dir"
   # The usage grade (Phase 4.2, Hβ.infer.grade-is-join-and-mode) — the
   # (consume, read) pair walk: once-per-alternative grades Own (⊔ not +),
   # a condition read grades Ref (mode, not a consume), a statement-level
@@ -2452,86 +2031,8 @@ for i in "${!compilers[@]}"; do
   else
     fail "usage grade (false-narrations=$ug_false; finish='$(printf '%s' "$ug_fin" | head -1)' stmt='$(printf '%s' "$ug_stmt" | head -1)')"
   fi
-  run_refusal "$compiler" refuse-refinement \
-    "$ROOT/tests/frontier/mn-refuse-refinement.mn" E_RefinementRejected "$dir"
-  # P0 · a refined return over a join is decided at each tail, never echoed
-  # off the class — the literal branch refuses. Banked RED since 2026-07-31
-  # (the class alias proved the annotation of itself: exit 0, zero verify
-  # lines on boot 13e8484a).
-  run_refusal "$compiler" refine-join-launder \
-    "$ROOT/tests/frontier/mn-refine-join-launder.mn" E_RefinementRejected "$dir"
-  # R3 · the decidable arithmetic Verify fragment. The true cases DISCHARGE at
-  # compile time (zero V_Pending, run to 42); the false case is PROVEN false
-  # and refuses under the armed class. Pre-R3, none of the three folded — the
-  # nested `self + 1` / `self % 2` accrued silent V_Pending and the invalid
-  # construction emitted.
-  # Effect-polymorphic stored functions — a closure carrying its own effect row
-  # stored in an ADT field, then called (the capability the mentl verb table
-  # rests on). A capability smoke test; the fix's discriminating RED->GREEN was
-  # the wheel's own census (7 E_PurityViolated -> 0), the fixture's own comment
-  # records why the isolated shape does not itself go RED.
-  run_program "$compiler" stored-fn-effect-poly \
-    "$ROOT/tests/frontier/mn-stored-fn-effect-poly.mn" 42 yes "$dir"
-  run_program "$compiler" refine-arith-true \
-    "$ROOT/tests/frontier/mn-refine-arith-true.mn" 42 no "$dir"
-  run_program "$compiler" refine-even \
-    "$ROOT/tests/frontier/mn-refine-even.mn" 42 no "$dir"
-  run_refusal "$compiler" refuse-refine-arith \
-    "$ROOT/tests/frontier/mn-refuse-refine-arith.mn" E_RefinementRejected "$dir"
-  run_refusal "$compiler" refuse-state-shadows-op \
-    "$ROOT/tests/frontier/mn-refuse-state-shadows-op.mn" E_HandlerStateShadowsOp "$dir"
-  run_refusal "$compiler" refuse-dup-fn \
-    "$ROOT/tests/frontier/mn-refuse-dup-fn.mn" E_DuplicateFnName "$dir"
-  # E_DuplicateTypeName armed at birth (2026-07-25) — the last named
-  # silent-MERGE class: two `type X` decls share tag ids and a cross-tag
-  # match returns the wrong arm (measured pre-refusal: exit 13 where 99 was
-  # meant, zero diagnostics).
-  run_refusal "$compiler" refuse-dup-type \
-    "$ROOT/tests/frontier/mn-refuse-dup-type.mn" E_DuplicateTypeName "$dir"
-  # E_MissingVariable armed 2026-07-18 — wheel census 0 and the user-path
-  # licence measured: a no-import stdlib program resolves via the DAG's
-  # prelude seed (compile exit 0, runs); the stdin contract is
-  # self-contained input, where a miss is a real break. E_OccursCheck armed
-  # the same day: its fixture first found the selfapply spin (a real
-  # infinite type TRAPPED the compiler with zero reports); the occurs leaf
-  # now recurses into bound structure and the shape reports + refuses.
-  run_refusal "$compiler" refuse-missing-variable \
-    "$ROOT/tests/frontier/mn-refuse-missing-variable.mn" E_MissingVariable "$dir"
-  run_refusal "$compiler" refuse-occurs-check \
-    "$ROOT/tests/frontier/mn-refuse-occurs-check.mn" E_OccursCheck "$dir"
   run_lsp_hover "$compiler" "$dir" lsp
   run_census "$compiler" "$dir"
-  run_program "$compiler" handler-forward-ref \
-    "$ROOT/tests/frontier/mn-handler-forward-ref.mn" 42 no "$dir"
-  # Handler-config defaults — the parameter product at the handler decl
-  # (SYNTAX §«Default parameter values»). Seen RED on the pre-fix boot:
-  # `handler give(k = 7)` refused at parse (expected `)`, found `=`; exit 1,
-  # zero WAT). The four faces discriminate: bare install fills from the decl
-  # default, explicit fills the slot, omitting parens fills all, a labeled
-  # arg skips over — 8+16+6+12 = 42.
-  run_program "$compiler" handler-config-default \
-    "$ROOT/tests/frontier/mn-handler-config-default.mn" 42 no "$dir"
-
-  # ── the world-as-value gates (R2: the perform reads the live chain) ──
-  # Seen RED on the pre-world boots: thunk 134 (mint-time evidence miss to
-  # the sentinel), arm-config 2 (silent wrong value — the config-param
-  # thunk's performs re-entered the outer handler), shadow 40 (the control,
-  # already correct). Under worlds: the call-site world resolves the thunk
-  # (42), the arm-internal install shadows (40), the control holds (40).
-  run_program "$compiler" world-thunk \
-    "$ROOT/tests/frontier/mn-world-thunk.mn" 42 yes "$dir"
-  run_program "$compiler" world-arm-config \
-    "$ROOT/tests/frontier/mn-world-arm-config.mn" 40 yes "$dir"
-  run_program "$compiler" world-arm-shadow \
-    "$ROOT/tests/frontier/mn-world-arm-shadow.mn" 40 yes "$dir"
-  # R4+A4: a MultiShot remainder's singleton perform resolves through the
-  # k record's FROZEN world after the crossed install's bracket exited.
-  # Seen RED twice on pin 9bfcf506: 134 (the k2 loud floor at the
-  # driverless crossing, pre-A4) then 30 (A4 un-floored but the perform
-  # read the bracket-restored $scaler_state_g cache — the null page as its
-  # config). GREEN = the chain read: (10+6) + (20+6).
-  run_program "$compiler" world-resume-frozen \
-    "$ROOT/tests/frontier/mn-world-resume-frozen.mn" 42 yes "$dir"
 
   # ── the annotation verifier PROVES (never reads boundness) ──────────
   # Seen RED on the pre-fix boot: an allocating main (++ carries its
@@ -2574,8 +2075,8 @@ for i in "${!compilers[@]}"; do
   # declares `with Pure` since T2, so its clause is what stands on add.
   ta_file="$ROOT/tests/frontier/mn-teach-authored.mn"
   ta_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" teach "$ta_file" 2>/dev/null)
-  ta_decl=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:15" 2>/dev/null)
-  ta_call=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:17:40" 2>/dev/null)
+  ta_decl=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:16" 2>/dev/null)
+  ta_call=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:18:40" 2>/dev/null)
   if ! printf '%s' "$ta_out" | grep '^step:' | grep -q 'add with !Alloc' \
      && printf '%s' "$ta_out" | grep '^helper:' | grep -q 'tighten' \
      && printf '%s' "$ta_out" | grep '^add:' | grep -q 'with Pure' \
@@ -2789,38 +2290,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "missing import (exit=$mirc E_MissingImport=$micount; see $dir/missing-import.out)"
   fi
-
-  # ── parameters pair arity for arity — the tuple-decomposition rule is gone ──
-  # Two shapes the deleted "parameters ARE tuples" unification admitted and
-  # the emit never carried: a pair piped into a two-parameter fn, and a
-  # pair-destructuring arm literal handed where a two-argument callback is
-  # called (the shape the wheel's own build wrote into a fold, 2026-09-27).
-  # Both checked clean and trapped `indirect call type mismatch` on boot
-  # b145b836; both refuse now. Green again only at
-  # Hβ.lower.parameter-product-calling-convention.
-  run_refusal "$compiler" tuple-into-binary \
-    "$ROOT/tests/frontier/mn-tuple-into-binary.mn" E_TypeMismatch "$dir"
-  # ── L1: arithmetic demands a number of its operand (2026-09-27) ──
-  # `+ - * / %` gate their operand's type cell numeric at the judgment: a
-  # bound aggregate refuses at the operator; a generic fn's instantiation at
-  # a record refuses at the call that binds the copied gate; a copy minted
-  # before the demand (a sig'd self-reference) is reached through the
-  # instance column. All three refuse at the JUDGMENT — zero WAT — and the
-  # check leg is the felt claim: `mentl check` says so.
-  run_refusal "$compiler" arith-on-aggregate \
-    "$ROOT/tests/frontier/mn-arith-on-aggregate.mn" E_ArithOnAggregate "$dir"
-  run_refusal "$compiler" arith-on-aggregate-twin \
-    "$ROOT/tests/frontier/mn-arith-on-aggregate-twin.mn" E_ArithOnAggregate "$dir"
-  run_refusal "$compiler" arith-on-aggregate-instance \
-    "$ROOT/tests/frontier/mn-arith-on-aggregate-instance.mn" E_ArithOnAggregate "$dir"
-  aoa_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-arith-on-aggregate-twin.mn" 2>&1 | grep -cE 'E_ArithOnAggregate')
-  if [ "$aoa_n" -ge 1 ]; then
-    pass "arith-on-aggregate check: the judgment refuses (E_ArithOnAggregate=$aoa_n)"
-  else
-    fail "arith-on-aggregate check (E_ArithOnAggregate=$aoa_n — mentl check passed a product into a generic arithmetic)"
-  fi
-  run_refusal "$compiler" pair-arm-as-binary-callback \
-    "$ROOT/tests/frontier/mn-pair-arm-as-binary-callback.mn" E_TypeMismatch "$dir"
 
   # ── mentl fmt — layout is projection, never contract ────────────────
   # The render is TOTAL over the surface and precedence-inverse (an
@@ -3232,7 +2701,7 @@ for i in "${!compilers[@]}"; do
   # candidate is PROVEN, the nullary constructor is a VALUE rendered by its
   # own name, and the refusal that remains carries the medium's own words.
   tcell="$ROOT/tests/frontier/mn-hole-is-a-term-cell.mn"
-  tcout=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-is-a-term-cell.mn:23:38 2>"$dir/term-cell.err")
+  tcout=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-is-a-term-cell.mn:24:38 2>"$dir/term-cell.err")
   tcerr=$(grep -c ' error: ' "$dir/term-cell.err" || true)
   if [ "$tcerr" = 0 ] && printf '%s' "$tcout" | grep -q 'none_of()' \
      && printf '%s' "$tcout" | grep -q '^  None  — ' \
@@ -3263,7 +2732,7 @@ for i in "${!compilers[@]}"; do
   # ROW: `silent()` is Pure, `logged()` performs Log, and choose's declared
   # row admits both — so the fill decides what the program may DO, which
   # outranks every other distinction.
-  qr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-row-tie.mn:31:33 2>/dev/null)
+  qr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-row-tie.mn:32:33 2>/dev/null)
   if printf '%s' "$qr" | grep -q 'differ in what they may DO — Pure against Log'; then
     pass "computed question: row (the capability split outranks name and value)"
   else
@@ -3272,7 +2741,7 @@ for i in "${!compilers[@]}"; do
   # NAME: pure_seven(), calm_seven() and the literal 7 all denote 7 — the
   # denotation walk follows a zero-arg call to its callee's body — so the
   # only real choice is which name carries the intent.
-  qn=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-capability-tie.mn:16:38 2>/dev/null)
+  qn=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-capability-tie.mn:17:38 2>/dev/null)
   if printf '%s' "$qn" | grep -q 'denotes the same value — the question is which name'; then
     pass "computed question: name (one value, three spellings)"
   else
@@ -3288,7 +2757,7 @@ for i in "${!compilers[@]}"; do
   # the members (C2, 2026-09-27) — so the fact is read off the question: a
   # ROW split, "E against Pure", can only be raised by an admitted E
   # performer. The member line this leg used to grep is no longer written.
-  qa=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-row-absorbed.mn:15:21 2>/dev/null)
+  qa=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-row-absorbed.mn:16:21 2>/dev/null)
   if printf '%s' "$qa" | grep -q '4 proven survivors' && printf '%s' "$qa" | grep -q 'E against Pure' && ! printf '%s' "$qa" | grep -q 'refused eff_one'; then
     pass "hole row: a candidate performing what the enclosing ~> absorbs is proposed (the tie's question is the row split, E against Pure)"
   else
@@ -3323,8 +2792,8 @@ for i in "${!compilers[@]}"; do
   # import deep, which declares a fitting `quadruple`, is never offered at
   # stage.mn: on boot c939f5b8 the imported ring was the transitive closure
   # and the two tied.
-  qp=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-hole.mn:13:25 2>/dev/null)
-  qf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-fill.mn:8:25 2>/dev/null)
+  qp=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-hole.mn:14:25 2>/dev/null)
+  qf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-fill.mn:9:25 2>/dev/null)
   ringdemo="$ROOT/tests/frontier/stage-ring-demo"
   qr=$(cd "$ringdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ringdemo" --dir /tmp "$compiler" stage.mn:12:25 2>/dev/null)
   if printf '%s' "$qp" | grep -q '^  double  ' && printf '%s' "$qp" | grep -q '^  inc  ' \
@@ -3338,7 +2807,7 @@ for i in "${!compilers[@]}"; do
   fi
   # SHAPE: the constant read stops at a branch, so the medium will not claim
   # two unread bodies agree — the arm that keeps DivName honest.
-  qs=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-shape-tie.mn:19:31 2>/dev/null)
+  qs=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-shape-tie.mn:20:31 2>/dev/null)
   # C2 (2026-09-27): a tie past width three renders the COUNT and the
   # QUESTION, never the member list — the five survivors here print as
   # "5 proven survivors" and the one question line (exactly one indented
@@ -3356,7 +2825,7 @@ for i in "${!compilers[@]}"; do
   # thing the two segments disagree on; the question is the position's type,
   # read off the segment's writes, never a value question about `1` and "a".
   # RED on boot b1637650: "differ in VALUE and nothing here bounds the value".
-  qt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-type-tie.mn:16:11 2>/dev/null)
+  qt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-type-tie.mn:17:11 2>/dev/null)
   if printf '%s' "$qt" | grep -q 'differ in TYPE — Int against String'; then
     pass "computed question: type (the free cell the segments bound is the first divergence)"
   else
@@ -3366,7 +2835,7 @@ for i in "${!compilers[@]}"; do
   # the hole's cell, the binder `y` and the parameter `x` one class, so a
   # survivor binds pick's own return; the question names that cell through
   # its Reason. RED on boot b1637650: a value question.
-  qc=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-cell-tie.mn:17:11 2>/dev/null)
+  qc=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-cell-tie.mn:18:11 2>/dev/null)
   if printf '%s' "$qc" | grep -q 'differ in TYPE — Int against Float' && printf '%s' "$qc" | grep -q 'the cell that moves: .*pick'; then
     pass "computed question: type at a context cell (a parameter's class, named by its Reason)"
   else
@@ -3563,9 +3032,9 @@ for i in "${!compilers[@]}"; do
   ent_rc=$?
   ent_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-effect-enters.mn "why quiet WASI" 2>/dev/null)
   if [ "$ent_rc" -ne 0 ] \
-     && printf '%s' "$ent_out" | grep -q 'declared as quiet; WASI enters at [a-z/-]*mn-effect-enters:19:[0-9]* through `helper` → at [a-z/-]*mn-effect-enters:15:[0-9]* through `log_it` → at [a-z/-]*mn-effect-enters:12:[0-9]* through `print_string` → at io:' \
+     && printf '%s' "$ent_out" | grep -q 'declared as quiet; WASI enters at [a-z/-]*mn-effect-enters:20:[0-9]* through `helper` → at [a-z/-]*mn-effect-enters:16:[0-9]* through `log_it` → at [a-z/-]*mn-effect-enters:13:[0-9]* through `print_string` → at io:' \
      && printf '%s' "$ent_out" | grep -q 'declared as fd_write, an op of WASI declared at io:' \
-     && printf '%s' "$ent_why" | grep -q 'WASI enters at [a-z/-]*mn-effect-enters:19:[0-9]* through `helper`' \
+     && printf '%s' "$ent_why" | grep -q 'WASI enters at [a-z/-]*mn-effect-enters:20:[0-9]* through `helper`' \
      && printf '%s' "$ent_why" | grep -q 'an op of WASI declared at'; then
     pass "effect-enters (the refusal's chain runs helper → log_it → print_string to the op of WASI, and why quiet WASI answers it)"
   else
@@ -3582,9 +3051,9 @@ for i in "${!compilers[@]}"; do
   abs_rc=$?
   abs_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-effect-enters-absorbed.mn "why quiet Log" 2>/dev/null)
   if [ "$abs_rc" -ne 0 ] \
-     && printf '%s' "$abs_out" | grep -q 'declared as quiet; Log enters at [a-z/-]*mn-effect-enters-absorbed:29:[0-9]* through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:15:[0-9]* through `log` → declared as log, an op of Log' \
+     && printf '%s' "$abs_out" | grep -q 'declared as quiet; Log enters at [a-z/-]*mn-effect-enters-absorbed:30:[0-9]* through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:16:[0-9]* through `log` → declared as log, an op of Log' \
      && ! printf '%s' "$abs_out" | grep -q 'through `work`' \
-     && printf '%s' "$abs_why" | grep -q 'through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:15:[0-9]* through `log`' \
+     && printf '%s' "$abs_why" | grep -q 'through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:16:[0-9]* through `log`' \
      && ! printf '%s' "$abs_why" | grep -q 'through `work`'; then
     pass "effect-enters-absorbed (an absorbed effect enters through the install's arm, never the body it absorbs from)"
   else
@@ -3592,8 +3061,8 @@ for i in "${!compilers[@]}"; do
   fi
   # `!Mutate` refuses naming the store, through calls and through a partial handed to a callee (clean on boot 65e2f966).
   mut_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-mutate-enters.mn 2>&1)
-  if printf '%s' "$mut_out" | grep -q 'declared as relayed; Mutate enters at [a-z/-]*mn-mutate-enters:11:[0-9]* through `relay` → at [a-z/-]*mn-mutate-enters:7:[0-9]* through `fill` → at [a-z/-]*mn-mutate-enters:5:[0-9]* through `list_set` → at lists:[0-9:]*, `store_i32`, a store into memory older' \
-     && printf '%s' "$mut_out" | grep -q 'declared as handed; Mutate enters at [a-z/-]*mn-mutate-enters:13:[0-9]* through `apply` → at [a-z/-]*mn-mutate-enters:13:[0-9]* through `fill`'; then pass "mutate-enters (each !Mutate refusal names the store)"; else fail "mutate-enters ($(printf '%s' "$mut_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"; fi
+  if printf '%s' "$mut_out" | grep -q 'declared as relayed; Mutate enters at [a-z/-]*mn-mutate-enters:12:[0-9]* through `relay` → at [a-z/-]*mn-mutate-enters:8:[0-9]* through `fill` → at [a-z/-]*mn-mutate-enters:6:[0-9]* through `list_set` → at lists:[0-9:]*, `store_i32`, a store into memory older' \
+     && printf '%s' "$mut_out" | grep -q 'declared as handed; Mutate enters at [a-z/-]*mn-mutate-enters:14:[0-9]* through `apply` → at [a-z/-]*mn-mutate-enters:14:[0-9]* through `fill`'; then pass "mutate-enters (each !Mutate refusal names the store)"; else fail "mutate-enters ($(printf '%s' "$mut_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"; fi
   # ── the installed command keeps a path under the cwd as written ──────
   # The shim hands a path OUTSIDE the cwd to the guest absolute (a `..`
   # above the cwd preopen is refused), and a path under the cwd as the
@@ -3904,7 +3373,7 @@ for i in "${!compilers[@]}"; do
   # The hole is Positive, so the tie is three wide (width, kerning, the
   # ladder's 1) and the members render — the ORDER is only observable in
   # the member list, which the surface writes up to width three (C2).
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" tests/frontier/mn-ranker-local-intent.mn:13:24 >"$dir/ranker.out" 2>/dev/null
+  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" tests/frontier/mn-ranker-local-intent.mn:14:24 >"$dir/ranker.out" 2>/dev/null
   first_survivor=$(grep -A1 'Propose:' "$dir/ranker.out" | tail -1)
   if printf '%s' "$first_survivor" | grep -q 'width()'; then
     pass "ranker: local intent lifts the used name (width first)"
@@ -3920,57 +3389,22 @@ for i in "${!compilers[@]}"; do
   else
     fail "ranker containment (banner/main leaked into the fan; see $dir/ranker.out)"
   fi
-  # ── instance-precise negation (Arc 3's first landing) ──────────────
-  # The parameterized effect DECL head parses (RED on the prior boot:
-  # ten P_ tokens at `effect Sample(rate: Int)`), and the negation holds
-  # its instance: a declared !Sample(44100) beside Sample(48000) SURVIVES
-  # row construction (the by-name dedup used to delete it silently) and
-  # blocks conservatively — same instance and bare performs report,
-  # a provably-distinct sibling instance is admitted and runs.
-  wt_entry "$ROOT/tests/frontier/mn-effect-instance-sibling.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/inst-sib.wat" 2> "$dir/inst-sib.err" \
-    && wt_asm "$dir/inst-sib.wat" "$dir/inst-sib.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/inst-sib.wasm"
-  sib_rc=$?
-  if [ "$sib_rc" = "42" ] && ! grep -q 'E_EffectMismatch' "$dir/inst-sib.err"; then
-    pass "instance negation admits the provably-distinct sibling (42, no mismatch)"
-  else
-    fail "instance sibling (rc=$sib_rc; see $dir/inst-sib.err)"
-  fi
-  wt_entry "$ROOT/tests/frontier/mn-effect-instance-severed.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-sev.err"
-  if grep -q 'E_EffectMismatch' "$dir/inst-sev.err"; then
-    pass "instance negation severs the same instance (mismatch reported)"
-  else
-    fail "instance severed (no mismatch; see $dir/inst-sev.err)"
-  fi
-  wt_entry "$ROOT/tests/frontier/mn-effect-instance-bare.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-bare.err"
-  if grep -q 'E_EffectMismatch' "$dir/inst-bare.err"; then
-    pass "instance negation blocks the bare perform (conservative)"
-  else
-    fail "instance bare (no mismatch; see $dir/inst-bare.err)"
-  fi
   # Instance-arg TYPING against the registered signature (the TTuple
   # scheme register_effect_ops publishes): a scalar-literal arg whose
-  # ground type disagrees reports the mismatch; wrong arity reports the
-  # constructor-arity class. Both RED on the prior boot (silent admits;
-  # the head itself only parse-recovered there).
+  # ground type disagrees reports the mismatch and the head parses clean
+  # (no P_ beside it). The other faces are their fixtures' contracts.
   wt_entry "$ROOT/tests/frontier/mn-effect-instance-argty.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-argty.err"
   if grep -q 'E_TypeMismatch' "$dir/inst-argty.err" && ! grep -q 'P_' "$dir/inst-argty.err"; then
     pass "instance arg typing (wrong scalar type reports; the head parses clean)"
   else
     fail "instance argty (see $dir/inst-argty.err)"
   fi
-  wt_entry "$ROOT/tests/frontier/mn-effect-instance-arity.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-arity.err"
-  if grep -q 'E_ConstructorArity' "$dir/inst-arity.err"; then
-    pass "instance arg arity (wrong count reports)"
-  else
-    fail "instance arity (see $dir/inst-arity.err)"
-  fi
   # ── the splice line carry ──────────────────────────────────────────
   # A splice spanning newlines resumes the outer string scan at the TRUE
   # line, so nodes after it keep truthful spans and the address resolves
   # to the decl, never the module placeholder. Seen RED on the stale-line
   # boot: the whole fixture module answered `placeholder`.
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" tests/frontier/mn-splice-line-carry.mn:12:31 >"$dir/splice-carry.out" 2>/dev/null
+  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" tests/frontier/mn-splice-line-carry.mn:13:31 >"$dir/splice-carry.out" 2>/dev/null
   if grep -q 'Query' "$dir/splice-carry.out" && grep -q ': Int' "$dir/splice-carry.out" \
      && ! grep -q 'placeholder' "$dir/splice-carry.out"; then
     pass "splice line carry (post-string spans truthful; the address resolves)"
@@ -3988,15 +3422,6 @@ for i in "${!compilers[@]}"; do
   # ride beside the quiet face's run. The old single-fixture form banked
   # "exit 42 with exactly one mismatch" — a real `!WASI` leak the unarmed
   # era let run (§9.11).
-  wt_entry "$ROOT/tests/frontier/mn-hof-row-gate.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
-    && wt_asm "$dir/hof-gate.wat" "$dir/hof-gate.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/hof-gate.wasm" > /dev/null
-  hof_rc=$?
-  if [ "$hof_rc" = "42" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err")" = "0" ]; then
-    pass "hof row gate (quiet admitted, runs 42, zero mismatches)"
-  else
-    fail "hof row gate (rc=$hof_rc mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err"); see $dir/hof-gate.err)"
-  fi
   wt_entry "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
   hofn_rc=$?
   if [ "$hofn_rc" != "0" ] && [ ! -s "$dir/hof-gate-noisy.wat" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err")" = "1" ]; then
@@ -4009,15 +3434,6 @@ for i in "${!compilers[@]}"; do
   # RE-RUNS its thunk — §4④): the replay-exact branch is admitted by
   # subsumption and the whole checkpoint+run+join loop runs; a printing
   # branch reports the mismatch naming the severed row at its own edge.
-  wt_entry "$ROOT/tests/frontier/mn-persist-branch-clean.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/pb-clean.wat" 2> "$dir/pb-clean.err" \
-    && wt_asm "$dir/pb-clean.wat" "$dir/pb-clean.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" --dir /tmp "$dir/pb-clean.wasm" > /dev/null
-  pb_rc=$?
-  if [ "$pb_rc" = "42" ] && ! grep -q 'E_EffectMismatch' "$dir/pb-clean.err"; then
-    pass "persist branch barrier admits the replay-exact thunk (42, no mismatch)"
-  else
-    fail "persist branch clean (rc=$pb_rc; see $dir/pb-clean.err)"
-  fi
   wt_entry "$ROOT/tests/frontier/mn-persist-branch-external.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/pb-ext.err"
   if grep -q 'E_EffectMismatch' "$dir/pb-ext.err" && grep -q '!WASI' "$dir/pb-ext.err"; then
     pass "persist branch barrier reports the replaying external (severed row named)"
@@ -4091,11 +3507,6 @@ for i in "${!compilers[@]}"; do
     fail "interval fragment (pending comparisons: $iv_err, want 1)"
   fi
 
-  # H4 · a function parameter handed on learns its callee's contract: `outer`
-  # hands `g` to `drive`, which provides `Hz`, so the lambda's demand
-  # discharges at main's crossing — no debt, and it runs to 40.
-  run_program "$compiler" refine-transport-provides \
-    "$ROOT/tests/frontier/mn-refine-transport-provides.mn" 40 no "$dir"
   # ... and what it provides is the MEET over everywhere it is handed:
   # `drive2` provides nothing, so the lambda's demand is debt where it
   # crosses into `outer` — exactly one pending, on main's line. Zero is a
@@ -4250,25 +3661,6 @@ for i in "${!compilers[@]}"; do
     fi
   done
 
-  # ─── A HANDLER IS EXHAUSTIVE (L5, 2026-09-30) ───────────────────────
-  # The split-effect pair — two handlers covering one effect's DISJOINT op
-  # sets, both installed — was the shape the op-keyed dispatch walk of
-  # 2026-09-09 (Hβ.effects.one-walk-three-implementations) served at
-  # runtime and the ROW could never see: `ha` answers `a` alone, its
-  # install subtracted the whole of `Two` by name, and a declared `!Two`
-  # over it was a false absence proof — compiled clean, trapped reading
-  # the evidence at the root. A handler is exhaustive over every effect
-  # its arms answer now (the match-exhaustiveness law at a handler), so
-  # both fixtures REFUSE at the declaration; the honest split is an arm
-  # that forwards its op outward (tests/micros/mn-handler-forwarding-arm.mn)
-  # or two effects. The deep-handler arm stays as a pin: an arm that
-  # performs the op it handles must resolve OUTWARD. ASSEMBLE is in the
-  # leg for the same reason as the reification pair — check alone called
-  # the RED one green.
-  run_refusal "$compiler" split-effect-op-key \
-    "$ROOT/tests/frontier/mn-split-effect-op-key.mn" E_HandlerInexhaustive "$dir"
-  run_refusal "$compiler" split-effect-evidence \
-    "$ROOT/tests/frontier/mn-split-effect-evidence.mn" E_HandlerInexhaustive "$dir"
   for ok in "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
     ok_tag=${ok%%:*}; ok_r=${ok#*:}; ok_fix=${ok_r%%:*}; ok_r=${ok_r#*:}
     ok_want=${ok_r%%:*}; ok_what=${ok_r#*:}
@@ -4372,7 +3764,7 @@ for i in "${!compilers[@]}"; do
   w_head=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticks 2>/dev/null)
   # E4: the head carries the declaration's address (RED on boot 8b071ba3,
   # whose head stopped at the row).
-  printf '%s' "$w_head" | grep -q '^→ ticks(own x: Int) -> Int with Tick  at .*mn-where-badges:10$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
+  printf '%s' "$w_head" | grep -q '^→ ticks(own x: Int) -> Int with Tick  at .*mn-where-badges:11$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
   printf '%s' "$w_head" | grep -q '^  x : Int @ i32 (inferred)$' || { w_ok=0; fail "where parameter badge (got: $w_head)"; }
   w_pin=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" s 2>/dev/null)
   printf '%s' "$w_pin" | grep -q '^→ s : Float @ f32 (pinned)$' || { w_ok=0; fail "where pinned parameter, SYNTAX's own example (got: $w_pin)"; }
@@ -4389,7 +3781,7 @@ for i in "${!compilers[@]}"; do
   # install's body's (`ticker`); the type itself when an arm's own value bound
   # it (`zero` answers Int). RED on boot cf8a6d50, whose handler type carried
   # no answer.
-  printf '%s' "$w_hand" | grep -q '^→ handler ticker absorbs Tick, answers a  at .*mn-where-badges:28$' || { w_ok=0; fail "where handler declaration (got: $w_hand)"; }
+  printf '%s' "$w_hand" | grep -q '^→ handler ticker absorbs Tick, answers a  at .*mn-where-badges:29$' || { w_ok=0; fail "where handler declaration (got: $w_hand)"; }
   w_zero=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/tests/micros/mn-refine-install-answer.mn" zero 2>/dev/null)
   printf '%s' "$w_zero" | grep -q '^→ handler zero absorbs Ask, answers Int  at .*mn-refine-install-answer:12$' || { w_ok=0; fail "where handler answer (got: $w_zero)"; }
   # The install's refusal carries the reason its unify was asked with — the
@@ -4411,7 +3803,7 @@ for i in "${!compilers[@]}"; do
   # d956687d, which put `heads` at line 6, the local in `one` (judged first,
   # since `heads` calls it); the function stands at line 10.
   w_shadow=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/tests/frontier/mn-where-shadowed-local.mn" heads 2>/dev/null)
-  printf '%s' "$w_shadow" | grep -q '^→ heads(ref xs: \[a\]) -> Int with Memory  at .*mn-where-shadowed-local:10$' || { w_ok=0; fail "where address of a function a local shares its name with (got: $w_shadow)"; }
+  printf '%s' "$w_shadow" | grep -q '^→ heads(ref xs: \[a\]) -> Int with Memory  at .*mn-where-shadowed-local:11$' || { w_ok=0; fail "where address of a function a local shares its name with (got: $w_shadow)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).
@@ -4451,7 +3843,7 @@ for i in "${!compilers[@]}"; do
   # the WHERE badges narrate, which they do — folding an unrelated `why`
   # coordinate defect into that verdict hid a real pass behind a real red.
   wy_file_ok=0
-  printf '%s' "$wy_out" | grep -q 'mn-where-badges:8' && wy_file_ok=1
+  printf '%s' "$wy_out" | grep -q 'mn-where-badges:9' && wy_file_ok=1
   judge why-coordinates "$wy_file_ok" \
     "why coordinates carry their file (line half fixed; file half is Hβ.why.reason-span-is-a-weave-coordinate) (got: $wy_out)"
   # The capability-at-tee badge (§11 6.3's felt face): the install line
@@ -4600,8 +3992,8 @@ for i in "${!compilers[@]}"; do
   # answered addresses alone, so it could not say what it listed.
   df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-decls-facet.mn" "decls" 2>/dev/null)
   df_once() { [ "$(printf '%s\n' "$df_out" | grep -cE "^  $1  at .*mn-decls-facet:$2:")" = 1 ]; }
-  if printf '%s' "$df_out" | grep -q "declared name(s)" && df_once inc 7 && df_once twice 9 && df_once main 11; then
-    pass "decls facet: each of the fixture's three decls listed once, by name at its line (7/9/11)"
+  if printf '%s' "$df_out" | grep -q "declared name(s)" && df_once inc 8 && df_once twice 10 && df_once main 12; then
+    pass "decls facet: each of the fixture's three decls listed once, by name at its line (8/10/12)"
   else
     fail "decls facet (each decl once, by name at its line; got: $(printf '%s' "$df_out" | grep -E 'declared name|mn-decls-facet' | tr '\n' ' '))"
   fi
@@ -4615,11 +4007,11 @@ for i in "${!compilers[@]}"; do
   # local read among them, because the refs column was keyed by the name.
   re_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-refs-by-edge.mn" "refs of width" 2>/dev/null)
   if printf '%s' "$re_out" | grep -q "^→ 2 reference(s)" \
-     && [ "$(printf '%s\n' "$re_out" | grep -cE "mn-refs-by-edge:7:[0-9]+-7:[0-9]+  call")" = 2 ] \
-     && ! printf '%s' "$re_out" | grep -q "mn-refs-by-edge:11:"; then
-    pass "refs by edge: the function's two calls (line 7), never the shadowing local's read (line 11)"
+     && [ "$(printf '%s\n' "$re_out" | grep -cE "mn-refs-by-edge:8:[0-9]+-8:[0-9]+  call")" = 2 ] \
+     && ! printf '%s' "$re_out" | grep -q "mn-refs-by-edge:12:"; then
+    pass "refs by edge: the function's two calls (line 8), never the shadowing local's read (line 12)"
   else
-    fail "refs by edge (want the 2 calls on line 7 and nothing on line 11; got: $(printf '%s' "$re_out" | tr '\n' ' '))"
+    fail "refs by edge (want the 2 calls on line 8 and nothing on line 12; got: $(printf '%s' "$re_out" | tr '\n' ' '))"
   fi
 
   # ─── The imports facet reads the references that cross an import ────
@@ -4653,10 +4045,10 @@ for i in "${!compilers[@]}"; do
   rf_prose=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "prose facet-prose-marker" 2>/dev/null)
   rf_writes=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "writes of sum" 2>/dev/null)
   rf_reads=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "reads of width" 2>/dev/null)
-  if printf '%s' "$rf_text" | grep -q "1 string literal(s)" && printf '%s' "$rf_text" | grep -q "mn-reading-facets:20" \
-     && printf '%s' "$rf_prose" | grep -q "1 comment(s)" && printf '%s' "$rf_prose" | grep -q "mn-reading-facets:4:" \
+  if printf '%s' "$rf_text" | grep -q "1 string literal(s)" && printf '%s' "$rf_text" | grep -q "mn-reading-facets:21" \
+     && printf '%s' "$rf_prose" | grep -q "1 comment(s)" && printf '%s' "$rf_prose" | grep -q "mn-reading-facets:5:" \
      && printf '%s' "$rf_writes" | grep -q "counter.sum: 2 write(s)" && printf '%s' "$rf_writes" | grep -q "sum + n" \
-     && printf '%s' "$rf_reads" | grep -q "1 read(s) of the field" && printf '%s' "$rf_reads" | grep -q "mn-reading-facets:24:"; then
+     && printf '%s' "$rf_reads" | grep -q "1 read(s) of the field" && printf '%s' "$rf_reads" | grep -q "mn-reading-facets:25:"; then
     pass "reading facets: text (the literal at 20), prose (the comment line at 4), writes of (init and update), reads of (the field read at 24)"
   else
     fail "reading facets (text: $(printf '%s' "$rf_text" | head -1) · prose: $(printf '%s' "$rf_prose" | head -1) · writes: $(printf '%s' "$rf_writes" | head -1) · reads: $(printf '%s' "$rf_reads" | head -1))"
@@ -4686,13 +4078,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "information flow (broken:${fl_bad:- none} · source: $(printf '%s' "$fl_src" | tail -1) · endorse: $(printf '%s' "$fl_end" | tail -1))"
   fi
-
-  # ─── The unused-wide-param gate (Hβ.emit.unused-wide-param-floor): an
-  # unused f64 param signs at its real width. Born RED 2026-08-08: the
-  # body-usage scan floored the signature to i32 while the caller pushed
-  # f64 — invalid WAT, refused at assemble. The pair (unused + used)
-  # runs to exit 11 through the compile-assemble-run harness.
-  run_program "$compiler" unused-wide-param "$ROOT/tests/frontier/mn-unused-wide-param.mn" 11 no "$dir"
 
   # ─── The row contradiction refuses at the decl (band L's
   # Hβ.diag.declared-row-contradiction): `with E + !E` reports
@@ -4728,20 +4113,6 @@ for i in "${!compilers[@]}"; do
     pass "debt facet: pending obligations render located with their predicates"
   else
     fail "debt facet (got: $(printf '%s' "$dbt" | head -2 | tr '\n' ' '))"
-  fi
-
-  # ─── !Thread transitivity on the REAL vocabulary (§11 6.5's first
-  # verdict): a fn declared !Thread reaching lib/threading's spawn
-  # through a call refuses transitively — the crown's own machinery
-  # verified against the real effect (the crown gate's stdin harness
-  # cannot link lib, so the real-vocabulary crucible lives here; the
-  # self-contained sounds live in tests/crown/). Probed 1 mismatch
-  # against the boot before the leg was written.
-  tn_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-thread-negation.mn" 2>&1 | grep -cE 'E_EffectMismatch')
-  if [ "$tn_n" -ge 1 ]; then
-    pass "thread negation: !Thread refuses the transitive spawn on the real vocabulary"
-  else
-    fail "thread negation (mismatch=$tn_n — the transitive spawn passed a !Thread gate)"
   fi
 
   # ─── The ADT-roster facet (`variants NAME` — the confessed missing
@@ -4846,75 +4217,6 @@ for i in "${!compilers[@]}"; do
     fail "relocation order pin (elem order: $eo_elem)"
   fi
 
-  # ─── THE NEGATION REACHES INTO A `<~` RECURRENCE (PLAN §11 6.3) ─────
-  # The feedback-under-negation modal rule. `<~` is pure topology, but what
-  # the recurrence BODY performs is still performed, so a cycle must not
-  # launder a forbidden effect. Born RED against the pre-fix boot: the infer
-  # arm destructured the LHS lambda's row into `_row` and dropped it, so
-  # `fn cycle() with !E` around `((prev) => prev + bump()) <~ Delay(1)`
-  # checked CLEAN. Lives here rather than tests/crown/ because the crown's
-  # stdin harness links no lib and FeedbackSpec's constructors are prelude
-  # vocabulary — mn-thread-negation.mn's precedent.
-  fb_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-feedback-negation.mn" 2>&1 | grep -cE 'E_EffectMismatch')
-  if [ "$fb_n" -ge 1 ]; then
-    pass "feedback negation: !E refuses the effect performed inside the recurrence"
-  else
-    fail "feedback negation (mismatch=$fb_n — the cycle laundered a forbidden effect)"
-  fi
-  # The dual: a `<~` site charges nothing of its own, so `!Alloc` SURVIVES a
-  # cycle at depth 3. Born RED on the boot before 2026-09-25 (`!Alloc + Any
-  # vs Memory + Alloc`: the FeedbackSpec constructor's allocation charged the
-  # frame although emit discards the lowered spec and nothing allocates).
-  # Wired the day E_EffectMismatch was armed, because arming turned that
-  # false charge into a false REFUSAL of tests/micros/mn-feedback-iir —
-  # branch A of the fork banked under Hβ.effects.feedback-row-substitutes.
-  fbt_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-feedback-transport.mn" 2>&1 | grep -cE 'E_EffectMismatch')
-  if [ "$fbt_n" -eq 0 ]; then
-    pass "feedback transport: !Alloc survives a <~ cycle at depth 3 (the spec charges nothing)"
-  else
-    fail "feedback transport (mismatch=$fbt_n — the feedback site charged the spec's construction)"
-  fi
-
-  # ─── THE EIGHT ARMS, SAYABLE TOGETHER (PLAN §2) ─────────────────────
-  # One authoring site per kernel arm in one module: a refinement alias,
-  # a repr pin, an effect with a handler resuming with state, own/ref
-  # markers, a declared row, and all five verbs. PLAN §2 calls the eight
-  # the aspects of ONE cursor-read, and the surface half of that claim
-  # had no gate — every arm was exercised somewhere in the battery, none
-  # of them together. Exit 42 means all eight parsed, typed, lowered and
-  # ran as one program. The read half is the open peer
-  # Hβ.cursor.eight-arms-at-every-site: measured 2026-08-16, the cursor
-  # projects five arms at a fn declaration and none at a type
-  # declaration, so this leg holds the surface while that one is built.
-  run_program "$compiler" eight-arms "$ROOT/tests/frontier/mn-eight-arms.mn" 42 yes "$dir"
-  # `==` in a handler arm over its op's quantified parameters: the arm is
-  # twinned at the install's instance (`Handler(String)`), so the compare
-  # reads String and two byte-equal Strings are equal (0). It compared their
-  # ADDRESSES and answered 1 with no diagnostic from 2026-09-18, declared RED,
-  # until R0c keyed arms by the install's instance.
-  run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
-  # A constructor's payload types come from the INSTANTIATION the graph
-  # proved, never from the declaration that quantified them. These two
-  # legs are the three faces that read measured on 2026-09-18, and they
-  # were declared-red for exactly one landing before proof retired the
-  # declaration: `==` compared a polymorphic sum's payload by ADDRESS
-  # (6, the fixture's own control passing on the same run), `show`
-  # printed that address, and a `Some(1.5)` never assembled because the
-  # binder was declared at the declared width and read at the proven one.
-  # `fold_sig` folds its arguments now, so each instantiation names its
-  # own leaf, and LPCon carries its payload types the way LPTuple always
-  # has. Each fixture's exit NAMES which face broke rather than merely
-  # failing.
-  run_program "$compiler" eq-polymorphic-sum "$ROOT/tests/frontier/mn-eq-polymorphic-sum.mn" 0 yes "$dir"
-  run_program "$compiler" payload-instantiation "$ROOT/tests/frontier/mn-payload-instantiation.mn" 0 yes "$dir"
-
-  # TWO FIXTURES THAT SAT IN tests/frontier/ WITH NO LEG (registered at G2).
-  # An unregistered fixture is a gate that cannot fail: the mutual-negation
-  # witness rotted to a type error when `addr` began answering an address
-  # and nothing noticed, and the arm-wide-op-arg pair named a closed peer no
-  # leg ran. Each runs to its header's value now.
-  run_program "$compiler" mutual-negation-gate "$ROOT/tests/frontier/mn-mutual-negation-gate.mn" 42 yes "$dir"
-  run_program "$compiler" arm-wide-op-arg "$ROOT/tests/frontier/mn-arm-wide-op-arg.mn" 11 yes "$dir"
 
   # (The per-module solo sweep moved to tools/verify.sh on 2026-09-26: it is a
   # census of the wheel's own source, and it was the one leg here that read

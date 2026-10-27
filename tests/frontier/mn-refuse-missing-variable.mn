@@ -1,3 +1,4 @@
+// expect: refuse E_MissingVariable
 // ARMED-CLASS refusal fixture — E_MissingVariable.
 // A name no declaration binds, on the self-contained stdin contract (the
 // input IS the whole program — the wheel's own build form). Pre-arming this

@@ -1,3 +1,4 @@
+// expect: 15
 // The float sentinels' own fixture: NaN, ±Inf and -0.0 are the four
 // values float_to_str renders through a separate branch from the digit
 // path, so they are the ones a change to that path can silently lose.

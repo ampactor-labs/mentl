@@ -1,3 +1,4 @@
+// expect: 60
 // Per-instance identity under real spawn: thread_id reads the identity
 // the thread entry stamped into the spawned instance ($tid_g — a
 // per-instance global IS instance-local storage). Every spawned task

@@ -1,3 +1,4 @@
+// expect: refuse E_OccursCheck
 // ARMED-CLASS refusal fixture — E_OccursCheck.
 // This fixture's first run found the spin it now gates: a genuinely
 // infinite type TRAPPED the compiler (chase_deep / subst_ty stack

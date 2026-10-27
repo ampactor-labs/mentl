@@ -1,3 +1,4 @@
+// expect: 40
 // A refined result over a JOIN whose every tail is a constant is decided
 // per tail: each literal below is inside the `Hz` bound, so each claim
 // discharges where it is written and the compile carries no proof debt —

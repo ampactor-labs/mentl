@@ -1,3 +1,4 @@
+// expect: 42
 // A declaration no clause stands on is taught no lock: main has no callers,
 // so nothing is proposed, although its body proves every absence. It was the
 // positive control for "a body performing nothing still unlocks !Alloc" until

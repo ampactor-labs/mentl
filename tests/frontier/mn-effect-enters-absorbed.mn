@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // AN ABSORBED EFFECT ENTERS THROUGH THE INSTALL. `quiet` declares `!Log`
 // over `(work()) ~> relog`: `relog` absorbs every `log` the body performs,
 // and its own arm performs `log` again, which resolves outside the install —

@@ -1,3 +1,4 @@
+// propose 41:38: ask name
 // The candidate vocabulary has four zero-argument functions returning Seven.
 // Only the pure candidate satisfies choose's !Network constraint. The other three
 // introduce Network directly, transitively, and through a higher-order call.
@@ -23,16 +24,16 @@ effect Network {
 // decided on the literal.
 fn pure_seven() -> Seven with Pure = 7
 
-fn direct_network() -> Seven with Network = {
+fn direct_network() -> Seven = {
   ping()
   pure_seven()
 }
 
-fn transitive_network() -> Seven with Network = direct_network()
+fn transitive_network() -> Seven = direct_network()
 
 fn call_zero(f) = f()
 
-fn higher_order_network() -> Seven with Network = call_zero(() => {
+fn higher_order_network() -> Seven = call_zero(() => {
   ping()
   pure_seven()
 })

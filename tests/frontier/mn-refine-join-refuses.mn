@@ -1,3 +1,4 @@
+// expect: refuse E_RefinementRejected
 // A claim over a join covers every tail it writes, and one of these tails
 // is outside the bound: 30000.0 is not an `Hz` below 24000.0. The claim
 // decides FALSE from the constants alone, so the compile REFUSES with

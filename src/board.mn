@@ -285,8 +285,10 @@ fn board_bounds() = [
   // left with the generation tally nothing read. 388 -> 383 (2026-10-24):
   // the library's three [Float] fold loops left when a sequence of Floats
   // took the emitted walker, and the fold helpers' tag dispatch became one
-  // arm per variant.
-  Bound({ceiling: 383, question: QCensus(CsIterationCostume)}),
+  // arm per variant. 383 -> 381 (2026-10-27): the census's three arm and
+  // field walkers became `any` over the list the day the match census
+  // joined them with a walker of its own, the 384th.
+  Bound({ceiling: 381, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs

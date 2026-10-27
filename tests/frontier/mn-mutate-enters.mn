@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // `!Mutate` refuses naming the store each refusal reaches: through the calls
 // that hand a parameter on, down to the raw store, and through a partial
 // application handed to a callee, entered where it runs. On boot 65e2f966

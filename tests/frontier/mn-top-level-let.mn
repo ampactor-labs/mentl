@@ -1,3 +1,4 @@
+// expect: 42
 // A module VALUE binding — the first top-level `let` the medium compiles.
 // SYNTAX §Top-level program structure names the form; the wheel carried the
 // machinery (emit_top_let_globals + $__init_lets) with zero users until the

@@ -1,3 +1,4 @@
+// expect: 40
 // A `<~` IN A BRANCH LITERAL IS THE ENCLOSING RECORD'S LINE UNDER EVERY
 // SCHEDULE. `step` installs nothing, so each call under a caller's
 // `parallel_compose` runs its schedule twin, whose branch is a thunk minted

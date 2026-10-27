@@ -1,3 +1,4 @@
+// expect: refuse E_TypeMismatch
 // A pair VALUE piped into a two-parameter function REFUSES (E_TypeMismatch —
 // the function-arity face): a pair is one argument, and the parameter lists
 // pair arity for arity. Until 2026-09-27 a unification rule decomposed any

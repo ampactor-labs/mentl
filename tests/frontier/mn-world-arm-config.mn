@@ -1,3 +1,4 @@
+// expect: 40
 // Band N's true shape — config-fn-evidence-in-arm + arm-internal install:
 // the driver's ARM installs replay_h over a config-param thunk. bt's picks
 // must hit replay_h (40); the evidence bug re-enters outer_pick (2).

@@ -1,3 +1,4 @@
+// expect: 42
 // A generic body that DESTRUCTURES a tuple is layout-sensitive: the element
 // offsets and widths its pattern reads must follow the instantiation, never
 // the word floor. Two faces, both seen RED on the pre-fix boot:

@@ -1,3 +1,4 @@
+// expect: refuse E_ThreadedBranchEffect
 // Two spawned branches storing into ONE buffer both capture: the store is
 // an in-place write into memory older than either branch, made from two
 // instances — the race the arm-state rule names, with no handler between.

@@ -1,3 +1,4 @@
+// expect: 42
 // Interpolation renders TEXT for byte sequences (the text-view law): a String
 // splice is identity — never [104, 105]. The computed check routes through
 // int_to_str explicitly because the INT splice renders empty on the current

@@ -1,3 +1,4 @@
+// expect: 42
 // The whole combinator vocabulary works on text with zero adapters: filter
 // keeps the bytes above 105 (l, l, o), any finds the e, all proves the caps.
 fn main() = {

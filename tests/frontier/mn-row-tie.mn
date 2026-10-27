@@ -1,3 +1,4 @@
+// propose 32:33: ask row
 // The tie whose question is the ROW. Two proven survivors of one refined
 // type, and what separates them is not a name or a value but a CAPABILITY:
 // `silent()` performs nothing, `logged()` performs Log, and `choose`'s

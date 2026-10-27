@@ -1,3 +1,4 @@
+// expect: 42
 effect Sample(rate: Int) {
   tick() -> Int
 }

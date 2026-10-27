@@ -1,3 +1,4 @@
+// expect: refuse E_EffectUnhandled
 // The escaped install — a thunk minted UNDER an install and called with
 // that install's extent long dead. It REFUSES, loudly, and that is the
 // answer to a question this leg used to reserve.

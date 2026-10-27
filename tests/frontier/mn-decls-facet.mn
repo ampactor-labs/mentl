@@ -1,3 +1,4 @@
+// expect: 22
 // The decls-column facet's fixture (the bound-projection stamp's gate):
 // three fn decls, with `twice` and `main` MENTIONING `inc` — under the
 // retired whole-handle NBound walk every fn-typed mention seeded the

@@ -1,3 +1,4 @@
+// expect: 8
 // The emission-order pin (the relocation's written decision): emission
 // iterates the decls' SOURCE order — zeta before alpha before main —
 // never the demand order the worklist constructs in (main -> alpha ->

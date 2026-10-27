@@ -1,3 +1,4 @@
+// expect: refuse E_EffectUnhandled
 // The singleton tier's silent-wrong, refused: counter is the UNIQUE handler
 // for Count (the op scheme's default), so bump() direct-calls its arm against
 // $counter_state_g — which no install ever initialized. The arm's state read

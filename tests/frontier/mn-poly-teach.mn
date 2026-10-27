@@ -1,3 +1,4 @@
+// expect: refuse E_OccursCheck
 // The poly-recursion TEACH (§11 5.3, the question beats the guess):
 // a shape the Mycroft rounds cannot stabilize — `bad` RETURNS x while
 // self-calling at [x], so the recheck round meets ret ~ [ret] and the

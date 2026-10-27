@@ -1,3 +1,4 @@
+// expect: 0
 // One tail of this match is not a constant, so the claim over the match
 // stays OPEN: the constant arm proves it and the computed arm cannot, and
 // the AND of a proof and an unknown is an unknown. The compile surfaces the

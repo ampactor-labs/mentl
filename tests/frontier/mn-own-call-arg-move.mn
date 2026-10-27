@@ -1,6 +1,7 @@
-fn take(own value) with Pure = value
+// expect: refuse E_OwnershipViolation
+fn consume(own value) with Pure = value
 
-fn take_twice(own value) with Pure =
-  take(value) + take(value)
+fn consume_twice(own value) with Pure =
+  consume(value) + consume(value)
 
-fn main() = take_twice(21)
+fn main() = consume_twice(21)

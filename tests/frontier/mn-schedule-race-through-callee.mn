@@ -1,3 +1,4 @@
+// expect: refuse E_ThreadedBranchEffect
 // B4 (2026-09-30): THE RACE RULE THROUGH A CALLEE, at the polymorphic HOF.
 // `tally`'s branches perform whatever its callback performs — a row
 // variable at the fanout — and the callback `main` passes bumps a stateful

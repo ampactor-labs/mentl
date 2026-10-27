@@ -1,3 +1,4 @@
+// expect: 42
 // §5.U wide-element cash-out — [Float] as a first-class sequence: the literal
 // is born packed (stride-8, sc 2), a concrete read derefs the element's
 // reference, structural == compares VALUES through list_eq_f64 (never the

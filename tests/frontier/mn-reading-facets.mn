@@ -1,3 +1,4 @@
+// expect: 31
 // The facets that read what a program SAYS, WRITES and READS rather than what
 // it calls, each asked of this file by the frontier: the text facet finds the
 // one literal holding facet-literal-marker, the prose facet finds the one

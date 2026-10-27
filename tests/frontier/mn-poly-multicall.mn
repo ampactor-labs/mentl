@@ -1,3 +1,4 @@
+// expect: 4
 // The multi-call fragment boundary (§11 5.3 named-next (b)): TWO
 // self-calls at DIFFERENT shapes — [x] and (x, x) — outside Henglein's
 // single-call fragment, still inferred: both instantiations fit the

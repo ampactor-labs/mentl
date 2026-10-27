@@ -1,3 +1,4 @@
+// expect: refuse E_HandlerStateShadowsOp
 // ARMED-CLASS refusal fixture — E_HandlerStateShadowsOp.
 // A state field naming an op of the handled effect is ambiguous by
 // construction: in the arm bodies a bare `turn` means both the state read

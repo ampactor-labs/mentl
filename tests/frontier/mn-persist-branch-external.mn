@@ -1,10 +1,14 @@
+// expect: refuse E_EffectMismatch
 // The resume barrier holds at the argument edge (the persist_branch row
 // severs WASI/Filesystem/Network): a branch that PRINTS would print AGAIN on
 // every crash re-entry — the image restore rolls back Alloc/Memory but cannot
 // un-send a write — so the edge reports E_EffectMismatch naming the severed
 // row. The row proves before the first run what the durable-execution field
-// re-derives at runtime by journal-diffing.
-// Expected: E_EffectMismatch at the persist_branch argument edge.
+// re-derives at runtime by journal-diffing; the mismatch stands at the
+// persist_branch argument edge.
+import io
+
+import persist
 
 fn main() = {
   let h = persist_branch(() => {

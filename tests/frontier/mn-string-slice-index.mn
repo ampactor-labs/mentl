@@ -1,3 +1,4 @@
+// expect: 42
 // str_slice is the list slice node (tag 4, zero copy); xs[i] on a String is
 // the one checked list_index reading stride 1.
 fn main() = {

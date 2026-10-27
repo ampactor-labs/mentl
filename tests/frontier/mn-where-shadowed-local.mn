@@ -1,3 +1,4 @@
+// expect: 3
 // `where` names a function at its own declaration, never at a local that
 // shares its name. `one` binds a `heads` of its own and is judged first,
 // since `heads` calls it, so its local reaches the declarations before the

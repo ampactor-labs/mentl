@@ -1,3 +1,4 @@
+// expect: 42
 // The annotation verifier proves, never reads boundness: f's row carries
 // Alloc (++ carries its callee's row), so !Alloc must NOT be offered as
 // proven. g declares `!Trap` and calls f, so g stands on f not trapping and

@@ -1,3 +1,4 @@
+// expect: 1
 // mn-arm-config-show-float — a handler shows the Float it was installed
 // with. Expect 1: the op answers "2.5".
 //

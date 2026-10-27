@@ -1,3 +1,4 @@
+// expect: 42
 // Named-generic monomorphization, faces 2-4 — the comparator class. Before
 // per-site specialization a named generic compiled once at the i32 floor
 // compared the word-protocol REFERENCES of f64 values (bump addresses ascend,

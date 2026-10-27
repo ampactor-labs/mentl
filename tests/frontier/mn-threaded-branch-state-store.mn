@@ -1,3 +1,4 @@
+// expect: refuse E_ThreadedBranchEffect
 // The race rule reads EVERY write an arm makes into its handler's state,
 // not only `resume … with`: `bump` stores into the state buffer in place
 // (`list_set`), so two spawned branches bumping one `tally` install race

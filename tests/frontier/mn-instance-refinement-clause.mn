@@ -1,3 +1,4 @@
+// expect: refuse E_DeclaredRowContradiction
 // The instance-refinement clause (RESIDUE effarg-node, the adjacent kill):
 // `with Flow(1, Store) + !Flow(1, Wasi)` names two PROVABLY DISTINCT
 // instances — an absent beside a differing present is a REFINEMENT

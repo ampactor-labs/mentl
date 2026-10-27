@@ -1,3 +1,4 @@
+// expect: 0
 // `==` is one structural-equality derivation, total over the five node-kinds
 // (SYNTAX §Equality): two byte-equal Strings are equal wherever they are
 // compared. Here the compare sits in a handler ARM over the op's quantified

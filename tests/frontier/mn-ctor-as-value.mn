@@ -1,3 +1,4 @@
+// expect: 6
 // A CONSTRUCTOR IS A FUNCTION VALUE. Born RED 2026-09-08 while ratcheting
 // the eta-wrapper census: seven of the wheel's eta-wrappers existed ONLY
 // because `map((v) => TVar(v), vs)` could not be written `map(TVar, vs)`,

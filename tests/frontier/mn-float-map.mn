@@ -1,3 +1,4 @@
+// expect: 42
 // The generic combinators over [Float]: the lambda's f64 face reaches the
 // table through its word wrapper, elements cross the polymorphic boundary
 // by reference, and the concrete sites cash the width back. map doubles,

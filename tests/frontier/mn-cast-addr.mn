@@ -1,3 +1,4 @@
+// expect: 42
 // The Cast capability: addr yields a heap value's address under the current
 // allocator. The assertions are facts an address must satisfy (above the null
 // address; stable across two reads of one value; distinct values distinct),

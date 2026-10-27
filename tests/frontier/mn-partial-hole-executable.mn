@@ -1,3 +1,4 @@
+// expect: 42
 // A hole in a parameter product is an executable suspension, not an unresolved
 // value hole. The executable preflight must follow the hole-context edge and
 // admit this program. Expected exit: 42.

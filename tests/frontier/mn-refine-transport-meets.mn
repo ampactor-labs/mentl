@@ -1,3 +1,4 @@
+// expect: 40
 // What a parameter provides is the MEET over everywhere it is handed: `drive`
 // provides `Hz`, `drive2` provides whatever its own caller passes, so `outer`
 // promises nothing at that position and the lambda's demand for `Hz` is debt

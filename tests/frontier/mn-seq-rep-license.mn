@@ -1,3 +1,4 @@
+// expect: 42
 // The representation chase: a locally-flat scrutinee's list pattern reads
 // raw POff loads (licensed by proof — zero $list_index calls); a rope or
 // snoc scrutinee reads the total PIdx path. Same source shapes, three

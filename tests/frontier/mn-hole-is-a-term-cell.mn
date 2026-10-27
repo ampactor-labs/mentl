@@ -1,3 +1,4 @@
+// propose 24:37: ask shape
 // THE HOLE'S OWN CELL DECIDES — not a copy of its type.
 //
 // none_of returns Option(a) and the hole wants Option(Int): the SAME type

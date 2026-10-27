@@ -1,3 +1,4 @@
+// expect: 5
 // AN-2 — an abandoning op performed inside a THREADED branch: the thread's
 // entry banks the op and its argument area in the task record, the join
 // RE-RAISES it in the joiner (first in join order wins), and the unwind

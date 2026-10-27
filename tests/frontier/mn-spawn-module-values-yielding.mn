@@ -1,3 +1,4 @@
+// expect: 17
 // The module-values record in a module that YIELDS: the task record's abandon
 // words stand before the record's address, so the spawned instance reads it
 // past them. Both branches read the root's updated `base` (7 + 7); the

@@ -1,3 +1,4 @@
+// propose 14:25: ask behavior
 // A PIPE STAGE IS PROPOSED BY REFERENCE. `5 |> ??` is the vision's most
 // common hole — which stage comes next — and the medium offered only an
 // empty lambda skeleton, because its vocabulary enumerated zero-argument

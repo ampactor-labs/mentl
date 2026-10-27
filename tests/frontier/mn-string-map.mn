@@ -1,3 +1,4 @@
+// expect: 42
 // §4① String = [byte] — the flagship generic flow: map over a String. The
 // lambda infers FIRST (datum last, the Stage Law), so b binds Int through the
 // subtraction; the call's param unify then meets the byte element via

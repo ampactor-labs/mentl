@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // CROWN (real vocabulary) — the negation reaches INTO the recurrence body. The
 // `<~` verb is pure topology, but what the body performs is still performed, so
 // a cycle must not launder a forbidden effect. This is the leak dual of

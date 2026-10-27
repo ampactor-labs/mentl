@@ -1,3 +1,4 @@
+// expect: 42
 // A refined-alias parameter used BEFORE its type is declared — the shape
 // parser.mn's `span: ValidSpan` takes against types.mn (src/ sorts before
 // types.mn in the concatenated wheel). Before the alias edges were

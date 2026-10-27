@@ -1,3 +1,4 @@
+// propose 18:11: ask type
 // The cell that moves is the CONTEXT's, not the hole's (C6). `y + x` made
 // the hole's cell, the binder `y` and the parameter `x` one class at
 // inference, and pick's return is that class too — so a survivor's segment

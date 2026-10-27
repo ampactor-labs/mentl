@@ -1,3 +1,4 @@
+// expect: 40
 // The control beside mn-refine-fn-param-pending.mn: the callee states the
 // claim on its OWN parameter. `drive` takes `c: Hz` and hands it to its
 // callback, so the callback's `Hz` demand meets an `Hz` position — the claim

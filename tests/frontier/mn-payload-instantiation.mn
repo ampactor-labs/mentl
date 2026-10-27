@@ -1,3 +1,4 @@
+// expect: 0
 // The other two faces of the payload read, both measured against the prior
 // wheel before the fix and both silent-to-loud in the usual order.
 //

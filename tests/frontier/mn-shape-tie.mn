@@ -1,3 +1,4 @@
+// propose 20:31: ask shape
 // The tie whose question is the SHAPE — the arm that fires when the medium
 // will not claim more than it read. `scaled()` and `stepped()` are both Pure,
 // so no row separates them; but the constant read folds literals, arithmetic

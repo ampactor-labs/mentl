@@ -1,3 +1,4 @@
+// expect: 3
 // Sig'd polymorphic recursion — Haskell/OCaml parity (§11 5.3 step one,
 // Hβ.infer.sigd-polymorphic-recursion). A FULLY-signature'd decl's
 // self-call instantiates the declared scheme fresh per use instead of

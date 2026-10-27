@@ -1,3 +1,4 @@
+// expect: 40
 // A STATIC LINE IS ITS INSTANTIATION'S, NEVER ITS SCHEDULE'S. `step` is
 // called sequentially, then under a caller's `parallel_compose` (its schedule
 // twin), then sequentially again; all three ticks belong to one recurrence.

@@ -1,3 +1,4 @@
+// expect: 42
 // mn-arm-config-record — a handler reads its config record, a helper beside
 // it reads the record twice. Expect 42: (2·10 + 1) + (2·10 + 1).
 //

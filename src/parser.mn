@@ -1467,17 +1467,7 @@ fn parse_variants(ref tokens, pos) = {
   // in the comment weave (the weave pass attaches by span).
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TEof) {
-    // EOF inside variant declarations — halt with the empty list
-    // and emit ONE diagnostic per the unclosed-construct discipline.
-    // Without this, ident_at returns "" + recursion fabricates an
-    // empty-named variant list that lower/infer would walk into
-    // garbage paths. Drift mode 9 refused: empty-name variant IS
-    // structurally NOT what the source said.
-    report(PUnclosedConstruct(
-      "unexpected end of input inside type-decl variants; expected a variant name or `|`",
-      span_at(tokens, p)
-    ))
-    ([], p)
+    ([], unclosed_eof(tokens, p, "type-decl variants"))
   } else {
     let vspan = span_at(tokens, p)
     let vname = ident_at(tokens, p)
@@ -1552,13 +1542,17 @@ fn parse_effect_ops(ref tokens, pos) = {
   // the comment weave (the weave pass attaches by span) and the felt
   // surface's address into the row.
   let p = skip_ws(tokens, pos)
-  if at(tokens, p, TRBrace) || at(tokens, p, TEof) {
+  if at(tokens, p, TRBrace) {
     ([], p + 1)
+  } else if at(tokens, p, TEof) {
+    // Read as a `}` once, this arm let the loop below walk the rest of the
+    // file as operations — `main` eaten as a nullary op, its body skipped
+    // token by token — and the compile reported success on a file with no
+    // program in it (tests/frontier/mn-unclosed-effect-brace.mn).
+    ([], unclosed_eof(tokens, p, "effect operations"))
   } else if !is_param_name_tok(tokens, p) {
-    // Not an op-name here — stray tokens. Seed parity: $parse_effect_ops
-    // null-recovery (protocol_parser_fabrication_substrate) — advance
-    // past the token, skip separators, retry. TEof above bounds the
-    // recursion.
+    // Not an op-name here — stray tokens: advance past the token, skip
+    // separators, retry. The TEof arm above bounds the recursion.
     parse_effect_ops(tokens, skip_sep(tokens, p + 1))
   } else {
     let op_span = span_at(tokens, p)
@@ -3040,16 +3034,10 @@ fn parse_block_body(ref tokens, pos, own buf, count) = {
     let fin = nexpr(LitUnit, start)
     (buf, count, fin, p + 1)
   } else if at(tokens, p, TEof) {
-    // Unclosed block at EOF — emit ONE diagnostic + halt with
-    // synthetic LitUnit final-expr at EOF span. Mirrors
-    // parse_match_arms's TEof arm per Hβ.parser.unclosed-construct-
-    // eof-recovery. Without this branch the loop would re-enter
-    // parse_expr at EOF, get an NError at the same position, and
-    // recurse forever (each iteration emitting one P_ExpectedToken
-    // diagnostic, exhausting heap).
+    // The block never closed: a synthetic unit stands as its final
+    // expression at the EOF span, and the loop ends there.
     let start = span_at(tokens, p)
-    report(PUnclosedConstruct("unexpected end of input inside block; expected `\}` to close", start))
-    (buf, count, nexpr(LitUnit, start), p)
+    (buf, count, nexpr(LitUnit, start), unclosed_eof(tokens, p, "block"))
   } else {
     let is_decl = match kind_at(tokens, p) {
       TLet => true,
@@ -3214,7 +3202,7 @@ fn parse_match_arms(ref tokens, pos, own buf, count) = {
   let p = skip_ws(tokens, pos)
   match kind_at(tokens, p) {
     TRBrace => (buf, count, p + 1),
-    TEof => unclosed_eof(tokens, p, "match arms", buf, count),
+    TEof => (buf, count, unclosed_eof(tokens, p, "match arms")),
     TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
     | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
     | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow
@@ -3266,25 +3254,17 @@ fn parse_pat_alt_branches(ref tokens, pos, own buf, count) = {
   }
 }
 
-// Substrate-honest EOF terminator for nested parser loops. Emits
-// ONE diagnostic (not the infinite per-iteration emit-and-retry
-// drift pattern), returns the accumulated buf+count at the EOF
-// position so the caller's chain unwinds cleanly. Every nested
-// loop (parse_call_args, parse_match_arms, parse_record_fields,
-// parse_variants, etc.) uses this at its TEof arm. Top-level
-// parse_stmt_list's TEof is NOT routed here — top-level EOF is
-// the natural terminator, not an unclosed construct.
-//
-// Per CLAUDE.md Anchor 2: the diagnostic IS the
-// substrate-honest projection of "unexpected EOF inside <construct>",
-// with span at EOF and applicability MaybeIncorrect (the developer's
-// intent is unrecoverable without more input).
-fn unclosed_eof(ref tokens, p, construct: String, own buf, count) = {
+// The end of input inside a construct whose opener was never closed: one
+// diagnostic, at the EOF span, and the position itself, so the loop that
+// met it ends there and its caller unwinds. Every nested loop's TEof arm
+// (`parse_variants`, `parse_effect_ops`, `parse_match_arms`) reads it;
+// the top level's EOF is the program's natural end and never comes here.
+fn unclosed_eof(ref tokens, p, construct: String) = {
   report(PUnclosedConstruct(
     "unexpected end of input inside {construct}; the construct was never closed",
     span_at(tokens, p)
   ))
-  (buf, count, p)
+  p
 }
 
 fn parse_resume(ref tokens, pos, span: ValidSpan) = {

@@ -1,3 +1,4 @@
+// expect: 42
 // String-carrying aggregates, pinned before the TString dissolution
 // (A.4 step 1): a record field and an ADT payload compare, render, and
 // hash through the byte faces — the routes the dead-arm deletions and

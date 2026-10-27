@@ -1,3 +1,4 @@
+// expect: 4
 // Allocation under contention: four spawned branches each make a million
 // small allocations at once. Each instance bumps privately inside its own
 // run and touches the shared frontier once per 64 KB chunk, where every

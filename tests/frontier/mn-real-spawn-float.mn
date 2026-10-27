@@ -1,3 +1,4 @@
+// expect: 60
 // The wide crossing under real spawn: each branch's f64 result rides its
 // boundary carrier (unboxed in field 0), the carrier is allocated by the
 // SPAWNED instance through the shared cell, and the joiner reads it from

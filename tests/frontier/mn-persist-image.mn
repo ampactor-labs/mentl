@@ -1,3 +1,4 @@
+// expect: 40
 // The rooted-image persist — one build, two processes (§4④: persist = memcpy).
 //
 // Leg A (no argv): build heap state, park the continuation-shaped thunk in
@@ -6,8 +7,11 @@
 // (a top-level let the globals record restores) hands back A's thunk fully
 // typed, no cast; calling it chases A's heap pointees (the capture, the
 // squares list) through the restored image. addr ties rehydrate's returned
-// word to the typed channel — the two channels name one record.
-// Expected exits: leg A 40, leg B 42.
+// word to the typed channel — the two channels name one record. Leg A
+// exits 40, leg B 42.
+import io
+
+import persist
 
 fn freeze_zero() = 0
 

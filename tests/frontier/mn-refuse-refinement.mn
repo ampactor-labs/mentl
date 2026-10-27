@@ -1,3 +1,4 @@
+// expect: refuse E_RefinementRejected
 // ARMED-CLASS refusal fixture — E_RefinementRejected.
 // `1.5` violates `-1.0 <= self && self <= 1.0`: subst_self binds self=1.5,
 // predicate_decide proves Some(false) (both conjuncts decide — the UNeg

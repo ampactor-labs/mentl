@@ -1,3 +1,4 @@
+// expect: 42
 // Handler forward reference — the RED-first regression 2522f0dc landed
 // without (the harvest's flag). A `~> handler_name` BEFORE the handler's
 // declaration in source order must resolve: the handler's identity is a

@@ -1,3 +1,4 @@
+// expect: 60
 // Real host-thread fanout: the Threaded schedule read live from the
 // install chain; each branch runs on its own instance over the SHARED
 // image via the task record ([task closure][completion][result],

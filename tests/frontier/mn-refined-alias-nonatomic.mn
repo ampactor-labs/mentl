@@ -1,3 +1,4 @@
+// expect: 3
 // SYNTAX §«Type aliases»: a refined-alias base may be ANY type expression, not
 // just a single-token name. `type X = [Int] where len(self) > 0` did not parse
 // before Hβ.parser.refined-alias-nonatomic-base — parse_type_decl probed only

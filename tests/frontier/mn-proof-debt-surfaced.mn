@@ -1,3 +1,4 @@
+// expect: 1
 // `x` is not statically known to satisfy Positive, so the construction
 // leaves honest verification debt — the sound-incomplete NORMAL state
 // (PLAN §0: undecidable residue accrues visibly, never assume-true, and

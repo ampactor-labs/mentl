@@ -1,3 +1,4 @@
+// expect: 42
 // Row polymorphism composing with nominal records: a `{age: Int, ...}`
 // parameter accepts a Person — the open demand unifies against the
 // nominal's declared fields through the env edge; the brand never erases.

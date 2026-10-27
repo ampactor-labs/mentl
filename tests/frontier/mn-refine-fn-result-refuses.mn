@@ -1,3 +1,4 @@
+// expect: refuse E_RefinementRejected
 // A function crossing an argument edge carries its RESULT's refinement
 // across: `run` hands whatever its callback returns to `alpha`, so it
 // demands an `Hz` of that result, and the lambda returns 30000.0. The claim

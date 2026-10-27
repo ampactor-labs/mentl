@@ -59,7 +59,7 @@ if [ "${1:-}" = "--land" ]; then
     fell=$(echo "$GATE_OUT" | awk '/ — within / && $2 + 0 < $NF + 0')
     [ -z "$fell" ] || { printf '%s\n' "$fell" "▸ LAND STOPPED: lower each fallen ceiling in src/board.mn (a dated reason), then run \`mentl land\` again."; exit 1; }
     step "MARCH (the cost ratchets and the fixed point)" bash tools/march.sh
-    for d in micros syntax proposals teach; do step "BATTERY tests/$d" wt_battery "$cand" "tests/$d"; done
+    for d in micros syntax proposals teach frontier; do step "BATTERY tests/$d" wt_battery "$cand" "tests/$d"; done
     step "CROWN" env MENTL_BOOT="$cand" bash tools/crown-gate.sh
     step "PROOF-EXACTNESS" bash tools/proof-exactness-gate.sh fresh
     step "FRONTIER" bash tools/frontier-gate.sh --compiler fresh

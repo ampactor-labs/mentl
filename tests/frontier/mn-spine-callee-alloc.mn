@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // A HELD RESUME THROUGH A `!Alloc` CALLEE — the remainder runs in its extent.
 // `plus_one` declares `!Alloc` and calls its callback; the callback resumes a
 // held continuation (plus_one computes after it returns, so the op is

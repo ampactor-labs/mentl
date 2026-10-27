@@ -1,3 +1,4 @@
+// expect: 42
 // The parse family reads through byte_at over the unified record.
 fn main() = {
   if parse_float("2.5") == 2.5 && parse_int("42") == 42 { 42 } else { 1 }

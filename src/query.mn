@@ -109,6 +109,15 @@ type CensusShape
   // receiver's whole field set under each twin
   // (`Hβ.lower.record-pattern-param-receiver`, closed).
   | CsRecordPattern
+  // A `match` by what it takes apart, each counted so the five verbs can be
+  // measured against the sum's reader: every match written (an arm-list
+  // literal applied is the literal, not a match written), a one-arm match
+  // over a product — a `let` pattern wearing a match — and a match over
+  // `Some`/`None`, an absence handled by hand where a stage or a handler
+  // answers it once (Morgan, 2026-10-27: 6,170 against 846 `|>`).
+  | CsMatch
+  | CsMatchDestructure
+  | CsMatchOption
   // A string literal whose text contains the needle — the `text` facet's
   // shape, the one reach into what the wheel WRITES rather than what it
   // calls: the emit's WAT is string literals, and no identifier edge reaches
@@ -1288,6 +1297,9 @@ fn census_label(shape) = match shape {
   CsDeclaredRowHof => "fn(s) with a declared row that call a parameter",
   CsAuthoredPositiveRow => "signature(s) authoring a positive row the judgment projects",
   CsRecordPattern => "record pattern(s)",
+  CsMatch => "match site(s)",
+  CsMatchDestructure => "match(es) whose one arm takes a product apart",
+  CsMatchOption => "match(es) over Some/None",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
   CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
@@ -1327,6 +1339,9 @@ fn census_name(shape) = match shape {
   CsDeclaredRowHof => "declared-row-hof",
   CsAuthoredPositiveRow => "positive-row",
   CsRecordPattern => "record-pattern",
+  CsMatch => "match",
+  CsMatchDestructure => "match-destructure",
+  CsMatchOption => "match-option",
   CsText(needle) => "text {needle}",
   CsProse(needle) => "prose {needle}",
   CsProseClass(c) => "prose-{prose_class_name(c)}",
@@ -1358,8 +1373,15 @@ fn prose_classes() = [
 // THE ROSTER — every shape the census answers without a needle, listable
 // (`mentl query <entry> census`). It answered "unknown query" until G2, so
 // the only way to learn the shapes was to read this file.
-fn census_roster() =
-  [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume] ++ drift_roster() ++ [CsDefaultParam, CsDeclaredRowHof, CsAuthoredPositiveRow, CsRecordPattern] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
+fn census_roster() = [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume] ++ drift_roster() ++ [
+  CsDefaultParam,
+  CsDeclaredRowHof,
+  CsAuthoredPositiveRow,
+  CsRecordPattern,
+  CsMatch,
+  CsMatchDestructure,
+  CsMatchOption
+] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
 
 fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
 
@@ -1467,7 +1489,8 @@ fn census_note(shape, h) with !Mutate = match shape {
   CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
-  | CsAuthoredPositiveRow | CsRecordPattern | CsText(_) | CsFieldRead(_) => None,
+  | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption | CsText(_)
+  | CsFieldRead(_) => None,
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1522,7 +1545,8 @@ fn census_site_at(shape, h) with !Mutate = match shape {
   CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
-  | CsAuthoredPositiveRow | CsRecordPattern | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
+  | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption | CsText(_)
+  | CsFieldRead(_) => span_of_node_raw(h),
 }
 
 // The line the note shows, located: a comment's lines are its source lines
@@ -1718,8 +1742,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // only the retired lambda spellings; the nominal-record costume
   // counts too.
   CsVtableRecord => match body {
-    NExpr(MakeRecordExpr(flds)) => any_vtable_field(flds, 0, len(flds)),
-    NExpr(NamedRecordExpr(_, flds)) => any_vtable_field(flds, 0, len(flds)),
+    NExpr(MakeRecordExpr(flds)) => any(vtable_field, flds),
+    NExpr(NamedRecordExpr(_, flds)) => any(vtable_field, flds),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => false,
   },
@@ -1791,7 +1815,25 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
       PRecord(_, _) => true,
       PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PAlt(_) | PAs(_, _) => false,
     },
-    NExpr(MatchExpr(_, arms)) => any_record_arm(arms, 0, len(arms)),
+    NExpr(MatchExpr(_, arms)) => any(record_arm, arms),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+  CsMatch => match body {
+    NExpr(MatchExpr(s, _)) => !arm_list_match(s),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+  CsMatchDestructure => match body {
+    NExpr(MatchExpr(s, arms)) => !arm_list_match(s) && match arms {
+      [(p, _)] => product_pattern(pat_of(p)),
+      [] | [_, _, ..._] => false,
+    },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+  CsMatchOption => match body {
+    NExpr(MatchExpr(s, arms)) => !arm_list_match(s) && any(option_arm, arms),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => false,
   },
@@ -1934,16 +1976,35 @@ fn decoration_step(state, b) = match state {
   },
 }
 
-// The match half of CsRecordPattern, walked by index the way this file's
-// sibling arm-walkers are.
-fn any_record_arm(arms, i, n) = if i >= n {
-  false
-} else {
-  match list_index(arms, i) {
-    (p, _) => match pat_of(p) {
-      PRecord(_, _) => true,
-      PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PAlt(_) | PAs(_, _) => any_record_arm(arms, i + 1, n),
-    },
+// A match whose scrutinee is an arm-list literal's own minted parameter is the
+// literal applied, not a match written (`arm_list_of`).
+fn arm_list_match(s) = match graph_node_body(s) {
+  NExpr(VarRef(n)) => is_al_name(n),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
+// A pattern that takes a product apart — the arm a `let` pattern would be.
+fn product_pattern(p) = match p {
+  PTuple(_) | PList(_, _) | PRecord(_, _) => true,
+  PVar(_) | PWild | PLit(_) | PCon(_, _) | PAlt(_) | PAs(_, _) => false,
+}
+
+// An arm over the option's constructors.
+fn option_arm(arm) = {
+  let (p, _) = arm
+  match pat_of(p) {
+    PCon(name, _) => name == "Some" || name == "None",
+    PVar(_) | PWild | PLit(_) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
+  }
+}
+
+// The match half of CsRecordPattern: an arm whose pattern is a record.
+fn record_arm(arm) = {
+  let (p, _) = arm
+  match pat_of(p) {
+    PRecord(_, _) => true,
+    PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PAlt(_) | PAs(_, _) => false,
   }
 }
 
@@ -1952,19 +2013,14 @@ fn any_record_arm(arms, i, n) = if i >= n {
 fn env_frame_name(name) with Pure =
   name == "parent_env" || name == "env_stack" || name == "push_frame" || name == "pop_frame" || name == "env_chain"
 
-fn any_vtable_field(flds, i, n) with !Mutate = if i >= n {
-  false
-} else {
-  match list_index(flds, i) {
-    (fname, fval) => if starts_with(fname, "fn_") || starts_with(fname, "handler_") {
-      match graph_node_body(fval) {
-        NExpr(LambdaExpr(_, _)) => true,
-        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-        | NRow(_) | NParam(_) => any_vtable_field(flds, i + 1, n),
-      }
-    } else {
-      any_vtable_field(flds, i + 1, n)
-    },
+// A record field named as a method slot and holding a lambda — the vtable's
+// cell.
+fn vtable_field(fld) with !Mutate = {
+  let (fname, fval) = fld
+  (starts_with(fname, "fn_") || starts_with(fname, "handler_")) && match graph_node_body(fval) {
+    NExpr(LambdaExpr(_, _)) => true,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   }
 }
 

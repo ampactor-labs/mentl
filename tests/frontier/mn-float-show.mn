@@ -1,3 +1,4 @@
+// expect: 42
 // A float element renders through the deref + the native float_to_str face.
 // The 17-digit tail ("2.5000…") is the pre-existing named cosmetic residue
 // (tests/micros/mn-float-render.mn documents it) — the check reads the prefix.

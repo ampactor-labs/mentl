@@ -1,3 +1,4 @@
+// expect: refuse E_TypeMismatch
 // The order-independent judge on the DAG path (the daily verbs' seam,
 // closed 2026-07-29): a fn declared AFTER its caller met the caller as a
 // loose pre-registration under the single-pass walk, so its [tuple]

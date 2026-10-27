@@ -1,3 +1,4 @@
+// expect: 42
 // Named-generic monomorphization, face 6 — the MIXED instantiation. A generic
 // over TWO vars called at (Float, Int): the exact root-keyed substitution
 // (sound since the subscript fracture fix made a generic body's element

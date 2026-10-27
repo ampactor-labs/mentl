@@ -1,3 +1,4 @@
+// expect: 11
 // TEACH READS WHAT THE DECLARATION ALREADY SAYS, AND WHAT THE JUDGMENT
 // ALREADY PROVED. `step` declares `!Alloc` and was told to add `!Alloc`;
 // `add` is pure and was never offered `with Pure` (a literal ladder ranked

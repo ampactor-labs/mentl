@@ -1,3 +1,4 @@
+// expect: 4
 // The sequential twin of mn-spawn-alloc-contention: the same four branches
 // of a million small allocations, run in this instance one after another
 // under sequential_compose — the baseline the threaded run's wall time is

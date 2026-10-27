@@ -1,3 +1,4 @@
+// expect: 42
 // Identity map builds a word-stride [byte] record; the carrier makes the
 // cross-stride structural == read TRUE — stride is representation freedom,
 // the value is one. byte_at reads the word-stride record honestly.

@@ -1,3 +1,4 @@
+// expect: 51
 // THE DEEP-HANDLER LAW at the ARM: an arm that performs the very op it
 // handles must resolve OUTWARD — to the next install down the chain — never
 // back into itself. `inner`'s arm performs `note`, so under the law that

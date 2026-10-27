@@ -1,3 +1,4 @@
+// expect: 42
 // fold over a String's bytes: h=104, i=105 — 209. The accumulator flows Int;
 // the element widens through the arithmetic.
 fn main() = {

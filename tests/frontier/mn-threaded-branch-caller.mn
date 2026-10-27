@@ -1,3 +1,4 @@
+// expect: refuse E_ThreadedBranchEffect
 // B1's race rule, the UNPROVABLE refusal: the fanout sits inside `fan`,
 // and the only install of E is the CALLER's. The branch's row carries E,
 // nothing at the fanout's own frame handles it — the frame fence is where

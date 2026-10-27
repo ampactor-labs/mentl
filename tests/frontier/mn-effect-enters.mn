@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 // A REFUSAL NAMES ITS CAUSE. `quiet` declares `!WASI` over a body that
 // reaches the host three calls down — helper, log_it, print_string, the
 // library's own write — and the refusal at the declaration carries the chain
