@@ -1,48 +1,48 @@
-// Pulse · scene 1 — the offline renderer
+// Pulse · scene 1: the offline renderer
 //
 // Ten seconds of music, rendered sample by sample into a WAV file on
 // standard output:
 //
 //   mentl run examples/pulse/render/main.mn > pulse.wav
 //
-// This is the first program written in Mentl that is not the compiler. It
-// exists to be READ as much as heard, so every stage below says what it is
-// in the words of the domain, and the medium's own claims sit where a
-// listener would ask about them. Its instruments are the library's — the
-// oscillators (lib/dsp/osc.mn), the envelopes (lib/dsp/envelope.mn), the
-// filters (lib/dsp/feedback.mn), the echo, the rooms, the panning and the
-// limiter (lib/dsp/stereo.mn) — and the course beside it
-// (examples/pulse/course) teaches each in turn. Four of the medium's claims
-// are the reason the program exists at all:
+// This is the first program written in Mentl that is not the compiler. It is
+// meant to be read as much as heard, so every stage below is named in audio
+// terms, and each claim the medium (the compiler and its commands) proves is
+// stated where a listener would ask about it. Its instruments come from the
+// library: the oscillators (lib/dsp/osc.mn), the envelopes
+// (lib/dsp/envelope.mn), the filters (lib/dsp/feedback.mn), the echo, the
+// rooms, the panning and the limiter (lib/dsp/stereo.mn). The course beside
+// it (examples/pulse/course) teaches each in turn. The program exists to
+// show four claims the medium proves:
 //
-//   1. THE PER-SAMPLE PATH CANNOT ALLOCATE. `render_frame` — everything
-//      that runs once per sample — is declared `!Alloc`, and the medium
-//      proves it transitively: the oscillators, the noise, the filters, the
-//      distortion handler's arms, both echoes, both rooms of reverb, the
-//      limiter, and the PCM writes into a buffer sized before the first
-//      frame. Add one allocation anywhere beneath that signature and the
-//      program does not build (the frontier board keeps that twin
-//      refusing).
+//   1. The per-sample path cannot allocate. `render_frame`, which holds
+//      everything that runs once per sample, is declared `!Alloc`, and the
+//      medium proves it transitively: the oscillators, the noise, the
+//      filters, the distortion handler's arms, both echoes, both rooms of
+//      reverb, the limiter, and the PCM writes into a buffer sized before
+//      the first frame. Add one allocation anywhere beneath that signature
+//      and the program does not build (the frontier gate checks that a copy
+//      with such an allocation is rejected).
 //
-//   2. THE SIGNAL CARRIES ITS BOUNDS AS TYPES. A `Sample` is a Float the
-//      unit range bounds, an `Hz` a frequency below Nyquist, a `Decay` a
-//      feedback gain under unity; a constant that breaks one is refused at
+//   2. The signal carries its bounds as types. A `Sample` is a Float bounded
+//      by the unit range, an `Hz` a frequency below Nyquist, a `Decay` a
+//      feedback gain under unity. A constant that breaks one is rejected at
 //      the line that wrote it. The WAV writer takes only `Sample`s, so the
 //      file cannot hold a value the type did not bound.
 //
-//   3. SOUND HAS MEMORY, AND MEMORY IS A SHAPE YOU DRAW. An oscillator's
-//      phase, a filter's last output, a quarter-second of echo, a room's
-//      eight comb lines — each is the `<~` verb, a loop in the graph, its
-//      line owned by the closure that holds it. Two filters minted from one
-//      maker are two filters; two echoes are two rooms.
+//   3. Sound has memory, and the memory is written as a loop. An
+//      oscillator's phase, a filter's last output, a quarter-second of
+//      echo, a room's eight comb lines: each is the `<~` operator, a loop
+//      in the graph, its line owned by the closure that holds it. Two
+//      filters or two echoes made by one maker keep separate lines.
 //
-//   4. ONE RATE. The clock is the `Sample(48_000)` effect, pinned at the
+//   4. One rate. The clock is the `Sample(48_000)` effect, pinned at the
 //      three functions that read it, and the per-sample path declares
 //      `!Sample(44_100)`: a stage written for 44.1 kHz cannot be reached
-//      from it — two rates are two effects, and the mismatch refuses at
-//      compile time. The handler at the root answers whichever instance
-//      asks (an install cannot yet pin the instance it serves), so the
-//      negation is where the rule is written.
+//      from it. Two rates are two different effects, so the mismatch is
+//      rejected at compile time. The handler at the root handles whichever
+//      instance is performed (an install cannot yet pin the instance it
+//      serves), so the negation is where the rule is written.
 import io
 
 import audio/wav
@@ -65,12 +65,12 @@ import math
 
 // ─── The score ────────────────────────────────────────────────────────
 //
-// Eight notes over ten seconds — an A-minor line that rises to the fifth
+// Eight notes over ten seconds: an A-minor line that rises to the fifth
 // and falls back to the third, a bass that moves once every two notes
 // (A, F, C, G), a kick on every beat, a snare on the off-beats and a
-// hi-hat on every eighth. The length is the program's
-// one authored duration; every other time derives from it and the rate the
-// clock answers.
+// hi-hat on every eighth. The length is the only duration the program
+// states; every other time is computed from it and from the rate the
+// clock reports.
 fn seconds() with Pure = 10
 
 fn notes_in_score() with Pure = 8
@@ -80,7 +80,7 @@ fn hats_per_note() with Pure = 4
 fn beats_per_note() with Pure = 2
 
 // The lead's pitch for note `k`. Every arm is a literal, so the `Hz` claim
-// is decided where it is written — the compiler knows 440.0 is under the
+// is decided where it is written: the compiler proves 440.0 is under the
 // ceiling, and no check runs while the piece plays.
 fn note_hz(k: Int) -> Hz = match k {
   0 => 220.0,
@@ -103,8 +103,8 @@ fn bass_hz(k: Int) -> Hz = match k / 2 {
 
 // ─── The clock ────────────────────────────────────────────────────────
 //
-// The program runs at 48,000 samples a second, and the rate is pinned
-// HERE, at the three readers of the clock: `Sample(48_000)` on each says
+// The program runs at 48,000 samples a second, and the rate is pinned here,
+// at the three functions that read the clock: `Sample(48_000)` on each states
 // which instance of the Sample effect the piece performs, and every
 // function that calls them carries that instance in its projected row
 // without writing it down.
@@ -114,8 +114,8 @@ fn now() with Sample(48000) = current_sample()
 
 fn advance() with Sample(48000) = advance_sample()
 
-// How many frames one note lasts — read off the rate the installed clock
-// answers, never a constant of its own.
+// How many frames one note lasts, computed from the rate the installed
+// clock reports, never from a constant of its own.
 fn frames_per_note() = clock_rate() * seconds() / notes_in_score()
 
 fn frames_per_hat() = frames_per_note() / hats_per_note()
@@ -125,20 +125,20 @@ fn frames_per_beat() = frames_per_note() / beats_per_note()
 // ─── Envelopes — the shape of a note in time ──────────────────────────
 //
 // The lead swells in and rings; the bass plucks and holds lower. Both are
-// the library's ADSR with the note's own time last, so a note's time pipes
-// into its shape.
+// the library's ADSR with the note's own time as the last argument, so a
+// note's time can be piped into its shape.
 fn lead_shape(len: Float, tn: Float) -> Float with Pure = adsr(0.01, 0.2, 0.65, 0.3, len, tn)
 
 fn bass_shape(len: Float, tn: Float) -> Float with Pure = adsr(0.005, 0.25, 0.5, 0.08, len, tn)
 
-// A hi-hat is struck and gone: an exponential fall with a 35 ms time
-// constant from each eighth's onset, the off-beats accented.
+// A hi-hat is a short hit: an exponential fall with a 35 ms time
+// constant from each eighth's onset, with the off-beats accented.
 fn hat_shape(th: Float, index: Int) -> Float with Pure = {
   let accent = if index % 2 == 1 { 1.0 } else { 0.55 }
   accent * fade(0.035, th)
 }
 
-// A snare answers on the off-beats: a crack of noise over a 185 Hz body,
+// A snare plays on the off-beats: a burst of noise over a 185 Hz body,
 // gone in about a tenth of a second.
 fn snare_level(tb: Float, beat: Int) -> Float with Pure =
   if beat % 2 == 1 { fade(0.12, tb) } else { 0.0 }
@@ -146,21 +146,21 @@ fn snare_level(tb: Float, beat: Int) -> Float with Pure =
 // ─── The sweep ────────────────────────────────────────────────────────
 //
 // The lead's filter opens and closes between 200 Hz and 1.6 kHz once every
-// five seconds. The result is claimed `Hz` HERE, where the value is made,
+// five seconds. The result is claimed `Hz` here, where the value is made,
 // so the filters below receive a frequency the type bounds. The claim rests
 // on the sine's range and the compiler's Float arithmetic, which the proof
-// engine cannot yet bound — it is the program's one open obligation of its
-// own, and the compile says so every time instead of assuming it.
+// engine cannot bound yet. It is the program's one open obligation of its
+// own, and every compile reports it instead of assuming it holds.
 fn cutoff_at(t: Float) -> Hz with Pure = 900.0 + 700.0 * sin(two_pi() * 0.2 * t)
 
 // The vibrato: five and a half wobbles per second, four tenths of a percent
-// deep — enough to hear the voice breathe, not enough to hear it as pitch.
+// deep: enough to hear the voice waver, not enough to hear as a pitch change.
 fn vibrato_at(t: Float) -> Float with Pure = 0.004 * sin(two_pi() * 5.5 * t)
 
 // One channel of the output: the dry signal and its echo blended
 // (lib/dsp/signal.mn's `mix`), the room under it, the limiter's gain, and
-// the soft clip that lands every sample strictly inside the unit range —
-// which is what the WAV writer's `Sample` parameters demand.
+// the soft clip that keeps every sample strictly inside the unit range, as
+// the WAV writer's `Sample` parameters require.
 fn channel(dry: Float, echo: Float, room: Float, gain: Float) -> Sample with Pure =
   soft_clip(gain * (mix(0.35, echo, dry) + 0.3 * room))
 
@@ -171,9 +171,9 @@ fn channel(dry: Float, echo: Float, room: Float, gain: Float) -> Sample with Pur
 // for the lead, one for the bass and its filter, the kick's sine, the noise
 // and the two filters that make it a hat and a snare, the snare's body, the
 // swept filter per channel, an echo and a room per channel, and the
-// limiter. The record is the instrument; the loop plays it. The right echo
-// feeds back harder than the left, so the image opens as each note rings
-// out.
+// limiter. The record holds the whole instrument, and the loop plays it.
+// The right echo feeds back harder than the left, so the stereo image
+// widens as each note rings out.
 fn build_rig(sr: Int) = {
   bass: square_voice(sr),
   bass_tone: lowpass_filter(sr),
@@ -197,10 +197,10 @@ fn build_rig(sr: Int) = {
 // ─── The per-sample path ──────────────────────────────────────────────
 //
 // Everything that happens once per sample, in one function, under one
-// signature: `!Alloc` is the oath — read it as "cannot allocate", not
-// "does not", not "was tested and didn't" — and `!Sample(44_100)` the
-// rate. The rest of the row — the pinned clock, the Distort effect, the
-// Memory writes — is inferred and projected at the address surface; only
+// signature. `!Alloc` reads as "cannot allocate", which is stronger than
+// "does not" or "was tested and didn't", and `!Sample(44_100)` states the
+// rate rule. The rest of the row (the pinned clock, the Distort effect, the
+// Memory writes) is inferred and projected when you query an address; only
 // the decisions are written.
 //
 // The frame index and the time come from the clock the root installed:
@@ -219,19 +219,19 @@ fn render_frame(buf, rig) with !Alloc + !Sample(44100) = {
   let th = float_of_int(n - hat * frames_per_hat()) / sr
   let beat = n / frames_per_beat()
   let tb = float_of_int(n - beat * frames_per_beat()) / sr
-  // The lead: two sawtooths a hair apart — the second three tenths of a
-  // percent sharp, which the ear hears as width, not as a second note —
+  // The lead: two sawtooths slightly apart in pitch (the second three tenths
+  // of a percent sharp, which the ear hears as width, not as a second note)
   // and a sine an octave down, under one envelope, then the distortion.
   let f = note_hz(k) * (1.0 + vibrato_at(t))
   let voiced = (rig.lead_a(f) + rig.lead_b(f * 1.003) + 0.6 * rig.sub(f * 0.5)) / 2.6
-  // The distortion is an EFFECT: `distort` asks whatever handler the root
+  // The distortion is an effect: `distort` calls whatever handler the root
   // installed to shape the sample. Here that is the spectral-flux
   // distortion (lib/dsp/spectral.mn), whose transfer function follows the
-  // signal's transients — warm on sustain, folded on attack. Swap the
+  // signal's transients: warm on sustain, folded on attack. Swap the
   // handler at the root and this line does not change.
   let lead = distort(voiced * lead_shape(len, tn), 2.5)
-  // The bass through its own low-pass — one filter of the library's, its
-  // memory its own.
+  // The bass through its own low-pass: one of the library's filters, with
+  // its own memory.
   let bass = rig.bass(bass_hz(k)) * bass_shape(len, tn) |> rig.bass_tone(320.0)
   // The drums. One noise source fans to two high-passes (`<|`): at 7 kHz it
   // is a hi-hat, at 1.8 kHz over a sine body it is a snare. The kick is a
@@ -243,8 +243,8 @@ fn render_frame(buf, rig) with !Alloc + !Sample(44100) = {
   let kick = rig.kick(fall(45.0, 150.0, 0.04, tb)) * fade(0.18, tb)
   let drums = 0.9 * kick + 0.35 * snare
   // Placement: the lead a little left, the bass and the drums centred, the
-  // hats right. The swept filter runs per channel — two filters, one maker
-  // — over the tonal voices, the two channels a stereo pair (`><`); the
+  // hats right. The swept filter runs per channel (two filters, one maker)
+  // over the tonal voices, the two channels a stereo pair (`><`); the
   // drums bypass it.
   let cutoff = cutoff_at(t)
   let (tone_l, tone_r) = (lead * pan_left(-0.2) + 0.8 * bass * pan_left(0.0) |> rig.sweep_l(cutoff))
@@ -261,8 +261,8 @@ fn render_frame(buf, rig) with !Alloc + !Sample(44100) = {
 }
 
 // The render loop: one frame per tick until the clock reaches the end of
-// the piece. Tail-recursive, so it is a loop in the emitted code, and it
-// carries the same oath as the frame it calls.
+// the piece. It is tail-recursive, so the emitted code is a loop, and it
+// declares the same negations as the frame it calls.
 fn render_loop(buf, total: Int, rig) with !Alloc + !Sample(44100) = if now() >= total {
   ()
 } else {
@@ -272,12 +272,12 @@ fn render_loop(buf, total: Int, rig) with !Alloc + !Sample(44100) = if now() >= 
 
 // ─── The root — where the memory is built and the handlers are installed ──
 //
-// The handlers go up first — the console the finished file is printed to,
-// the distortion the chain will ask, and the clock at 48,000 samples a
-// second — and everything else happens inside them: the WAV buffer is
-// sized for the whole piece from the rate the clock answers, the rig is
-// built, and the loop runs. When it returns, the buffer IS the file, and
-// it goes to standard output as the byte sequence it is.
+// The handlers are installed first: the console the finished file is
+// printed to, the distortion the chain will call, and the clock at 48,000
+// samples a second. Everything else happens inside them: the WAV buffer is
+// sized for the whole piece from the rate the clock reports, the rig is
+// built, and the loop runs. When it returns, the buffer is the whole file,
+// and it is written to standard output byte for byte.
 fn main() = {
   {
     let rate = clock_rate()

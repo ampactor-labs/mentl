@@ -1,13 +1,13 @@
-// rate.mn — the course runs at 48,000 samples a second, said once
+// rate.mn: the course's sample rate, 48,000 samples a second, set in one place
 //
 // The clock is the `Sample(48000)` effect (lib/dsp/clock.mn), and the rate
-// is pinned HERE, at the three readers of the clock: `Sample(48000)` on each
-// says which instance of the effect the course performs, and every lesson
-// that calls them carries that instance in its projected row without writing
-// it down. `play` is the course's render loop — one frame per tick until the
-// clock reaches the end — and its `!Alloc` is a GATE on the frame it is
-// handed (SYNTAX §«Negation in `with` clauses»): a lesson whose frame
-// allocates refuses at the call, and the refusal names this declaration.
+// is pinned here, at the three functions that read the clock: `Sample(48000)`
+// on each states which instance of the effect the course performs, and every
+// lesson that calls them carries that instance in its projected row without
+// writing it down. `play` is the course's render loop, one frame per tick
+// up to the last frame. Its `!Alloc` also applies to the frame it
+// is handed (SYNTAX §«Negation in `with` clauses»): a lesson whose frame
+// allocates is rejected at the call, and the error names this declaration.
 import dsp/clock
 
 fn rate() with Sample(48000) = sample_rate()
@@ -23,8 +23,8 @@ fn frames_of(s) = rate() * s
 fn time() = float_of_int(now()) / float_of_int(rate())
 
 // The render loop: the frame is handed the index of the sample it renders,
-// and the clock advances after it. Tail-recursive, so it is a loop in the
-// emitted code.
+// and the clock advances after it. It is tail-recursive, so the emitted code
+// is a loop.
 fn play(frames, frame) with !Alloc + !Sample(44100) = if now() >= frames {
   ()
 } else {

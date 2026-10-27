@@ -1,24 +1,24 @@
-// 01 · tone — a sine through the pipe to the file
+// 01 · tone: a sine wave, piped into a WAV file
 //
-// The first sound: a sine at 220 Hz, through a gain, into both channels of a
-// WAV on standard output, three seconds long.
+// The first sound: a sine wave at 220 Hz, through a gain, into both channels
+// of a WAV file on standard output, three seconds long.
 //
 //   mentl run examples/pulse/course/01-tone.mn > 01.wav
 //
-// The verb is `|>`: the value on its left flows into the stage on its right.
-// A stage is a function with its configuration first and its datum last, so
-// `x |> gain(0.3)` is `gain(0.3, x)`: the pipe fills the one slot the stage
-// left open (SYNTAX §«Partial application»), and `soft_clip` after it lands
-// the sample strictly inside the unit range, which is what the WAV writer's
-// `Sample` parameters demand. Put the caret on the chain and ask the medium
-// what is true there:
+// This lesson's operator is `|>`, the pipe: the value on its left flows into
+// the stage on its right. A stage is a function with its settings first and
+// its input last, so `x |> gain(0.3)` is `gain(0.3, x)`: the pipe fills the
+// one slot the stage left open (SYNTAX §«Partial application»). `soft_clip`
+// after it keeps the sample strictly inside the unit range, as the WAV
+// writer's `Sample` parameters require. Put the cursor on the chain and ask
+// the medium (the compiler and its commands) what is true there:
 //
 //   mentl examples/pulse/course/01-tone.mn:38       the eight aspects at the pipe
-//   mentl where examples/pulse/course/01-tone.mn frame    the frame's head, its row inferred
+//   mentl where examples/pulse/course/01-tone.mn frame    frame's signature and inferred row
 //
-// What the row says, nobody wrote: `frame` performs the clock's instance and
-// the memory writes of the WAV, and nothing else. The positive row is
-// projected, never typed; a signature holds decisions.
+// Nobody wrote that row: `frame` performs the clock's instance and the WAV's
+// memory writes, and nothing else. The positive row is projected (inferred
+// and shown), never typed; a signature holds only your decisions.
 import audio/wav
 
 import dsp/clock
@@ -40,8 +40,8 @@ fn frame(buf, tone, n) = {
 }
 
 // The root: the console the file is printed to and the clock at 48,000
-// samples a second go up first; inside them the buffer is sized from the
-// rate the clock answers, the voice is minted, and the loop runs.
+// samples a second are installed first. Inside them, the buffer is sized
+// from the rate the clock reports, the voice is created, and the loop runs.
 fn main() = {
   {
     let frames = frames_of(seconds())

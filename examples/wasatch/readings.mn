@@ -1,10 +1,10 @@
-// Wasatch "Inversion" · the readings — Salt Lake on the evening of
+// Wasatch "Inversion" · the readings: Salt Lake on the evening of
 // 2026-10-20, read once
 //
 // Every value below was fetched from the public source its comment names
 // between 00:44 and 00:52 UTC on 2026-10-21 (18:44 to 18:52 Mountain
 // Daylight Time on the 20th), and is written here exactly as the source
-// answered it. Nothing is invented: a reading whose source did not answer
+// returned it. Nothing is invented: a reading whose source did not respond
 // says so in its line, and the score reads what is here. The provisional
 // values the USGS marks P are provisional here too.
 //
@@ -51,14 +51,14 @@ let quake_hours_ago = [8.6, 37.7, 53.3, 91.6]
 // https://wcc.sc.egov.usda.gov/reportGenerator/view_csv/customSingleStationReport/daily/766:UT:SNTL
 let snowpack_in = 0.0
 
-// Aircraft airborne over the valley — latitude 40.3 to 41.2, longitude
-// −112.5 to −111.3 — at 00:48:53 UTC: 23, counted from the adsb.lol feed
-// (29 in the box, 6 of them on the ground). The OpenSky Network answered
-// 503 three times, so this is the one reading not from the source first
-// asked. https://api.adsb.lol/v2/point/40.75/-111.9/60
+// Aircraft airborne over the valley (latitude 40.3 to 41.2, longitude
+// −112.5 to −111.3) at 00:48:53 UTC: 23, counted from the adsb.lol feed
+// (29 in the box, 6 of them on the ground). The OpenSky Network returned
+// 503 three times, so this is the one reading not taken from the source
+// queried first. https://api.adsb.lol/v2/point/40.75/-111.9/60
 let aircraft_airborne = 23
 
-// The Utah Jazz's most recent game before the reading: the 2026–27
+// The Utah Jazz's most recent game before the reading: the 2026-27
 // preseason's last, 2026-10-16 at Phoenix, Jazz 119, Suns 116, a win. The
 // regular season opens at Memphis on the 21st.
 // https://www.espn.com/nba/game/_/gameId/401908948/jazz-suns

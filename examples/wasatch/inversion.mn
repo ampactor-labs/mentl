@@ -1,4 +1,4 @@
-// Wasatch "Inversion" — Salt Lake, heard
+// Wasatch "Inversion": Salt Lake, turned into sound
 //
 // Sixteen seconds of 48 kHz stereo on standard output, every parameter of
 // which is a reading of the valley on the evening of 2026-10-20
@@ -6,26 +6,26 @@
 //
 //   mentl run examples/wasatch/inversion.mn > inversion.wav
 //
-// The drone's fundamental is the Great Salt Lake's elevation — one octave
-// across the lake's recorded range, a lower lake a lower drone. The pulse's
-// rate is the Jordan River's discharge. The inversion — the mountain warmer
-// than the valley, the lid the city lives under all winter — is the filter's
-// closure over the mix: a clear evening leaves it open. Each earthquake of
-// the week is a struck tone at its magnitude, placed in the piece where its
-// hour falls in the week. The snowpack is the size of the room. The aircraft
-// overhead set the pace at which the lead crosses the stereo field. The
-// sun's altitude is the lead's brightness. The Jazz score is the meter.
+// The drone's fundamental follows the Great Salt Lake's elevation, one octave
+// across the lake's recorded range, so a lower lake gives a lower drone. The
+// pulse's rate follows the Jordan River's discharge. The inversion (the
+// mountain warmer than the valley, the lid the city lives under all winter)
+// closes the filter over the mix; a clear evening leaves it open. Each
+// earthquake of the week is a struck tone at its magnitude, placed in the
+// piece where its hour falls in the week. The snowpack sets the size of the
+// room. The aircraft overhead set how fast the lead crosses the stereo field.
+// The sun's altitude sets the lead's brightness. The Jazz score sets the meter.
 //
 // Two claims hold over everything that runs once per sample. `render_frame`
 // is `!Alloc`: the oscillators, the lines, the filters, the room and the PCM
 // writes allocate nothing, proven transitively. And it is `!Network +
-// !Filesystem`: this program cannot reach the Outside on its per-sample
-// path. The readings are a module, read once, so the whole program performs
-// neither effect — the medium's audit says the module severs them — and the
-// frontier keeps a twin that fetches one parameter inside the frame refusing
-// (E_EffectMismatch, the chain naming the call). The live sources, a host
-// that applies a key the program never holds, and the page that plays it
-// are what Wasatch still owes (PLAN §11, Wasatch's live half).
+// !Filesystem`: its per-sample path cannot reach the network or the file
+// system. The readings are a module, read once, so the whole program
+// performs neither effect (the medium's audit reports that the module severs
+// both). The frontier gate checks that a copy which fetches one parameter
+// inside the frame is rejected (E_EffectMismatch, the chain naming the call).
+// The live sources, a host that applies a key the program never holds, and
+// the page that plays it are not built yet (PLAN §11, Wasatch's live half).
 import audio/wav
 
 import dsp/clock
@@ -53,8 +53,8 @@ fn seconds() with Pure = 16
 // ─── The clock ───────────────────────────────────────────────────────
 //
 // The piece runs at 48,000 samples a second, and the rate is pinned here, at
-// the three readers of the clock: every function that calls them carries
-// the instance in its projected row.
+// the three functions that read the clock: every function that calls them
+// carries the instance in its projected row.
 fn clock_rate() with Sample(48000) = sample_rate()
 
 fn now() with Sample(48000) = current_sample()
@@ -75,14 +75,14 @@ fn drone_hz(elevation_ft: Float) -> Hz = 55.0 * octaves_up((elevation_ft - 4170.
 fn pulse_hz(cfs: Float) -> Float with Pure = cfs / 100.0
 
 // The inversion's strength, in degrees Fahrenheit the mountain is warmer
-// than the valley; negative when the air is as it should be.
+// than the valley; negative when the valley is warmer.
 fn inversion_f() -> Float with Pure = mountain_temp_f - valley_temp_f
 
 // The lid: a strong inversion closes the mix's filter to 200 Hz, a clear
 // evening leaves it open to 2 kHz.
 fn lid_hz(inversion: Float) -> Hz = clamp(2000.0 - 60.0 * (inversion + 20.0), 200.0, 2000.0)
 
-// The room's send grows with the snowpack: a dry autumn is a dry room.
+// The room's send grows with the snowpack: a dry autumn gives a dry room.
 fn room_send(swe_in: Float) -> Float with Pure = clamp(0.1 + 0.1 * swe_in, 0.1, 0.6)
 
 // The lead crosses the field once per minute per aircraft overhead.
@@ -103,8 +103,8 @@ fn brightness(altitude: Float) -> Float with Pure = clamp((altitude + 10.0) / 60
 // The meter: three beats to the bar, plus the margin the Jazz won by.
 fn meter(won_by: Int) -> Int with Pure = 3 + won_by % 4
 
-// Where in the piece an earthquake falls: the piece is the week, its last
-// second the hour of the reading.
+// Where in the piece an earthquake falls: the piece spans the week, and its
+// last second is the hour of the reading.
 fn quake_at(hours_ago: Float) -> Float with Pure =
   float_of_int(seconds()) * (1.0 - hours_ago / 168.0)
 
@@ -126,8 +126,8 @@ fn bell(voice, magnitude: Float, struck: Float, t: Float) -> Float with !Alloc =
 
 fn render_frame(buf, rig, n: Int) with !Alloc + !Sample(44100) + !Network + !Filesystem = {
   let t = float_of_int(n) / float_of_int(clock_rate())
-  // The drone: the lake, as a sawtooth and a sine an octave below it, swelling in over
-  // the first two seconds and out over the last two.
+  // The drone: the lake, as a sawtooth and a sine an octave below it,
+  // swelling in over the first two seconds and out over the last two.
   let swell = if t < 2.0 { t / 2.0 } else if t > 14.0 { (16.0 - t) / 2.0 } else { 1.0 }
   let lake = drone_hz(lake_elevation_ft)
   let drone = (rig.drone(lake) + 0.5 * rig.sub(lake * 0.5)) * 0.35 * swell

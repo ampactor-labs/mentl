@@ -1,28 +1,28 @@
-// 10 · voices — the piece, every voice on its own core
+// 10 · voices: the whole piece, each voice on its own core
 //
 // Four voices, a chord of A minor over four seconds, each voice rendered
 // whole by one branch of a fanout and the branches run on threads.
 //
 //   mentl run examples/pulse/course/10-voices.mn > 10.wav
 //
-// `fanout(render_voice(sr), notes)` is `><` over a sequence: every element an
-// independent branch, the results collected in order. The verb is pure
-// topology; `~> parallel_compose` at the foot of the chain is what runs the
-// branches on host threads, and swapping it for `sequential_compose` changes
-// nothing in the voices. A voice is a closure with memory — its phase line,
-// its filter's line — minted INSIDE its branch, so no two branches share a
-// byte, and the medium's race rule is what makes the schedule safe to
+// `fanout(render_voice(sr), notes)` is `><` over a sequence: each element is
+// an independent branch, and the results are collected in order. The
+// operator only describes the shape. `~> parallel_compose` at the end of the
+// chain runs the branches on host threads, and `sequential_compose` in its
+// place changes nothing in the voices. A voice is a closure with memory (its
+// phase line, its filter's line) created inside its branch, so no two
+// branches share a byte. The medium's race rule makes the schedule safe to
 // install: a branch that reached a stateful handler at the root, or a line
-// another branch ticks, refuses: E_ThreadedBranchEffect, naming the store.
+// another branch ticks, fails with E_ThreadedBranchEffect naming the store.
 //
 //   mentl where examples/pulse/course/10-voices.mn render    fanout [Thread, a branch per element]
 //
-// The rule reads a store by the age of what it writes. A voice's tick writes
-// the record that owns its line, and the voice's claim says so: the frame
-// holding the voice ages that record at its own, and the branch minted it,
-// so the store is a construction and the branches run. The mix never reads a
-// frame by index: the four voices are zipped frame by frame and written into
-// the file, so the lesson owes the medium nothing.
+// The race rule checks a write by the age of the memory it writes. A voice's
+// tick writes the record that owns its line, and the voice's claim records
+// this. The frame holding the voice counts that record as its own age, and
+// the branch created it, so the write builds a value and the branches run.
+// The mix never reads a frame by index: the four voices are zipped frame by
+// frame and written into the file, so the lesson has no unproven claims.
 import audio/wav
 
 import dsp/clock
@@ -50,8 +50,8 @@ fn notes() = [220.0, 261.63, 329.63, 440.0]
 
 fn place(v) with Pure = -0.6 + 0.4 * float_of_int(v)
 
-// One voice, whole: its oscillator and its filter are minted here, in the
-// branch that renders it, and the list of its samples is the branch's answer.
+// One whole voice: its oscillator and its filter are created here, in the
+// branch that renders it, and the list of its samples is the branch's result.
 fn render_voice(sr, frames, hz) = {
   let voice = saw_voice(sr)
   let tone = lowpass_filter(sr)
@@ -72,7 +72,7 @@ fn add_pair(a, b) = match (a, b) {
   ((l1, r1), (l2, r2)) => (l1 + l2, r1 + r2),
 }
 
-// The four voices summed frame by frame — zipped, never read by index.
+// The four voices summed frame by frame: zipped, never read by index.
 fn chord(voices) =
   voices |> enumerate |> map({ (v, samples) => placed(v, samples) }) |> reduce(??, zip_with(add_pair, ??, ??))
 

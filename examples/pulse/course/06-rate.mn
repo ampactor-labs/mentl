@@ -1,32 +1,32 @@
-// 06 · rate — one clock, and two rates are two effects
+// 06 · rate: one clock, where two sample rates are two different effects
 //
 // A bass and a lead at 48,000 samples a second, three seconds long.
 //
 //   mentl run examples/pulse/course/06-rate.mn > 06.wav
 //
-// The clock is an effect with an INSTANCE: `Sample(48000)` and
+// The clock is an effect with an instance: `Sample(48000)` and
 // `Sample(44100)` are two members of the effect row, as distinct as the
-// console and the network. The course pins its rate once, at the three readers of the
-// clock (rate.mn), and every stage that reads the clock carries that
-// instance in its projected row without writing it. So the frame can say
-// what every audio program means and no other language lets it say:
-// `!Sample(44100)` — nothing on this path was written for 44.1 kHz. A stage
-// pinned at the other rate cannot be reached from it; the canonical audio
-// bug refuses at compile time, naming the declaration. Change `now`'s pin in
-// rate.mn to `Sample(44100)` and `play` refuses: E_EffectMismatch, the chain
-// naming where the other rate enters.
+// console and the network. The course pins its rate once, at the three
+// functions that read the clock (rate.mn), and every stage that reads the
+// clock carries that instance in its projected row without writing it. So
+// the frame can state what every audio program means and no other language
+// lets it say, `!Sample(44100)`: nothing on this path was written for
+// 44.1 kHz. A stage pinned at the other rate cannot be reached from it: the
+// classic audio bug is rejected at compile time, naming the declaration.
+// Change `now`'s pin in rate.mn to `Sample(44100)` and `play` is rejected
+// with E_EffectMismatch, its chain naming where the other rate enters.
 //
-// The bound a frequency must stay under is HALF THE RATE, so `Hz48` below
-// reads the rate from the installed clock inside its predicate: a predicate
-// is an ordinary expression, and this one performs the clock's op. The
-// medium judges the claim where a constant is handed in and leaves it
-// pending today — the predicate's value is the install's, which the proof
-// engine does not yet read — so the board counts this lesson among the
-// programs the medium owes (`mentl verify`), and the count only falls.
+// A frequency must stay under half the rate, so `Hz48` below reads the rate
+// from the installed clock inside its predicate. A predicate is an ordinary
+// expression, and this one performs the clock's operation. The medium
+// checks the claim wherever a constant is passed in, and today leaves it
+// pending: the predicate's value comes from the installed handler, which the
+// proof engine does not read yet. So the board counts this lesson among the
+// programs with unproven claims (`mentl verify`), and that count may only fall.
 //
-// The install at the root serves `Sample(48000)` alone, the instance its
-// config names, so a 44.1 kHz stage would pass it and reach the root
-// unhandled; the negation on `frame` states the rule where the frame is.
+// The handler at the root handles `Sample(48000)` alone, the instance its
+// configuration names, so a 44.1 kHz stage would pass it and reach the root
+// unhandled. The negation on `frame` states the rule where the frame is.
 import audio/wav
 
 import dsp/clock
@@ -45,7 +45,7 @@ import rate
 
 fn seconds() with Pure = 3
 
-// Half the installed rate, read from the clock the root answers.
+// Half the installed rate, read from the clock handler installed at the root.
 fn nyquist() = float_of_int(rate()) / 2.0
 
 // A frequency the installed rate can carry.

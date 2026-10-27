@@ -1,25 +1,25 @@
-// 08 · hole — ask the medium what goes here
+// 08 · hole: leave a gap and ask the medium what goes there
 //
 // Two notes, three seconds, and one stage of the chain left open: `??`.
 //
-//   mentl examples/pulse/course/08-hole.mn:50:76     Propose: brighten — the one survivor
+//   mentl examples/pulse/course/08-hole.mn:50:76     Propose: brighten, the one candidate left
 //   mentl accept examples/pulse/course/08-hole.mn:50:76
 //   mentl run examples/pulse/course/08-hole.mn > 08.wav
 //
-// A hole is a typed CONSTRAINT, not a gap in the text. The pipe asks for a
-// stage from Float to Float, so the cursor takes every candidate the
-// module's own vocabulary offers, judges each in a version of the graph —
-// infer, verify, restore — and keeps only what proves. Here one survives,
-// `brighten`, and the accept verb writes it where the hole stood: the edge
-// is drawn first, the text is its projection, and the Why at the stage walks
-// back to the proposal. Until the hole is filled the file does not run — an
-// executable with a hole refuses by law, E_UnresolvedHole at the hole —
-// while `mentl check` judges it clean, since a hole is productive. Declare a second stage
-// of the same shape, `fn darken(x) with Pure = x - 0.3 * x * x * x`, and the fan holds two
-// survivors: a tie in meaning is a question, and the medium asks which
-// behaviour is meant rather than guess (PLAN §5). The frontier gate accepts
-// this lesson's survivor into a scratch copy and renders it, so the
-// proposal is a contract the board keeps.
+// A hole is a typed constraint, not a gap in the text. The pipe requires a
+// stage from Float to Float, so the cursor tries every candidate among the
+// names the module can see, checks each in a trial version of the graph
+// (infer, verify, restore), and keeps only the ones that pass. Here one
+// passes, `brighten`, and the accept command writes it where the hole was:
+// the edge is drawn first, the text is its projection, and the Why at the
+// stage leads back to the proposal. Until the hole is filled the file does
+// not run: an executable with a hole is always rejected, with
+// E_UnresolvedHole at the hole, while `mentl check` passes it, since a hole
+// is productive. If you declare a second stage of the same shape,
+// `fn darken(x) with Pure = x - 0.3 * x * x * x`, two candidates pass. A tie
+// between meanings is reported as a question: the medium does not pick a
+// behaviour (PLAN §5). The frontier gate accepts this lesson's candidate
+// into a scratch copy and renders it, so the board checks it as a contract.
 import audio/wav
 
 import dsp/clock

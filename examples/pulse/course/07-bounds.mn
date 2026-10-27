@@ -1,27 +1,27 @@
-// 07 · bounds — the signal carries its bounds as types
+// 07 · bounds: a signal's bounds, written as types
 //
 // Four notes under a filter that opens and closes, four seconds long.
 //
 //   mentl run examples/pulse/course/07-bounds.mn > 07.wav
 //
-// A `Sample` is a Float the unit range bounds, an `Hz` a frequency below the
-// Nyquist ceiling, a `Positive` an integer above zero (lib/dsp/signal.mn,
-// lib/dsp/cfc.mn): refinement types, each a predicate over the value. A
-// constant that breaks one refuses at the line that wrote it — make
-// `cutoff_at` below answer the constant 30000.0 and the program does not
-// build: E_RefinementRejected at the constant. A computed value is a CLAIM:
-// `cutoff_at` answers `Hz`, and the medium decides it from what it knows of
-// the sine's range, or leaves it pending and says so at every compile. A
-// value a stage is handed through the rig's record is a claim the same way:
-// `rig.tone(30000.0)` is owed at the filter's parameter, not yet refused,
-// since the verifier reads no demand through a function-typed field. Honest
-// debt, never a silent assumption: `mentl verify` counts this lesson owed.
+// A `Sample` is a Float bounded by the unit range, an `Hz` a frequency below
+// the Nyquist ceiling, a `Positive` an integer above zero (lib/dsp/signal.mn,
+// lib/dsp/cfc.mn). These are refinement types, each a predicate over the
+// value. A constant that breaks one is rejected at the line that wrote it:
+// make `cutoff_at` below return the constant 30000.0 and the program does
+// not build, with E_RefinementRejected at the constant. A computed value is a
+// claim: `cutoff_at` returns `Hz`, and the medium proves or refutes it from
+// the sine's range, or leaves it pending and reports that at every compile. A
+// value passed to a stage through the rig's record is a claim in the same
+// way: `rig.tone(30000.0)` is left unproven at the filter's parameter, not yet
+// rejected, since the verifier reads no requirement through a function-typed
+// field. `mentl verify` counts this lesson as unproven; nothing is assumed.
 //
-// The gradient PROPOSES the annotation that discharges a claim, and says what
-// it buys: `frames_per` divides by its parameter, so its row carries `Trap`
-// while nothing bounds the divisor, and two refinements in reach bound it.
-// Each takes `Trap` off the row, and they mean different things — a count of
-// notes is no sample rate — so the medium asks which is meant, never guesses:
+// The gradient, which the Teach line shows, proposes the annotation that
+// discharges a claim and names what it unlocks: `frames_per` divides by its
+// parameter, so its row carries `Trap` while nothing bounds the divisor.
+// Two refinements in scope bound it and each takes `Trap` off the row, but a
+// note count is not a sample rate, so the medium lists both and picks neither:
 //
 //   mentl examples/pulse/course/07-bounds.mn:48    Teach: `notes: Rate` or `notes: Positive` … which is meant?
 import audio/wav
@@ -47,9 +47,9 @@ fn seconds() with Pure = 4
 // How many frames one note lasts, for a score of `notes` notes.
 fn frames_per(notes) = frames_of(seconds()) / notes
 
-// The lead's filter opens and closes between 200 Hz and 1 kHz twice a second.
-// The result is claimed `Hz` here, where the value is made, so the filter
-// receives a frequency the type bounds.
+// The lead's filter opens and closes between 200 Hz and 1 kHz once every
+// two seconds. The result is claimed `Hz` here, where the value is made, so
+// the filter receives a frequency the type bounds.
 fn cutoff_at(t) -> Hz = 600.0 + 400.0 * sin(two_pi() * 0.5 * t)
 
 fn note_hz(k) -> Hz = match k {

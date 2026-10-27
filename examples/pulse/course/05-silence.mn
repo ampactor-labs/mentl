@@ -1,24 +1,24 @@
-// 05 · silence — the per-sample path cannot allocate
+// 05 · silence: the per-sample path cannot allocate memory
 //
-// A lead, a bass and a hi-hat, four seconds long, and one oath over the
-// whole frame.
+// A lead, a bass and a hi-hat, four seconds long, and one restriction
+// declared over the whole frame.
 //
 //   mentl run examples/pulse/course/05-silence.mn > 05.wav
 //
-// `!Alloc` on `frame` is a NEGATION in the effect row: everything that runs
-// once per sample — the oscillators, the noise, the filters, the envelopes,
-// the PCM writes into a buffer sized before the first frame — cannot
+// `!Alloc` on `frame` is a negation in the effect row: everything that runs
+// once per sample (the oscillators, the noise, the filters, the envelopes,
+// the PCM writes into a buffer sized before the first frame) cannot
 // allocate, and the medium proves it transitively, through every call.
-// Read it as "cannot", not "does not" and not "was tested and didn't": add
-// one allocation anywhere beneath that signature and the program does not
-// build. The course's render loop carries the same oath for every lesson
-// (`play`, rate.mn): a negation on a function that calls a callback is a
-// gate on the callback's row, so a frame that allocates is refused at the
-// call, and the refusal names the declaration. In every other language this
-// is the dropout you hear on stage; here it is a wall the medium draws
-// before the call is finished.
+// Read it as "cannot", which is stronger than "does not" or "was tested and
+// didn't": add one allocation anywhere beneath that signature and the
+// program does not build. The course's render loop (`play`, rate.mn)
+// declares the same negation for every lesson. A negation on a function that
+// calls a callback also applies to the callback's row, so a frame that
+// allocates is rejected at the call, and the error names the declaration.
+// In most languages this is the dropout you hear on stage; here the medium
+// rejects the program when it is compiled, before it can run.
 //
-//   mentl why examples/pulse/course/05-silence.mn frame Alloc    the oath, and nothing enters
+//   mentl why examples/pulse/course/05-silence.mn frame Alloc    shows that no Alloc enters
 import audio/wav
 
 import dsp/clock
@@ -60,8 +60,8 @@ fn frame(buf, rig, n) with !Alloc = {
   wav_frame(buf, n, s, s)
 }
 
-// Every stateful stage, built once: the record is the instrument, the loop
-// plays it.
+// Every stateful stage, built once. The record holds the whole instrument,
+// and the loop plays it.
 fn build_rig(sr) = {
   bass: square_voice(sr),
   hat_tone: highpass_filter(sr),

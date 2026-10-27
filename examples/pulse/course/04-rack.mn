@@ -1,19 +1,19 @@
-// 04 · rack — an effect is an effect
+// 04 · rack: audio effects written as effects and handlers
 //
 // Four notes through a distortion and a limiter, four seconds long.
 //
 //   mentl run examples/pulse/course/04-rack.mn > 04.wav
 //
-// The verb is `~>`: it installs a HANDLER over everything to its left, and
-// a handler is what an audio engineer calls an effect. The frame asks
-// `distort(v, 2.5)` and `tame(s)` — bare calls, two ops of two effects — and
-// says nothing about how either is answered. The root answers: `rack` is a
-// named chain of two handlers (SYNTAX §«Handler chains»), the library's
-// spectral-flux distortion, whose transfer function follows the signal's
-// transients, and the limiter written below, whose state is the envelope it
-// tracks. Swap `spectral_flux_distort` for `warm_distort` at the chain and
-// the frame does not change. Ask the medium where the effect enters the
-// frame, and what the rack absorbs:
+// This lesson's operator is `~>`: it installs a handler over everything to
+// its left. A handler is what an audio engineer would call an effect. The
+// frame calls `distort(v, 2.5)` and `tame(s)`, plain calls to operations of
+// two effects, and does not say how either is handled. The root handles
+// them: `rack` is a named chain of two handlers (SYNTAX §«Handler chains»),
+// the library's spectral-flux distortion, whose transfer function follows
+// the signal's transients, and the limiter written below, whose state is the
+// envelope it tracks. Swap `spectral_flux_distort` for `warm_distort` in the
+// chain and the frame does not change. Ask the medium where the effect
+// enters the frame, and which effects the rack handles:
 //
 //   mentl why examples/pulse/course/04-rack.mn frame Distort
 //   mentl where examples/pulse/course/04-rack.mn rack
@@ -35,7 +35,7 @@ import rate
 
 fn seconds() with Pure = 4
 
-// The score: A3, C4, E4, A4 — one a second.
+// The score: A3, C4, E4, A4, one note per second.
 fn note_hz(k) -> Hz = match k {
   0 => 220.0,
   1 => 261.63,
@@ -51,7 +51,7 @@ effect Level {
 
 // A peak limiter: the envelope rises fast and falls slowly, and the gain
 // that holds it at the ceiling is applied to the sample. The envelope is
-// the handler's STATE, written by every resume — one record per install.
+// the handler's state: every resume writes it, one record per install.
 handler limiter_at(ceiling: Float) with env = 0.0 {
   tame(x) => {
     let level = abs(x)
@@ -60,8 +60,8 @@ handler limiter_at(ceiling: Float) with env = 0.0 {
   },
 }
 
-// The rack: the distortion, then the limiter over it. An install of the
-// name is the installs of its members, innermost first.
+// The rack: the distortion, then the limiter over it. Installing the name
+// installs each of its members, innermost first.
 handler rack = spectral_flux_distort ~> limiter_at(0.6)
 
 fn frame(buf, rig, n) = {

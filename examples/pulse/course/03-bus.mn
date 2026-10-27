@@ -1,21 +1,21 @@
-// 03 · bus — one signal to many places, many signals to one
+// 03 · bus: one signal sent to many places, and many signals mixed into one
 //
 // Two notes, each two seconds: a sine sent to an echo and to a room, the dry
 // signal blended with its echo on the left and with its room on the right.
 //
 //   mentl run examples/pulse/course/03-bus.mn > 03.wav
 //
-// Two verbs, one topology. `<|` fans ONE input to several branches —
-// `dry <| (rig.echo, rig.room)` hands the same sample to the echo and to the
-// room, each a stage with memory of its own, and answers the pair of what
-// they made. The input is borrowed by every branch and consumed by none,
-// which is what makes the fanout provably race-free. `><` is the other glyph
-// of the same fanout: INDEPENDENT pipelines, each with its own input, their
-// results side by side — `(echoed) >< (dry)` is the pair, and piping that
-// pair into `mix(0.35)`, a stage with two slots left open, is the MERGE: no
-// tuple is built, `mix` is called on the two values where they stand (SYNTAX
-// §«`|>` — converge»). The verbs draw the shape, so the frame reads as the
-// bus it is. Put the caret on the fanout to see it:
+// This lesson uses two operators to build one signal flow. `<|` sends one
+// input to several branches: `dry <| (rig.echo, rig.room)` hands the same
+// sample to the echo and to the room, each a stage with its own memory, and
+// returns the pair of their outputs. Every branch borrows the input and none
+// consumes it, which is what lets the compiler prove the fanout free of
+// races. `><` is the other fanout operator: it runs independent pipelines,
+// each with its own input, and puts their results side by side.
+// `(echoed) >< (dry)` is the pair, and piping it into `mix(0.35)`, a stage
+// with two slots left open, merges the two: no tuple is built, and `mix` is
+// called on the two values directly (SYNTAX §«`|>` — converge»). The
+// operators show the shape of the bus. Put the cursor on the fanout to see it:
 //
 //   mentl examples/pulse/course/03-bus.mn:49    `<|`: two branches, the input shared
 import audio/wav
@@ -38,7 +38,7 @@ fn seconds() with Pure = 4
 fn note_hz(t) -> Hz = if t < 2.0 { 220.0 } else { 329.63 }
 
 // A note swells in over 20 ms and fades over its last half second, so the
-// two notes are two events and not one tone that moves.
+// two notes sound like two events, not like one tone that changes pitch.
 fn shape(tn) with Pure =
   if tn < 0.02 { tn / 0.02 } else if tn > 1.5 { (2.0 - tn) / 0.5 } else { 1.0 }
 

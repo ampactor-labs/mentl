@@ -1,24 +1,24 @@
-// 09 · learn — the effect that learns
+// 09 · learn: a filter that learns, using the derivative effect
 //
 // A sawtooth through two filters, three seconds long: on the left the
 // library's low-pass at 600 Hz, on the right a one-pole whose coefficient
-// starts at zero and LEARNS, sample by sample, to match the left.
+// starts at zero and learns, sample by sample, to match the left.
 //
 //   mentl run examples/pulse/course/09-learn.mn > 09.wav
 //
-// The verb is `~>` again, with a different kind of handler: `~> grad(a)` is
-// a READING of its extent (lib/ml/grad.mn). The body of `slope` computes the
-// filter's error exactly as the filter computes it, and `d(e * e)` asks how
-// that squared error changes with the coefficient the reading is seeded at.
-// The medium derives
-// the derivative program from the chain's own graph and emits it beside the
-// forward one — no tape records the run, no operator is overloaded, and no
-// second copy of the chain exists to fall out of step. The coefficient is a
-// `<~` line inside the filter's own line, moved against the slope each tick,
-// so the learning step is the calculus it abbreviates, and the frame stays
-// `!Alloc`: the heap does not move while the filter learns.
+// This lesson's operator is `~>` again, with a different kind of handler:
+// `~> grad(a)` is a derivative reading of the code it covers
+// (lib/ml/grad.mn). The body of `slope` computes the filter's error exactly
+// as the filter computes it, and `d(e * e)` requests the derivative of that
+// squared error with respect to the coefficient the reading is seeded at.
+// The medium derives the derivative program from the chain's own graph and
+// emits it beside the forward one. No tape records the run, no operator is
+// overloaded, and no second copy of the chain exists to fall out of step.
+// The coefficient is a `<~` line inside the filter's own line, moved against
+// the slope each tick, so the learning step reads as the calculus it
+// performs, and the frame stays `!Alloc`: nothing is allocated while it learns.
 //
-//   mentl why examples/pulse/course/09-learn.mn slope Derivative    where the reading is asked
+//   mentl examples/pulse/course/09-learn.mn:44    the derivative request, and the handler that serves it
 import audio/wav
 
 import dsp/clock
@@ -37,8 +37,8 @@ import rate
 
 fn seconds() with Pure = 3
 
-// The slope of the squared error with respect to the coefficient, asked of
-// the same arithmetic the filter runs.
+// The slope of the squared error with respect to the coefficient, computed
+// from the same arithmetic the filter runs.
 fn slope(a, x, yprev, want) = {
   let e = want - (a * x + (1.0 - a) * yprev)
   d(e * e)
@@ -46,7 +46,7 @@ fn slope(a, x, yprev, want) = {
 
 // A one-pole low-pass whose coefficient learns: each tick, the coefficient
 // line moves against the slope of the error between this filter and the
-// signal it is told to match, then the output line ticks with the new
+// signal it is set to match, then the output line ticks with the new
 // coefficient.
 fn learner(mu) = {
   fn stage(want, x) with !Alloc = {
