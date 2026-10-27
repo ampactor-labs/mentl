@@ -1,19 +1,23 @@
-// station-leak.mn — the controller with one price lookup inside the reflex: the twin that refuses
+// station-leak.mn: the controller with one price lookup added inside the
+// decision. The compiler refuses to build it.
 //
-// examples/grid/station.mn, line for line, with one addition a reasonable
-// engineer would write: the slow band reads the hour's price live, so Pulse
-// leans harder into an expensive hour. The read is `fetch_param`, an op of
-// `Network` (lib/dsp/signal.mn), reached from `decide` through `price_m`.
-// `decide` is declared `!Network`, so the program does not build:
+// This is examples/grid/station.mn line for line, plus one addition a
+// reasonable engineer might write: read the hour's electricity price
+// online, so that Pulse leans harder into an expensive rush hour. The read
+// is `fetch_param`, an operation of the `Network` effect (lib/dsp/signal.mn),
+// and `decide` reaches it through `price_m`. `decide` is declared
+// `!Network`, so the program does not build:
 //
 //   mentl check examples/grid/station-leak.mn
 //   E_EffectMismatch: declared as decide; Network enters … through `price_m`
 //     → through `fetch_param` → declared as fetch_param, an op of Network
 //
-// The chain is the point: not "the network is used somewhere" but the path,
-// hop by hop, from the oath to the op. Price belongs to the hour's plan,
-// read before the reflex; a lookup inside the millisecond's decision is the
-// bug the compiler refuses.
+// The error names the whole path, one call at a time, from the promise in
+// the signature of `decide` to the network operation, rather than saying
+// only that the network is used somewhere. The price belongs in the hour's
+// plan, read before the fast decision runs. A lookup inside the decision
+// could stall it for as long as the network takes, and that is the bug the
+// compiler refuses.
 import dsp/signal
 
 import fs
@@ -22,7 +26,7 @@ import io
 
 import strings
 
-// ─── The types the machines are held to ──────────────────────────────
+// ─── The ranges each value must stay in ──────────────────────────────
 type GridMhz = Int where 55000 < self && self < 65000
 
 type SpinW = Int where -100000 <= self && self <= 100000
@@ -33,7 +37,8 @@ type Soc = Int where 0 <= self && self <= 1000
 
 type Mode = Grid | Event | Rush | Island
 
-// Positive is the machine discharging into the facility, negative charging.
+// A positive power is the machine discharging into the building; a
+// negative one is the machine charging.
 fn clamp_spin(raw: Int) -> SpinW with Pure =
   if raw > 100000 { 100000 } else if raw < -100000 { -100000 } else { raw }
 
@@ -49,36 +54,38 @@ fn pulse_soc_m(mwh: Int) -> Soc with Pure = clamp_soc(mwh / 1200000)
 
 fn magnitude(x: Int) -> Int with Pure = if x < 0 { 0 - x } else { x }
 
-// ─── The fast band's shape ───────────────────────────────────────────
+// ─── The fast rules ──────────────────────────────────────────────────
 //
-// The droop: nothing inside 36 mHz of 60, then proportional, full at 200 mHz
-// past the band; low frequency is the grid short, so Spin discharges. The
-// rating is held where the command is written, by `clamp_spin`.
+// The proportional push: nothing within 36 mHz of 60 Hz, then a push that
+// grows with the deviation and is full 200 mHz past that band. A low
+// frequency means the grid is short of power, so Spin discharges.
+// `clamp_spin` keeps the command within Spin's rating.
 fn droop(hz: GridMhz) -> Int with Pure = {
   let dev = hz - 60000
   let past = magnitude(dev) - 36
   if past <= 0 { 0 } else { clamp_spin(if dev < 0 { past * 500 } else { 0 - past * 500 }) }
 }
 
-// Full Spin in the direction of the deviation while the reflex runs.
+// Full power from Spin against the deviation, while the fast-change rule holds.
 fn reflex(hz: GridMhz) -> SpinW with Pure = if hz < 60000 { 100000 } else { -100000 }
 
-// What the facility draws this hour.
+// What the building draws this hour.
 fn facility_w(rush: Int) -> Int with Pure = if rush == 1 { 300000 } else { 200000 }
 
 // ─── The one addition ────────────────────────────────────────────────
 //
-// The hour's price in milli-dollars per megawatt-hour, read live.
+// The hour's price in thousandths of a dollar per megawatt-hour, read
+// online.
 fn price_m(url: String) -> Int = {
   let text = fetch_param(url)
   milli_at(text, 0, byte_len(text))
 }
 
-// ─── The machines' energy, one tick each ─────────────────────────────
+// ─── The machines' stored energy, one tick at a time ─────────────────
 //
-// Spin's energy: 10 kWh in milli-watt-hours, 94 percent at the start; a tick
-// at w watts moves w / 72 mWh. The command is written as the line ticks,
-// since only the line knows what it still holds.
+// Spin's stored energy in milliwatt-hours: 10 kWh when full, 94 percent at
+// the start. One 50 ms tick at w watts moves w / 72 mWh. The command is
+// written here, because only this function knows how much energy is left.
 fn spin_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
   let e0 = if first { 9400000 } else { e }
   let w = clamp_spin(if ask > 0 && e0 <= 0 || ask < 0 && e0 >= 10000000 { 0 } else { ask })
@@ -87,7 +94,8 @@ fn spin_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
   if e1 < 0 { 0 } else if e1 > 10000000 { 10000000 } else { e1 }
 }
 
-// Pulse's energy: 1,200 kWh, 62 percent at the start, charged to 95.
+// Pulse's stored energy: 1,200 kWh when full, 62 percent at the start,
+// charged up to 95 percent.
 fn pulse_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
   let e0 = if first { 744000000 } else { e }
   let w = clamp_pulse(if ask > 0 && e0 <= 0 || ask < 0 && e0 >= 1140000000 { 0 } else { ask })
@@ -98,17 +106,19 @@ fn pulse_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
 
 // ─── The decision ────────────────────────────────────────────────────
 //
-// `valid` is 1 when the ear has a reading. `hz` is millihertz, `rocof`
-// millihertz per second, `level` milli-dB, `hour` the local hour, `rush` 1
-// inside the window, `clean` the clean share per mille. The answer is the
-// mode; the rest is written into `out`: 1 Spin's watts, 2 Pulse's watts, 3
-// and 4 the two states of charge per mille, 5 the reason's code and 6 the
-// number the reason names.
+// `valid` is 1 when the ear has a reading. `hz` is in millihertz, `rocof`
+// (the rate of change) in millihertz per second, `level` in thousandths of
+// a decibel, `hour` is the local hour, `rush` is 1 inside the rush-hour
+// window, and `clean` is the clean share of the hour's power in
+// thousandths. The function returns the mode and writes the rest into
+// `out`: slot 1 is Spin's watts, 2 is Pulse's watts, 3 and 4 are the two
+// states of charge in thousandths, 5 is the reason's code and 6 is the
+// number the reason quotes.
 fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, clean: Int, out) -> Mode with !Alloc + !Network + !Filesystem + !WASI = {
   let n = { k => k + 1 } <~ delay(1)
   let first = n == 1
-  // The level's ten-second mean, set by the first reading heard and frozen
-  // while the hum is gone; zero until a hum has been heard at all.
+  // The level's ten-second average. The first reading sets it, it stays
+  // fixed while the hum is gone, and it is zero until a hum has been heard.
   let reference = {
     p => if valid == 0 {
       p
@@ -130,9 +140,10 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   let in_band = valid == 1 && hz > 55000 && hz < 65000
   let rate = magnitude(rocof)
   let off = if in_band { magnitude(hz - 60000) } else { 0 }
-  // The reflex timer in ticks: enters past 100 mHz/s, leaves when calm after
-  // two seconds unless the deviation still keeps Spin past half its rating,
-  // and never runs past ten seconds.
+  // How many ticks the fast-change rule has held. It starts when the rate
+  // passes 100 mHz per second. After two seconds it ends once the rate is
+  // calm, unless the deviation still calls for more than half of Spin's
+  // rating, and it never runs past ten seconds.
   let event_t = {
     t => if island == 1 || in_band == false {
       0
@@ -144,21 +155,23 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
       0
     },
   } <~ delay(1)
-  // The fast band's command: the reflex while its timer runs, else the
-  // droop; zero when the band has nothing to say.
+  // Spin's command from the fast rules: full power while the fast-change
+  // rule holds, otherwise the proportional push, and zero when neither
+  // applies.
   let fast = if in_band && hz > 55000 && hz < 65000 {
     if event_t > 0 { reflex(hz) } else { droop(hz) }
   } else {
     0
   }
-  // The mode holds EVENT while the fast band pushes at least 10 kW and for
-  // two seconds after, so a deviation hovering at the band's edge does not
-  // flicker the word.
+  // The mode reads EVENT while the fast rules push at least 10 kW and for
+  // two seconds after, so a frequency hovering at the band's edge does not
+  // make the word flicker.
   let acting =
     { h => if event_t > 0 || magnitude(fast) >= 10000 { 40 } else if h > 0 { h - 1 } else { 0 } } <~ delay(1)
   let draw = facility_w(rush)
-  // Spin's ask before its energy is consulted: the island's first two
-  // seconds, the fast band, or a top-up from Pulse when the band is calm.
+  // What Spin is asked for before its stored energy is checked: full power
+  // in an island's first two seconds, the fast rules' command, or a top-up
+  // from Pulse when all is calm.
   let spin_ask = if island == 1 {
     if island_t <= 40 { 100000 } else { 0 }
   } else if fast != 0 {
@@ -170,12 +183,14 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   }
   let spin_e = { e => spin_tick(e, first, spin_ask, out) } <~ delay(1)
   let spin_w = list_index(out, 1)
-  // The one addition: the hour's price, read inside the reflex. Past $50 a
-  // megawatt-hour the rush hour is carried at full power, else at 200 kW.
+  // The one addition: the hour's price, read inside the decision. Above $50
+  // a megawatt-hour, Pulse runs the building at full power in rush hour;
+  // otherwise at 200 kW.
   let price =
     price_m("https://api.eia.gov/v2/electricity/rto/region-data/data/?facets[respondent][]=PACE")
-  // Pulse's ask: the island's facility, the rush hour by its price, a clean
-  // hour's charge, and whatever Spin's top-up draws.
+  // What Pulse is asked for: the building's load in an island, rush-hour
+  // power set by the price, a charge in a clean hour, plus whatever Spin's
+  // top-up draws.
   let pulse_ask = if island == 1 {
     if island_t <= 40 { draw - spin_w } else { draw }
   } else if rush == 1 {
@@ -188,8 +203,8 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   let pulse_with_topup = if spin_w < 0 && island == 0 { pulse_ask - spin_w } else { pulse_ask }
   let pulse_e = { e => pulse_tick(e, first, pulse_with_topup, out) } <~ delay(1)
   let pulse_w = list_index(out, 2)
-  // The reason: a code and the number it names, rendered in words outside
-  // the reflex.
+  // The reason: a code and the number it quotes. `reason_text` turns them
+  // into words outside `decide`, because building a string allocates.
   let reason = if island == 1 {
     if island_t <= 40 { 11 } else { 10 }
   } else if valid == 0 {
@@ -235,7 +250,7 @@ fn mode_word(mode: Mode) -> String with Pure = match mode {
   Island => "ISLAND",
 }
 
-// A milli-unit as a decimal with one place, for the words.
+// A value in thousandths as a decimal with one place, such as 12.3.
 fn tenths(m: Int) -> String = {
   let sign = if m < 0 { "-" } else { "" }
   let a = magnitude(m)
@@ -258,24 +273,24 @@ fn reason_text(code: Int, number: Int, spin_w: Int, pulse_w: Int) -> String = if
 } else if code == 4 {
   "rising at {number} mHz per second, past 100"
 } else if code == 5 {
-  "reflex held, {off_words(number)}"
+  "holding full power, {off_words(number)}"
 } else if code == 6 {
   "rush hour, hour {number}: Pulse carries the building at {pulse_w / 1000} kW"
 } else if code == 7 {
-  "clean hour, {number} per mille clean: Pulse charging at {0 - pulse_w / 1000} kW"
+  "clean hour, {number / 10} percent clean: Pulse charging at {0 - pulse_w / 1000} kW"
 } else if code == 8 {
   "within 36 mHz of 60; Spin topping up from Pulse at {0 - spin_w / 1000} kW"
 } else if code == 9 {
-  "{off_words(number)} and Spin is spent"
+  "{off_words(number)} and Spin is empty"
 } else if code == 10 {
   "islanded {number} s: Pulse carries the building"
 } else if code == 11 {
-  "the hum died, {tenths(number)} dB under its mean: Spin carries the first seconds"
+  "the hum is gone, {tenths(number)} dB under its average: Spin carries the first seconds"
 } else {
   "listening"
 }
 
-// ─── The line's text, read as integers ───────────────────────────────
+// ─── Reading the line's numbers as integers ──────────────────────────
 //
 // The position after `"key":` in the line, or -1.
 fn find_key(line: String, key: String) -> Int = {
@@ -301,12 +316,12 @@ fn matches_at(hay: String, needle: String, i: Int, j: Int, m: Int) -> Bool = if 
 
 fn is_digit(b: Int) -> Bool with Pure = b >= 48 && b <= 57
 
-// JSON allows blanks after the colon; the value starts past them.
+// JSON allows spaces after the colon, so the value starts after them.
 fn skip_spaces(s: String, i: Int, n: Int) -> Int =
   if i < n && byte_at(s, i) == 32 { skip_spaces(s, i + 1, n) } else { i }
 
-// The integer milli-value of the JSON number at `pos`: the sign, the whole
-// digits, the first three decimals, and an exponent if one follows.
+// The JSON number at `pos` as an integer in thousandths: the sign, the
+// whole digits, the first three decimals, and an exponent if there is one.
 fn milli_at(s: String, pos: Int, n: Int) -> Int = {
   let neg = pos < n && byte_at(s, pos) == 45
   let p0 = if neg { pos + 1 } else { pos }
@@ -324,7 +339,7 @@ fn whole_end(s: String, i: Int, n: Int) -> Int =
 fn digits_value(s: String, i: Int, end: Int, acc: Int) -> Int =
   if i >= end { acc } else { digits_value(s, i + 1, end, acc * 10 + (byte_at(s, i) - 48)) }
 
-// Three decimals at most; the rest of the fraction is passed over.
+// Only the first three decimals count; the rest of the fraction is skipped.
 fn frac_value(s: String, i: Int, n: Int, k: Int, acc: Int) -> Int = if i < n && is_digit(byte_at(s, i)) {
   if k < 3 {
     frac_value(s, i + 1, n, k + 1, acc * 10 + (byte_at(s, i) - 48))
@@ -344,7 +359,7 @@ fn frac_value(s: String, i: Int, n: Int, k: Int, acc: Int) -> Int = if i < n && 
 fn number_end(s: String, i: Int, n: Int) -> Int =
   if i < n && (is_digit(byte_at(s, i)) || byte_at(s, i) == 46) { number_end(s, i + 1, n) } else { i }
 
-// `e-05` and the like: the value scaled by the exponent, toward zero.
+// An exponent such as e-05: the value scaled by it, rounded toward zero.
 fn exponent_scale(s: String, i: Int, n: Int, v: Int) -> Int = if i < n && (byte_at(s, i) == 101 || byte_at(s, i) == 69) {
   let neg = i + 1 < n && byte_at(s, i + 1) == 45
   let p =
@@ -359,8 +374,8 @@ fn shrink(v: Int, e: Int) -> Int = if e <= 0 { v } else { shrink(v / 10, e - 1) 
 
 fn grow(v: Int, e: Int) -> Int = if e <= 0 { v } else { grow(v * 10, e - 1) }
 
-// A numeric field in milli-units, or None where the ear has no reading
-// (the field is null) or the field is absent.
+// A numeric field in thousandths, or None when the ear has no reading (the
+// field is null) or the field is missing.
 fn field(line: String, key: String) -> Option(Int) = {
   let at = find_key(line, key)
   let n = byte_len(line)
@@ -377,8 +392,8 @@ fn field_or(line: String, key: String, fallback: Int) -> Int = match field(line,
   None => fallback,
 }
 
-// The reading's own timestamp, as the text it arrived as, so the decision
-// carries it back without a conversion.
+// The reading's timestamp, kept as the text it arrived in, so the decision
+// line carries it back without converting it.
 fn stamp(line: String) -> String = {
   let at = find_key(line, "t")
   let n = byte_len(line)

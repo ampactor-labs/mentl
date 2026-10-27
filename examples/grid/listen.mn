@@ -1,25 +1,28 @@
-// listen.mn — the learner: the hum's frequency, learned by a gradient the compiler derives
+// listen.mn: learns the hum's frequency, using a gradient that the compiler
+// works out from the arithmetic itself.
 //
-// One sample of the hum per stdin line, 480 of them a second (the ear's
-// decimated band, samples/hum_480.txt in the HUM repository), and one
-// coefficient that learns the frequency. A sinusoid obeys
-// x[n] = a·x[n−1] − x[n−2] with a = 2·cos(ω), so one number carries the
-// pitch: the error between that prediction and the sample, squared, is the
-// chain the reading differentiates — `d(e * e)` under `~> grad(a)` — and the
-// coefficient moves against the slope each sample, exactly as lesson 09's
-// filter learns. No tape records the run, no second copy of the arithmetic
-// exists to drift. Once a second it prints the frequency the coefficient
-// encodes:
+// It reads one sample of the hum per line on stdin, 480 samples a second
+// (the ear's copy of the signal at that rate, samples/hum_480.txt in the HUM
+// repository), and keeps one number, the coefficient a, that learns the
+// frequency. A pure tone obeys x[n] = a·x[n−1] − x[n−2] with a = 2·cos(ω),
+// so that one number fixes the pitch. For each sample the program predicts
+// x[n] from the two samples before it, squares the error, and moves a
+// against the slope of that squared error. The compiler derives the slope
+// from the same arithmetic, `d(e * e)` under `~> grad(a)`, the way lesson
+// 09's filter learns. Nothing records the run for a later backward pass, and
+// no second, hand-written copy of the derivative can drift out of step. Once
+// a second it prints the frequency that a stands for:
 //
 //   mentl run examples/grid/listen.mn < samples/hum_480.txt
 //   {"hz_learned":60.000312}
 //
-// Two stages, each a maker, each `!Alloc`: the heap does not move while
-// they run. `smoother` mints a four-pole low-pass at 80 Hz, so the hum's
-// harmonics — which bend a two-tap predictor by a hertz — reach the learner
-// forty decibels down. `learner` mints the step that owns the coefficient's
-// line and the line that smooths the energy it normalizes by. The two
-// previous samples are the stream's to hand in.
+// There are two stages, and a function makes each one. Both promise
+// `!Alloc`, so no memory is allocated while they run. `smoother` makes a
+// four-pole low-pass filter at 80 Hz, so the hum's harmonics, which would
+// bend a two-sample predictor by about a hertz, reach the learner 40 dB
+// weaker. `learner` makes the step that keeps a, and the running average of
+// the signal's energy that each step is divided by. The caller passes in the
+// two previous samples.
 import io
 
 import math
@@ -30,14 +33,15 @@ import strings
 
 fn rate() -> Float with Pure = 480.0
 
-// The slope of the squared prediction error with respect to the
-// coefficient, asked of the same arithmetic the predictor runs.
+// The slope of the squared prediction error with respect to a, taken from
+// the same arithmetic the prediction runs.
 fn slope(a: Float, x1: Float, x2: Float, x: Float) -> Float = {
   let e = x - (a * x1 - x2)
   d(e * e)
 } ~> grad(a)
 
-// Four one-pole sections in series at one corner, each its own line.
+// Four one-pole filters in series at the same corner frequency, each
+// keeping its own previous output.
 fn smoother(corner: Float) = {
   let al = 1.0 - exp(0.0 - two_pi() * corner / rate())
   fn stage(x: Float) -> Float with !Alloc = {
@@ -49,12 +53,11 @@ fn smoother(corner: Float) = {
   stage
 }
 
-// The learner: the step moves the coefficient against the slope,
-// normalized by the smoothed energy of the samples it predicts from, so a
-// loud hum and a quiet one learn at the same pace and the harmonics' beat
-// does not lean on the step. The line starts at zero, which encodes 120 Hz;
-// the first tick seeds it at the nominal 60 Hz, 2·cos(2π·60/480), so the
-// readout begins where the grid lives and moves from there.
+// Each step moves a against the slope, divided by the smoothed energy of
+// the two samples it predicts from, so a loud hum and a quiet one learn at
+// the same pace. The stored value starts at zero, which would mean 120 Hz,
+// so the first tick sets it to 60 Hz, 2·cos(2π·60/480), and the reading
+// starts at the grid's nominal frequency.
 fn learner(mu: Float) = {
   fn stage(x2: Float, x1: Float, x: Float) -> Float with !Alloc = {
     let energy = { en => en + (x1 * x1 + x2 * x2 - en) * 0.02 } <~ delay(1)
@@ -68,17 +71,17 @@ fn learner(mu: Float) = {
   stage
 }
 
-// The frequency a coefficient encodes: a = 2·cos(ω), ω = acos(a / 2), in
-// hertz at the stream's rate. The cosine is held inside its range so the
-// root is always real.
+// The frequency that a coefficient stands for: a = 2·cos(ω), so
+// ω = acos(a / 2), converted to hertz at 480 samples a second. The cosine
+// is clamped to its range so the square root is always real.
 fn hz_of(a: Float) -> Float with Pure = {
   let c0 = a / 2.0
   let c = if c0 > 1.0 { 1.0 } else if c0 < -1.0 { -1.0 } else { c0 }
   atan2(sqrt(1.0 - c * c), c) * rate() / two_pi()
 }
 
-// The stream: each line one sample, smoothed, the two before it carried
-// along.
+// Reads one sample per line, smooths it, and passes the two previous
+// samples along.
 fn step(smooth, learn, n: Int, x2: Float, x1: Float) = {
   let line = read_stdin_line()
   if byte_len(line) == 0 {
