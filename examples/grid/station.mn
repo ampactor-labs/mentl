@@ -31,10 +31,10 @@
 // EVENT for as long as the fast band acts. The slow band answers the hour:
 // RUSH discharges Pulse at 300 kW through the window; a clean hour outside
 // it charges Pulse at 150 kW to 95 percent; a calm band tops Spin up from
-// Pulse at 20 kW. ISLAND is the hum gone after it was heard — two lines 30 dB
-// under the level's ten-second mean, or two lines with no reading — Spin for
-// the first two seconds, then Pulse carrying the facility; two lines of the
-// hum back within 10 dB of the mean end it.
+// Pulse at 20 kW. ISLAND is the hum gone after it was heard — six lines, 300
+// ms, 30 dB under the level's ten-second mean or with no reading at all —
+// Spin for the first two seconds, then Pulse carrying the facility; two lines
+// of the hum back within 10 dB of the mean end it.
 //
 // The lines (`<~ delay(1)`) are the Station's memory: one station per
 // process, so they are the module's own, allocated once at start. Each tick
@@ -142,7 +142,7 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   let lost_n = { c => if lost_now { c + 1 } else { 0 } } <~ delay(1)
   let found_n = { c => if valid == 1 && level > reference - 10000 { c + 1 } else { 0 } } <~ delay(1)
   let island =
-    { s => if s == 1 { if found_n >= 2 { 0 } else { 1 } } else if lost_n >= 2 { 1 } else { 0 } } <~ delay(1)
+    { s => if s == 1 { if found_n >= 2 { 0 } else { 1 } } else if lost_n >= 6 { 1 } else { 0 } } <~ delay(1)
   let island_t = { t => if island == 1 { t + 1 } else { 0 } } <~ delay(1)
   let in_band = valid == 1 && hz > 55000 && hz < 65000
   let rate = magnitude(rocof)
@@ -255,16 +255,23 @@ fn tenths(m: Int) -> String = {
   "{sign}{a / 1000}.{a % 1000 / 100}"
 }
 
+// A deviation in millihertz as the words "41 mHz low" or "41 mHz high".
+fn off_words(dev: Int) -> String = if dev < 0 { "{0 - dev} mHz low" } else { "{dev} mHz high" }
+
 fn reason_text(code: Int, number: Int, spin_w: Int, pulse_w: Int) -> String = if code == 1 {
   "within 36 mHz of 60, nothing to do"
 } else if code == 2 {
-  "{number} mHz off 60: Spin at {spin_w / 1000} kW"
+  if spin_w > 0 {
+    "{off_words(number)}: Spin pushing {spin_w / 1000} kW"
+  } else {
+    "{off_words(number)}: Spin absorbing {0 - spin_w / 1000} kW"
+  }
 } else if code == 3 {
   "falling at {0 - number} mHz per second, past 100"
 } else if code == 4 {
   "rising at {number} mHz per second, past 100"
 } else if code == 5 {
-  "reflex held, {number} mHz off 60"
+  "reflex held, {off_words(number)}"
 } else if code == 6 {
   "rush hour, hour {number}: Pulse carries the building at {pulse_w / 1000} kW"
 } else if code == 7 {
@@ -272,7 +279,7 @@ fn reason_text(code: Int, number: Int, spin_w: Int, pulse_w: Int) -> String = if
 } else if code == 8 {
   "within 36 mHz of 60; Spin topping up from Pulse at {0 - spin_w / 1000} kW"
 } else if code == 9 {
-  "{number} mHz off 60 and Spin is spent"
+  "{off_words(number)} and Spin is spent"
 } else if code == 10 {
   "islanded {number} s: Pulse carries the building"
 } else if code == 11 {
