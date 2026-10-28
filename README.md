@@ -8,7 +8,7 @@ Mentl is a programming language and self-hosting compiler with an algebraic effe
 
 A Mentl function can say what it must never do, such as reach the network. The compiler checks that claim through every function the function calls, and refuses to build the program if any of them breaks it.
 
-HUM's grid controller, `examples/grid/station.mn`, decides what a model flywheel and battery do as the power grid's frequency moves. Its function `decide` says it never reaches the network, never touches a file, never calls outside the program and never allocates memory, and the compiler proves all four:
+HUM's grid controller, `examples/grid/station.mn`, decides what a model flywheel and battery do as the power grid's frequency moves. Its function `decide` says it never reaches the network, never touches a file, never calls outside the program, never allocates memory and can never stop the program with an error, and the compiler proves all five:
 
 ```
 $ mentl why examples/grid/station.mn decide Network
@@ -19,8 +19,8 @@ decide never uses Network: nothing in decide, and nothing it calls, performs an 
 
 ```
 $ mentl check examples/grid/station-leak.mn
-effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:190:5 → price_m calls `fetch_param` at examples/grid/station-leak:80:14 → `fetch_param` is an operation of Network, declared at dsp/signal:66:1 at examples/grid/station-leak:117:1-244:2
-effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:443:1-446:2
+effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI + !Trap`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:219:5 → price_m calls `fetch_param` at examples/grid/station-leak:111:14 → `fetch_param` is an operation of Network, declared at dsp/signal:66:1 at examples/grid/station-leak:151:1-256:2
+effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:446:1-449:13
 ```
 
 The Quick start below installs the `mentl` command in three lines.
@@ -70,7 +70,7 @@ The last command compiles the course's first lesson, proves its claims and rende
 
 The course in `examples/pulse/course` is ten programs that build one audio chain step by step. Each lesson adds a language feature or a proof whose effect you can hear, and each is written to be read before it is played. The course leads to two full pieces: Pulse (`examples/pulse/render`) and Wasatch "Inversion" (`examples/wasatch`). Wasatch's parameters are readings from Salt Lake, and the code that runs for every sample is proven unable to reach the network or allocate memory.
 
-`examples/grid` is HUM's grid controller, described in the section above. `mentl where examples/grid/station.mn decide` prints the decision's whole list of effects, `Mutate + Memory + Trap`: it writes memory it was handed, reads and writes memory, and can stop with an error, and it does nothing else.
+`examples/grid` is HUM's grid controller, described in the section above. `mentl where examples/grid/station.mn decide` prints the decision's whole list of effects, `Mutate + Station`: it keeps its own memory from one tick to the next and commands the Station's machines through the operations of the `Station` effect, and it does nothing else. The machines answer each command with what they give, and the compiler proves every answer stays within the machine's rating. Each reading runs inside an arena, so the program uses the same memory after 300,000 readings as after one. The one call in the program that can still stop it with an error is the library's `str_slice`, which copies the reading's timestamp; the compiler cannot yet prove an explicit call of a sequence primitive in bounds (PLAN §11, the face).
 
 The mentl command answers questions about a program directly:
 

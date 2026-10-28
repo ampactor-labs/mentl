@@ -18,6 +18,8 @@
 // plan, read before the fast decision runs. A lookup inside the decision
 // could stall it for as long as the network takes, and that is the bug the
 // compiler refuses.
+import arena
+
 import dsp/signal
 
 import fs
@@ -37,22 +39,51 @@ type Soc = Int where 0 <= self && self <= 1000
 
 type Mode = Grid | Event | Rush | Island
 
-// A positive power is the machine discharging into the building; a
-// negative one is the machine charging.
-fn clamp_spin(raw: Int) -> SpinW with Pure =
+// Why the Station did what it did. `reason_text` turns the kind into words
+// together with the number the reason quotes.
+type Reason
+  = Listening
+  | Steady
+  | Pushing
+  | Falling
+  | Rising
+  | Holding
+  | RushHour
+  | Charging
+  | TopUp
+  | SpinEmpty
+  | Islanded
+  | HumGone
+
+// ─── The Station's operations ────────────────────────────────────────
+//
+// The decision commands the machines and explains itself through these
+// operations. `spin` and `pulse` ask a machine for a power, positive to
+// discharge into the building and negative to charge, and the machine
+// answers with what it gives: nothing when it is empty or full, and never
+// more than its rating. `because` records the reason for the tick, and
+// `report` writes the decision line. The handler `station` answers them all.
+effect Station {
+  spin(ask: Int) -> SpinW
+  pulse(ask: Int) -> PulseW
+  because(why: Reason, number: Int)
+  report(stamp: String, mode: Mode)
+}
+
+fn clamp_spin(raw) -> SpinW with Pure =
   if raw > 100000 { 100000 } else if raw < -100000 { -100000 } else { raw }
 
-fn clamp_pulse(raw: Int) -> PulseW with Pure =
+fn clamp_pulse(raw) -> PulseW with Pure =
   if raw > 300000 { 300000 } else if raw < -300000 { -300000 } else { raw }
 
-fn clamp_soc(s: Int) -> Soc with Pure = if s < 0 { 0 } else if s > 1000 { 1000 } else { s }
+fn clamp_soc(s) -> Soc with Pure = if s < 0 { 0 } else if s > 1000 { 1000 } else { s }
 
 // State of charge in thousandths of each machine's capacity.
-fn spin_soc_m(mwh: Int) -> Soc with Pure = clamp_soc(mwh / 10000)
+fn spin_soc_m(mwh) -> Soc with Pure = clamp_soc(mwh / 10000)
 
-fn pulse_soc_m(mwh: Int) -> Soc with Pure = clamp_soc(mwh / 1200000)
+fn pulse_soc_m(mwh) -> Soc with Pure = clamp_soc(mwh / 1200000)
 
-fn magnitude(x: Int) -> Int with Pure = if x < 0 { 0 - x } else { x }
+fn magnitude(x) with Pure = if x < 0 { 0 - x } else { x }
 
 // ─── The fast rules ──────────────────────────────────────────────────
 //
@@ -60,7 +91,7 @@ fn magnitude(x: Int) -> Int with Pure = if x < 0 { 0 - x } else { x }
 // grows with the deviation and is full 200 mHz past that band. A low
 // frequency means the grid is short of power, so Spin discharges.
 // `clamp_spin` keeps the command within Spin's rating.
-fn droop(hz: GridMhz) -> Int with Pure = {
+fn droop(hz: GridMhz) with Pure = {
   let dev = hz - 60000
   let past = magnitude(dev) - 36
   if past <= 0 { 0 } else { clamp_spin(if dev < 0 { past * 500 } else { 0 - past * 500 }) }
@@ -70,38 +101,43 @@ fn droop(hz: GridMhz) -> Int with Pure = {
 fn reflex(hz: GridMhz) -> SpinW with Pure = if hz < 60000 { 100000 } else { -100000 }
 
 // What the building draws this hour.
-fn facility_w(rush: Int) -> Int with Pure = if rush == 1 { 300000 } else { 200000 }
+fn facility_w(rush) with Pure = if rush == 1 { 300000 } else { 200000 }
 
 // ─── The one addition ────────────────────────────────────────────────
 //
 // The hour's price in thousandths of a dollar per megawatt-hour, read
 // online.
-fn price_m(url: String) -> Int = {
+fn price_m(url) = {
   let text = fetch_param(url)
-  milli_at(text, 0, byte_len(text))
+  milli_at(text, 0)
 }
 
-// ─── The machines' stored energy, one tick at a time ─────────────────
+// ─── The machines and the log ────────────────────────────────────────
 //
-// Spin's stored energy in milliwatt-hours: 10 kWh when full, 94 percent at
-// the start. One 50 ms tick at w watts moves w / 72 mWh. The command is
-// written here, because only this function knows how much energy is left.
-fn spin_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
-  let e0 = if first { 9400000 } else { e }
-  let w = clamp_spin(if ask > 0 && e0 <= 0 || ask < 0 && e0 >= 10000000 { 0 } else { ask })
-  list_set(out, 1, w)
-  let e1 = e0 - w / 72
-  if e1 < 0 { 0 } else if e1 > 10000000 { 10000000 } else { e1 }
-}
+// Each machine's stored energy stays between empty and full.
+fn settle(e, full) with Pure = if e < 0 { 0 } else if e > full { full } else { e }
 
-// Pulse's stored energy: 1,200 kWh when full, 62 percent at the start,
-// charged up to 95 percent.
-fn pulse_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
-  let e0 = if first { 744000000 } else { e }
-  let w = clamp_pulse(if ask > 0 && e0 <= 0 || ask < 0 && e0 >= 1140000000 { 0 } else { ask })
-  list_set(out, 2, w)
-  let e1 = e0 - w / 72
-  if e1 < 0 { 0 } else if e1 > 1200000000 { 1200000000 } else { e1 }
+// Spin's stored energy in milliwatt-hours: 10 kWh when full, 94 percent at
+// the start. Pulse's: 1,200 kWh when full, 62 percent at the start, and
+// charged up to 95 percent. One 50 ms tick at w watts moves w / 72 mWh. An
+// empty machine gives nothing and a full one takes nothing, so what a
+// machine answers is what it does. `report` writes the line from the last
+// answers and the energy left.
+handler station with spin_e = 9400000, pulse_e = 744000000, spin_w = 0, pulse_w = 0, why = Listening, number = 0 {
+  spin(ask) => {
+    let w = clamp_spin(if ask > 0 && spin_e <= 0 || ask < 0 && spin_e >= 10000000 { 0 } else { ask })
+    resume(w) with spin_e = settle(spin_e - w / 72, 10000000), spin_w = w
+  },
+  pulse(ask) => {
+    let w =
+      clamp_pulse(if ask > 0 && pulse_e <= 0 || ask < 0 && pulse_e >= 1140000000 { 0 } else { ask })
+    resume(w) with pulse_e = settle(pulse_e - w / 72, 1200000000), pulse_w = w
+  },
+  because(r, n) => resume() with why = r, number = n,
+  report(stamp, mode) => {
+    print_string("\{\"t\":{stamp},\"mode\":\"{mode_word(mode)}\",\"spin_w\":{spin_w},\"pulse_w\":{pulse_w},\"spin_soc_m\":{spin_soc_m(spin_e)},\"pulse_soc_m\":{pulse_soc_m(pulse_e)},\"reason\":\"{reason_text(why, number, spin_w, pulse_w)}\"\}\n")
+    resume()
+  },
 }
 
 // ─── The decision ────────────────────────────────────────────────────
@@ -110,13 +146,9 @@ fn pulse_tick(e: Int, first: Bool, ask: Int, out) -> Int = {
 // (the rate of change) in millihertz per second, `level` in thousandths of
 // a decibel, `hour` is the local hour, `rush` is 1 inside the rush-hour
 // window, and `clean` is the clean share of the hour's power in
-// thousandths. The function returns the mode and writes the rest into
-// `out`: slot 1 is Spin's watts, 2 is Pulse's watts, 3 and 4 are the two
-// states of charge in thousandths, 5 is the reason's code and 6 is the
-// number the reason quotes.
-fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, clean: Int, out) -> Mode with !Alloc + !Network + !Filesystem + !WASI = {
-  let n = { k => k + 1 } <~ delay(1)
-  let first = n == 1
+// thousandths. The function commands the machines, records its reason and
+// returns the mode.
+fn decide(valid, hz: Int, rocof, level, hour, rush, clean) with !Alloc + !Network + !Filesystem + !WASI + !Trap = {
   // The level's ten-second average. The first reading sets it, it stays
   // fixed while the hum is gone, and it is zero until a hum has been heard.
   let reference = {
@@ -130,8 +162,7 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
       p + (level - p) / 200
     },
   } <~ delay(1)
-  let heard = reference != 0
-  let lost_now = heard && (valid == 0 || level < reference - 30000)
+  let lost_now = reference != 0 && (valid == 0 || level < reference - 30000)
   let lost_n = { c => if lost_now { c + 1 } else { 0 } } <~ delay(1)
   let found_n = { c => if valid == 1 && level > reference - 10000 { c + 1 } else { 0 } } <~ delay(1)
   let island =
@@ -169,10 +200,10 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   let acting =
     { h => if event_t > 0 || magnitude(fast) >= 10000 { 40 } else if h > 0 { h - 1 } else { 0 } } <~ delay(1)
   let draw = facility_w(rush)
-  // What Spin is asked for before its stored energy is checked: full power
-  // in an island's first two seconds, the fast rules' command, or a top-up
-  // from Pulse when all is calm.
-  let spin_ask = if island == 1 {
+  // What Spin is asked for: full power in an island's first two seconds, the
+  // fast rules' command, or a top-up from Pulse when all is calm. Spin
+  // answers with what it gives once its stored energy is checked.
+  let spin_w = spin(if island == 1 {
     if island_t <= 40 { 100000 } else { 0 }
   } else if fast != 0 {
     fast
@@ -180,9 +211,7 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
     -20000
   } else {
     0
-  }
-  let spin_e = { e => spin_tick(e, first, spin_ask, out) } <~ delay(1)
-  let spin_w = list_index(out, 1)
+  })
   // The one addition: the hour's price, read inside the decision. Above $50
   // a megawatt-hour, Pulse runs the building at full power in rush hour;
   // otherwise at 200 kW.
@@ -201,50 +230,33 @@ fn decide(valid: Int, hz: Int, rocof: Int, level: Int, hour: Int, rush: Int, cle
   } else {
     0
   }
-  let pulse_with_topup = if spin_w < 0 && island == 0 { pulse_ask - spin_w } else { pulse_ask }
-  let pulse_e = { e => pulse_tick(e, first, pulse_with_topup, out) } <~ delay(1)
-  let pulse_w = list_index(out, 2)
-  // The reason: a code and the number it quotes. `reason_text` turns them
-  // into words outside `decide`, because building a string allocates.
-  let reason = if island == 1 {
-    if island_t <= 40 { 11 } else { 10 }
+  let pulse_w = pulse(if spin_w < 0 && island == 0 { pulse_ask - spin_w } else { pulse_ask })
+  // The reason and the number it quotes. `reason_text` turns them into words
+  // in the handler, because building a string allocates.
+  if island == 1 {
+    if island_t <= 40 { because(HumGone, reference - level) } else { because(Islanded, island_t / 20) }
   } else if valid == 0 {
-    0
-  } else if event_t > 0 {
-    if event_t == 1 { if rocof < 0 { 3 } else { 4 } } else { 5 }
+    because(Listening, 0)
+  } else if event_t == 1 {
+    because(if rocof < 0 { Falling } else { Rising }, rocof)
+  } else if event_t > 1 {
+    because(Holding, hz - 60000)
   } else if fast != 0 {
-    if spin_w == 0 { 9 } else { 2 }
+    because(if spin_w == 0 { SpinEmpty } else { Pushing }, hz - 60000)
   } else if rush == 1 {
-    6
+    because(RushHour, hour)
   } else if pulse_w < 0 {
-    7
+    because(Charging, clean)
   } else if spin_w < 0 {
-    8
+    because(TopUp, 0)
   } else {
-    1
+    because(Steady, 0)
   }
-  let number = if island == 1 {
-    if island_t <= 40 { reference - level } else { island_t / 20 }
-  } else if event_t > 0 {
-    if event_t == 1 { rocof } else { hz - 60000 }
-  } else if fast != 0 {
-    hz - 60000
-  } else if reason == 6 {
-    hour
-  } else if reason == 7 {
-    clean
-  } else {
-    0
-  }
-  list_set(out, 3, spin_soc_m(spin_e))
-  list_set(out, 4, pulse_soc_m(pulse_e))
-  list_set(out, 5, reason)
-  list_set(out, 6, number)
   if island == 1 { Island } else if acting > 0 { Event } else if rush == 1 { Rush } else { Grid }
 }
 
 // ─── The words ───────────────────────────────────────────────────────
-fn mode_word(mode: Mode) -> String with Pure = match mode {
+fn mode_word(mode) with Pure = match mode {
   Grid => "GRID",
   Event => "EVENT",
   Rush => "RUSH",
@@ -252,100 +264,88 @@ fn mode_word(mode: Mode) -> String with Pure = match mode {
 }
 
 // A value in thousandths as a decimal with one place, such as 12.3.
-fn tenths(m: Int) -> String = {
+fn tenths(m) = {
   let sign = if m < 0 { "-" } else { "" }
   let a = magnitude(m)
   "{sign}{a / 1000}.{a % 1000 / 100}"
 }
 
 // A deviation in millihertz as the words "41 mHz low" or "41 mHz high".
-fn off_words(dev: Int) -> String = if dev < 0 { "{0 - dev} mHz low" } else { "{dev} mHz high" }
+fn off_words(dev) = if dev < 0 { "{0 - dev} mHz low" } else { "{dev} mHz high" }
 
-fn reason_text(code: Int, number: Int, spin_w: Int, pulse_w: Int) -> String = if code == 1 {
-  "within 36 mHz of 60, nothing to do"
-} else if code == 2 {
-  if spin_w > 0 {
+fn reason_text(why, number, spin_w, pulse_w) = match why {
+  Listening => "listening",
+  Steady => "within 36 mHz of 60, nothing to do",
+  Pushing => if spin_w > 0 {
     "{off_words(number)}: Spin pushing {spin_w / 1000} kW"
   } else {
     "{off_words(number)}: Spin absorbing {0 - spin_w / 1000} kW"
-  }
-} else if code == 3 {
-  "falling at {0 - number} mHz per second, past 100"
-} else if code == 4 {
-  "rising at {number} mHz per second, past 100"
-} else if code == 5 {
-  "holding full power, {off_words(number)}"
-} else if code == 6 {
-  "rush hour, hour {number}: Pulse carries the building at {pulse_w / 1000} kW"
-} else if code == 7 {
-  "clean hour, {number / 10} percent clean: Pulse charging at {0 - pulse_w / 1000} kW"
-} else if code == 8 {
-  "within 36 mHz of 60; Spin topping up from Pulse at {0 - spin_w / 1000} kW"
-} else if code == 9 {
-  "{off_words(number)} and Spin is empty"
-} else if code == 10 {
-  "islanded {number} s: Pulse carries the building"
-} else if code == 11 {
-  "the hum is gone, {tenths(number)} dB under its average: Spin carries the first seconds"
-} else {
-  "listening"
+  },
+  Falling => "falling at {0 - number} mHz per second, past 100",
+  Rising => "rising at {number} mHz per second, past 100",
+  Holding => "holding full power, {off_words(number)}",
+  RushHour => "rush hour, hour {number}: Pulse carries the building at {pulse_w / 1000} kW",
+  Charging => "clean hour, {number / 10} percent clean: Pulse charging at {0 - pulse_w / 1000} kW",
+  TopUp => "within 36 mHz of 60; Spin topping up from Pulse at {0 - spin_w / 1000} kW",
+  SpinEmpty => "{off_words(number)} and Spin is empty",
+  Islanded => "islanded {number} s: Pulse carries the building",
+  HumGone => "the hum is gone, {tenths(number)} dB under its average: Spin carries the first seconds",
 }
 
 // ─── Reading the line's numbers as integers ──────────────────────────
 //
+// The byte at position k of the text, or -1 past either end. Every read of
+// the line goes through this one function, and the compiler proves that the
+// read stays inside the text, so no line the ear sends can stop the Station
+// with an error.
+fn at(s: String, k) -> Int with !Trap = if k >= 0 && k < len(s) { s[k] } else { -1 }
+
 // The position after `"key":` in the line, or -1.
-fn find_key(line: String, key: String) -> Int = {
-  let needle = "\"{key}\":"
-  find_from(line, needle, 0, byte_len(line), byte_len(needle))
-}
+fn find_key(line, key: String) = find_from(line, "\"{key}\":", 0)
 
-fn find_from(hay: String, needle: String, i: Int, n: Int, m: Int) -> Int = if i + m > n {
+fn find_from(hay, needle, i) = if at(hay, i) < 0 {
   -1
-} else if matches_at(hay, needle, i, 0, m) {
-  i + m
+} else if matches_at(hay, needle, i, 0) {
+  i + len(needle)
 } else {
-  find_from(hay, needle, i + 1, n, m)
+  find_from(hay, needle, i + 1)
 }
 
-fn matches_at(hay: String, needle: String, i: Int, j: Int, m: Int) -> Bool = if j >= m {
-  true
-} else if byte_at(hay, i + j) == byte_at(needle, j) {
-  matches_at(hay, needle, i, j + 1, m)
-} else {
-  false
+// Whether the needle from its byte j on matches the hay from byte i + j on.
+fn matches_at(hay, needle, i, j) = {
+  let b = at(needle, j)
+  if b < 0 { true } else if at(hay, i + j) == b { matches_at(hay, needle, i, j + 1) } else { false }
 }
 
-fn is_digit(b: Int) -> Bool with Pure = b >= 48 && b <= 57
+fn is_digit(b) with Pure = b >= 48 && b <= 57
 
 // JSON allows spaces after the colon, so the value starts after them.
-fn skip_spaces(s: String, i: Int, n: Int) -> Int =
-  if i < n && byte_at(s, i) == 32 { skip_spaces(s, i + 1, n) } else { i }
+fn skip_spaces(s, i) = if at(s, i) == 32 { skip_spaces(s, i + 1) } else { i }
 
 // The JSON number at `pos` as an integer in thousandths: the sign, the
 // whole digits, the first three decimals, and an exponent if there is one.
-fn milli_at(s: String, pos: Int, n: Int) -> Int = {
-  let neg = pos < n && byte_at(s, pos) == 45
+fn milli_at(s, pos) = {
+  let neg = at(s, pos) == 45
   let p0 = if neg { pos + 1 } else { pos }
-  let p1 = whole_end(s, p0, n)
+  let p1 = whole_end(s, p0)
   let whole = digits_value(s, p0, p1, 0)
-  let frac = if p1 < n && byte_at(s, p1) == 46 { frac_value(s, p1 + 1, n, 0, 0) } else { 0 }
-  let p2 = number_end(s, p1, n)
-  let scaled = exponent_scale(s, p2, n, whole * 1000 + frac)
+  let frac = if at(s, p1) == 46 { frac_value(s, p1 + 1, 0, 0) } else { 0 }
+  let p2 = number_end(s, p1)
+  let scaled = exponent_scale(s, p2, whole * 1000 + frac)
   if neg { 0 - scaled } else { scaled }
 }
 
-fn whole_end(s: String, i: Int, n: Int) -> Int =
-  if i < n && is_digit(byte_at(s, i)) { whole_end(s, i + 1, n) } else { i }
+fn whole_end(s, i) = if is_digit(at(s, i)) { whole_end(s, i + 1) } else { i }
 
-fn digits_value(s: String, i: Int, end: Int, acc: Int) -> Int =
-  if i >= end { acc } else { digits_value(s, i + 1, end, acc * 10 + (byte_at(s, i) - 48)) }
+fn digits_value(s, i, end, acc) =
+  if i >= end { acc } else { digits_value(s, i + 1, end, acc * 10 + (at(s, i) - 48)) }
 
 // Only the first three decimals count; the rest of the fraction is skipped.
-fn frac_value(s: String, i: Int, n: Int, k: Int, acc: Int) -> Int = if i < n && is_digit(byte_at(s, i)) {
+fn frac_value(s, i, k, acc) = if is_digit(at(s, i)) {
   if k < 3 {
-    frac_value(s, i + 1, n, k + 1, acc * 10 + (byte_at(s, i) - 48))
+    frac_value(s, i + 1, k + 1, acc * 10 + (at(s, i) - 48))
   } else {
-    frac_value(s, i + 1, n, k + 1, acc)
+    frac_value(s, i + 1, k + 1, acc)
   }
 } else if k == 0 {
   0
@@ -357,61 +357,64 @@ fn frac_value(s: String, i: Int, n: Int, k: Int, acc: Int) -> Int = if i < n && 
   acc
 }
 
-fn number_end(s: String, i: Int, n: Int) -> Int =
-  if i < n && (is_digit(byte_at(s, i)) || byte_at(s, i) == 46) { number_end(s, i + 1, n) } else { i }
+fn number_end(s, i) = {
+  let b = at(s, i)
+  if is_digit(b) || b == 46 { number_end(s, i + 1) } else { i }
+}
 
 // An exponent such as e-05: the value scaled by it, rounded toward zero.
-fn exponent_scale(s: String, i: Int, n: Int, v: Int) -> Int = if i < n && (byte_at(s, i) == 101 || byte_at(s, i) == 69) {
-  let neg = i + 1 < n && byte_at(s, i + 1) == 45
-  let p =
-    if i + 1 < n && (byte_at(s, i + 1) == 45 || byte_at(s, i + 1) == 43) { i + 2 } else { i + 1 }
-  let e = digits_value(s, p, whole_end(s, p, n), 0)
+fn exponent_scale(s, i, v) = if at(s, i) == 101 || at(s, i) == 69 {
+  let neg = at(s, i + 1) == 45
+  let p = if at(s, i + 1) == 45 || at(s, i + 1) == 43 { i + 2 } else { i + 1 }
+  let e = digits_value(s, p, whole_end(s, p), 0)
   if neg { shrink(v, e) } else { grow(v, e) }
 } else {
   v
 }
 
-fn shrink(v: Int, e: Int) -> Int = if e <= 0 { v } else { shrink(v / 10, e - 1) }
+fn shrink(v, e) = if e <= 0 { v } else { shrink(v / 10, e - 1) }
 
-fn grow(v: Int, e: Int) -> Int = if e <= 0 { v } else { grow(v * 10, e - 1) }
+fn grow(v, e) = if e <= 0 { v } else { grow(v * 10, e - 1) }
 
 // A numeric field in thousandths, or None when the ear has no reading (the
 // field is null) or the field is missing.
-fn field(line: String, key: String) -> Option(Int) = {
-  let at = find_key(line, key)
-  let n = byte_len(line)
-  if at < 0 {
+fn field(line, key) = {
+  let after = find_key(line, key)
+  if after < 0 {
     None
   } else {
-    let pos = skip_spaces(line, at, n)
-    if pos >= n || byte_at(line, pos) == 110 { None } else { Some(milli_at(line, pos, n)) }
+    let pos = skip_spaces(line, after)
+    let b = at(line, pos)
+    if b < 0 || b == 110 { None } else { Some(milli_at(line, pos)) }
   }
 }
 
-fn field_or(line: String, key: String, fallback: Int) -> Int = match field(line, key) {
+fn field_or(line, key, fallback) = match field(line, key) {
   Some(v) => v,
   None => fallback,
 }
 
 // The reading's timestamp, kept as the text it arrived in, so the decision
 // line carries it back without converting it.
-fn stamp(line: String) -> String = {
-  let at = find_key(line, "t")
-  let n = byte_len(line)
-  if at < 0 {
+fn stamp(line) = {
+  let after = find_key(line, "t")
+  if after < 0 {
     "0"
   } else {
-    let pos = skip_spaces(line, at, n)
-    let end = number_end(line, pos, n)
+    let pos = skip_spaces(line, after)
+    let end = number_end(line, pos)
     if end == pos { "0" } else { str_slice(line, pos, end) }
   }
 }
 
 // ─── The loop ────────────────────────────────────────────────────────
-fn step(out) = {
+//
+// One reading: a line in, a decision line out. It answers whether there was
+// a line.
+fn reading() = {
   let line = read_stdin_line()
-  if byte_len(line) == 0 {
-    ()
+  if len(line) == 0 {
+    false
   } else {
     let hz = field(line, "hz_fast")
     let valid = match hz {
@@ -429,18 +432,18 @@ fn step(out) = {
       field_or(line, "level_db", 0),
       field_or(line, "hour_local", 0) / 1000,
       field_or(line, "rush", 0) / 1000,
-      field_or(line, "clean", 0),
-      out
+      field_or(line, "clean", 0)
     )
-    let spin_w = list_index(out, 1)
-    let pulse_w = list_index(out, 2)
-    let words = reason_text(list_index(out, 5), list_index(out, 6), spin_w, pulse_w)
-    print_string("\{\"t\":{stamp(line)},\"mode\":\"{mode_word(mode)}\",\"spin_w\":{spin_w},\"pulse_w\":{pulse_w},\"spin_soc_m\":{list_index(out, 3)},\"pulse_soc_m\":{list_index(out, 4)},\"reason\":\"{words}\"\}\n")
-    step(out)
+    report(stamp(line), mode)
+    true
   }
 }
 
+// Each reading runs inside its own arena, so what it allocated is reclaimed
+// before the next one starts.
+fn step() = if reading() ~> arena { step() }
+
 fn main() = {
-  step(make_list(7))
+  step()
   0
-}
+} ~> station
