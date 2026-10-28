@@ -106,7 +106,7 @@ mentl help                      the full table: also tighten, where, why, teach,
                                 resume, session, serve, repl, asm, march and verify
 ```
 
-A target is a module name or a file path, from any directory. `mentl mcp` serves the same reads over the Model Context Protocol: its `propose` tool compiles Mentl source and answers `PROVEN`, with the artifact in `.build/mcp/last.wat`, or `REFUSED`, with each undischarged claim at its span; `.mcp.json` registers the server.
+A target is a module name or a file path, from any directory. `mentl mcp` serves the same reads over the Model Context Protocol: its `propose` tool compiles Mentl source and answers `PROVEN`, with the built program in `.build/mcp/last.wat`, or `REFUSED`, with each error at its line; `.mcp.json` registers the server.
 
 ## How it works
 
