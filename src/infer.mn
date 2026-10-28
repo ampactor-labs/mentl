@@ -854,9 +854,23 @@ fn ident_byte(b) with Pure =
 fn is_surface_word(ref name) =
   name == "self" || name == "_" || name == "i32" || name == "i64" || name == "f32" || name == "f64" || name == "v128"
 
+// The name a comment's node is known by: the declaration it is, or the
+// top-level declaration that holds it, as for a comment inside a function's
+// body. A comment on a statement outside every declaration, such as a
+// module's header comment before its first import, is named by its line.
 fn comment_owner(h) = match decl_spelling(h) {
   Some(name) => name,
-  None => "node {int_to_str(h)}",
+  None => match top_declaration_of(h) {
+    Some(top) => match decl_spelling(top) {
+      Some(name) => name,
+      None => comment_line(h),
+    },
+    None => comment_line(h),
+  },
+}
+
+fn comment_line(h) = match graph_comment_span_at(h) {
+  Span(line, _, _, _) => "the comment at line {int_to_str(line)}",
 }
 
 // A name a comment cites resolves to a binder of the node the comment is

@@ -934,8 +934,11 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
   // it. One list; `severance_named` / `severance_unlocks` / `len` answer the
   // three questions where they are asked.
   let severable_all = severance_candidates(reached)
-  // The comment-reference edges' reverse read: which comments point here.
-  let referenced_by = graph_comment_refs_of(handle) |> map(comment_owner)
+  // The comment-reference edges' reverse read: which comments point here,
+  // each named by the declaration it sits in. A declaration's own comments
+  // are left out, and a declaration that mentions this one twice enters once.
+  let referenced_by =
+    graph_comment_refs_of(handle) |> map(comment_owner) |> filter({ owner => owner != fn_name }) |> unique
   // The verb-shape read (oracle's pipe_shape_of): single-use let-chains
   // that already draw a `|>` — the topology tier of the audit. Beside it
   // the iteration-shape read (recursion_shape_of): a self-call threading
@@ -1389,6 +1392,7 @@ fn render_query_result(result) = match result {
   QREffects(row) => "→ {show_effrow(row)}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
   QRWhy(reasons) => join("\n", map(show_reason, reasons)),
+  QRAbsent(name, e) => "the row of {name} carries no {e}: {name} performs no op of {e}, and neither does anything it calls or holds",
   // The refs facet renders WHAT the graph computed, not just how much:
   // one located line per inbound use-edge (the seam the propose-facet fix
   // convicted once already — the graph computed it, the terminal threw it

@@ -1213,19 +1213,6 @@ the last three.
    flow (`Hβ.why.flow-naming-at-call`) and a refined alias's provenance
    (`Hβ.why.refinement-provenance`), and the trivial hops are left out
    (`Hβ.viz.why-walk-elides-trivial-hops`).
-   Two printed answers mislead a reader who meets them cold (measured
-   2026-10-28). `mentl why examples/grid/station.mn decide WASI` answers
-   `error: the row of decide carries no WASI` and exits 0. The answer is the
-   fact the question asked for, a proof of absence, and the word `error`
-   says the opposite; the text is the `QRError` arm of `QWhy` in
-   src/query.mn. It becomes a plain answer, such as `the row of decide
-   carries no WASI: decide never reaches it`. `mentl audit
-   examples/grid/station.mn` prints `referenced in comments by: node 12815,
-   node 13742` under `decide`, a handle where a declaration's name belongs
-   (`audit_report_lines` in src/pipeline.mn); a mention is an edge, so the
-   line names the declaration the edge reaches. No fixture quotes either
-   text today (`git grep` over tests, docs and ide, 2026-10-28), so each
-   change costs its one site and the fixture that then quotes the new text.
    A comment is held to what it says (`Hβ.comment.a-fence-is-judged`,
    `Hβ.comment.a-label-is-a-mention`,
    `Hβ.voice.comment-mass-absorbs-into-projections`). A fenced block in a

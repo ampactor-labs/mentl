@@ -277,6 +277,10 @@ type QueryResult
   // The chains a why question answers with: the declaration's own reason
   // first, then one per effect of its row, or the one effect's chain alone
   | QRWhy([Reason])
+  // A why question about an effect the declaration's row does not carry: the
+  // declaration's name and the effect's. The answer is a proof of absence,
+  // so it is rendered as a plain statement and never as an error.
+  | QRAbsent(String, String)
   // The refs sites as (module, span, role) — an ADDRESS and what stands at it.
   // A bare span is not an address: `at 3090:3` names a line in no file, so
   // reading it costs a grep to find out whose line it is (paid twice in one
@@ -362,6 +366,11 @@ handler query_default {
   ask(q) => resume(query_answer(q)),
 }
 
+// A why question about a word that names no effect: the refusal says what
+// the word is not and where the row the declaration does carry is read.
+fn not_an_effect(name: String, e: String) =
+  QRError("{e} is not an effect declared in {name}'s reach; `mentl where <file> {name}` prints the row {name} does carry")
+
 // The answer to one question. A scoped question answers its inner question
 // and keeps the sites in the module it names, so the scope is one read over
 // the answer and never a second walk of the graph.
@@ -406,7 +415,20 @@ fn query_answer(q) = match q {
       (_, reason, _) => match eff {
         None => QRWhy([why_expand(reason, 0)] ++ decl_effect_chains(name)),
         Some(e) => match filter(chain_enters(e, ??), decl_effect_chains(name)) {
-          [] => QRError("the row of {name} carries no {e}"),
+          // No chain enters the effect asked about. That is the proof of
+          // absence when the word names a declared effect, and a misspelt
+          // word must never read as one.
+          [] => match env_lookup(e) {
+            None => not_an_effect(name, e),
+            Some(effect_entry) => match effect_entry {
+              (_, _, kind) => match kind {
+                EffectDeclKind(_, _) => QRAbsent(name, e),
+                FnScheme | ConstructorScheme(_, _) | RecordSchemeKind(_) | HandlerKind(_, _, _, _, _)
+                | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_) | ValueScheme
+                | PrimitiveKind(_) | EffectOpScheme(_, _, _) => not_an_effect(name, e),
+              },
+            },
+          },
           chains => QRWhy(chains),
         },
       },
@@ -495,9 +517,10 @@ fn sites_in(m, answer) = match answer {
   QRReports(entries) => QRReports(filter(report_in_module(m, ??), entries)),
   QRError(msg) => QRError(msg),
   unscoped @ (
-    QRType(_, _) | QRUnresolved(_) | QREffects(_) | QROwnership(_) | QRWhy(_) | QRHandlerProvider(_)
-    | QRFlow(_, _) | QRCensusRoster(_) | QRModules(_) | QRImports(_) | QRUnreferenced(_)
-    | QRUnreachable(_) | QRPerforms(_) | QREnv(_) | QROrphanClaims(_) | QRCost(_, _, _) | QRWhere(_, _)
+    QRType(_, _) | QRUnresolved(_) | QREffects(_) | QROwnership(_) | QRWhy(_) | QRAbsent(_, _)
+    | QRHandlerProvider(_) | QRFlow(_, _) | QRCensusRoster(_) | QRModules(_) | QRImports(_)
+    | QRUnreferenced(_) | QRUnreachable(_) | QRPerforms(_) | QREnv(_) | QROrphanClaims(_)
+    | QRCost(_, _, _) | QRWhere(_, _)
   ) => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, owed, decls, verification, smt, reports"),
 }
 
@@ -1413,6 +1436,7 @@ fn noted_answer(r) = match r {
   QREffects(_) => None,
   QROwnership(_) => None,
   QRWhy(_) => None,
+  QRAbsent(_, _) => None,
   QRHandlerProvider(_) => None,
   QRFlow(_, _) => None,
   QRCensusRoster(_) => None,
