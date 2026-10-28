@@ -1,0 +1,9 @@
+// expect: 2
+// An explicit call of `slice`, or of `str_slice` over a String, raises the
+// cut's bounds claim, `0 <= start <= end <= len(xs)`. Proven on the path,
+// the call is the cut beneath the check and charges no Trap.
+fn middle(xs, a, b) with !Trap = if 0 <= a && a <= b && b <= len(xs) { slice(xs, a, b) } else { [] }
+
+fn from(s, k) with !Trap = if 0 <= k && k <= byte_len(s) { str_slice(s, k, byte_len(s)) } else { "" }
+
+fn main() = len(middle([1, 2, 3, 4], 1, 3)) + byte_len(from("abc", 3))

@@ -4,9 +4,11 @@
 // under `!Trap` `cut` answered a two-element view of a three-element list
 // and `snip` an empty string (boot 3e60dafe: both checked clean, and the
 // program ran to 2). The bounds are the slice's precondition, checked where
-// the view is cut, and a call carries the `Trap` that check can raise.
-fn cut(xs) with !Trap = slice(xs, -2, 2)
+// the view is cut, and a call whose bounds nothing on its path proves
+// carries the `Trap` that check can raise. Bounds the text fixes out of
+// range are refused outright (mn-explicit-cut-fixed-out-of-range-refuses.mn).
+fn cut(xs, a, b) with !Trap = slice(xs, a, b)
 
-fn snip(s) with !Trap = str_slice(s, 2, 1)
+fn snip(s, a, b) with !Trap = str_slice(s, a, b)
 
-fn main() = len(cut([1, 2, 3])) + byte_len(snip("abc"))
+fn main() = len(cut([1, 2, 3], -2, 2)) + byte_len(snip("abc", 2, 1))

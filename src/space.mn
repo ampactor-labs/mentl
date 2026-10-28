@@ -558,7 +558,7 @@ fn claim_is_marked(pred) = match pred {
   PPatternMatch(_, _) => true,
   PWithSelf(_, inner) => claim_is_marked(inner),
   PTotalDiv(_, _, _) => true,
-  PInBounds(_, _) => true,
+  PInBounds(_, _) | PSliceBounds(_, _, _) => true,
 }
 
 fn decided_state(proven) = if proven { CellProven } else { CellRefused }

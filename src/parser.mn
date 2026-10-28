@@ -3945,7 +3945,7 @@ fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
     match node_to_predicate(expr_node) {
       PTrue => report(WRedundantWhere(graph_span_of(expr_node))),
       PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => (),
+      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => (),
     }
     (expr_node, p)
   },

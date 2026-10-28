@@ -1,0 +1,8 @@
+// expect: refuse E_EffectMismatch
+// An explicit read whose bounds nothing on its path proves keeps the
+// primitive's own check, and its row carries the Trap that check can raise.
+// The ledger owes nothing for it: the row already says the program can stop
+// here, so `mentl check` names no pending claim at the call.
+fn pick(xs, i) with !Trap = list_index(xs, i)
+
+fn main() = pick([1, 2, 3], 1)

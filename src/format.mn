@@ -1121,6 +1121,7 @@ fn render_predicate_tokens(pred) with !Mutate = match pred {
   PWithSelf(_, inner) => render_predicate_tokens(inner),
   PTotalDiv(op, a, b) => show_predicate(PTotalDiv(op, a, b)),
   PInBounds(recv, idx) => show_predicate(PInBounds(recv, idx)),
+  PSliceBounds(recv, start, end) => show_predicate(PSliceBounds(recv, start, end)),
   PProvides(provided) => show_predicate(PProvides(provided)),
 }
 
@@ -1141,7 +1142,7 @@ fn pred_prec(pred) with Pure = match pred {
   PAnd(_, _) => 5,
   POr(_, _) => 4,
   PTrue | PNot(_) | PBoolNode(_) | PPatternMatch(_, _) | PWithSelf(_, _) | PTotalDiv(_, _, _)
-  | PProvides(_) | PInBounds(_, _) => 90,
+  | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => 90,
 }
 
 fn render_pred_node(h) with !Mutate = render_body_tokens(h, graph_node_body(h))

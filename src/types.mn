@@ -1994,6 +1994,17 @@ fn list_rest_callee() with Pure = "slice"
 // pattern's own length test is the slice's precondition.
 fn list_rest_cut() with Pure = "slice_raw"
 
+// What an explicit call of a sequence primitive calls where the judgment
+// proved its face's claim: the read's traversal beneath its bounds check, the
+// cut beneath its. `byte_at` is the read over a String and `str_slice` the
+// cut over one, so each takes its primitive's form. Every other primitive is
+// called as written, its check in its body.
+fn proven_twin(cname: String) = match cname {
+  "list_index" | "byte_at" => Some(subscript_callee(true)),
+  "slice" | "str_slice" => Some(list_rest_cut()),
+  _ => None,
+}
+
 // The lengths the vocabulary names: a call is a sequence's length when its
 // callee's edge reaches one of them, never because it is spelled so.
 fn length_callees() = ["len", "byte_len"]
@@ -3472,6 +3483,17 @@ type Predicate
   // a length the text fixes, and where it stays open the site charges
   // `Trap` — the division's law one primitive over.
   | PInBounds(Int, Int)
+  // A SEQUENCE CUT's precondition: the receiver, the start and the end of
+  // `slice(xs, start, end)`, called by that name or as `str_slice`. The cut
+  // traps where `0 <= start <= end <= len(xs)` fails; the claim decides from
+  // the start's lower bounds, from every constant the two bounds can be, from
+  // the receiver's lengths read along its edges, and from the conditions on
+  // the path to the call. An explicit call of a sequence primitive raises its
+  // face's claim as `xs[i]` does: proven, the call is the form beneath the
+  // check (`proven_twin`) and charges no `Trap`; refuted, the call is refused;
+  // open, the primitive's own row carries the `Trap`, and the ledger owes
+  // nothing more, since that row already says the program can stop there.
+  | PSliceBounds(Int, Int, Int)
 
 // What one position of a function is handed: nothing yet — no application
 // has reached it, the identity of the join — the values at these nodes, or
@@ -5141,6 +5163,12 @@ effect Verify {
   // only when its precondition stays open — reads it here, off the one
   // decide, never a second decide beside the ledger's.
   verify(Int, Span, Predicate, Reason) -> Option(Bool)
+  // The claim a primitive's face states at an explicit call of it, decided
+  // by the same fragment and kept nowhere here: the verdict is written in
+  // the call's own row, which carries the primitive's `Trap` exactly where
+  // the claim stayed open, so the ledger would only copy it, and an open one
+  // is owed nothing, since that row already says the program can stop there.
+  verify_decide(Predicate) -> Option(Bool)
   verify_debt() -> [(Int, Span, Predicate, Reason)]
   // Every claim the ledger DECIDED, with its verdict — true proven, false
   // refuted — at the module and span it was raised in. The canvas marks
@@ -5517,7 +5545,7 @@ fn pred_is_provision(pred) = match pred {
   PBoolNode(_) => false,
   PPatternMatch(_, _) => false,
   PTotalDiv(_, _, _) => false,
-  PInBounds(_, _) => false,
+  PInBounds(_, _) | PSliceBounds(_, _, _) => false,
 }
 
 // A function type's parameter is its type alone, since a type position
@@ -6122,6 +6150,7 @@ fn show_predicate(ref pred) = match pred {
   },
   PProvides(provided) => show_provided(provided),
   PInBounds(recv, idx) => "0 <= {show_pred_operand(idx)} && {show_pred_operand(idx)} < len({show_pred_operand(recv)})",
+  PSliceBounds(recv, start, end) => "0 <= {show_pred_operand(start)} && {show_pred_operand(start)} <= {show_pred_operand(end)} && {show_pred_operand(end)} <= len({show_pred_operand(recv)})",
 }
 
 fn show_provided(provided) = match provided {

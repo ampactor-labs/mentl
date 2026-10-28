@@ -36,6 +36,7 @@ handler verify_ledger with debt = [], decided = [], flows = [], settled = [], un
       resume(None) with debt = [(modh, span, predicate, reason)] ++ debt
     },
   },
+  verify_decide(predicate) => resume(predicate_decide(predicate)),
   verify_debt() => resume(debt ++ flat_map(settled_owed, settled)),
   verify_decided() => resume(decided ++ flat_map(settled_verdict, settled)),
   verify_flows() => resume(flows),
@@ -151,6 +152,7 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PWithSelf(sh, inner) => decide_with_self(inner, SelfNode(sh)),
   PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
   PInBounds(recv, idx) => in_bounds_decide(recv, idx, bind),
+  PSliceBounds(recv, start, end) => slice_bounds_decide(recv, start, end, bind),
   // a provision states what arrives at a position, never a demand on it
   PProvides(_) => Some(true),
 }
@@ -198,11 +200,87 @@ fn total_div_faces(op, a, b, bind) = match op {
 // the row fact `Trap` at the site.
 fn in_bounds_decide(recv, idx, bind) = {
   let ileaves = value_leaves(idx, bind)
-  let at = term_of(idx, bind)
-  and_decide(
-    or_path(leaves_nonneg(ileaves), idx, BLe, Some(TermAt(MZero, 0)), at),
-    or_path(below_lengths(ileaves, seq_lengths(recv)), idx, BLt, at, length_of(recv, bind))
-  )
+  let lower = leaves_nonneg(ileaves)
+  let upper = bounded_by_lengths(BLt, ileaves, seq_lengths(recv))
+  match and_decide(lower, upper) {
+    Some(true) => Some(true),
+    // The path's hypotheses are one fact of the site, read once for both
+    // faces, and only where the values left a face to prove.
+    Some(false) | None => {
+      let hyps = path_hyps(idx)
+      let at = term_of(idx, bind)
+      and_decide(
+        or_hyps(lower, hyps, BLe, Some(TermAt(MZero, 0)), at),
+        or_hyps(upper, hyps, BLt, at, length_of(recv, bind))
+      )
+    },
+  }
+}
+
+// A sequence cut's precondition (TRAP): `0 <= start`, `start <= end` and
+// `end <= len(xs)`, each decided as the read's faces are. The start's lower
+// face reads its leaves' lower bounds; the middle face pairs every constant
+// the start can be with every constant the end can be; the upper face pairs
+// every constant the end can be with every length the receiver can have. A
+// face the values leave open is proven where the call's path implies it
+// (`if 0 <= a && a < b && b <= len(xs) { slice(xs, a, b) }`), and otherwise
+// stays open, which is the row fact `Trap` at the call.
+fn slice_bounds_decide(recv, start, end, bind) = {
+  let sleaves = value_leaves(start, bind)
+  let eleaves = value_leaves(end, bind)
+  let lower = leaves_nonneg(sleaves)
+  let ordered = points_ordered(sleaves, eleaves)
+  let upper = bounded_by_lengths(BLe, eleaves, seq_lengths(recv))
+  match and_decide(lower, and_decide(ordered, upper)) {
+    Some(true) => Some(true),
+    // Both bounds are arguments of the one call, so the path to either is
+    // the path to the call, read once for the three faces.
+    Some(false) | None => {
+      let hyps = path_hyps(end)
+      let at_start = term_of(start, bind)
+      let at_end = term_of(end, bind)
+      and_decide(
+        or_hyps(lower, hyps, BLe, Some(TermAt(MZero, 0)), at_start),
+        and_decide(
+          or_hyps(ordered, hyps, BLe, at_start, at_end),
+          or_hyps(upper, hyps, BLe, at_end, length_of(recv, bind))
+        )
+      )
+    },
+  }
+}
+
+// `start <= end` over every constant each can be: proven when every pair is
+// ordered, refuted the moment one is not, open where either side has a value
+// nothing here fixes.
+fn points_ordered(sleaves, eleaves) = if len(sleaves) == 0 || len(eleaves) == 0 {
+  None
+} else {
+  fold(Some(true), ordered_step(eleaves, ??, ??), sleaves)
+}
+
+fn ordered_step(eleaves, acc, leaf) = and_decide(acc, leaf_ordered(leaf, eleaves))
+
+fn leaf_ordered(leaf, eleaves) = match leaf {
+  LPoint(v) => match v {
+    LVInt(k) => fold(Some(true), ordered_point_step(k, ??, ??), eleaves),
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
+  },
+  LClaimed(_, beneath) => leaf_ordered(beneath, eleaves),
+  LMay(beneath) => proves_only(leaf_ordered(beneath, eleaves)),
+  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+}
+
+fn ordered_point_step(k, acc, leaf) = and_decide(acc, point_at_most(k, leaf))
+
+fn point_at_most(k, leaf) = match leaf {
+  LPoint(v) => match v {
+    LVInt(m) => Some(k <= m),
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
+  },
+  LClaimed(_, beneath) => point_at_most(k, beneath),
+  LMay(beneath) => proves_only(point_at_most(k, beneath)),
+  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 // A sequence's length as a term: the constant the text fixes where every
@@ -238,31 +316,39 @@ fn leaf_nonneg(leaf) = match leaf {
   LUnknown => None,
 }
 
-// `i < len(xs)` over every constant the index can be and every length the
-// receiver can have: proven when each pair is in range, refuted the moment
-// one is not, open where either side has a value nothing here fixes.
-fn below_lengths(ileaves, lengths) = if len(ileaves) == 0 || len(lengths) == 0 {
+// A value against every length the receiver can have, under the face's own
+// order: `i < len(xs)` for a read, `end <= len(xs)` for a cut, over every
+// constant the value can be. Proven when each pair holds, refuted the moment
+// one does not, open where either side has a value nothing here fixes.
+fn bounded_by_lengths(op, leaves, lengths) = if len(leaves) == 0 || len(lengths) == 0 {
   None
 } else {
-  fold(Some(true), below_step(lengths, ??, ??), ileaves)
+  fold(Some(true), bounded_step(op, lengths, ??, ??), leaves)
 }
 
-fn below_step(lengths, acc, leaf) = and_decide(acc, leaf_below(leaf, lengths))
+fn bounded_step(op, lengths, acc, leaf) = and_decide(acc, leaf_bounded(op, leaf, lengths))
 
-fn leaf_below(leaf, lengths) = match leaf {
+fn leaf_bounded(op, leaf, lengths) = match leaf {
   LPoint(v) => match v {
-    LVInt(k) => fold(Some(true), point_step(k, ??, ??), lengths),
+    LVInt(k) => fold(Some(true), point_step(op, k, ??, ??), lengths),
     LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
-  LClaimed(_, beneath) => leaf_below(beneath, lengths),
-  LMay(beneath) => proves_only(leaf_below(beneath, lengths)),
+  LClaimed(_, beneath) => leaf_bounded(op, beneath, lengths),
+  LMay(beneath) => proves_only(leaf_bounded(op, beneath, lengths)),
   LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
-fn point_step(k, acc, n) = and_decide(acc, point_below(k, n))
+fn point_step(op, k, acc, n) = and_decide(acc, point_against(op, k, n))
 
-fn point_below(k, n) = match n {
-  Some(m) => Some(k < m),
+// A constant against a length the text fixes, under the face's order; the
+// two faces are the strict and the inclusive bound, and no other order is
+// asked here.
+fn point_against(op, k, n) = match n {
+  Some(m) => match op {
+    BLt => Some(k < m),
+    BLe => Some(k <= m),
+    BGt | BGe | BEq | BNe | BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => None,
+  },
   None => None,
 }
 
@@ -291,16 +377,28 @@ type Hyp = Holds(BinOp, Term, Term)
 // `a - b <= w`, and `a - b != w`.
 type Gap = AtMost(Measure, Measure, Int) | Apart(Measure, Measure, Int)
 
-// A verdict the values left open, proven where the site's path implies the
-// claim; one they decided stands.
+// A verdict the values left open, or refuted, is proven where the site's
+// path implies the claim: a source the path excludes never reaches the site,
+// so a join's fatal tail behind a guard (`let i = if c { -1 } else { k }`,
+// then `if i >= 0 && i < len(xs) { xs[i] }`) is the guard's to exclude, and
+// only the same read written bare is the trap written down. A verdict the
+// values proved stands, and a path that proves nothing leaves the values'
+// own verdict.
 fn or_path(verdict, site, op, lt, rt) = match verdict {
-  None => if path_holds(site, op, lt, rt) { Some(true) } else { None },
-  Some(v) => Some(v),
+  Some(true) => Some(true),
+  Some(false) | None => or_hyps(verdict, path_hyps(site), op, lt, rt),
 }
 
-fn path_holds(site, op, lt, rt) = match lt {
+// The same read over hypotheses already gathered: a site with several faces
+// reads its path once and asks it once per face.
+fn or_hyps(verdict, hyps, op, lt, rt) = match verdict {
+  Some(true) => Some(true),
+  Some(false) | None => if path_holds(hyps, op, lt, rt) { Some(true) } else { verdict },
+}
+
+fn path_holds(hyps, op, lt, rt) = match lt {
   Some(l) => match rt {
-    Some(r) => hyps_prove(path_hyps(site), Holds(op, l, r)),
+    Some(r) => hyps_prove(hyps, Holds(op, l, r)),
     None => false,
   },
   None => false,
@@ -1543,7 +1641,7 @@ fn claim_is_a_holes_demand(pred) = match pred {
     NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
   },
   PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-  | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => false,
+  | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => false,
 }
 
 // The leaves of whatever stands at a handle: a binder's (a destructured
@@ -2659,7 +2757,7 @@ fn pred_names_label(pred) = match pred {
   POr(a, b) => pred_names_label(a) || pred_names_label(b),
   PWithSelf(_, inner) => pred_names_label(inner),
   PTrue | PCompare(_, _, _) | PPatternMatch(_, _) | PTotalDiv(_, _, _) | PProvides(_)
-  | PInBounds(_, _) => false,
+  | PInBounds(_, _) | PSliceBounds(_, _, _) => false,
 }
 
 // What a contract states of a label at the value it types: Some(true) that
@@ -2687,7 +2785,7 @@ fn pred_states(pred, label) = match pred {
   POr(a, b) => either_states(pred_states(a, label), pred_states(b, label)),
   PWithSelf(_, inner) => pred_states(inner, label),
   PTrue | PCompare(_, _, _) | PNot(_) | PPatternMatch(_, _) | PTotalDiv(_, _, _) | PProvides(_)
-  | PInBounds(_, _) => None,
+  | PInBounds(_, _) | PSliceBounds(_, _, _) => None,
 }
 
 fn either_states(a, b) = match a {
@@ -2741,7 +2839,7 @@ fn pred_without_labels(pred) = if pred_names_label(pred) {
     PAnd(a, b) => PAnd(pred_without_labels(a), pred_without_labels(b)),
     PWithSelf(s, inner) => PWithSelf(s, pred_without_labels(inner)),
     PTrue | PCompare(_, _, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => PTrue,
+    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => PTrue,
   }
 } else {
   pred
@@ -2753,7 +2851,7 @@ fn pred_only_labels(pred) = if pred_names_label(pred) {
     PAnd(a, b) => PAnd(pred_only_labels(a), pred_only_labels(b)),
     PWithSelf(s, inner) => PWithSelf(s, pred_only_labels(inner)),
     PTrue | PCompare(_, _, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => pred,
+    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => pred,
   }
 } else {
   PTrue
@@ -4745,7 +4843,7 @@ fn pred_labels(pred) = match pred {
   POr(a, b) => pred_labels(a) ++ pred_labels(b),
   PWithSelf(_, inner) => pred_labels(inner),
   PTrue | PCompare(_, _, _) | PPatternMatch(_, _) | PTotalDiv(_, _, _) | PProvides(_)
-  | PInBounds(_, _) => [],
+  | PInBounds(_, _) | PSliceBounds(_, _, _) => [],
 }
 
 fn label_facts(d, label) = match label {
@@ -4838,13 +4936,13 @@ fn label_literal(pred) = match pred {
     None => None,
   },
   PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PPatternMatch(_, _)
-  | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => None,
+  | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => None,
 }
 
 fn conjuncts(pred) = match pred {
   PAnd(a, b) => conjuncts(a) ++ conjuncts(b),
   PTrue | PCompare(_, _, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-  | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => [pred],
+  | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => [pred],
 }
 
 fn label_name(lit) = match graph_node_body(lit) {
@@ -4988,7 +5086,7 @@ fn settle_claim(claim) = match claim {
     let out = match pred {
       PWithSelf(subject, inner) => claim_verdict(subject, inner),
       PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => flow_verdict(None),
+      | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => flow_verdict(None),
     }
     let why = match out.chain {
       Some(c) => c,
@@ -5042,7 +5140,7 @@ fn pred_domain(pred) = match pred {
   PWithSelf(_, inner) => pred_domain(inner),
   // a precondition on two operands states nothing about `self`
   PTotalDiv(_, _, _) => dom_top(),
-  PInBounds(_, _) => dom_top(),
+  PInBounds(_, _) | PSliceBounds(_, _, _) => dom_top(),
   PProvides(_) => dom_top(),
 }
 
@@ -5471,12 +5569,12 @@ fn without_presence(pred) = match pred {
     PTrue => without_presence(b),
     oa @ (
       PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _)
+      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _)
     ) => match without_presence(b) {
       PTrue => oa,
       ob @ (
         PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-        | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _)
+        | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _)
       ) => PAnd(oa, ob),
     },
   },
@@ -5484,12 +5582,12 @@ fn without_presence(pred) = match pred {
     PTrue => PTrue,
     oa @ (
       PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _)
+      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _)
     ) => match without_presence(b) {
       PTrue => PTrue,
       ob @ (
         PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-        | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _)
+        | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _)
       ) => POr(oa, ob),
     },
   },
@@ -5497,11 +5595,11 @@ fn without_presence(pred) = match pred {
     PTrue => PTrue,
     owed @ (
       PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _)
+      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _)
     ) => PWithSelf(s, owed),
   },
   PTrue | PCompare(_, _, _) | PNot(_) | PPatternMatch(_, _) | PTotalDiv(_, _, _) | PProvides(_)
-  | PInBounds(_, _) => pred,
+  | PInBounds(_, _) | PSliceBounds(_, _, _) => pred,
 }
 
 // Compile-time refusal at the construction site. The verifier proved
@@ -5576,7 +5674,7 @@ fn classify_predicate(pred) with Pure = match pred {
   // the binder classifies as its body
   PWithSelf(_, inner) => classify_predicate(inner),
   PTotalDiv(_, _, _) => "partiality",
-  PInBounds(_, _) => "partiality",
+  PInBounds(_, _) | PSliceBounds(_, _, _) => "partiality",
   PProvides(_) => "provision",
 }
 
@@ -5602,6 +5700,7 @@ fn predicate_to_smt(ref pred) = match pred {
     BAdd | BSub | BMul | BDiv | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
   },
   PInBounds(recv, idx) => "(and (<= 0 {handle_to_smt(idx)}) (< {handle_to_smt(idx)} (len {handle_to_smt(recv)})))",
+  PSliceBounds(recv, start, end) => "(and (<= 0 {handle_to_smt(start)}) (<= {handle_to_smt(start)} {handle_to_smt(end)}) (<= {handle_to_smt(end)} (len {handle_to_smt(recv)})))",
   PProvides(_) => "true",
 }
 

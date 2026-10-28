@@ -1,0 +1,9 @@
+// expect: 7
+// An explicit call of `list_index`, or of `byte_at` over a String, raises the
+// read's bounds claim as `xs[i]` does. Proven on the path, the call is the
+// traversal beneath the check and charges no Trap, so `!Trap` holds over it.
+fn third(xs) with !Trap = if 2 < len(xs) { list_index(xs, 2) } else { 0 }
+
+fn first_byte(s) with !Trap = if 0 < byte_len(s) { byte_at(s, 0) } else { 0 }
+
+fn main() = third([5, 6, 7]) + first_byte("")

@@ -860,7 +860,21 @@ fn site_schedule_seed(fh) = match lower_site_schedule() {
 // reaches; it applies its instruction where it stands.
 fn lower_global_call(handle, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
   Some(PrimitiveKind(p)) => LPrim(handle, p, lo_args),
-  Some(_) | None => lower_named_call(handle, fh, name, r_args, lo_args),
+  Some(_) | None => match beneath_check(handle, fh, name) {
+    Some(twin) => LDirectCall(handle, fh, vocabulary_callee(twin), false, lo_args),
+    None => lower_named_call(handle, fh, name, r_args, lo_args),
+  },
+}
+
+// A sequence primitive called where the judgment proved its face's claim is
+// the form beneath its check, as `xs[i]` is: the call's node carries no
+// `Trap`, which is the verdict the judgment wrote there (`claim_open_at`),
+// and the twin is called directly at its own signature (`proven_twin`). A
+// call whose claim stayed open, or of a primitive with no such form, is the
+// call as written.
+fn beneath_check(handle, fh, name: String) = match proven_twin(name) {
+  Some(twin) => if reaches_substrate(fh) && !claim_open_at(handle) { Some(twin) } else { None },
+  None => None,
 }
 
 fn lower_named_call(handle, fh, name: String, r_args, lo_args) = if name == "to_string" && len(r_args) == 1 {

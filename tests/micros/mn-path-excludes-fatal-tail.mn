@@ -1,0 +1,10 @@
+// expect: 2
+// A source the path excludes never reaches the site. The join's -1 tail
+// refutes the read where the read is written bare; behind `i >= 0` the guard
+// excludes that tail, and the read is proven on its path like any other.
+fn pick(xs, c) with !Trap = {
+  let i = if c { -1 } else { 1 }
+  if i >= 0 && i < len(xs) { xs[i] } else { 0 }
+}
+
+fn main() = pick([1, 2, 3], false)

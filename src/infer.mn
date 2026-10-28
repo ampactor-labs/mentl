@@ -5311,9 +5311,55 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   // representation era stale (measured then on the 559k-line wheel against
   // the 4GB ceiling; the current wheel compiles at ~694MB peak — the
   // re-measurement, not the arena, un-gated this).
-  inf_add_row_at(handle, mutation_masked(handle, fh, substrate_row(fh), args))
+  // The row the call charges is its face's: where the face's claim held, the
+  // row of the form beneath the primitive's check, which the lowering calls;
+  // otherwise the primitive's own (`proven_form`).
+  match proven_form(cname, args, span) {
+    Some(d) => charge_published(handle, d),
+    None => inf_add_row_at(handle, mutation_masked(handle, fh, substrate_row(fh), args)),
+  }
   // What the face writes, asked of the arguments it writes.
   ages_mutation_call(handle, fh, args)
+}
+
+// A partial sequence primitive's precondition is a claim on its face,
+// decided at every explicit call the way `xs[i]`'s is. Proven, the call is
+// the form beneath the check (`proven_twin`), whose declaration this answers
+// so that the call charges its row and the lowering calls it; refuted, the
+// call is refused where it stands, since a read or a cut the text fixes out
+// of range is the program's meaning; open, the call keeps the primitive, and
+// the primitive's own declared row carries the `Trap`. The verdict lives in
+// that row and nowhere else: the ledger keeps no copy of it, and an open call
+// owes the ledger nothing, since the row already says the program can stop
+// there, where an open claim at `xs[i]` or at `/` has no other record.
+fn proven_form(cname: String, args, span: ValidSpan) = match face_claim(cname, args) {
+  Some(pred) => match verify_decide(pred) {
+    Some(true) => match proven_twin(cname) {
+      Some(twin) => env_resolve_linked(twin),
+      None => None,
+    },
+    Some(false) => {
+      report(ERefinementRejected(pred, span, Located(span, Inferred("a sequence primitive's precondition"))))
+      None
+    },
+    None => None,
+  },
+  None => None,
+}
+
+// The claim a primitive's face states of the arguments of a call with every
+// argument in place: a read's bounds, a cut's bounds. A primitive whose face
+// states no claim, or a call of another shape, claims nothing here.
+fn face_claim(cname: String, args) = match cname {
+  "list_index" | "byte_at" => match args {
+    [xs, i] => Some(PInBounds(xs, i)),
+    [] | [_] | [_, _, _, ..._] => None,
+  },
+  "slice" | "str_slice" => match args {
+    [xs, start, end] => Some(PSliceBounds(xs, start, end)),
+    [] | [_] | [_, _] | [_, _, _, _, ..._] => None,
+  },
+  _ => None,
 }
 
 // A substrate primitive's own declared row, read live off its callee; the
@@ -14831,7 +14877,7 @@ fn demand_refinement(t) = match surface_refinement(t) {
     (n, pred) => match pred {
       PProvides(_) => None,
       PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PInBounds(_, _) => Some((n, pred)),
+      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PInBounds(_, _) | PSliceBounds(_, _, _) => Some((n, pred)),
     },
   },
   None => None,

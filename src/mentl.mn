@@ -493,6 +493,7 @@ fn lean_at_slot(b, name: String, ip) = match ip {
 fn predicate_leans(pred) = match pred {
   PTotalDiv(_, a, b) => value_leans(b) ++ value_leans(a),
   PInBounds(recv, idx) => value_leans(idx) ++ value_leans(recv),
+  PSliceBounds(recv, start, end) => value_leans(start) ++ value_leans(end) ++ value_leans(recv),
   PWithSelf(h, _) => value_leans(h),
   PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
   | PProvides(_) => [],
@@ -707,6 +708,7 @@ fn made_safe(o) = match o {
   (_, _, pred, _) => match pred {
     PTotalDiv(_, _, _) => "the division cannot fail",
     PInBounds(_, _) => "the index stays in bounds",
+    PSliceBounds(_, _, _) => "the cut stays inside the sequence",
     PWithSelf(_, _) | PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_)
     | PPatternMatch(_, _) | PProvides(_) => "the claim holds",
   },
@@ -860,7 +862,7 @@ fn resting_on(decl, o) = match o {
       chs => [(pred, chs)],
     },
     PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => [],
+    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => [],
   },
 }
 

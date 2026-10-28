@@ -421,7 +421,8 @@ fn field_or(line, key, fallback) = match field(line, key) {
 }
 
 // The reading's timestamp, kept as the text it arrived in, so the decision
-// line carries it back without converting it.
+// line carries it back without converting it. The cut's bounds are stated
+// where it is cut, and the compiler proves the cut stays inside the line.
 fn stamp(line) = {
   let after = find_key(line, "t")
   if after < 0 {
@@ -429,7 +430,7 @@ fn stamp(line) = {
   } else {
     let pos = skip_spaces(line, after)
     let end = number_end(line, pos)
-    if end == pos { "0" } else { str_slice(line, pos, end) }
+    if 0 <= pos && pos < end && end <= len(line) { str_slice(line, pos, end) } else { "0" }
   }
 }
 

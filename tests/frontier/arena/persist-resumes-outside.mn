@@ -6,7 +6,10 @@
 // and drops a list, then call A's thunk — exit 42 when the list A's arena
 // allocated reads back whole. A's arenas were open on A's stack, which no
 // image carries, so B runs outside every one of them: A's region is
-// ordinary heap in B, below the line B's own arena opens at.
+// ordinary heap in B, below the line B's own arena opens at. The root's
+// slot is typed by `read_seed`, whose read of a one-element literal is
+// proven, so the thunk's reads are guarded to be proven too and the two
+// rows agree; a list that came back short would answer 0, not 42.
 let seed = [0]
 
 fn read_seed() = list_index(seed, 0)
@@ -17,7 +20,7 @@ fn build(n) = if n == 0 { [] } else { push(build(n - 1), n * n) }
 
 fn park() = {
   let xs = build(6)
-  let thunk = () => list_index(xs, 2) + list_index(xs, 5) - 3
+  let thunk = () => if 5 < len(xs) { list_index(xs, 2) + list_index(xs, 5) - 3 } else { 0 }
   list_set(root, 0, thunk)
   persist(image_header(addr(thunk)), "/tmp/persist-resumes-outside.img")
   40

@@ -3093,7 +3093,12 @@ to match and every earlier literal arm is known to have failed. So
 `if b > 0 { a / b }`, `if b == 0 { 0 } else { a % b }`,
 `match b { 0 => 0, _ => a % b }`, `if i >= 0 && i < len(xs) { xs[i] }` and
 `if len(xs) == 0 { d } else { xs[len(xs) - 1] }` are total, and `!Trap`
-holds over each. The conditions are about terms, each plus a constant: a
+holds over each. A source the path excludes never reaches the site: after
+`let i = if c { -1 } else { 1 }`, the read in `if i >= 0 && i < len(xs) {
+xs[i] }` is proven, where the same read written bare is refused at the
+join's `-1` tail (tests/micros/mn-path-excludes-fatal-tail.mn), and a
+division or a refinement claim behind such a guard is proven the same way.
+The conditions are about terms, each plus a constant: a
 constant, a binder read along its edge, or the length that the vocabulary's
 `len` returns (a parameter named `len` is not a length). They are decided as
 difference bounds. A condition is a fact about machine words, so a term with
@@ -3111,14 +3116,33 @@ for. `make_list` traps at a negative count before anything is allocated, so
 the count never reaches the allocator as exhausted memory. `list_set` traps
 at an index outside its list, where a store past the end would overwrite
 the next allocation. Each check is in the primitive's own body, so an
-explicit call of one carries its `Trap`, as an explicit `list_index` does
+explicit call of one carries its `Trap` wherever its claim stays open
 (tests/micros/mn-slice-bound-is-trap.mn, mn-make-list-count-is-trap.mn).
+
+**An explicit call of a sequence primitive raises its face's claim.** A call
+of `list_index` or `byte_at` with both arguments in place raises the read's
+claim, `0 <= i < len(xs)`, and a call of `slice` or `str_slice` with its
+three raises the cut's, `0 <= start <= end <= len(xs)`. Each is decided by
+the same fragment, with the conditions on the call's path. Proven, the call
+is the form beneath the check, `list_index_unchecked` or `slice_raw`, and
+charges no `Trap`, so `fn from(s, k) with !Trap = if 0 <= k && k <=
+byte_len(s) { str_slice(s, k, byte_len(s)) } else { "" }` is accepted.
+Refuted, the call is refused where it stands: `slice([1, 2, 3], 1, 5)` is
+`E_RefinementRejected`. Open, the call keeps the primitive, and the
+primitive's own row carries the `Trap`; the ledger owes nothing for it, since
+that row already says the program can stop there, where an open claim at
+`xs[i]` or at `/` has no other record
+(tests/micros/mn-explicit-read-proven-is-total.mn,
+mn-explicit-cut-proven-is-total.mn,
+mn-explicit-cut-fixed-out-of-range-refuses.mn,
+mn-explicit-read-open-is-a-row-fact.mn). `make_list`'s count and `list_set`'s
+index are still checked in their bodies alone, and a call that a pipe
+completes (`xs |> slice(1, 3)`) raises no claim yet (`PLAN.md` §11, the
+face).
 
 The fragment cannot yet read a bound that a parameter takes from every call,
 such as `0 <= i` where each call passes `0` or `i + 1`
-(`Hβ.verify.parameter-is-what-its-calls-hand`). It also cannot read an
-explicit call of a sequence primitive, whose precondition is checked in its
-body and not claimed at the call (`PLAN.md` §11, the face). A destructuring
+(`Hβ.verify.parameter-is-what-its-calls-hand`). A destructuring
 pattern follows the same rule in another form: the shape it asserts is its
 precondition, decided by the same walk (§«Exhaustiveness»). Non-termination
 is not a trap and is not in the row (`Hβ.effects.divergence-is-a-row-fact`).

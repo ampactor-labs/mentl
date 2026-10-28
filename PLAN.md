@@ -1049,10 +1049,14 @@ the last three.
    are a table in the judgment (`seq_op_sig`). Each becomes the primitive's
    own signature, with its body typed through it, once a list's element
    crosses its slot at its own width (step 2). Its precondition is a claim on
-   that face, decided at every explicit call the way `xs[i]`'s is
-   (`make_list`'s count, a slice's bounds, an index). So a call that the
-   fragment proves in range charges no `Trap`, where today every explicit
-   call of one charges the `Trap` its body's check can raise. A call's answer
+   that face, decided at every explicit call the way `xs[i]`'s is. A read's
+   (`list_index`, `byte_at`) and a cut's (`slice`, `str_slice`) are, since
+   2026-10-28: a call with its arguments in place that the fragment proves in
+   range calls the form beneath the check and charges no `Trap`, a refuted
+   one is refused, and an open one keeps the primitive's row and owes the
+   ledger nothing. `make_list`'s count, `list_set`'s index and a call that a
+   pipe completes still charge the `Trap` their body's check can raise. A
+   call's answer
    read off a tee (a fold's accumulator, a handler's answer) is placed by the
    install's arms, as the value walk already reads them
    (`Hβ.effects.tee-answer-is-the-arms`). Today a function threading a table
