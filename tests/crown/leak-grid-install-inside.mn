@@ -1,0 +1,23 @@
+// CROWN — the controller shape: the decision installs a handler over its own
+// body, and that handler's arm reads the network. Net enters `decide`
+// through the install, not through the body it absorbs from.
+// Expect E_EffectMismatch.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+handler online {
+  price() => resume(fetch("https://api.eia.gov/")),
+}
+
+handler offline {
+  fetch(url) => resume(50000),
+}
+
+fn decide(hz: Int) -> Int with !Net = hz + price() ~> online
+
+fn main() = decide(60000) ~> offline

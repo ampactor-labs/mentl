@@ -1093,9 +1093,25 @@ the last three.
    moves, and a claim can drop off the list. The audit prints only a count
    per declaration, so which claims these are cannot be seen yet. This step
    places each claim on the declaration that owns it and has the audit name
-   each claim it counts. The step's gate is that the course and the two
-   scores check clean, the `QOwed` bounds fall to zero, and the wheel's open
-   obligations fall with each piece.
+   each claim it counts.
+   The audit and the verifier disagree, and `mentl check` says nothing about
+   a pending claim. Measured on 2026-10-28, for HUM's pitch: `mentl audit
+   examples/grid/station.mn` counts two pending claims under `decide`, four
+   under `main` and one each under five other declarations, while a cold
+   `mentl compile examples/grid/station.mn` prints no `verify:` line at all,
+   so the verifier itself owes nothing for the file. Only the verifier's
+   reading is checked by a gate. In the same session a refinement the
+   verifier cannot decide was shown to build without a word from `check`:
+   with `type SpinW = Int where -100000 <= self && self <= 100000`, the
+   declaration `fn clamp_spin(raw: Int) -> SpinW with Pure = raw` passes
+   `mentl check` with nothing printed and exit 0, and `mentl run` prints
+   `verify: pending conjunction -100000 <= self && self <= 100000` to
+   stderr and then runs, printing 250000. A person who types `check` cannot
+   tell a proven refinement from a pending one. This step has `check` print
+   each pending claim at its span, as `compile` and `run` already do, and
+   makes the audit's count the verifier's own. The step's gate is that the
+   course and the two scores check clean, the `QOwed` bounds fall to zero,
+   and the wheel's open obligations fall with each piece.
 
 4. **A module is a scope, and a package carries its judgment**
    (`Hβ.driver.per-module-env-overlay`, `Hβ.query.facets-read-the-link`,
@@ -1197,6 +1213,19 @@ the last three.
    flow (`Hβ.why.flow-naming-at-call`) and a refined alias's provenance
    (`Hβ.why.refinement-provenance`), and the trivial hops are left out
    (`Hβ.viz.why-walk-elides-trivial-hops`).
+   Two printed answers mislead a reader who meets them cold (measured
+   2026-10-28). `mentl why examples/grid/station.mn decide WASI` answers
+   `error: the row of decide carries no WASI` and exits 0. The answer is the
+   fact the question asked for, a proof of absence, and the word `error`
+   says the opposite; the text is the `QRError` arm of `QWhy` in
+   src/query.mn. It becomes a plain answer, such as `the row of decide
+   carries no WASI: decide never reaches it`. `mentl audit
+   examples/grid/station.mn` prints `referenced in comments by: node 12815,
+   node 13742` under `decide`, a handle where a declaration's name belongs
+   (`audit_report_lines` in src/pipeline.mn); a mention is an edge, so the
+   line names the declaration the edge reaches. No fixture quotes either
+   text today (`git grep` over tests, docs and ide, 2026-10-28), so each
+   change costs its one site and the fixture that then quotes the new text.
    A comment is held to what it says (`Hβ.comment.a-fence-is-judged`,
    `Hβ.comment.a-label-is-a-mention`,
    `Hβ.voice.comment-mass-absorbs-into-projections`). A fenced block in a

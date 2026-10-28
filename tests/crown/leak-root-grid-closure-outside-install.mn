@@ -1,0 +1,21 @@
+// CROWN root — the controller shape, the modal case: a closure that performs
+// Price is created under an install of `online` and handed to the decision
+// through a parameter, which calls it where no install serves Price. The
+// creation-time install answers nothing here, so Price reaches the root.
+// Expect E_EffectUnhandled.
+effect Price {
+  price() -> Int
+}
+
+handler online {
+  price() => resume(50000),
+}
+
+fn make_reader() = {
+  let f = () => price()
+  f
+} ~> online
+
+fn decide(hz: Int, read) -> Int = hz + read()
+
+fn main() = decide(60000, make_reader())

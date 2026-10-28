@@ -1,0 +1,14 @@
+// expect: 3
+// The sound twin of mn-grid-cap-refuses-new-effect: the decision states its
+// exact positive row as a cap and performs nothing beyond it, so the program
+// builds and runs. The inventory warning the cap draws is not a refusal.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+fn decide(hz: Int) -> Int with Mutate + !Net = {
+  let n = { k => k + 1 } <~ delay(1)
+  hz + n
+}
+
+fn main() = decide(2)

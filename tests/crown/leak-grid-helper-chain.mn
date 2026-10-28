@@ -1,0 +1,21 @@
+// CROWN — HUM's controller shape (examples/grid/station.mn): the decision is
+// declared `!Net`, and the network read hides behind three plain-looking
+// helpers. The negation walks every call, so the refusal names the whole
+// chain from `decide` to the op. Expect E_EffectMismatch.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+handler offline {
+  fetch(url) => resume(50000),
+}
+
+fn price(url: String) -> Int = fetch(url)
+
+fn plan(url: String) -> Int = price(url) + 1
+
+fn hour(url: String) -> Int = plan(url) * 2
+
+fn decide(hz: Int) -> Int with !Net = hz + hour("https://api.eia.gov/")
+
+fn main() = decide(60000) ~> offline

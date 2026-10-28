@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// HUM's controller shape (examples/grid/station.mn): joining two strings
+// inside a function declared `!Alloc` builds a new string, which allocates.
+fn decide(hz: Int) -> Int with !Alloc = {
+  let s = "hz:" ++ "60"
+  hz + 1
+}
+
+fn main() = decide(60000)

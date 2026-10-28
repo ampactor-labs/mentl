@@ -1,0 +1,18 @@
+// expect: refuse E_EffectMismatch
+// HUM's controller shape (examples/grid/station.mn): a `<~` feedback line
+// inside the decision whose tick reads the network. The tick's row is the
+// line's, and the line belongs to `decide`.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+handler offline {
+  fetch(url) => resume(50000),
+}
+
+fn decide(hz: Int) -> Int with !Net = {
+  let p = { prev => prev + fetch("https://api.eia.gov/") } <~ delay(1)
+  hz + p
+}
+
+fn main() = decide(60000) ~> offline

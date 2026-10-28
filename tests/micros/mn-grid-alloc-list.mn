@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// HUM's controller shape (examples/grid/station.mn): building a list inside
+// a function declared `!Alloc` allocates.
+fn decide(hz: Int) -> Int with !Alloc = {
+  let xs = [hz, hz + 1]
+  xs[1]
+}
+
+fn main() = decide(60000)

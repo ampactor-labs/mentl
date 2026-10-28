@@ -1,0 +1,18 @@
+// CROWN — the controller shape: the closure that reads the network arrives
+// as an element of a list built outside the decision, and the decision
+// indexes it out and calls it. The row rides the element type to the call.
+// Expect E_EffectMismatch.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+handler offline {
+  fetch(url) => resume(50000),
+}
+
+fn decide(hz: Int, plans) -> Int with !Net = hz + plans[0]()
+
+fn main() = {
+  let plans = [() => fetch("https://api.eia.gov/")]
+  decide(60000, plans)
+} ~> offline

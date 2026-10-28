@@ -1,0 +1,10 @@
+// expect: refuse E_EffectMismatch
+// HUM's controller shape (examples/grid/station.mn): rendering a number into
+// a string inside a function declared `!Alloc` allocates, which is why
+// station.mn turns the reason's code into words outside `decide`.
+fn decide(hz: Int) -> Int with !Alloc = {
+  let words = "{hz} mHz"
+  hz
+}
+
+fn main() = decide(60000)

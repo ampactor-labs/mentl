@@ -1,0 +1,37 @@
+// expect: 7
+// The shape of HUM's controller (examples/grid/station.mn), accepted: pure
+// helpers, a power command clamped into a refinement type, a tick that
+// writes the command into a list the caller owns, and feedback lines that
+// keep the decision's memory. The decision is declared `!Alloc + !Net` and
+// performs neither. At 59.800 Hz the flywheel is asked for full power, and
+// the clamp holds it at 100 kW.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+type SpinW = Int where -100000 <= self && self <= 100000
+
+fn clamp_spin(raw: Int) -> SpinW with Pure =
+  if raw > 100000 { 100000 } else if raw < -100000 { -100000 } else { raw }
+
+fn magnitude(x: Int) -> Int with Pure = if x < 0 { 0 - x } else { x }
+
+fn spin_tick(e: Int, ask: Int, out) -> Int = {
+  let w = clamp_spin(ask)
+  list_set(out, 1, w)
+  e - w / 72
+}
+
+fn decide(hz: Int, out) -> Int with !Alloc + !Net = {
+  let n = { k => k + 1 } <~ delay(1)
+  let dev = hz - 60000
+  let ask = if magnitude(dev) <= 36 { 0 } else { 0 - dev * 500 }
+  let e = { e => spin_tick(e, ask, out) } <~ delay(1)
+  n + e
+}
+
+fn main() = {
+  let out = make_list(3)
+  let ticks = decide(59800, out)
+  if ticks == 1 - 100000 / 72 && list_index(out, 1) == 100000 { 7 } else { 1 }
+}

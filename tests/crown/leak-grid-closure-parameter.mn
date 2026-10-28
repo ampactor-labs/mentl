@@ -1,0 +1,14 @@
+// CROWN — the controller shape: a closure that reads the network is passed
+// into the decision as an argument and called there. The negation on
+// `decide` gates its parameter's row at the call. Expect E_EffectMismatch.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+handler offline {
+  fetch(url) => resume(50000),
+}
+
+fn decide(hz: Int, price) -> Int with !Net = hz + price()
+
+fn main() = decide(60000, () => fetch("https://api.eia.gov/")) ~> offline

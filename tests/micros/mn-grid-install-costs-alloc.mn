@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// HUM's controller shape (examples/grid/station.mn): a `~>` install inside a
+// function declared `!Alloc`. The handler answers a constant and reaches
+// nothing, but the install builds the record its arms run against, so it
+// allocates.
+effect Price {
+  price() -> Int
+}
+
+handler cached {
+  price() => resume(50000),
+}
+
+fn decide(hz: Int) -> Int with !Alloc = hz + price() ~> cached
+
+fn main() = decide(60000)

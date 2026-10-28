@@ -1,0 +1,21 @@
+// CROWN — the controller shape: a second effect declared with the name the
+// negation uses, carrying an op of its own. Today two declarations of one
+// name join their ops (PLAN §11, a module is a scope), so the negation
+// covers the new op too, and a leak cannot hide behind a second
+// declaration. Expect E_EffectMismatch.
+effect Net {
+  fetch(url: String) -> Int
+}
+
+effect Net {
+  fetch_cheap(url: String) -> Int
+}
+
+handler offline {
+  fetch(url) => resume(50000),
+  fetch_cheap(url) => resume(1),
+}
+
+fn decide(hz: Int) -> Int with !Net = hz + fetch_cheap("https://api.eia.gov/")
+
+fn main() = decide(60000) ~> offline
