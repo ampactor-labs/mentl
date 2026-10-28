@@ -91,8 +91,8 @@ fn mcp_judge(source, wat_path) = {
 // payload.
 fn mcp_verdict_text(text, nerr, left, wat_path) = {
   let head = match left {
-    ArtifactRefused => "REFUSED — {int_to_str(nerr)} error(s) the medium reported; nothing was emitted\n",
-    ArtifactWritten => "PROVEN — every claim discharged; artifact: {wat_path}\n",
+    ArtifactRefused => "REFUSED — {int_to_str(nerr)} error(s), so nothing was built\n",
+    ArtifactWritten => "PROVEN — every claim in the program is proven, and it was built to {wat_path}\n",
   }
   head ++ text
 }

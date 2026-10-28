@@ -277,9 +277,7 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
 // The CLI's refusal: say the count when there are errors, and exit 1 with
 // nothing on stdout.
 fn refuse_to_emit(refused) = {
-  if refused > 0 {
-    said("mentl: refusing to emit — {int_to_str(refused)} error(s) the medium reported\n")
-  }
+  if refused > 0 { said("mentl: {int_to_str(refused)} error(s), so nothing was built\n") }
   proc_exit(1)
 }
 

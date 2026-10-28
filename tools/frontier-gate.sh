@@ -3202,7 +3202,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "mcp refusal verdict (see $mcp_dir/out.jsonl)"
   fi
-  if grep -q 'PROVEN — every claim discharged' "$mcp_dir/out.jsonl" \
+  if grep -q 'PROVEN — every claim in the program is proven' "$mcp_dir/out.jsonl" \
      && [ -s "$mcp_dir/.build/mcp/last.wat" ]; then
     pass "mcp propose PROVES and the artifact lands"
   else
@@ -3258,7 +3258,7 @@ for i in "${!compilers[@]}"; do
      && grep -q 'Nothing in this module uses Alloc' "$ses_dir/out.jsonl" \
      && grep -qE 'annotation density|→ add' "$ses_dir/out.jsonl" \
      && ! grep -qE 'iterate (uses|performs) ' "$ses_dir/out.jsonl" \
-     && grep -q 'PROVEN — every claim discharged' "$ses_dir/out.jsonl"; then
+     && grep -q 'PROVEN — every claim in the program is proven' "$ses_dir/out.jsonl"; then
     pass "resident session: one derivation, live query + at + audit + teach reads, propose coexists"
   else
     fail "resident session (resident-lines=$(grep -c 'session: graph resident' "$ses_dir/err.log"); see $ses_dir/out.jsonl)"
