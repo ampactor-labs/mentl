@@ -1,8 +1,29 @@
 # Mentl
 
-**Mentl closes the gap between what a person means and what they are forced to write.** Most languages make you spell out what their compiler could have worked out: borrows, error plumbing, whether code is async, which effects a function has. Mentl's compiler infers those, so the source holds only your decisions: what a function must never do, what bound a value keeps, what width a number needs. At any line the compiler can tell you what is true there and why. At a hole (`??`) it proposes code it can prove, and when two proven options mean different things, it asks which one you meant instead of guessing. An effect claim you write, such as `!Network`, is either proven or the program does not build, so the same guarantees hold for code you did not write yourself. A refinement claim the verifier cannot decide is reported as pending and the program still builds; the Status section below says where that stands.
+**Mentl closes the gap between what a person means and what they are forced to write.** Most languages make you spell out what their compiler could have worked out: borrows, error plumbing, whether code is async, which effects a function has. Mentl's compiler infers those, so the source holds only your decisions: what a function must never do, what bound a value keeps, what width a number needs. At any line the compiler can tell you what is true there and why. At a hole (`??`) it proposes code it can prove, and when two proven options mean different things, it asks which one you meant instead of guessing. An effect claim you write, such as `!Network`, is either proven or the program does not build, so the same guarantees hold for code you did not write yourself. A refinement claim the verifier cannot decide is reported as pending, and the program still builds.
 
 Mentl is a programming language and self-hosting compiler with an algebraic effect system, compiled to WebAssembly. An effect is something a function does besides returning a value, such as allocating memory, printing or reaching the network, and each function's type lists its effects. A negated effect such as `!Network` is a claim the compiler proves through every call, or it refuses to build. The compiler is written in Mentl: the pinned binary in `boot/` compiles `src/` and `lib/` into a compiler that reproduces it byte for byte, and that byte-identical binary is what gets released.
+
+## In 30 seconds
+
+A Mentl function can say what it must never do, such as reach the network. The compiler checks that claim through every function the function calls, and refuses to build the program if any of them breaks it.
+
+HUM's grid controller, `examples/grid/station.mn`, decides what a model flywheel and battery do as the power grid's frequency moves. Its function `decide` says it never reaches the network, never touches a file, never calls outside the program and never allocates memory, and the compiler proves all four:
+
+```
+$ mentl why examples/grid/station.mn decide Network
+decide never uses Network: nothing in decide, and nothing it calls, performs an operation of Network
+```
+
+`examples/grid/station-leak.mn` is the same program with one line added inside `decide` that reads an electricity price online. The compiler refuses to build it, and shows the path from `decide` to the network:
+
+```
+$ mentl check examples/grid/station-leak.mn
+effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:190:5 → price_m calls `fetch_param` at examples/grid/station-leak:80:14 → `fetch_param` is an operation of Network, declared at dsp/signal:66:1 at examples/grid/station-leak:117:1-244:2
+effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:443:1-446:2
+```
+
+The Quick start below installs the `mentl` command in three lines.
 
 ## See it
 
@@ -21,16 +42,16 @@ fn banner(name) with !Net = headline(name)
 `banner` says it never touches the network, and nothing else is annotated. `mentl check quiet.mn` refuses, naming the path the effect takes:
 
 ```
-E_EffectMismatch error: effect row mismatch: !Net vs Memory + Alloc + Net — at 9:1-9:43:
-declared as banner; Net enters at quiet:9:29 through `headline` → at quiet:7:39 through
-`fetch` → declared as fetch, an op of Net declared at quiet:1:1
+E_EffectMismatch error: banner is declared `with !Net`, which does not allow Net, and banner
+uses Net: banner calls `headline` at quiet:9:29 → headline calls `fetch` at quiet:7:39 →
+`fetch` is an operation of Net, declared at quiet:1:1
 ```
 
 Write `banner` as `greeting(name)` and the claim holds. A network operation then does something only where a handler says what it does. For example, `len(banner("ada") ++ headline("ada")) ~> offline`, where the handler `offline` answers `fetch` by resuming with `"(offline)"`, runs and exits with code 29.
 
 ## Status
 
-Mentl works, and it is still changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending, and the program still builds. `mentl audit` lists those pending claims, but today its count per function can change with the file's layout, and a claim can drop off its list (PLAN.md §11). One false proof is known: a function that says `!Trap` can still trap when a person writes recursion deep enough to run out of stack, because no effect row shows running out of stack yet (PLAN.md §7). The language and its commands may still change.
+Mentl works, and it is still changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending, and the program still builds. `mentl check` prints each pending claim at its line, and `mentl audit` lists it under the function that holds it. One false proof is known: a function that says `!Trap` can still trap when a person writes recursion deep enough to run out of stack, because no effect row shows running out of stack yet (PLAN.md §7). The language and its commands may still change.
 
 ## Quick start
 
@@ -49,7 +70,7 @@ The last command compiles the course's first lesson, proves its claims and rende
 
 The course in `examples/pulse/course` is ten programs that build one audio chain step by step. Each lesson adds a language feature or a proof whose effect you can hear, and each is written to be read before it is played. The course leads to two full pieces: Pulse (`examples/pulse/render`) and Wasatch "Inversion" (`examples/wasatch`). Wasatch's parameters are readings from Salt Lake, and the code that runs for every sample is proven unable to reach the network or allocate memory.
 
-`examples/grid` is HUM's grid controller. `station.mn` reads the grid's frequency one line at a time and decides what a model of a flywheel and a battery does with it. Its function `decide` is declared `!Alloc + !Network + !Filesystem + !WASI`, and the compiler proves all four through every function it calls; `mentl where examples/grid/station.mn decide` prints the decision's whole effect row, `Mutate + Memory + Trap`. `station-leak.mn` is the same program with one price lookup added inside the decision, and `mentl check examples/grid/station-leak.mn` refuses it, naming the path from `decide` through `price_m` to the network operation.
+`examples/grid` is HUM's grid controller, described in the section above. `mentl where examples/grid/station.mn decide` prints the decision's whole list of effects, `Mutate + Memory + Trap`: it writes memory it was handed, reads and writes memory, and can stop with an error, and it does nothing else.
 
 The mentl command answers questions about a program directly:
 

@@ -369,7 +369,7 @@ handler query_default {
 // A why question about a word that names no effect: the refusal says what
 // the word is not and where the row the declaration does carry is read.
 fn not_an_effect(name: String, e: String) =
-  QRError("{e} is not an effect declared in {name}'s reach; `mentl where <file> {name}` prints the row {name} does carry")
+  QRError("{e} names no effect this program declares; `mentl where <file> {name}` lists the effects {name} does use")
 
 // The answer to one question. A scoped question answers its inner question
 // and keeps the sites in the module it names, so the scope is one read over

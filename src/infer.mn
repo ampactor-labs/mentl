@@ -1532,8 +1532,8 @@ fn handlers_answering(ename: String) = match effect_op_names(ename) {
 fn absorbing_proposal(eff) = {
   let ename = eff_name_str(eff)
   match handlers_answering(ename) {
-    [] => "No handler in scope handles {ename} — declare one and install it with ~> over the performing chain.",
-    hs => "Install one over the performing chain: {show_list(hs, render_install(eff, ??), " or ")}.",
+    [] => "Declare a handler for {ename} and install it with `~>` around the code that uses it.",
+    hs => "Install one around the code that uses it: {show_list(hs, render_install(eff, ??), " or ")}.",
   }
 }
 
@@ -4072,7 +4072,7 @@ fn op_entry(eff, op_decl, opname: String) = match graph_parent_of(op_decl) {
 // than the frame performs Mutate (`raw_store_target`).
 fn foreign_op_charge(opname: String, en: String) = match raw_store_target(opname) {
   RsAt(_) | RsAll => "`{opname}`, a store into memory older than the frame it runs in",
-  RsNone => "`{opname}`, an op of {en}",
+  RsNone => "`{opname}`, an operation of {en}",
 }
 
 // Into a declaration: its body where the body carries the effect; else the
@@ -4173,7 +4173,7 @@ fn expr_charge_word(e) = match e {
   UnaryOpExpr(_, _) => "the operator",
   CallExpr(_, _) => "the call",
   LabeledArg(_, _) => "the argument",
-  LambdaExpr(_, _) => "minting the function value",
+  LambdaExpr(_, _) => "creating a function value",
   IfExpr(_, _, _) => "the if",
   BlockExpr(_, _) => "the block",
   MatchExpr(_, _) => "the match",
@@ -4194,13 +4194,13 @@ fn expr_charge_word(e) = match e {
 }
 
 fn pipe_charge_word(kind) = match kind {
-  PFeedback => "the tick, a store into the feedback line its record owns",
+  PFeedback => "the `<~` line, which runs its function and keeps the result for the next call",
   PForward | PFanout(_) | PTee => "the verb",
 }
 
 fn stmt_charge_word(s) = match s {
   LetStmt(_, _, _) => "the binding",
-  FnStmt(_, _, _, _, _) => "minting the nested function",
+  FnStmt(_, _, _, _, _) => "creating the nested function",
   TypeDefStmt(_, _) => "the type declaration",
   EffectDeclStmt(_, _, _) => "the effect declaration",
   HandlerDeclStmt(_, _, _, _, _, _) => "the handler declaration",
@@ -7781,7 +7781,7 @@ fn unify(h_a, h_b, span: ValidSpan, reason) = {
   // Union-find: find both ROOTS (graph_chase_handle follows the TVar
   // chain to the canonical handle), then union the ROOTS — never the
   // surface aliases. Binding the surface re-points an aliased use-site
-  // (NBound(TVar(root))) and strands `root` free, so lower reads the
+  // (NBound(TVar(root))) and strands the root free, so lower reads the
   // param local type-blind and `word == "fn"` emits pointer i32.eq. The
   // root-equality guard stops a root being bound to a handle that chases
   // back to it (the self-cycle a record unification would loop on).

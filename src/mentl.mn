@@ -1371,12 +1371,12 @@ fn show_annotation(ann) = match ann {
 }
 
 fn show_capability(cap) = match cap {
-  CRealTime => "Real-time safe (proven zero allocation)",
-  CIsolated => "Isolated (proven no file or console I/O)",
-  CSandbox => "Sandbox (proven no network access)",
-  CTrapFree => "Trap-free (nothing it reaches can trap; termination unproven)",
-  CPure => "Pure (proven to perform no effect at all)",
-  CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
+  CRealTime => "real-time safe (it never allocates memory)",
+  CIsolated => "isolated (it never touches files or the console)",
+  CSandbox => "sandboxed (it never reaches the network)",
+  CTrapFree => "trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)",
+  CPure => "pure (it performs no effect at all)",
+  CProvenAbsence(name) => "proven never to use {name}",
 }
 
 // What a suggestion buys, in the developer's words: what it makes safe, what

@@ -1584,7 +1584,7 @@ run_census() {
   [ "$ok" = 1 ] && pass "structural census: all twenty-one shapes count their own site (|> <| >< ~> <~ anonymous eta effectful-lambda iteration wildcard-zero failure-mask print-in-report wildcard-fabricates underscore-retain flag-as-int parallel-arrays-both-faces vtable-record env-frame default-param record-pattern declared-row-hof)"
   # The audit's drift tier (5.6's absorbed modes read per fn): the eight
   # specimen fns each carry their shape line. Born with the tier.
-  ad_n=$(wt_run --dir "$ROOT" "$compiler" audit "$doc" 2>/dev/null | grep -c "drift-shape:")
+  ad_n=$(wt_run --dir "$ROOT" "$compiler" audit "$doc" 2>/dev/null | grep -c "shapes the census counts here:")
   if [ "$ad_n" = "10" ]; then
     pass "audit drift tier: the ten specimen fns each carry their shape line (env-frame joined)"
   else
@@ -2152,15 +2152,15 @@ for i in "${!compilers[@]}"; do
   # offered "proven zero allocation"; a pure fn still earns the offer.
   # The reached set reads the CHASED row (row_names was a top-link read
   # and a chained row hid its deeper presents — measured on the wheel).
-  # The assertion anchors on the CLAIM (`Alloc — unlocks Real-time safe`), not on
+  # The assertion anchors on the CLAIM (`real-time safe`), not on
   # the section keyword, because the keyword moved: severance reads at the
   # MODULE now and a function's own line carries only its delta above it
   # (`severs beyond the module:`), so `severable:` no longer appears per fn.
   # The invariant is unchanged and is what this leg is for.
   wt_entry "$ROOT/tests/frontier/mn-audit-severance-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
-  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
+  if grep -A1 '^allocates ' "$dir/audit-sev.out" | grep -q 'real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
-  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
+  elif grep -A1 '^quiet ' "$dir/audit-sev.out" | grep -q 'real-time safe'; then
     pass "audit-severance-honest (Alloc never offered on an allocating row; the pure control keeps it)"
   else
     fail "audit-severance-honest (the pure control lost its true severance offer)"
@@ -2183,9 +2183,9 @@ for i in "${!compilers[@]}"; do
   # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
   # law's own exception) stay silent — both faces asserted.
   wt_entry "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
-  if grep -A4 '^chained :' "$dir/audit-pipe.out" | grep -q 'verb-shape: 2-step'; then
-    if grep -A4 '^forked :' "$dir/audit-pipe.out" | grep -q 'verb-shape' \
-       || grep -A4 '^single :' "$dir/audit-pipe.out" | grep -q 'verb-shape'; then
+  if grep -A4 '^chained ' "$dir/audit-pipe.out" | grep -q 'a 2-step chain of lets'; then
+    if grep -A4 '^forked ' "$dir/audit-pipe.out" | grep -q 'could be one |> pipe' \
+       || grep -A4 '^single ' "$dir/audit-pipe.out" | grep -q 'could be one |> pipe'; then
       fail "audit-pipe-shape (a <|-shaped or single-step let earned a false pipe invite)"
     else
       pass "audit-pipe-shape (the 2-step chain invites |>; the controls stay silent)"
@@ -3032,10 +3032,10 @@ for i in "${!compilers[@]}"; do
   ent_rc=$?
   ent_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-effect-enters.mn "why quiet WASI" 2>/dev/null)
   if [ "$ent_rc" -ne 0 ] \
-     && printf '%s' "$ent_out" | grep -q 'declared as quiet; WASI enters at [a-z/-]*mn-effect-enters:20:[0-9]* through `helper` → at [a-z/-]*mn-effect-enters:16:[0-9]* through `log_it` → at [a-z/-]*mn-effect-enters:13:[0-9]* through `print_string` → at io:' \
-     && printf '%s' "$ent_out" | grep -q 'declared as fd_write, an op of WASI declared at io:' \
-     && printf '%s' "$ent_why" | grep -q 'WASI enters at [a-z/-]*mn-effect-enters:20:[0-9]* through `helper`' \
-     && printf '%s' "$ent_why" | grep -q 'an op of WASI declared at'; then
+     && printf '%s' "$ent_out" | grep -q 'quiet uses WASI: quiet calls `helper` at [a-z/-]*mn-effect-enters:20:[0-9]* → helper calls `log_it` at [a-z/-]*mn-effect-enters:16:[0-9]* → log_it calls `print_string` at [a-z/-]*mn-effect-enters:13:[0-9]* → print_string calls `fd_write_bytes` at io:' \
+     && printf '%s' "$ent_out" | grep -q '`fd_write` is an operation of WASI, declared at io:' \
+     && printf '%s' "$ent_why" | grep -q 'quiet uses WASI: quiet calls `helper` at [a-z/-]*mn-effect-enters:20:[0-9]*' \
+     && printf '%s' "$ent_why" | grep -q 'is an operation of WASI, declared at'; then
     pass "effect-enters (the refusal's chain runs helper → log_it → print_string to the op of WASI, and why quiet WASI answers it)"
   else
     fail "effect-enters (exit=$ent_rc: $(printf '%s' "$ent_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-200))"
@@ -3051,18 +3051,18 @@ for i in "${!compilers[@]}"; do
   abs_rc=$?
   abs_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-effect-enters-absorbed.mn "why quiet Log" 2>/dev/null)
   if [ "$abs_rc" -ne 0 ] \
-     && printf '%s' "$abs_out" | grep -q 'declared as quiet; Log enters at [a-z/-]*mn-effect-enters-absorbed:30:[0-9]* through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:16:[0-9]* through `log` → declared as log, an op of Log' \
-     && ! printf '%s' "$abs_out" | grep -q 'through `work`' \
-     && printf '%s' "$abs_why" | grep -q 'through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:16:[0-9]* through `log`' \
-     && ! printf '%s' "$abs_why" | grep -q 'through `work`'; then
+     && printf '%s' "$abs_out" | grep -q 'quiet uses Log: quiet installs `relog` at [a-z/-]*mn-effect-enters-absorbed:30:[0-9]* → relog calls `log` at [a-z/-]*mn-effect-enters-absorbed:16:[0-9]* → `log` is an operation of Log' \
+     && ! printf '%s' "$abs_out" | grep -q 'calls `work`' \
+     && printf '%s' "$abs_why" | grep -q 'installs `relog` at [a-z/-]*mn-effect-enters-absorbed:30:[0-9]* → relog calls `log` at [a-z/-]*mn-effect-enters-absorbed:16:[0-9]*' \
+     && ! printf '%s' "$abs_why" | grep -q 'calls `work`'; then
     pass "effect-enters-absorbed (an absorbed effect enters through the install's arm, never the body it absorbs from)"
   else
     fail "effect-enters-absorbed (exit=$abs_rc: $(printf '%s' "$abs_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"
   fi
   # `!Mutate` refuses naming the store, through calls and through a partial handed to a callee (clean on boot 65e2f966).
   mut_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-mutate-enters.mn 2>&1)
-  if printf '%s' "$mut_out" | grep -q 'declared as relayed; Mutate enters at [a-z/-]*mn-mutate-enters:12:[0-9]* through `relay` → at [a-z/-]*mn-mutate-enters:8:[0-9]* through `fill` → at [a-z/-]*mn-mutate-enters:6:[0-9]* through `list_set` → at lists:[0-9:]*, `store_i32`, a store into memory older' \
-     && printf '%s' "$mut_out" | grep -q 'declared as handed; Mutate enters at [a-z/-]*mn-mutate-enters:14:[0-9]* through `apply` → at [a-z/-]*mn-mutate-enters:14:[0-9]* through `fill`'; then pass "mutate-enters (each !Mutate refusal names the store)"; else fail "mutate-enters ($(printf '%s' "$mut_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"; fi
+  if printf '%s' "$mut_out" | grep -q 'relayed uses Mutate: relayed calls `relay` at [a-z/-]*mn-mutate-enters:12:[0-9]* → relay calls `fill` at [a-z/-]*mn-mutate-enters:8:[0-9]* → fill calls `list_set` at [a-z/-]*mn-mutate-enters:6:[0-9]* → at lists:[0-9:]*, `store_i32`, a store into memory older' \
+     && printf '%s' "$mut_out" | grep -q 'handed uses Mutate: handed calls `apply` at [a-z/-]*mn-mutate-enters:14:[0-9]* → apply calls `fill` at [a-z/-]*mn-mutate-enters:14:[0-9]*'; then pass "mutate-enters (each !Mutate refusal names the store)"; else fail "mutate-enters ($(printf '%s' "$mut_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"; fi
   # ── the installed command keeps a path under the cwd as written ──────
   # The shim hands a path OUTSIDE the cwd to the guest absolute (a `..`
   # above the cwd preopen is refused), and a path under the cwd as the
@@ -3079,7 +3079,7 @@ for i in "${!compilers[@]}"; do
   rm -rf "$shim_dir"
   if MENTL_BIN_DIR="$shim_dir" bash "$ROOT/tools/install.sh" > "$dir/shim-install.out" 2>&1 \
      && shim_out=$(cd "$ROOT" && MENTL_BOOT="$compiler" "$shim_dir/mentl" check src/main.mn 2>&1) \
-     && [ -z "$shim_out" ]; then
+     && [ -z "$(printf '%s\n' "$shim_out" | grep -v '^verify: ')" ]; then
     pass "shim-path-under-cwd (the installed command checks src/main.mn from the repo root through the compiler's own layer)"
   else
     fail "shim-path-under-cwd ($(printf '%s' "$shim_out" | head -1 | cut -c1-160))"
@@ -3254,10 +3254,10 @@ for i in "${!compilers[@]}"; do
      && grep -q 'own x: Int' "$ses_dir/out.jsonl" \
      && grep -q 'declared as main' "$ses_dir/out.jsonl" \
      && grep -q 'Query: fn double' "$ses_dir/out.jsonl" \
-     && grep -q 'double : Pure' "$ses_dir/out.jsonl" \
-     && grep -q 'severs module-wide: Alloc' "$ses_dir/out.jsonl" \
+     && grep -q 'double performs no effect (Pure)' "$ses_dir/out.jsonl" \
+     && grep -q 'Nothing in this module uses Alloc' "$ses_dir/out.jsonl" \
      && grep -qE 'annotation density|→ add' "$ses_dir/out.jsonl" \
-     && ! grep -q 'iterate : ' "$ses_dir/out.jsonl" \
+     && ! grep -qE 'iterate (uses|performs) ' "$ses_dir/out.jsonl" \
      && grep -q 'PROVEN — every claim discharged' "$ses_dir/out.jsonl"; then
     pass "resident session: one derivation, live query + at + audit + teach reads, propose coexists"
   else
@@ -3358,7 +3358,7 @@ for i in "${!compilers[@]}"; do
   if [ "$(grep -c 'session: tree moved' "$liv_dir/err.log")" = "1" ] \
      && grep -q 'declared as double' "$liv_dir/out.jsonl" \
      && grep -q 'declared as triple' "$liv_dir/out.jsonl" \
-     && grep -q 'triple : Pure' "$liv_dir/out.jsonl" \
+     && grep -q 'triple performs no effect (Pure)' "$liv_dir/out.jsonl" \
      && grep -q 'Query: fn main(' "$liv_dir/out.jsonl"; then
     pass "living session: the graph tracks the tree — one re-derivation, post-edit reads answer the new truth"
   else
@@ -3712,8 +3712,8 @@ for i in "${!compilers[@]}"; do
   # loop in recursion's costume) and stays SILENT on the vocabulary form
   # — both faces asserted, plus the fixture still runs.
   it_audit=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit "$ROOT/tests/frontier/mn-audit-iteration-shape.mn" 2>/dev/null)
-  it_fire=$(printf '%s' "$it_audit" | sed -n '/^walk_costume/,/^stage_clean/p' | grep -c 'iteration-shape')
-  it_quiet=$(printf '%s' "$it_audit" | sed -n '/^stage_clean/,/^main/p' | grep -c 'iteration-shape')
+  it_fire=$(printf '%s' "$it_audit" | sed -n '/^walk_costume/,/^stage_clean/p' | grep -c 'could be a fold, each or iterate stage')
+  it_quiet=$(printf '%s' "$it_audit" | sed -n '/^stage_clean/,/^main/p' | grep -c 'could be a fold, each or iterate stage')
   if [ "$it_fire" = "1" ] && [ "$it_quiet" = "0" ]; then
     pass "audit iteration-shape: the costume convicts, the vocabulary stays silent"
   else
@@ -3725,9 +3725,9 @@ for i in "${!compilers[@]}"; do
   # the effectful lambda (the row deserves a decl home), and stays
   # SILENT on the pure-local vocabulary — all three faces asserted.
   an_audit=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit "$ROOT/tests/frontier/mn-anonymity-tier.mn" 2>/dev/null)
-  an_eta=$(printf '%s' "$an_audit" | sed -n '/^wraps/,/^ticks/p' | grep -c 'eta-wrapper')
-  an_rowed=$(printf '%s' "$an_audit" | sed -n '/^ticks/,/^pure_vocab/p' | grep -c 'effectful lambda')
-  an_quiet=$(printf '%s' "$an_audit" | sed -n '/^pure_vocab/,/^main/p' | grep -c 'anonymity:')
+  an_eta=$(printf '%s' "$an_audit" | sed -n '/^wraps/,/^ticks/p' | grep -c 'only wrap a call to a named function')
+  an_rowed=$(printf '%s' "$an_audit" | sed -n '/^ticks/,/^pure_vocab/p' | grep -c 'have effects, and a named function')
+  an_quiet=$(printf '%s' "$an_audit" | sed -n '/^pure_vocab/,/^main/p' | grep -c 'could name its function values')
   if [ "$an_eta" = "1" ] && [ "$an_rowed" = "1" ] && [ "$an_quiet" = "0" ]; then
     pass "audit anonymity: the eta and the row convict, the vocabulary stays silent"
   else

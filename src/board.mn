@@ -209,7 +209,10 @@ fn board_bounds() = [
   // 139 -> 138 (2026-10-24): a type's rendering takes its list apart by
   // pattern, and the fold graph keys its edges by node, read as an Option,
   // with the one claim a fold machine makes of a cycle's sequence beside it.
-  Bound({ceiling: 138, question: QVerifyDebt}),
+  // 138 -> 137 (2026-10-28): the audit places a pending claim on the
+  // declaration whose own module and span hold it, a read that indexes no
+  // list.
+  Bound({ceiling: 137, question: QVerifyDebt}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, ten lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned

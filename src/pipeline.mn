@@ -402,6 +402,11 @@ fn pipeline_check(entry_module) = {
   // whole-link register that replaced it printed the library's prose at a
   // user's six-line program.
   driver_link_scoped(entry_module, Project)
+  // A claim the verifier could not prove is said here as compile says it,
+  // so a refinement the program states is never left unproven in silence.
+  // It is not an error: the program still builds, as compile's own report
+  // says.
+  report_verify_debt(verify_debt())
   diag_errors()
 } ~> wasi_filesystem ~> mentl_default ~> infer_context
 
@@ -685,11 +690,11 @@ fn teach_project(ast) = {
 }
 
 // The banks the judgment already holds, read ONCE and attributed per
-// fn: pending proof obligations by decl EXTENT — this decl's span start
-// to the next decl's, graph_span_of being the O(1) spans-column read —
-// and tightenings by the name the collector banked. The audit and the
-// frontier are two projections of the same banks; this read keeps the
-// per-fn surface current with the medium's growth.
+// fn: a pending proof obligation belongs to the declaration whose own span
+// holds it, in that declaration's own module, so a line added elsewhere, or
+// a library's obligation on the same line numbers, never moves it onto
+// another function; tightenings by the name the collector banked. The audit
+// and the frontier are two projections of the same banks.
 fn audit_project(ast) =
   map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
 
@@ -697,23 +702,18 @@ fn decl_start_line(handle) = match graph_span_of(handle) {
   Span(sl, _, _, _) => sl,
 }
 
+// An obligation is the declaration's when it stands in the declaration's own
+// module and inside the declaration's own span.
+fn owned_by(handle, entry) = match entry {
+  (modh, dspan, _, _) => modh == graph_module_of(handle) && span_contains(graph_span_of(handle), dspan),
+}
+
 fn audit_walk(debt, tights, i, fns) = if i >= len(fns) {
   []
 } else {
   match fns[i] {
     (name, handle) => {
-      // The next decl's handle by destructure — the index sugar forces
-      // its receiver to List, so tuple[k] on a var receiver mis-judges
-      // (SYNTAX's tuple-index claim vs the judge: a named lathe-lag).
-      let extent_end = if i + 1 >= len(fns) {
-        1000000000
-      } else {
-        match fns[i + 1] {
-          (_, nh) => decl_start_line(nh),
-        }
-      }
-      let extent = Span(decl_start_line(handle), 0, extent_end, 0)
-      let pending = filter({ (_modh, dspan, _, _) => span_overlaps(extent, dspan) }, debt)
+      let pending = filter(owned_by(handle, ??), debt)
       let mine = filter({ (_, _, tname, _, _) => tname == name }, tights)
       [build_audit_report(name, handle, lookup_ty(handle), pending, mine)] ++ audit_walk(debt, tights, i + 1, fns)
     },
@@ -947,7 +947,7 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
   // names the costume where it stands.
   (
     fn_name,
-    show_effrow(body_row),
+    row_words(body_row),
     severable_all,
     referenced_by,
     pipe_shape_of(handle),
@@ -957,6 +957,13 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
     pending,
     tightens
   )
+}
+
+// A function's effects in words: the effects it uses, or that it performs
+// none at all.
+fn row_words(row) = match row {
+  EfRow([], _, EtClosed) => "performs no effect (Pure)",
+  EfRow(_, _, _) => "uses {show_effrow(row)}",
 }
 
 // The severable candidates a report entry carries — the one field every
@@ -1081,12 +1088,14 @@ fn render_module_severance(module_sev) = {
   let named_line = if len(named) == 0 {
     ""
   } else {
-    "severs module-wide: {show_list(named, show_eff_name, " + ")} — unlocks {show_list(severance_unlocks(named), show_capability, ", ")}\n"
+    "Nothing in this module uses {show_list(named, show_eff_name, ", ")}, so it is {show_list(severance_unlocks(named), show_capability, " and ")}\n"
   }
   let unnamed_line = if unnamed == 0 {
     ""
+  } else if len(named) == 0 {
+    "Nothing in this module uses {int_to_str(unnamed)} of the effects the program declares.\n"
   } else {
-    "  {int_to_str(unnamed)} declared effect(s) sever module-wide with no capability named — naming one unlocks it everywhere\n"
+    "  It also never uses {int_to_str(unnamed)} other effect(s) that the program declares.\n"
   }
   "{named_line}{unnamed_line}"
 }
@@ -1103,7 +1112,7 @@ fn drift_note_fold(acc, pair) = match pair {
 }
 
 fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [String], pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) = {
-  let header = "{fn_name} : {row_str}\n"
+  let header = "{fn_name} {row_str}\n"
   // Only the DELTA above the module's own severance, and only its teaching
   // half. A fn that severs exactly what its module severs says nothing here,
   // because the module line already said it — and the unnamed remainder is
@@ -1113,26 +1122,26 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
   let severance_section = if len(named_beyond) == 0 {
     ""
   } else {
-    "  severs beyond the module: {show_list(named_beyond, show_eff_name, " + ")} — unlocks {show_list(severance_unlocks(named_beyond), show_capability, ", ")}\n"
+    "  never uses {show_list(named_beyond, show_eff_name, ", ")}, so it is {show_list(severance_unlocks(named_beyond), show_capability, " and ")}\n"
   }
   let refs_section = if len(referenced_by) == 0 {
     ""
   } else {
-    "  referenced in comments by: {show_list(referenced_by, (n) => n, ", ")}\n"
+    "  mentioned in comments: {show_list(referenced_by, (n) => n, ", ")}\n"
   }
   // The verb-shape tier: the bindings already draw a `|>` — say so, with
   // the step count (SYNTAX ⌖: the pipe is never optional on a chain).
   let verb_section = if len(pipe_chains) == 0 {
     ""
   } else {
-    "  verb-shape: {show_list(pipe_chains, int_to_str, ", ")}-step let-chain reads as a |> pipe\n"
+    "  could be one |> pipe: a {show_list(pipe_chains, int_to_str, ", ")}-step chain of lets that each hand one value on\n"
   }
   // The iteration-shape tier: iteration is TOPOLOGY (SYNTAX's own law —
   // no loop keywords; |> stages, <~ cycles, Iterate handlers, derived
   // folds); a self-call threading an incremented index is the loop in
   // recursion's costume, and a fold/each/iterate stage serves.
   let iter_section = if loop_costume {
-    "  iteration-shape: a self-call threads an incremented index — the loop in recursion's costume; a fold/each/iterate stage serves\n"
+    "  could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion\n"
   } else {
     ""
   }
@@ -1141,17 +1150,21 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
   // decl home. The pure-local lambda is vocabulary and stays silent.
   let anon_section = match anon_shapes {
     (eta_n, rowed_n) => {
-      let eta_note =
-        if eta_n == 0 { "" } else { "{int_to_str(eta_n)} eta-wrapper(s) — the named fn serves; " }
+      let eta_note = if eta_n == 0 {
+        ""
+      } else {
+        "{int_to_str(eta_n)} only wrap a call to a named function, which can be passed by its name"
+      }
       let rowed_note = if rowed_n == 0 {
         ""
       } else {
-        "{int_to_str(rowed_n)} effectful lambda(s) — a named stage carries the row; "
+        "{int_to_str(rowed_n)} have effects, and a named function would say what each one does"
       }
+      let both = if eta_n > 0 && rowed_n > 0 { "; " } else { "" }
       if eta_n + rowed_n == 0 {
         ""
       } else {
-        "  anonymity: {eta_note}{rowed_note}intent is lossless, name the stage\n"
+        "  could name its function values: {eta_note}{both}{rowed_note}\n"
       }
     },
   }
@@ -1166,7 +1179,7 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
   let drift_section = if byte_len(drift_notes) == 0 {
     ""
   } else {
-    "  drift-shape: {drift_notes}the census locates each\n"
+    "  shapes the census counts here: {drift_notes}`mentl query <file> census` lists each\n"
   }
   // The banks' tiers — the same facts the frontier ranks, spoken per fn:
   // undischarged proof obligations in this decl's extent, and the
@@ -1175,12 +1188,17 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
   let pending_section = if len(pending) == 0 {
     ""
   } else {
-    "  pending: {int_to_str(len(pending))} undischarged proof obligation(s) — the field ranks them\n"
+    "  not proven yet, {int_to_str(len(pending))} claim(s): {show_list(pending, pending_claim, "; ")}\n"
   }
   let tighten_section = tightens |> map({
-    (declared, proven, _, _, _) => "  tighten: with {show_effrow(declared)} — body proves {show_effrow(proven)} (mentl tighten authors the patch)\n",
+    (declared, proven, _, _, _) => "  could say less: the clause says `with {show_effrow(declared)}` and the body proves `{show_effrow(proven)}`; `mentl tighten` writes the shorter clause\n",
   }) |> str_concat_all
   "{header}{severance_section}{refs_section}{verb_section}{iter_section}{anon_section}{drift_section}{pending_section}{tighten_section}"
+}
+
+// One claim the verifier could not prove, as the claim and where it stands.
+fn pending_claim(entry) = match entry {
+  (modh, dspan, pred, _) => "{show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}",
 }
 
 // Query rendering — delegates to query.mn for Question parsing.
@@ -1392,7 +1410,7 @@ fn render_query_result(result) = match result {
   QREffects(row) => "→ {show_effrow(row)}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
   QRWhy(reasons) => join("\n", map(show_reason, reasons)),
-  QRAbsent(name, e) => "the row of {name} carries no {e}: {name} performs no op of {e}, and neither does anything it calls or holds",
+  QRAbsent(name, e) => "{name} never uses {e}: nothing in {name}, and nothing it calls, performs an operation of {e}",
   // The refs facet renders WHAT the graph computed, not just how much:
   // one located line per inbound use-edge (the seam the propose-facet fix
   // convicted once already — the graph computed it, the terminal threw it

@@ -1082,34 +1082,7 @@ the last three.
    (`Hβ.verify.handler-is-a-judgment-unit`). A Float carries its range (a
    sine's [-1, 1], affine combinations, a clamp), so a frequency computed from
    a sine or a product is decided (Pulse, Wasatch).
-   Layout must not change what is owed. Measured on 2026-10-27
-   with `mentl audit` on examples/grid/station.mn: one comment line or one
-   blank line added near the top, with no change to the code, takes the
-   pending claim of its find_from function off the list, so 13 pending
-   claims become 12, while the same line added just above main changes
-   nothing. A two-line function added near the top makes the list 15, and
-   pending claims appear under droop and is_digit instead. So the audit
-   places each pending claim on a declaration by a position that layout
-   moves, and a claim can drop off the list. The audit prints only a count
-   per declaration, so which claims these are cannot be seen yet. This step
-   places each claim on the declaration that owns it and has the audit name
-   each claim it counts.
-   The audit and the verifier disagree, and `mentl check` says nothing about
-   a pending claim. Measured on 2026-10-28, for HUM's pitch: `mentl audit
-   examples/grid/station.mn` counts two pending claims under `decide`, four
-   under `main` and one each under five other declarations, while a cold
-   `mentl compile examples/grid/station.mn` prints no `verify:` line at all,
-   so the verifier itself owes nothing for the file. Only the verifier's
-   reading is checked by a gate. In the same session a refinement the
-   verifier cannot decide was shown to build without a word from `check`:
-   with `type SpinW = Int where -100000 <= self && self <= 100000`, the
-   declaration `fn clamp_spin(raw: Int) -> SpinW with Pure = raw` passes
-   `mentl check` with nothing printed and exit 0, and `mentl run` prints
-   `verify: pending conjunction -100000 <= self && self <= 100000` to
-   stderr and then runs, printing 250000. A person who types `check` cannot
-   tell a proven refinement from a pending one. This step has `check` print
-   each pending claim at its span, as `compile` and `run` already do, and
-   makes the audit's count the verifier's own. The step's gate is that the
+   The step's gate is that the
    course and the two scores check clean, the `QOwed` bounds fall to zero,
    and the wheel's open obligations fall with each piece.
 

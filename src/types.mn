@@ -4969,7 +4969,7 @@ fn diag_message(d) with !Mutate = match d {
   TOwnUnconsumed(name, _) => "'{name}' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade",
   TOwnAcrossReplay(msg, _) => msg,
   EUseAfterMove(msg, _) => msg,
-  EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {render_row(declared)} vs {render_row(inferred)} — {show_reason(why)}" ~> var_names,
+  EEffectMismatch(declared, inferred, why, _) => effect_breach(declared, inferred, why) ~> var_names,
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
   ERefinementRejected(pred, _, why) => "refinement predicate proven false at compile time: {show_predicate(pred)}{label_entry(why)}",
   // drift-audit: ignore — diagnostic message string
@@ -4987,7 +4987,10 @@ fn diag_message(d) with !Mutate = match d {
   EDuplicateBinder(name, first, _) => "`{name}` is bound twice in one scope — first at {show_span(first)}, so a use could reach either, and a parameter list holds one field per name; rename one",
   EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
-  EEffectUnhandled(ename, proposal, why, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal} {show_reason(why)}",
+  EEffectUnhandled(ename, proposal, why, _) => match negating_decl_on_path(ename, why) {
+    Some(name) => "nothing handles {ename} either: it reaches the top of the program through `{name}`, whose error above names the path. {proposal}",
+    None => "nothing handles {ename}. {show_reason(why)}. Nothing would answer {ename}'s operations when the program runs, so the program is not built. {proposal}",
+  },
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EEnvNameUngrounded(_) => "`env` is a required read, and its name here is computed: the program's demand on its host cannot be stated before it runs, so nothing could check it at launch. Write the variable's name at the read — `env(\"PORT\")` — or ask `env_opt` and decide what an absent value means",
   EDerivativeUnreachable(why, _) => "{why} — the derivative reading would answer zero here, and zero is not what the program asked for; nothing is emitted rather than a wrong slope",
@@ -6215,26 +6218,47 @@ fn site_address(h) with !Mutate = match graph_span_of(h) {
   Span(sl, sc, _, _) => "{module_name_of_handle(graph_module_of(h))}:{int_to_str(sl)}:{int_to_str(sc)}",
 }
 
-// How an effect crosses a site: through the callee a call applies, through
-// the stage a pipe applies, through the handler a tee installs, through the
-// function a reference hands in, or inside a function value whose body the
-// chain enters.
+// How an effect crosses a site, said of whoever stands there: it calls the
+// callee a call or a reference applies, calls the stage a pipe applies,
+// installs the handler a tee installs, or calls a function value whose body
+// the chain enters.
 fn site_phrase(body) with !Mutate = match body {
-  NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
-  NExpr(VarRef(n)) => "through `{n}`",
+  NExpr(CallExpr(f, _)) => "calls `{show_callee_name(f)}`",
+  NExpr(VarRef(n)) => "calls `{n}`",
   NExpr(PipeExpr(PForward, _, stage)) => stage_phrase(stage),
-  NExpr(PipeExpr(PTee, _, h)) => "through `~> {install_name(h)}`",
-  NExpr(LambdaExpr(_, _)) => "inside the function value",
+  NExpr(PipeExpr(PTee, _, h)) => "installs `{install_name(h)}`",
+  NExpr(LambdaExpr(_, _)) => "calls the function value",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => "here",
+  | NRow(_) | NParam(_) => "uses it",
 }
 
 fn stage_phrase(stage) = match graph_node_body(stage) {
-  NExpr(VarRef(n)) => "through `{n}`",
-  NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
-  NExpr(LambdaExpr(_, _)) => "inside the stage's function value",
+  NExpr(VarRef(n)) => "calls `{n}` in a pipe",
+  NExpr(CallExpr(f, _)) => "calls `{show_callee_name(f)}` in a pipe",
+  NExpr(LambdaExpr(_, _)) => "calls the pipe stage's function value",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => "through the stage",
+  | NRow(_) | NParam(_) => "runs the pipe stage",
+}
+
+// Whose code the next hop of a chain is in: the function a call, a reference
+// or a stage applies, the handler a tee installs, or the function value a
+// literal is.
+fn site_callee(body) with !Mutate = match body {
+  NExpr(CallExpr(f, _)) => show_callee_name(f),
+  NExpr(VarRef(n)) => n,
+  NExpr(PipeExpr(PForward, _, stage)) => stage_callee(stage),
+  NExpr(PipeExpr(PTee, _, h)) => install_name(h),
+  NExpr(LambdaExpr(_, _)) => "the function value",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "that code",
+}
+
+fn stage_callee(stage) = match graph_node_body(stage) {
+  NExpr(VarRef(n)) => n,
+  NExpr(CallExpr(f, _)) => show_callee_name(f),
+  NExpr(LambdaExpr(_, _)) => "the stage's function value",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "the stage",
 }
 
 // The handler a tee installs, named: a bare reference or a configured call.
@@ -6326,6 +6350,142 @@ fn ref_spelling(r, written: String) = match graph_ref_decl(r) {
   None => written,
 }
 
+// The path below a declaration or a hop: the next hop, the operation the
+// path ends at, or the one sentence a site with no further hop says.
+fn enters_path(caller: String, next) with !Mutate = match next {
+  EffectEnters(_, site, deeper) => match graph_node_body(site) {
+    NStmt(EffectDeclStmt(ename, _, _)) => op_terminal(ename, site, deeper),
+    body @ (
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_)
+    ) => enters_hop(caller, site, body, deeper),
+  },
+  Inferred(what) => what,
+  Declared(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => show_reason(next),
+}
+
+// One hop: who calls or installs what at the site, then the rest of the path
+// from what it reached. A hop whose construct charges the effect by itself,
+// such as building a list, says so and ends the path.
+fn enters_hop(caller: String, site, body, next) with !Mutate = match next {
+  Inferred(what) => "at {site_address(site)}, {what}",
+  Declared(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
+  | StateBinding(_, _) => "{caller} {site_phrase(body)} at {site_address(site)} → {enters_path(site_callee(body), next)}",
+}
+
+// Where the path ends: the operation that performs the effect, and where the
+// effect that declares the operation stands.
+fn op_terminal(ename: String, site, next) with !Mutate = match next {
+  Declared(op) => "`{op}` is an operation of {ename}, declared at {site_address(site)}",
+  Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
+  | StateBinding(_, _) => "{show_reason(next)}, an operation of {ename} declared at {site_address(site)}",
+}
+
+// A refused effect claim in words: the clause, the effect it does not allow,
+// and the path that effect takes from the declaration to the operation that
+// performs it. A refusal at a call, where a function handed to the
+// declaration carries the effect, names the effects that function uses.
+fn effect_breach(declared, inferred, why) = {
+  let clause = "`with {render_row(declared)}`"
+  match unlocated(why) {
+    EffectEnters(eff, site, next) => match graph_node_body(site) {
+      NStmt(FnStmt(name, _, _, _, _)) => "{name} is declared {clause}, which does not allow {eff}, and {name} uses {eff}: {enters_path(name, next)}",
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => "the declaration says {clause}, which does not allow {eff}: {show_reason(EffectEnters(eff, site, next))}",
+    },
+    Declared(name) => "{name} is declared {clause}, and the function passed to it here uses {row_breach(declared, inferred)}, which that clause does not allow",
+    Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+    | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+    | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+    | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+    | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => "the declaration says {clause}, and the code here uses {row_breach(declared, inferred)}, which that clause does not allow: {show_reason(why)}",
+  }
+}
+
+// The first declaration on an effect's path whose own clause negates the
+// effect: that declaration's refusal already names the path, so a report
+// about the same path at the program's root points to it.
+fn negating_decl_on_path(ename: String, reason) = match reason {
+  EffectEnters(_, site, next) => match callee_negating(ename, site) {
+    Some(name) => Some(name),
+    None => negating_decl_on_path(ename, next),
+  },
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => None,
+}
+
+// The declaration a call site reaches, read through its callee's edge, when
+// its clause negates the effect.
+fn callee_negating(ename: String, site) = match graph_node_body(site) {
+  NExpr(CallExpr(f, _)) => decl_negating(ename, graph_ref_decl(f)),
+  NExpr(VarRef(_)) => decl_negating(ename, graph_ref_decl(site)),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
+}
+
+fn decl_negating(ename: String, decl) = match decl {
+  Some(dh) => match graph_node_body(dh) {
+    NStmt(FnStmt(name, _, _, clause, _)) => if any(term_negates(ename, ??), clause) { Some(name) } else { None },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
+  },
+  None => None,
+}
+
+fn term_negates(ename: String, term) = match term {
+  (RtEff(name, _), negated, _) => negated && show_eff_name(name) == ename,
+  (RtGroup(_), _, _) => false,
+}
+
+// A reason with the address its diagnostic already carries taken off.
+fn unlocated(reason) with Pure = match reason {
+  Located(_, inner) => unlocated(inner),
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+  | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => reason,
+}
+
+// The effects a row uses that a declared clause does not allow: each name
+// the clause negates and, under a closed clause, each name it does not list.
+fn row_breach(declared, inferred) = match declared {
+  EfRow(allowed, negated, tail) => match inferred {
+    EfRow(used, _, _) => match filter(breaches_clause(allowed, negated, tail, ??), used) {
+      [] => render_row(inferred),
+      names => show_list(names, show_eff_name, " + "),
+    },
+  },
+}
+
+fn breaches_clause(allowed, negated, tail, name) =
+  names_hold(negated, name) || closed_tail(tail) && !names_hold(allowed, name)
+
+// Whether a clause's list names an effect, compared as written.
+fn names_hold(names, name) = any(same_eff_name(name, ??), names)
+
+fn same_eff_name(a, b) = a == b
+
+fn closed_tail(tail) with Pure = match tail {
+  EtClosed => true,
+  EtOpen(_) | EtAll => false,
+}
+
 // What an effect enters at a declaration's head: the chain beneath it, or
 // the one sentence a chain with no site has to say.
 fn enters_tail(next) with !Mutate = match next {
@@ -6372,27 +6532,18 @@ fn show_reason(ref reason) with !Mutate = match reason {
   InferredPipeResult(verb, inner) => "{verb} pipe → {show_reason(inner)}",
   DefaultReason(pname, span) => "{pname} defaulted at {show_span(span)}",
   Accepted(text, proof, inner) => "accepted `{text}` — {show_reason(proof)} → {show_reason(inner)}",
-  // The chain's three shapes, read off the site node: the declaration the
-  // effect enters, the effect's own declaration where the chain ends at
-  // one of its ops, and a hop in between — a call, a stage or a tee the
-  // effect crosses, a function value it is carried into, or a construct
-  // that charges it by itself.
+  // The chain in words, read off the site node: the declaration the effect
+  // enters says it uses the effect, each hop says who calls or installs what
+  // and where, and the chain ends at the operation that performs the effect,
+  // or at a construct that charges it by itself.
   EffectEnters(eff, site, next) => match graph_node_body(site) {
-    NStmt(FnStmt(name, _, _, _, _)) => "declared as {name}; {eff} enters {enters_tail(next)}",
-    NStmt(LetStmt(_, _, _)) => "a module value's init, which runs before main; {eff} enters {enters_tail(next)}",
-    NStmt(EffectDeclStmt(ename, _, _)) => "{show_reason(next)}, an op of {ename} declared at {site_address(site)}",
+    NStmt(FnStmt(name, _, _, _, _)) => "{name} uses {eff}: {enters_path(name, next)}",
+    NStmt(LetStmt(_, _, _)) => "a module value, computed before main runs, uses {eff}: {enters_path("its initializer", next)}",
+    NStmt(EffectDeclStmt(ename, _, _)) => op_terminal(ename, site, next),
     body @ (
       NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
       | NRow(_) | NParam(_)
-    ) => match next {
-      Inferred(what) => "at {site_address(site)}, {what}",
-      Declared(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
-      | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
-      | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
-      | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
-      | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
-      | StateBinding(_, _) => "at {site_address(site)} {site_phrase(body)} → {show_reason(next)}",
-    },
+    ) => enters_hop("the code", site, body, next),
   },
   LabelEnters(label, site, next) => "{label} enters at {site_address(site)} through {enters_tail(next)}",
   ChainInstall(r, n) => "installed through the handler chain '{chain_spelling(r)}', {int_to_str(n)} member(s)",

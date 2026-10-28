@@ -582,7 +582,7 @@ fn driver_warm_ready(path) = if fs_exists(path) {
 fn driver_compile_entry(ref entry_module) = {
   let path = driver_warm_path(entry_module)
   if driver_warm_ready(path) {
-    said("warm: restoring the analyzed image\n")
+    said("warm: reusing the analysis saved by the last run\n")
     image_resume(path)
     driver_incremental()
   } else {
@@ -635,8 +635,10 @@ fn driver_incremental() = match link_entry() {
     match driver_collect_dag(entry_module) {
       (entries, prelude_key) => {
         let changed = changed_modules(link_text_pairs(), walked_text_pairs(entries))
+        // An unchanged program says nothing more than the line above; an
+        // edit says how much of the program was judged again.
         if len(changed) == 0 {
-          said("warm: inference restored — lowering and emit re-derive\n")
+          ()
         } else {
           match edit_judged(entries, module_of(em).file, prelude_key, verify_forget) {
             (n, m) => said("warm: re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s)\n"),

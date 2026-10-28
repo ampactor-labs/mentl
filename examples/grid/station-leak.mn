@@ -9,8 +9,8 @@
 // `!Network`, so the program does not build:
 //
 //   mentl check examples/grid/station-leak.mn
-//   E_EffectMismatch: declared as decide; Network enters … through `price_m`
-//     → through `fetch_param` → declared as fetch_param, an op of Network
+//   E_EffectMismatch: … decide uses Network: decide calls `price_m` at …
+//     → price_m calls `fetch_param` at … → `fetch_param` is an operation of Network
 //
 // The error names the whole path, one call at a time, from the restriction in
 // the signature of `decide` to the network operation, rather than saying
