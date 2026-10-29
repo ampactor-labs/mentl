@@ -2084,10 +2084,19 @@ fn is_cast_erased_op(name) with Pure = name == "addr"
 // a real handler arm routes through the perform dispatch; listing one here
 // bridges it to a dangling `(call $<op>)` with no import and no arm. The
 // preview1 imports are read off their one home, `wasi_import_reprs`.
-fn is_wasi_import_op(name: String) = name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence" || match wasi_import_reprs(name) {
+fn is_wasi_import_op(name: String) = name == "spawn_task" || name == "join_task" || name == "thread_id" || is_shared_memory_op(name) || match wasi_import_reprs(name) {
   Some(_) => true,
   None => false,
 }
+
+// The operations of SharedMemory, the wasm atomic instructions. A program
+// that performs one works on memory that something else may also run on, so
+// the emitted module declares its memory shared; a program that performs
+// none and starts no thread owns an unshared memory, which any engine runs
+// without the threads feature. An atomic wait on unshared memory stops the
+// program, which is why this list, and not the spawn alone, decides.
+fn is_shared_memory_op(name: String) =
+  name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence"
 
 // The WASI preview1 ABI signatures — the FFI boundary's external facts as
 // DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,

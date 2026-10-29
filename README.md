@@ -146,7 +146,7 @@ Mentl works, and it is still changing. The verifier is sound for what it decides
 
 ## Quick start
 
-The compiler is one WebAssembly module, `boot/mentl.wasm`. It imports WASI preview1 and nothing else, and it needs an engine with tail calls and, today, the threads feature, because every module the compiler emits declares its memory shared: in a terminal the stock `wasmtime` 36, pinned by version and digest; in the browser, Mentl Space (`ide/`, served at https://space.ampactor.dev/) runs the same binary in a worker.
+The compiler is one WebAssembly module, `boot/mentl.wasm`. It imports WASI preview1 and nothing else, and it needs an engine with tail calls; a module the compiler emits asks for the threads feature only when the program starts a thread or uses a shared-memory operation, and the compiler itself does neither. In a terminal the host is the stock `wasmtime` 36, pinned by version and digest; in the browser, Mentl Space (`ide/`, served at https://space.ampactor.dev/) runs the same binary in a worker.
 
 ```sh
 git clone https://github.com/ampactor-labs/mentl.git && cd mentl

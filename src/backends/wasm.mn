@@ -2548,6 +2548,7 @@ fn emit_planned(plan) = match plan {
     let value_lets = collect_top_value_lets(lowered)
     emit_memory_decl(
       spawns,
+      spawns || any(is_shared_memory_op, wasi_ops),
       ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0,
       yield_slots,
       len(value_lets) > 0
@@ -4998,9 +4999,13 @@ fn emit_wasi_args_at_widths(args, preprs, i) = if i >= len(args) {
   emit_wasi_args_at_widths(args, preprs, i + 1)
 }
 
-fn emit_memory_decl(spawns, wants_rmw, yield_slots, carries_lets) = {
-  // The memory's OWNERSHIP follows the module's own proof, and the proof is
-  // ONE question: does the module spawn? The wasi-threads convention has the
+fn emit_memory_decl(spawns, shares, wants_rmw, yield_slots, carries_lets) = {
+  // Two facts of the module decide its memory. Whether it spawns decides who
+  // owns the memory, below. Whether anything else may run on the memory
+  // decides whether it is declared shared: it is when the module spawns or
+  // performs a SharedMemory operation (`is_shared_memory_op`), and otherwise
+  // it is unshared, so an engine without the threads feature runs it. The
+  // compiler itself is such a module. The wasi-threads convention has the
   // host create one memory and link it into every instance, root and
   // spawned alike (a DEFINED memory is per-instance, so a child of a
   // defining module would read a fresh zeroed image) — so a spawning module
@@ -5034,8 +5039,10 @@ fn emit_memory_decl(spawns, wants_rmw, yield_slots, carries_lets) = {
     wat_emit("  (import \"wasi\" \"thread-spawn\" (func $wasi_thread_spawn (param i32) (result i32)))\n")
     wat_emit("  (import \"env\" \"memory\" (memory 32 65536 shared))\n")
     wat_emit("  (export \"memory\" (memory 0))\n")
-  } else {
+  } else if shares {
     wat_emit("  (memory (export \"memory\") 32 65536 shared)\n")
+  } else {
+    wat_emit("  (memory (export \"memory\") 32 65536)\n")
   }
   if spawns {
     // The task-invocation fn type — the 0-arg closure protocol (record as
