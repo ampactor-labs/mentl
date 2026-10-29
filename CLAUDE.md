@@ -69,6 +69,43 @@ back what changed and why after one reading, rewrite it.
 - **A gate:** a check that must pass before a commit or a pin.
 - **Red:** failing.
 
+## How to talk about Mentl
+
+One standard for every sentence about Mentl, in three registers that share
+the facts and differ in the first sentence and the depth: everyone (the
+README's first screen), the buyer (HUM's one-pager and its `MENTL_BRIEF.md`)
+and the engineer (the README's "What Mentl is", then SYNTAX and PLAN).
+
+- Open with the listener's situation, never with Mentl. Name Mentl once
+  they have a reason to want it. "Mentl is a language that…" never opens.
+- Name a program and a promise. "The grid controller's decision never
+  reaches the network" beats "software that never does X", and the example
+  is real and ran today.
+- "Proves" never stands alone. Beside it, every time: the rule is written
+  into the code, the compiler checks it through every function the code
+  calls on every build, and a version that breaks it does not build.
+- Say what changes for the listener: that property is never reviewed for
+  again, whoever or whatever edits the code next.
+- Evidence is the thing itself: the command and what it printed,
+  regenerated from the pin. A number carries its unit and what it measures.
+- Say the limit in the same breath, with its PLAN §11 step.
+- Credit what is not Mentl's: WebAssembly's import list, the engine's
+  sandbox, sonido's measurements.
+- No "such as" that shrinks the claim, no chain of abstract nouns, no
+  closing line that repeats the point.
+
+Before a sentence is sent or published, five questions: can the reader say
+it back in one sentence; does it name a program and a command; does it say
+what changes for them; does it say what is not proven; is any sentence only
+a slogan. Four yes and one no, or it is rewritten.
+
+Every example of the syntax, anywhere, is a real program in this repository
+that runs, shown in its canonical layout, with the compiler's answer at
+that site quoted beside it, one plain sentence saying the shape, and the
+fact the operator proves or refuses named. SYNTAX's "Composing the five" is
+the canon of the five operators: the north star for each, and today's
+distance from it.
+
 ## What to read
 
 Three documents guide the work. Read this one in full every session. Read the
@@ -346,6 +383,8 @@ use them to describe a flow in prose.
 
 Always write a sequence with `|>`: `y |> f |> g`, never
 `let x = f(y); g(x)`.
+SYNTAX's "Composing the five" says how the five are used together, with
+the compiler's answer at each operator.
 
 Ask eight questions at every line you write:
 

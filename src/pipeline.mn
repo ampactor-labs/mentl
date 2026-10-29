@@ -851,7 +851,25 @@ fn map_fn_stmts(ast, project) = ast |> map({
 fn render_gradients(tights, gradients: [(String, Teaching)]) = if len(gradients) == 0 {
   "All functions are at maximum annotation density.\n"
 } else {
-  gradients |> map({ (name, result) => render_gradient_line(name, result, tights) }) |> str_concat_all
+  let steps =
+    gradients |> filter(gradient_has_step(tights, ??)) |> map({ (name, result) => render_gradient_line(name, result, tights) }) |> str_concat_all
+  let silent =
+    gradients |> filter({ g => !gradient_has_step(tights, g) }) |> map({ (name, _) => name })
+  if len(silent) == 0 { steps } else { "{steps}nothing to unlock in {join(", ", silent)}\n" }
+}
+
+// Whether a declaration's gradient says anything: an annotation to add, a
+// question, a need, a lift, or a tightening the judgment banked. A
+// declaration with none is named once in the closing line, never given a
+// line of its own that says nothing.
+fn gradient_has_step(tights, gradient: (String, Teaching)) = match gradient {
+  (name, result) => match result {
+    TeachNone => match banked_tightening(name, tights) {
+      Some(_) => true,
+      None => false,
+    },
+    TeachAdd(_) | TeachAsk(_) | TeachNeed(_, _, _) | TeachLift(_) => true,
+  },
 }
 
 // The name pin is an Intent Boundary at the line's ONE mint (spec_mangle's

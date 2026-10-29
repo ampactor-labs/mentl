@@ -1,0 +1,12 @@
+// at 12:31: ~> counter Count
+// The caret on a `~>` names the handler it installs and the effects the
+// handler's arms answer.
+effect Count {
+  bump() -> Int
+}
+
+handler counter with n = 0 {
+  bump() => resume(n) with n = n + 1,
+}
+
+fn main() = (bump() + bump()) ~> counter

@@ -1,0 +1,11 @@
+// at 9:25: >< 2 Seq
+// The caret on a `><` says how many branches run, each owning its input,
+// and under which schedule: none is installed here, so they run in sequence.
+fn inc(n) = n + 1
+
+fn dbl(n) = n * 2
+
+fn main() = {
+  let (a, b) = (inc(1)) >< (dbl(2))
+  a + b - 6
+}

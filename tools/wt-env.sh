@@ -59,10 +59,9 @@
 # defines its memory exactly as one that imports it (measured on this
 # landing's m2: the wheel compiled through the candidate byte-identical to
 # the Rust runner it replaced, 549,192 lines, at 37.9 s / 492 MB), so no
-# import scan chooses flags per module. The threads/tail-call pair is
-# load-bearing — the wheel's modules use shared memory (atomics for the
-# task join) and return_call_indirect (opcode 0x13); drop either and the
-# module refuses to instantiate. `-C cache=y` is the engine's compilation
+# import scan chooses flags per module. Tail calls are load-bearing (every
+# module uses return_call_indirect); threads only for a module that spawns
+# or performs a SharedMemory operation. `-C cache=y` is the engine's compilation
 # cache, on by default in the CLI and stated here because it is the fact
 # that makes the loop felt: the JIT of the 3 MB boot is paid once per pinned
 # binary, not once per process — a `mentl help` is 0.06 s against the

@@ -1,0 +1,22 @@
+// expect: 1
+// A program that starts no thread but performs a SharedMemory operation
+// keeps a shared memory: an atomic wait on a memory that is not shared stops
+// the program, so the compiler declares the memory shared for a program that
+// performs any SharedMemory operation, and owned for one that performs none.
+// The word holds 7, the wait expects 3, and the wait answers at once that the
+// word differs, so the program exits with 1.
+import memory
+
+import threading
+
+fn answer(w) with Pure = match w {
+  WOk => 0,
+  WNotEqual => 1,
+  WTimedOut => 2,
+}
+
+fn main() = {
+  let cell = addr({n: 0})
+  atomic_store_i32(cell, 7)
+  wait_i32(cell, 3, 0) |> answer
+}

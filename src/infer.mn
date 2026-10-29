@@ -7631,7 +7631,7 @@ fn infer_fanout_nary(branches, handle, span: ValidSpan) = {
   graph_bind(
     handle,
     TTuple(map(boundary_result_ty, edges)),
-    Located(span, Inferred(">< parallel fanout — branches affinity-checked"))
+    Located(span, Inferred("the product of the >< branches' results, each branch owning its input"))
   )
 }
 
@@ -7722,13 +7722,13 @@ fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
   graph_bind(
     right,
     TTuple(collect_tvar_types(branches)),
-    Located(span, Inferred("<| fanout — tuple of branch stages"))
+    Located(span, Inferred("the branches the <| shares its input with"))
   )
   graph_boundary_set(handle, FanoutBoundary(edges))
   graph_bind(
     handle,
     TTuple(map(boundary_result_ty, edges)),
-    Located(span, Inferred("<| fanout — result type is branch-output tuple"))
+    Located(span, Inferred("the product of the <| branches' results, the input borrowed by each"))
   )
 }
 

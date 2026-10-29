@@ -2308,7 +2308,8 @@ type Teaching
 // Where a node stands in one verb that holds it, each role naming its verb:
 // a `|>` chain's source or its i-th of n stages; the i-th of n branches of a
 // `><`; the i-th of n branches of a `<|` or the input it shares; a `~>`'s
-// body or its handler; a `<~`'s recurrence or its declared delay.
+// body or its handler; a `<~`'s recurrence or its declared delay; or the
+// verb at the node itself, with the shape it carries.
 type VerbRole
   = ChainSource
   | ChainStage(Int, Int)
@@ -2319,6 +2320,22 @@ type VerbRole
   | InstallHandler
   | Recurrence
   | FeedbackDelay
+  | VerbSite(VerbShape)
+
+// What a verb does at its own node, read off its edges, so the caret on an
+// operator says the fact the operator carries: the input a `<|` shares, by
+// name when it is a plain reference, and how many branches borrow it; how
+// many branches a `><` runs and the schedule the installs over it carry;
+// which stage of how many a `|>` completes and whether a fanout's product
+// fills the chain's first stage's open slots; the handler a `~>` installs
+// and the effects its arms answer; the depth a `<~` declares, None where it
+// is not a literal, and the name of the function whose record owns the line.
+type VerbShape
+  = ShareShape(Option(String), Int)
+  | FanShape(Int, Schedule)
+  | ChainShape(Int, Int, Bool)
+  | InstallShape(String, [String])
+  | LoopShape(Option(Int), String)
 
 // One verb on the path from a declaration down to a node: the site's handle
 // and the node's role there. The topology at a position is the list of them,

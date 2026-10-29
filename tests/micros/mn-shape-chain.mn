@@ -1,0 +1,14 @@
+// at 12:34: |> 1 2 product
+// The caret on the first `|>` of a chain says how many stages the chain runs,
+// which stage this pipe completes, and that the fanout's product fills the
+// first stage's open slots.
+fn inc(n) = n + 1
+
+fn dbl(n) = n * 2
+
+fn add(k, a, b) = a + b + k
+
+fn main() = {
+  let s = ((inc(1)) >< (dbl(2))) |> add(1) |> inc
+  s - 8
+}

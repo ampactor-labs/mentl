@@ -484,7 +484,94 @@ fn ownership_of_ty(ty) = match ty {
 // caret).
 fn verb_path_of(h) with !Mutate = {
   let path = decl_path_to(h)
-  fold([], verb_frame_at(path, ??, ??), range(0, len(path) - 1))
+  let held = fold([], verb_frame_at(path, ??, ??), range(0, len(path) - 1))
+  match verb_shape_of(h, path) {
+    Some(shape) => push(held, VerbFrame(h, VerbSite(shape))),
+    None => held,
+  }
+}
+
+// The verb at the node itself, with the fact it carries (`VerbShape`), so
+// the caret on an operator says the shape in one sentence. A pipe inside a
+// chain reports the whole chain and the stage it completes.
+fn verb_shape_of(h, path) with !Mutate = if len(path) == 0 {
+  None
+} else {
+  match graph_node_body(h) {
+    NExpr(PipeExpr(PForward, _, _)) => {
+      let elems = chain_elements(chain_head(path, len(path) - 1))
+      Some(ChainShape(len(chain_elements(h)) - 1, len(elems) - 1, is_fanout(list_index(elems, 0))))
+    },
+    NExpr(PipeExpr(PFanout(FanShare), l, r)) => Some(ShareShape(plain_name(l), len(share_stages(r)))),
+    NExpr(PipeExpr(PFanout(FanDistribute), _, _)) => Some(FanShape(2, schedule_of(installs_on(path)))),
+    NExpr(FanoutExpr(branches)) => Some(FanShape(len(branches), schedule_of(installs_on(path)))),
+    NExpr(PipeExpr(PTee, _, r)) => Some(InstallShape(
+      tee_handler_name(r),
+      match tee_arms(r) {
+        Some(arms) => handler_effect_names(arms),
+        None => [],
+      }
+    )),
+    NExpr(PipeExpr(PFeedback, _, r)) => Some(LoopShape(
+      match feedback_depth(r) {
+        DepthLiteral(n) => Some(n),
+        DepthComputed => None,
+        DepthUnstated => None,
+      },
+      line_owner(path)
+    )),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
+  }
+}
+
+// The head of the chain a pipe at path[i] belongs to: up the path while the
+// pipe above holds this one as its left child.
+fn chain_head(path, i) with !Mutate =
+  if chain_continues_above(path, i) { chain_head(path, i - 1) } else { list_index(path, i) }
+
+fn is_fanout(h) with !Mutate = match graph_node_body(h) {
+  NExpr(FanoutExpr(_)) => true,
+  NExpr(PipeExpr(PFanout(_), _, _)) => true,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
+// A plain reference's name, so the shape can name the input a `<|` shares;
+// None for any other expression.
+fn plain_name(h) with !Mutate = match graph_node_body(h) {
+  NExpr(VarRef(name)) => Some(name),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
+}
+
+// The handlers the `~>` sites on a node's path install over it, outermost
+// first: what a fanout's schedule is read from.
+fn installs_on(path) with !Mutate = fold([], install_at(path, ??, ??), range(0, len(path) - 1))
+
+fn install_at(path, acc, i) with !Mutate = match graph_node_body(list_index(path, i)) {
+  NExpr(PipeExpr(PTee, l, r)) => if l == list_index(path, i + 1) { push(acc, tee_arms(r)) } else { acc },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => acc,
+}
+
+// The function whose record owns a `<~`'s line: the nearest declaration or
+// function value above the site on its path.
+fn line_owner(path) with !Mutate = match fold(None, owner_at(path, ??, ??), range(0, len(path) - 1)) {
+  Some(name) => name,
+  None => "its module",
+}
+
+fn owner_at(path, acc, i) with !Mutate = {
+  let a = list_index(path, i)
+  match graph_node_body(a) {
+    NStmt(FnStmt(name, _, _, _, _)) => Some(name),
+    NExpr(LambdaExpr(_, _)) => Some(match graph_span_of(a) {
+      Span(line, _, _, _) => "the function value at line {int_to_str(line)}",
+    }),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => acc,
+  }
 }
 
 // The path from a position's declaration down to it — what every upward
@@ -657,7 +744,11 @@ fn show_verb_path(frames, place) with !Mutate =
   join(", inside ", map(show_verb_frame(place, ??), reverse(frames)))
 
 fn show_verb_frame(place, frame) with !Mutate = match frame {
-  VerbFrame(site, role) => "{verb_role_text(role)} at {place(graph_span_of(site))}",
+  VerbFrame(site, role) => match role {
+    VerbSite(shape) => shape_text(shape),
+    ChainSource | ChainStage(_, _) | FanBranch(_, _) | ShareBranch(_, _) | FanInput | InstallBody
+    | InstallHandler | Recurrence | FeedbackDelay => "{verb_role_text(role)} at {place(graph_span_of(site))}",
+  },
 }
 
 fn verb_role_text(role) = match role {
@@ -670,7 +761,46 @@ fn verb_role_text(role) = match role {
   InstallHandler => "the handler the ~> installs",
   Recurrence => "the recurrence the <~ feeds back",
   FeedbackDelay => "the delay the <~ declares",
+  VerbSite(shape) => shape_text(shape),
 }
+
+// The verb's own sentence at its node, one a newcomer can say back, naming
+// the fact the verb carries (SYNTAX §«Composing the five»).
+fn shape_text(shape) = match shape {
+  ShareShape(input, n) => {
+    let what = match input {
+      Some(name) => "`{name}`",
+      None => "its input",
+    }
+    "the <| shares {what} with {shape_count(n, "branch", "branches")}, borrowed, so they cannot race"
+  },
+  FanShape(n, s) => if schedule_is_threaded(s) {
+    "the >< runs {shape_count(n, "branch", "branches")}, each owning its input, on threads under the schedule installed over it"
+  } else {
+    "the >< runs {shape_count(n, "branch", "branches")}, each owning its input, in sequence, since no schedule is installed over it"
+  },
+  ChainShape(k, n, merges) => {
+    let tail = if merges { ", and the fanout's product fills the first stage's open slots" } else { "" }
+    if k == n {
+      "the |> runs {shape_count(n, "stage", "stages")} in sequence{tail}"
+    } else {
+      "the |> runs {shape_count(n, "stage", "stages")} in sequence, this one completing stage {int_to_str(k)}{tail}"
+    }
+  },
+  InstallShape(name, effs) => if len(effs) == 0 {
+    "the ~> installs `{name}` over everything to its left"
+  } else {
+    "the ~> installs `{name}` over everything to its left, answering {join(", ", effs)}"
+  },
+  LoopShape(depth, owner) => match depth {
+    Some(n) => "the <~ feeds back the output {shape_count(n, "tick", "ticks")} ago; its line is owned by `{owner}` and allocated once",
+    None => "the <~ feeds back the previous output; its line is owned by `{owner}` and allocated once",
+  },
+}
+
+// A count with its noun, the plural spelled rather than guessed.
+fn shape_count(n, one: String, many: String) =
+  if n == 1 { "1 {one}" } else { "{int_to_str(n)} {many}" }
 
 fn position_in(h, hs) = match find({ (_, x) => x == h }, enumerate(hs)) {
   Some((k, _)) => Some(k),

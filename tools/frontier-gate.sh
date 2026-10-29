@@ -2061,7 +2061,7 @@ for i in "${!compilers[@]}"; do
   # declarations across six wheel modules on 2026-10-06. The locks that ARE
   # stood on are the teach battery's lock-* fixtures (tests/teach).
   wt_entry "$ROOT/tests/frontier/mn-teach-pure-control.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
-  if grep '^main:' "$dir/teach-pure.out" | grep -q 'no next-step annotation'; then
+  if ! grep -q '^main:' "$dir/teach-pure.out" && grep -q 'nothing to unlock in .*\bmain\b' "$dir/teach-pure.out"; then
     pass "teach-claimless-none (a declaration no clause stands on is taught no lock)"
   else
     fail "teach-claimless-none (got: $(grep '^main:' "$dir/teach-pure.out" | head -1))"

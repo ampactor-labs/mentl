@@ -24,8 +24,8 @@
 # clone the delta saw was the host's. The number stood in for two facts the
 # medium already states exactly:
 #   · the ARTIFACT — a module imports `wasi.thread-spawn` exactly when its
-#     reached tree performs `spawn_task` (emit_planned, src/backends/wasm.mn),
-#     and the engine creates a guest thread only through that import;
+#     reached tree performs `spawn_task`, and declares its memory shared
+#     exactly when it spawns or performs a SharedMemory operation;
 #   · the CLAIM — `main`'s inferred row carries `WasiThreads` exactly when
 #     the program performs a spawn, read by the medium's own `query` verb.
 # Both are exact, neither sees a thread the host makes for itself, and a
@@ -41,16 +41,9 @@
 # cannot go red, the other legs are evidence of nothing and this script says
 # so and exits 1.
 #
-# WHEN PHASE 9.2 GIVES THE JUDGMENT A WIDTH, leg 2 is re-baselined in the
-# landing that does it, not deleted: the question becomes whether the boot
-# spawns exactly at the fanouts its source schedules. Leg 3 survives
-# unchanged, because a race's only symptom is run-to-run variance and that is
-# precisely the symptom that hid the last one.
-#
-# THE CONFESSION (CLAUDE.md ⟳): the import read is a hand tool — the emit
-# decides the import and no verb projects it. The honest endpoint is the
-# self-compile reporting its own width beside the cost line it already prints
-# (Hβ.march.concurrency-is-a-projection); this script retires into it.
+# When PLAN §11.8 gives the judgment a width, that landing re-baselines leg 2.
+# The import and memory reads are hand tools; the self-compile reporting its
+# own width beside its cost line retires this script (PLAN §11.9).
 #
 # Usage: tools/thread-gate.sh
 # Exit:  0 the width is what we think it is, 1 it is not (or cannot be read).
@@ -66,10 +59,9 @@ say() { printf '%s\n' "$*"; }
 
 m() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir "$T" --dir /tmp --dir "$ROOT::/mentl-home" "$BOOT" "$@"; }
 
-# spawn_import <module.wasm> — SPAWN when the module imports wasi.thread-spawn,
-# NONE when it does not, UNREAD when the file is not a module. The import
-# section is walked entry by entry, so a later entry's name is never read out
-# of a misaligned offset.
+# spawn_import <module.wasm> — SPAWN or NONE for the wasi.thread-spawn import,
+# then SHARED or OWNED for the memory, or UNREAD when the file is not a module.
+# Each section is walked entry by entry, so no name is read misaligned.
 spawn_import() {
   python3 - "$1" <<'PY'
 import sys
@@ -91,9 +83,11 @@ def limits(b, j):
 b = open(sys.argv[1], 'rb').read()
 if b[:4] != b'\0asm':
     print('UNREAD'); sys.exit()
-i, found = 8, False
+i, found, shared = 8, False, False
 while i < len(b):
-    sid = b[i]; size, j = leb(b, i + 1)
+    sid = b[i]; size, j = leb(b, i + 1); start = j
+    if sid == 5:
+        shared = bool(b[leb(b, j)[1]] & 2)
     if sid == 2:
         n, j = leb(b, j)
         for _ in range(n):
@@ -105,14 +99,13 @@ while i < len(b):
             elif kind == 1:
                 j = limits(b, j + 1)
             elif kind == 2:
-                j = limits(b, j)
+                shared = bool(b[j] & 2); j = limits(b, j)
             elif kind == 3:
                 j += 2
             elif kind == 4:
                 _, j = leb(b, j + 1)
-        break
-    i = j + size
-print('SPAWN' if found else 'NONE')
+    i = start + size
+print(('SPAWN' if found else 'NONE') + (' SHARED' if shared else ' OWNED'))
 PY
 }
 
@@ -141,7 +134,7 @@ spawn_row() {
 # wat2wasm happily assembled an empty module — which is how the first
 # draft of this gate's control measured nothing and passed.
 control() {
-  local f="$1" want="$2" src="$T/$1.mn"
+  local f="$1" want="$2" mem="$3" src="$T/$1.mn"
   { printf 'import threading\n'; cat "$ROOT/tests/frontier/$f.mn"; } > "$src"
   m compile "$src" > "$T/$f.wat" 2>"$T/$f.err"
   local bytes a b
@@ -153,26 +146,34 @@ control() {
   wt_asm "$T/$f.wat" "$T/$f.wasm" 2>/dev/null || { say "  ✗ control: $f will not assemble"; exit 1; }
   a=$(spawn_import "$T/$f.wasm")
   b=$(spawn_row "$src")
-  if [ "$a" = "$want" ] && [ "$b" = "$want" ]; then
-    say "  ✓ control: $f reads $want twice — its module's imports and its row at main"
+  if [ "$a" = "$want $mem" ] && [ "$b" = "$want" ]; then
+    say "  ✓ control: $f reads $want twice — its module's imports and its row at main — and its memory $mem"
   else
-    say "  ✗ control: $f should read $want; its imports say $a, its row says $b — THE READERS ARE BLIND, every leg below is vacuous"
+    say "  ✗ control: $f should read $want with its memory $mem; its module says $a, its row says $b — THE READERS ARE BLIND, every leg below is vacuous"
     exit 1
   fi
 }
-control mn-real-spawn SPAWN
-control mn-scheduled-fanout-int NONE
+control mn-real-spawn SPAWN SHARED
+control mn-scheduled-fanout-int NONE OWNED
 
 # ── leg 2 · THE BOOT — the compile runs on one instance ─────────────────────
 # The judgment is one sequential pass since 2026-09-17 and the fan stopped
 # spawning on 2026-09-19, so the boot must import no spawn, the wheel's row at
-# main must carry none, and the two must agree.
-a=$(spawn_import "$BOOT")
+# main must carry none, and the two must agree. The memory is read from the
+# module the compiler under test emits for the wheel (the next pin's shape at
+# a transition), never from its own bytes, which the previous pin emitted.
+a=$(spawn_import "$BOOT"); a=${a% *}
 b=$(spawn_row "$ROOT/src/main.mn")
-if [ "$a" = NONE ] && [ "$b" = NONE ]; then
-  say "  ✓ boot: one instance — the boot imports no wasi.thread-spawn and main's row carries no WasiThreads"
-elif [ "$a" = UNREAD ] || [ "$b" = UNREAD ]; then
-  say "  ✗ boot: a reader answered nothing (imports $a, row $b) — the width was not read"
+(cd "$ROOT" && m compile src/main.mn 2>/dev/null) > "$T/wheel.wat"
+mem=$(grep -m1 -E '^ *\((memory|import "env" "memory")' "$T/wheel.wat" | grep -q shared && echo SHARED || echo OWNED)
+[ -s "$T/wheel.wat" ] || mem=UNREAD
+if [ "$a" = NONE ] && [ "$b" = NONE ] && [ "$mem" = OWNED ]; then
+  say "  ✓ boot: one instance — the boot imports no wasi.thread-spawn, main's row carries no WasiThreads, and the wheel's module owns an unshared memory"
+elif [ "$a" = UNREAD ] || [ "$b" = UNREAD ] || [ "$mem" = UNREAD ]; then
+  say "  ✗ boot: a reader answered nothing (imports $a, row $b, memory $mem) — the width was not read"
+  fail=1
+elif [ "$a" = NONE ] && [ "$b" = NONE ]; then
+  say "  ✗ boot: the wheel starts no thread but its module declares its memory shared, so an engine without the threads feature refuses it"
   fail=1
 elif [ "$a" != "$b" ]; then
   say "  ✗ boot: the source and the artifact DISAGREE — main's row says $b, the boot's imports say $a"
