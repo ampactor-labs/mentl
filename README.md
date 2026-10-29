@@ -49,6 +49,41 @@ uses Net: banner calls `headline` at quiet:9:29 → headline calls `fetch` at qu
 
 Write `banner` as `greeting(name)` and the claim holds. A network operation then does something only where a handler says what it does. For example, `len(banner("ada") ++ headline("ada")) ~> offline`, where the handler `offline` answers `fetch` by resuming with `"(offline)"`, runs and exits with code 29.
 
+### The same, on a real program
+
+Each line below is a command and what it prints today.
+
+```
+$ mentl check examples/grid/station.mn
+```
+
+Nothing. Every claim in the grid controller is proven: `decide` says it never allocates, never reaches the network or a file, never calls outside the program and never stops with an error; each power command is typed to its machine's rating; the cut that copies a reading's timestamp is proven to stay inside the line. `mentl check` prints any claim it cannot prove, at its line, so an empty answer is the whole verdict.
+
+```
+$ mentl audit examples/grid/station.mn | head -1
+Nothing in this module uses Network, so it is sandboxed (it never reaches the network)
+```
+
+The audit's first line is the claim that covers the whole module, handlers included: no function in it performs a network operation. The compiled module imports three functions from its host, `fd_read`, `fd_write` and `proc_exit`, and nothing else in it can touch the world.
+
+```
+$ mentl why examples/grid/station.mn reading Trap
+reading never uses Trap: nothing in reading, and nothing it calls, performs an operation of Trap
+```
+
+Leave a stage of a signal chain open with `??` and the medium fills it with what it can prove, or asks. In lesson 8 of the course, `mentl examples/pulse/course/08-hole.mn:50:76` proposes `brighten`, the one stage that fits, and `mentl accept` writes it where the hole was. Where two candidates both prove and mean different things, it does not pick:
+
+```
+$ cd tests/frontier/propose-fan-demo && mentl bit.mn:8:30
+Query: ?? : Bit
+Propose: 2 proven survivors — a tie:
+  0  — inferred from the type's integer inhabitants
+  1  — inferred from the type's integer inhabitants
+  the survivors differ in VALUE — 0 or 1 — and the type admits 0 through 1: which one does this position mean?
+```
+
+What a person cannot see yet: the candidates are judged one after another on one core, an edit re-judges most of the program before the next answer arrives, and the page cannot play a lesson. PLAN §11 names the landing for each (§11.5, §11.6 and §11.8).
+
 ## Status
 
 Mentl works, and it is still changing. The verifier is sound for what it decides and incomplete by design: a claim it cannot decide is reported as pending, and the program still builds. `mentl check` prints each pending claim at its line, and `mentl audit` lists it under the function that holds it. One false proof is known: a function that says `!Trap` can still trap when a person writes recursion deep enough to run out of stack, because no effect row shows running out of stack yet (PLAN.md §7). The language and its commands may still change.

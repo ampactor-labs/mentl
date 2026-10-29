@@ -44,21 +44,38 @@ Closing the gap means reaching five properties:
 1. **Proof beats review**: the medium either proves what you claim or refuses
    it, and nothing unproven runs. So whether a program does what its author
    meant never depends on someone reading it closely. Review can give
-   assurance only up to some limit, and proof has no such limit.
+   assurance only up to some limit, and proof has no such limit. A person
+   sees it as `mentl check examples/grid/station.mn` printing nothing,
+   because every claim in the grid controller is proven, while the copy that
+   reads a price inside the decision does not build.
 2. **The negative is provable**: people often mean "this never touches the
    network" or "this never allocates", and no mainstream language lets them
    say it. `!E` says it, and it holds under polymorphism. The absence it
    proves takes the identity of each handler and install into account, holds
    under modality and over time, and is proven per instance
-   (`!Sample(44100)`). This is the most underrated part of Mentl.
+   (`!Sample(44100)`). This is the most underrated part of Mentl. A person
+   sees it as `mentl why examples/grid/station.mn decide Network` answering
+   that `decide` never uses Network, and as lesson 6 of the course refusing a
+   44.1 kHz stage reached from a 48 kHz chain, naming the declaration where
+   the other rate enters.
 3. **Intent is lossless**: the Reason chain records why every fact holds, and
    it can be followed back to the decision that produced the fact. Nothing the
-   author meant is lost between the source text and the machine code.
+   author meant is lost between the source text and the machine code. A
+   person sees it as `mentl why` walking any effect in a row back to the
+   operation and the calls that carry it, and as `mentl rename` rewriting
+   every use, label and comment mention through the same edges.
 4. **Computation is durable**: a running computation is a value. It is a
-   multi-shot continuation, and it is saved by copying the memory image.
+   multi-shot continuation, and it is saved by copying the memory image. A
+   person sees it as the frontier gate's arena leg: a program saves its own
+   image from one process, and a second process resumes it and finishes the
+   arithmetic it was in the middle of
+   (tests/frontier/arena/persist-resumes-outside.mn).
 5. **Systems explain themselves**: at any point in the code, the cursor shows
    what is currently true there, so the medium answers the question and the
-   author does not have to work the answer out.
+   author does not have to work the answer out. A person sees it at a hole:
+   `mentl examples/pulse/course/08-hole.mn:50:76` proposes the one stage that
+   fits, `mentl accept` writes it, and where two candidates both prove, the
+   cursor asks which one the position means instead of picking.
 
 **What follows, but is never the goal.** A medium that proves what it runs
 and never loses intent does both for every author. Code that a person did not
