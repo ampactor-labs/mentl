@@ -675,8 +675,8 @@ run_course() {
   local compiler="$1" dir="$2" src="$ROOT/examples/pulse/course" spec lesson secs notes pdir rc
   for spec in "01-tone 3 220" "02-line 3 220" "03-bus 4 220,329.63" "04-rack 4 220,261.63,329.63,440" \
               "05-silence 4 220,261.63,329.63,440" "06-rate 3 220,277.18,329.63" \
-              "07-bounds 4 220,261.63,329.63,440" "08-hole 3 220,329.63" "09-learn 3 220"; do
-    set -- $spec; lesson=$1; secs=$2; notes=$3
+              "07-bounds 4 220,261.63,329.63,440" "08-hole 3 220,329.63" "09-learn 3 220" "10-voices 4 220,261.63,329.63,440 chord" "11-footprint 4 220,261.63,329.63,440"; do
+    set -- $spec; lesson=$1; secs=$2; notes=$3; mode=${4:-}
     pdir="$dir/course-$lesson.proj"
     rm -rf "$pdir"; mkdir -p "$pdir"; cp "$src"/*.mn "$pdir"/
     if [ "$lesson" = 08-hole ] && ! wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 08-hole.mn:50:76 > "$dir/course-08.accept" 2>&1; then
@@ -685,7 +685,7 @@ run_course() {
     run_module "$compiler" "$pdir" "$lesson" "$dir/course-$lesson.wav" "$dir/course-$lesson.err"; rc=$?
     if [ "$rc" -ne 0 ] || [ ! -s "$dir/course-$lesson.wav" ]; then
       fail "course $lesson render (exit=$rc; see $dir/course-$lesson.err)"
-    elif python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/course-$lesson.wav" --seconds "$secs" --notes "$notes" > "$dir/course-$lesson.oracle" 2>&1; then
+    elif python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/course-$lesson.wav" --seconds "$secs" --notes "$notes" ${mode:+--chord} > "$dir/course-$lesson.oracle" 2>&1; then
       pass "course $lesson: $secs s rendered, the oracle holds ($(grep -c '^PASS' "$dir/course-$lesson.oracle") checks)"
     else
       fail "course $lesson oracle ($(grep '^FAIL' "$dir/course-$lesson.oracle" | head -1); see $dir/course-$lesson.oracle)"

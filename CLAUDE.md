@@ -165,7 +165,7 @@ use the plain words.
 - "Systems explain themselves": the compiler can say why any fact about the
   program holds.
 
-The real program is a course lesson (`examples/pulse/course`, ten programs on
+The real program is a course lesson (`examples/pulse/course`, eleven programs on
 one audio chain) or one of the two scores (`examples/pulse/render`,
 `examples/wasatch`), whichever can show the benefit. `mentl verify` counts
 the lessons the compiler cannot yet check cleanly (the `QOwed` bounds in
@@ -386,7 +386,7 @@ Always write a sequence with `|>`: `y |> f |> g`, never
 SYNTAX's "Composing the five" says how the five are used together, with
 the compiler's answer at each operator.
 
-Ask eight questions at every line you write:
+Ask nine questions at every line you write:
 
 - **Graph:** does an edge already carry this fact?
 - **Handler:** which handler produces it, and how many times does it resume?
@@ -396,6 +396,7 @@ Ask eight questions at every line you write:
 - **Refinement:** what range or property must the value keep?
 - **Gradient:** which annotation would unlock a capability?
 - **Reason:** which edge does `mentl why` follow to explain it?
+- **Extent:** which extent owns this value, and what crosses its edge?
 
 Signs of drift, each a break of the main design rule:
 
@@ -427,5 +428,5 @@ of deleting what made the compensation necessary.
 - Run compiler-sized jobs, such as the march, the board or a profile, one at
   a time.
 - Make decisions instead of deferring them. You have full authority. Answer a
-  design question with the eight questions and by running the artifact, then
+  design question with the nine questions and by running the artifact, then
   build the answer.

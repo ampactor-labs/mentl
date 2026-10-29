@@ -603,12 +603,12 @@ and handlers, and the projections follow from them. This is the research half
 of the production bar (PLAN §11): the cross-frequency-coupling pipeline, run
 on a real recording and viewed inside the medium.
 
-## 5.5 · The course is a program — Pulse, ten lessons on one chain
+## 5.5 · The course is a program — Pulse, eleven lessons on one chain
 
 *(the whole ring, read by a developer who has never seen an effect row)*
 
 The course is a project the page opens (§3.8), not a separate app beside the
-editor. It is `examples/pulse/course`: ten programs on one growing chain, plus
+editor. It is `examples/pulse/course`: eleven programs on one growing chain, plus
 the module they share (rate.mn, which holds the three readers of the clock and
 the render loop that carries the course's `!Alloc` declaration). It sits
 beside Pulse's renderer and Wasatch's score, and the page's select menu lists
@@ -643,7 +643,12 @@ caret:
    and the heap not moving;
 10. `10-voices`: `fanout(render_voice(sr), notes) ~> parallel_compose`, where
     every voice is created in its own branch and rendered on its own core, and
-    the race rule is the proof.
+    the race rule is the proof;
+11. `11-footprint`: `~> arena` around each section, where the section's
+    instrument lives in the extent and is reclaimed when the section ends,
+    the per-sample path keeps lesson 5's `!Alloc`, and the program says on
+    standard error what it held: its pages and the arenas' census, read from
+    the counters the emitted module keeps.
 
 The lessons the compiler cannot yet check cleanly are a count on the board,
 never a sentence here. `mentl verify` checks `QOwed("examples/pulse/course")`,

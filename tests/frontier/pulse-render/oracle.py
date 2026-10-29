@@ -6,6 +6,8 @@ made it.
   python3 oracle.py out.wav                         Pulse: ten seconds, its eight notes
   python3 oracle.py out.wav --seconds 3 --notes 220 a course lesson: one note over three seconds
   python3 oracle.py out.wav --seconds 4 --notes 220,261.63,329.63,440
+  python3 oracle.py out.wav --seconds 4 --notes 220,261.63,329.63,440 --chord
+                                                    a chord: every note in every window
 
 Exit 0 when every check holds, 1 otherwise; one line per check either way.
 
@@ -18,7 +20,9 @@ What it checks, and why each is the program's own claim:
     the unit range, so |sample| < 32767;
   - the score is in the file: the file is cut into one window per note, and
     in each the power at the note's own pitch stands at least 20 dB above the
-    median power at the other pitches the course uses.
+    median power at the other pitches the course uses; with --chord every
+    note stands that far above the pitches the chord does not hold, in every
+    window.
 """
 import argparse
 import math
@@ -42,7 +46,7 @@ def goertzel(xs, freq):
     return s1 * s1 + s2 * s2 - c * s1 * s2
 
 
-def main(path, seconds, notes):
+def main(path, seconds, notes, chord=False):
     data = open(path, "rb").read()
     results = []
 
@@ -85,9 +89,15 @@ def main(path, seconds, notes):
         start = k * per_note + RATE // 10
         window = mono[start : min(start + RATE, (k + 1) * per_note)]
         power = {p: 10 * math.log10(goertzel(window, p) + 1e-12) for p in probes}
-        others = sorted(v for p, v in power.items() if p != own)
-        margin = power[own] - others[len(others) // 2]
-        check(margin >= 20.0, "note %d: %.2f Hz stands %.1f dB over the score's other pitches" % (k, own, margin))
+        if chord:
+            others = sorted(v for p, v in power.items() if p not in notes)
+            for note in notes:
+                margin = power[note] - others[len(others) // 2]
+                check(margin >= 20.0, "window %d: %.2f Hz stands %.1f dB over the pitches the chord does not hold" % (k, note, margin))
+        else:
+            others = sorted(v for p, v in power.items() if p != own)
+            margin = power[own] - others[len(others) // 2]
+            check(margin >= 20.0, "note %d: %.2f Hz stands %.1f dB over the score's other pitches" % (k, own, margin))
     return 0 if all(results) else 1
 
 
@@ -96,5 +106,6 @@ if __name__ == "__main__":
     ap.add_argument("wav")
     ap.add_argument("--seconds", type=int, default=PULSE_SECONDS)
     ap.add_argument("--notes", default=",".join(str(n) for n in PULSE_NOTES))
+    ap.add_argument("--chord", action="store_true", help="every note stands in every window")
     args = ap.parse_args()
-    sys.exit(main(args.wav, args.seconds, [float(n) for n in args.notes.split(",")]))
+    sys.exit(main(args.wav, args.seconds, [float(n) for n in args.notes.split(",")], args.chord))

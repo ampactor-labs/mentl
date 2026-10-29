@@ -1479,7 +1479,7 @@ the last three.
    reading reflects the machine's load as much as the compiler.
    The page plays the course (`Hβ.space.the-canvas`,
    `Hβ.emit.the-medium-assembles-its-output`, `Hβ.viz.severance-map`). The
-   course is written: `examples/pulse/course` holds ten lessons on one
+   course is written: `examples/pulse/course` holds eleven lessons on one
    growing chain that a developer hears, each a program that `mentl run`
    renders. The page opens the folder as a project, and `mentl verify` counts
    the lessons the medium cannot yet judge clean (the `QOwed` bounds,

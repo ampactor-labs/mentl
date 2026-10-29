@@ -1,0 +1,121 @@
+// 11 · footprint: the memory a piece needs, said by the program
+//
+// Lesson 5's lead, bass and hi-hat, four seconds long, played in four
+// sections of one second, each section's instrument built inside an extent
+// that ends with the section.
+//
+//   mentl run examples/pulse/course/11-footprint.mn > 11.wav
+//
+// `~> arena` opens an extent: a region of memory where everything the body
+// allocates lives, reclaimed in one step when the body ends, except what
+// the body's result reaches (lib/arena.mn). `section` builds its instrument
+// inside the extent and plays one second of it into the file. When the
+// section ends the instrument dies and the samples stay: the buffer is
+// older than the extent, and a sample is a number, not an address, so no
+// exit has to look for it. The per-sample path keeps lesson 5's `!Alloc`,
+// so inside a section nothing is allocated at all: the four instruments and
+// the records of the loop that plays them are the whole of what the piece
+// allocates after its start, and each dies with its extent. When the file
+// is written, the program says what it held, on standard error: the pages
+// its memory holds, read through `memory_pages`, the heap line before the
+// first section and after the last extent ended, read through `heap_mark`,
+// and the arenas' census, read through `arena_stat`: extents ended, regions
+// kept, kilobytes reclaimed and moved. The program counts nothing itself;
+// each number is one the emitted module keeps. Measured on the pinned
+// compiler (2026-10-29):
+//
+//   11-footprint: 290 pages of 64 KiB held; heap line 2933688 bytes before
+//   the first section, 2933688 after the last extent ended; 5 extents
+//   ended, 0 kept their memory, 0 KB reclaimed, 0 KB moved
+//
+// The heap line stands where it stood: four sections and the loop around
+// them left nothing behind. An instrument is a few hundred bytes of
+// oscillator phase, filter lines and envelopes, under the kilobyte the
+// census counts in, so the reclaimed column reads 0. The pages are more
+// than the piece uses: a module that opens an arena begins in 34 pages, the
+// file's buffer is 768 KB, and the first allocation past the pages grows the
+// memory by 256 pages (16 MB), the compiler's own constant until a program
+// states its footprint (PLAN §11, forks on every core).
+//
+//   mentl examples/pulse/course/11-footprint.mn:99:78    the extent at `~> arena`
+//   mentl why examples/pulse/course/11-footprint.mn frame Alloc    no Alloc enters the frame
+//   mentl audit examples/pulse/course/11-footprint.mn    the frame is real-time safe
+import audio/wav
+
+import arena
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import rate
+
+fn seconds() with Pure = 4
+
+// The score, lesson 5's: a lead that rises, a bass under every second note.
+fn note_hz(k) -> Hz = match k {
+  0 => 220.0,
+  1 => 261.63,
+  2 => 329.63,
+  _ => 440.0,
+}
+
+fn bass_hz(k) -> Hz = if k < 2 { 55.0 } else { 65.41 }
+
+// One frame of section k: the time within the section comes from the clock
+// and the section's index, and the hi-hat falls on every eighth.
+fn frame(buf, rig, k, n) with !Alloc = {
+  let t = time()
+  let tn = t - float_of_int(k)
+  let eighth = n * 4 / rate()
+  let te = t - float_of_int(eighth) / 4.0
+  let lead = rig.lead(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(1200.0)
+  let bass = rig.bass(bass_hz(k)) * adsr(0.005, 0.25, 0.5, 0.1, 1.0, tn)
+  let hat = rig.hiss() * fade(0.035, te) |> rig.hat_tone(7000.0)
+  let s = 0.5 * lead + 0.4 * bass + 0.15 * hat |> soft_clip
+  wav_frame(buf, n, s, s)
+}
+
+// Every stateful stage of one section's instrument, built inside the
+// section's extent.
+fn build_rig(sr) = {
+  bass: square_voice(sr),
+  hat_tone: highpass_filter(sr),
+  hiss: noise_source(),
+  lead: saw_voice(sr),
+  tone: lowpass_filter(sr),
+}
+
+// A section: its instrument lives in the extent `~> arena` opens, plays one
+// second into the file, and is reclaimed when the extent ends.
+fn section(buf, k) = play(frames_of(k + 1), frame(buf, build_rig(rate()), k)) ~> arena
+
+// What the program held, in the module's own counters: the pages, the heap
+// line before the first section and after the last extent ended, and the
+// arenas' census.
+fn census(before, after) =
+  "11-footprint: {int_to_str(memory_pages())} pages of 64 KiB held; heap line {int_to_str(addr_word(before))} bytes before the first section, {int_to_str(addr_word(after))} after the last extent ended; {int_to_str(arena_stat(ArExits))} extents ended, {int_to_str(arena_stat(ArKept))} kept their memory, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved\n"
+
+// The four sections in order, inside an extent of their own, so the loop's
+// own records die with it and the heap line returns to where it stood. Both
+// readings of the line are taken before anything else is built.
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    let before = heap_mark()
+    [0, 1, 2, 3] |> each(section(buf)) ~> arena
+    let after = heap_mark()
+    print(wav_bytes(buf))
+    eprint_string(census(before, after))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

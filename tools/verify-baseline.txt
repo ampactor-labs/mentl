@@ -29,7 +29,7 @@ desugar_vocabulary: 46
 
 # The ownership markers the wheel's source authors; inference grades the
 # rest, so each falls as a marker becomes a fact the judgment derives.
-authored_own_max: 40
+authored_own_max: 39
 authored_ref_max: 514
 
 # The self-compile's peak RSS in KB (the march's m3 leg, the minimum of three

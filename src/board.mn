@@ -214,7 +214,7 @@ fn board_bounds() = [
   // list.
   Bound({ceiling: 137, question: QVerifyDebt}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
-  // program a developer hears (examples/pulse/course, ten lessons on one
+  // program a developer hears (examples/pulse/course, eleven lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned
   // boot can yet judge it clean, and Wasatch "Inversion" (examples/wasatch)
   // and Pulse (examples/pulse/render) are held to the same bar. The owed
