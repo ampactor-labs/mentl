@@ -751,9 +751,12 @@ as unknown, never as passing.
   step and the 4 GB ceiling are still the wheel's constants (§11.8). The
   runtime counts exits, kept regions, bytes reclaimed and moved, the line
   peak and suspended arenas (`arena_stat`), and the march prints them for
-  the self-compile; none is on the board yet. The emitter lowers
-  `memory_pages` to `memory.size`, and the library declares it on the next
-  pin, because the boot judges the library's effects by its own roster (§6).
+  the self-compile; none is on the board yet. A program reads its own
+  footprint through `memory_pages`, which lowers to `memory.size`; it took
+  two pins, the emitter's roster first and the library's declaration second,
+  because the boot judges the library's effects by its own roster (§6), and
+  two micros state the counts (tests/micros/mn-memory-pages-start.mn answers
+  2, mn-memory-pages-arena.mn answers 34).
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming

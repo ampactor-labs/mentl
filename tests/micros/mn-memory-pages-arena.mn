@@ -1,0 +1,9 @@
+// expect: 34
+// With an arena open, the start allocates the arenas' journal, 262,144
+// entries of 8 bytes, before main runs, so the first pages cover the data,
+// the heap's start and the journal: 32 pages for the journal and two for
+// the rest, where every module began in 32 pages and grew by 256 at the
+// first allocation past them.
+import arena
+
+fn main() = memory_pages() ~> arena

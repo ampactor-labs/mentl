@@ -1,0 +1,6 @@
+// expect: 2
+// A module's first pages are what its start needs. With no arena open, the
+// static data begins at 64 KB and the heap begins where the data ends, so
+// the dispatch memo the start allocates still fits the second page; the
+// program answers its own footprint, read through `memory_pages`.
+fn main() = memory_pages()

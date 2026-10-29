@@ -71,6 +71,9 @@ effect Memory {
   store_addr(Addr, Addr)
   // The address no allocation answers, which a virgin slot reads.
   null_addr() -> Addr
+  // How many 64 KiB pages the memory holds now, so a program can read its
+  // own footprint and a fixture can state the pages a module's start needs.
+  memory_pages() -> Int
   // An address's word, and the address a word names: the puns where a value
   // crosses the runtime's word protocol (a list slot holds its element as a
   // word). Each is the identity on the machine.
