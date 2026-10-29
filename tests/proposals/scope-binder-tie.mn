@@ -1,0 +1,10 @@
+// propose 7:3: ask value a or b or c or 0 or 1 or -1
+// The binders around the hole are its nearest vocabulary: the parameters `a`
+// and `b` and the let `c` fit an Int hole and are offered beside the literal
+// seeds, which were the whole fan on the boot (0, 1 and -1).
+fn f(a: Int, b: Int) -> Int = {
+  let c = a + b
+  ??
+}
+
+fn main() = f(1, 2)

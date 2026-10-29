@@ -3266,9 +3266,9 @@ for i in "${!compilers[@]}"; do
   # ── the FRONTIER READ (rung 5): the oracle's field as a session tool ─
   # The ranked absence field over the resident graph — the gradient's
   # argmax uncollapsed, the same read `mentl main.mn:0` serves: the hole at
-  # its own address with its fan, and a gradient tier scoped to the real fn
-  # declarations. main declares `!Alloc`, so the tier holds the two locks it
-  # stands on (width, banner) and not main's own.
+  # its own address with its fan (the let `w` and the parameter `n` in scope
+  # join the three literal seeds), and a gradient tier scoped to the real fn
+  # declarations; main declares `!Alloc`, so the tier holds width and banner.
   fro_dir="$dir/mcp-frontier"
   mkdir -p "$fro_dir"
   printf 'fn width(x) = x * 2\n\nfn banner(n) = {\n  let w = width(n)\n  w + ??\n}\n\nfn main() with !Alloc = banner(21)\n' > "$fro_dir/main.mn"
@@ -3278,7 +3278,7 @@ for i in "${!compilers[@]}"; do
      && grep -q 'Field: 1 hole(s), 0 pending proof(s), 0 tightening(s), 2 gradient position(s)' "$fro_dir/out.jsonl" \
      && grep -q 'main:5:7' "$fro_dir/out.jsonl" \
      && grep -q 'Query: ?? : Int' "$fro_dir/out.jsonl" \
-     && grep -q 'Propose: 3 proven survivors' "$fro_dir/out.jsonl"; then
+     && grep -q 'Propose: 5 proven survivors' "$fro_dir/out.jsonl" && grep -q 'values in scope here — w or n' "$fro_dir/out.jsonl"; then
     pass "frontier read: the ranked field answers live — the hole at its true address with its fan, the gradient tier decl-scoped"
   else
     fail "frontier read (see $fro_dir/out.jsonl)"

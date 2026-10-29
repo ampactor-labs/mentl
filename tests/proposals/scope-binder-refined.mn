@@ -1,0 +1,9 @@
+// propose 7:35: ask value x or -100000 or 100000 or 0
+// A binder is judged by the hole's refinement like any candidate: `x`, a
+// SpinW, proves at a SpinW hole, and `n`, an unbounded Int, is refused, so
+// the fan is `x` beside the bounds the type admits.
+type SpinW = Int where -100000 <= self && self <= 100000
+
+fn g(x: SpinW, n: Int) -> SpinW = ??
+
+fn main() = g(7, 3)

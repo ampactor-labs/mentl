@@ -1,0 +1,11 @@
+// propose 6:15: ask value x or 0 or 1 or -1
+// A binder written below the hole is not in scope at it: `late` is never
+// offered, and the let's own binder `early` is not visible on its right-hand
+// side; the parameter `x` is.
+fn f(x: Int) -> Int = {
+  let early = ??
+  let late = x + 1
+  early + late
+}
+
+fn main() = f(1)

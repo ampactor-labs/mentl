@@ -1,6 +1,6 @@
 // synth_proposer.mn — the ??-fan: at a hole the medium enumerates the
 // candidates its constraint space admits — type-directed fills and the
-// in-scope vocabulary, searched outward from the hole's module — judges each
+// in-scope vocabulary, searched outward from the hole's scope — judges each
 // on its own trail (checkpoint → infer → Verify → rollback), and surfaces
 // only the proven survivors, each carrying the Reason it was found for. A
 // proposer outside the medium plugs in as a handler on the same Synth
@@ -39,17 +39,19 @@ type ProposerKind
   // the ring the name was found in
   | ProposerVocabulary(VocabRing)
 
-// Where the vocabulary search found a name, nearest first. The hole's own
-// module is what the developer wrote; an authored import is vocabulary they
-// chose to reach; the prelude is what every program speaks without naming
-// it. A name the hole's module reaches only through the link — a library
+// Where the vocabulary search found a name, nearest first. The scope is the
+// declaration that holds the hole: its parameters and the binders written
+// above the hole, read up the hole's path (`scope_binders_at`). The hole's
+// own module is what the developer wrote; an authored import is vocabulary
+// they chose to reach; the prelude is what every program speaks without
+// naming it. A name the hole's module reaches only through the link — a library
 // helper the program never imported, a module two import edges away — is
 // in scope by name because visibility is still the import closure, and the
 // proposer never offers it (T3, 2026-10-13: before that the whole rest of
 // the link was a fourth ring, and `5 |> ??` in a bare program answered six
 // survivors — four from lib/strings, one from lib/lists and the prelude's
 // `id`, which fills alone now).
-type VocabRing = OwnModule | AuthoredImport | Prelude
+type VocabRing = Scope | OwnModule | AuthoredImport | Prelude
 
 // ─── EnrichedCandidate — Candidate + provenance ────────────────────
 //
@@ -236,23 +238,123 @@ fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [Enriche
 // Calls that take arguments are the recursive-hole general form
 // (Hβ.synth.vocabulary-arg-holes).
 fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Mutate = match context {
-  Context(scope_bindings, _active, enclosing, _hole_h) => {
+  Context(scope_bindings, _active, enclosing, hole_h) => {
     let reaching = decls_reaching(enclosing)
-    fold(([], []), vocabulary_step(target_ty, allowed_row, rings, reaching, ??, ??), scope_bindings)
+    scope_entries(hole_h) ++ scope_bindings |> fold(([], []), vocabulary_step(target_ty, allowed_row, rings, reaching, ??, ??))
   },
+}
+
+// The binders visible at the hole as vocabulary entries, nearest first and
+// each name once, since a nearer binder shadows a farther one of its name.
+// An entry's scheme is the live cell the binder bound, so the step judges a
+// binder exactly as it judges a module's value.
+fn scope_entries(hole_h) with !Mutate =
+  scope_binders_at(hole_h) |> fold([], unshadowed) |> map(scope_entry)
+
+fn unshadowed(acc, binder) = match binder {
+  (name, _) => if any(scope_binder_named(name), acc) { acc } else { push(acc, binder) },
+}
+
+fn scope_binder_named(name: String, binder) with Pure = match binder {
+  (n, _) => n == name,
+}
+
+fn scope_entry(binder) = match binder {
+  (name, b) => (name, Live(b), Inferred("a binder in scope at the hole"), ValueScheme, b),
+}
+
+// The binders visible at the hole, nearest first: the path from the hole's
+// declaration down to the hole is read as parent-and-child pairs, each parent
+// contributing the binders it writes for the child the path passes through,
+// and the pair nearest the hole comes first.
+fn scope_binders_at(hole_h) with !Mutate = {
+  let path = decl_path_to(hole_h)
+  if len(path) == 0 { [] } else { zip(path, rest(path)) |> reverse |> flat_map(binders_toward) }
+}
+
+// What a parent writes for the child below it on the path: a function's or a
+// lambda's parameters for its body, a block's lets written above the
+// statement that holds the child, a match arm's pattern for its body, and a
+// handler's configuration for its state and arms, with an arm's own
+// arguments for that arm's body. A let's own binder is not visible on its
+// right-hand side, and no other node writes a binder.
+fn binders_toward(pair) with !Mutate = match pair {
+  (parent, child) => match graph_node_body(parent) {
+    NStmt(stmt) => stmt_binders_toward(stmt, child),
+    NExpr(e) => expr_binders_toward(e, child),
+    NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+  },
+}
+
+fn stmt_binders_toward(stmt, child) with !Mutate = match stmt {
+  FnStmt(_, params, _, _, body) => if body == child { flat_map(node_binders, params) } else { [] },
+  HandlerDeclStmt(_, _, params, state, arms, _) => {
+    let config = flat_map(node_binders, params)
+    match find(arm_with_body(child), arms) {
+      Some(arm) => config ++ flat_map(node_binders, map(state_name, state)) ++ flat_map(node_binders, arm.args),
+      None => config,
+    }
+  },
+  LetStmt(_, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _) | HandlerChainStmt(_, _)
+  | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _) | RowAliasStmt(_, _) => [],
+}
+
+fn arm_with_body(child, arm) with Pure = arm.body == child
+
+fn state_name(field) with Pure = field.name
+
+fn expr_binders_toward(e, child) with !Mutate = match e {
+  BlockExpr(stmts, _) => scope_stmts_above(stmts, child) |> flat_map(let_binders),
+  LambdaExpr(params, body) => if body == child { flat_map(node_binders, params) } else { [] },
+  MatchExpr(_, arms) => match find(scope_arm_body_is(child), arms) {
+    Some((pat, _)) => pat_binders(pat),
+    None => [],
+  },
+  LitInt(_) | LitFloat(_) | LitString(_) | LitBool(_) | LitUnit | VarRef(_) | BinOpExpr(_, _, _)
+  | UnaryOpExpr(_, _) | CallExpr(_, _) | LabeledArg(_, _) | IfExpr(_, _, _) | ResumeExpr(_, _)
+  | MakeListExpr(_) | MakeTupleExpr(_) | MakeRecordExpr(_) | RecordUpdateExpr(_, _)
+  | NamedRecordExpr(_, _) | IndexExpr(_, _) | MakeStringExpr(_) | ShowExpr(_) | FieldExpr(_, _)
+  | PipeExpr(_, _, _) | FanoutExpr(_) | RestExpr(_) | ExprPlaceholder => [],
+}
+
+fn scope_arm_body_is(child, arm) with Pure = match arm {
+  (_, body) => body == child,
+}
+
+// The statements of a block written above `child`: all of them when the child
+// is the block's result rather than one of its statements.
+fn scope_stmts_above(stmts, child) with !Mutate = match stmts {
+  [] => [],
+  [s, ...more] => if s == child { [] } else { [s] ++ scope_stmts_above(more, child) },
+}
+
+fn let_binders(stmt) with !Mutate = match graph_node_body(stmt) {
+  NStmt(LetStmt(pat, _, _)) => pat_binders(pat),
+  NStmt(FnStmt(_, _, _, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _)
+  | HandlerDeclStmt(_, _, _, _, _, _) | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_)
+  | RefineStmt(_, _, _) | AliasStmt(_, _) | RowAliasStmt(_, _)) => [],
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+}
+
+// The binders a node writes: a pattern's, or a parameter's pattern's.
+fn node_binders(n) with !Mutate = match graph_node_body(n) {
+  NPat(_) => pat_binders(n),
+  NParam(p) => pat_binders(p.pat),
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [],
 }
 
 fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mutate = match acc {
   (accepted, rejected) => match entry {
     (name, scheme, reason, kind, decl) => match kind {
-      // A value binding of function type is vocabulary exactly as a
-      // declared fn is: a reference to it fills a function-typed hole.
-      // A declaration in none of the rings is in scope through the link
-      // alone and is neither offered nor listed as refused.
+      // A value binding is vocabulary exactly as a declared fn is: of
+      // function type it fills a function-typed hole by reference, and of
+      // any other type it fills a hole of that type by reference. A
+      // declaration in none of the rings is in scope through the link alone
+      // and is neither offered nor listed as refused.
       FnScheme | ValueScheme => match ring_of_decl(rings, decl) {
         None => (accepted, rejected),
         Some(ring) => match judgment_ty(scheme) {
-          TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_hole(reaching, decl) {
+          TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && offered(ring, reaching, decl) {
             if row_subsumes(row, allowed_row) {
               // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
               (accepted ++ [vocabulary_call_candidate(name, decl, row, allowed_row, ring)], rejected)
@@ -269,7 +371,7 @@ fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mu
                 ]
               )
             }
-          } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_hole(reaching, decl) {
+          } else if fn_heads_may_unify(params, ret, target_ty) && offered(ring, reaching, decl) {
             // A FUNCTION-typed hole is filled first by a REFERENCE to a
             // function already in scope. The reference's row is charged
             // where the stage applies, so the same row gate judges it.
@@ -292,8 +394,18 @@ fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mu
           } else {
             (accepted, rejected)
           },
-          TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-          | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (accepted, rejected),
+          // A value of any other type fills a hole of its type by reference:
+          // evaluating a reference performs nothing, so the row has nothing
+          // to refuse, and the proof gate judges its type and refinement. A
+          // type name shares the namespace and is never a value.
+          ty @ (
+            TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+            | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+          ) => if offered(ring, reaching, decl) && holds_a_value(decl) && heads_may_unify(ty, target_ty) {
+            (push(accepted, vocabulary_value_candidate(name, decl, ring)), rejected)
+          } else {
+            (accepted, rejected)
+          },
         },
       },
       ConstructorScheme(_, _) | EffectOpScheme(_, _, _) | RecordSchemeKind(_) | EffectDeclKind(_, _)
@@ -301,6 +413,24 @@ fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mu
       | HandlerChainKind(_) | PrimitiveKind(_) => (accepted, rejected),
     },
   },
+}
+
+// Whether a declaration may be offered at all. A binder in the hole's own
+// scope can never be the recursion the exclusion below guards against; a
+// declaration elsewhere is offered only when its references do not reach
+// the hole's declaration.
+fn offered(ring, reaching, decl) with !Mutate = match ring {
+  Scope => true,
+  OwnModule | AuthoredImport | Prelude => !reaches_hole(reaching, decl),
+}
+
+// Whether a declaration binds a value: a parameter's or a let's binder is the
+// pattern cell the judgment bound, while a type or a function is declared by
+// its statement.
+fn holds_a_value(decl) with !Mutate = match graph_node_body(decl) {
+  NPat(_) => true,
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_)
+  | NParam(_) => false,
 }
 
 // The declarations whose references reach the hole's enclosing declaration,
@@ -344,46 +474,49 @@ fn reaches_hole(reaching, decl) with !Mutate = match enclosing_decl(decl) {
 // ─── The vocabulary is searched OUTWARD from the hole ─────────────────
 //
 // PLAN §1: the medium proposes by GUIDED search, proximity among its
-// priors, pruned by proof at every step. The search judges the hole's own
-// module first and stops at the first ring that proves a survivor; a
-// farther ring is judged only when every nearer one proved nothing, and its
+// priors, pruned by proof at every step. The search judges what the
+// developer wrote first, the binders in scope and the hole's own module as
+// one level, and stops at the first level that proves a survivor; a farther
+// level is judged only when every nearer one proved nothing, and its
 // refusals are listed only then, because a name the search never reached
 // is not part of this answer. Measured 2026-09-25 at `5 |> ??` in
 // tests/frontier/mn-pipe-stage-fill.mn, whose one function sits above the
 // hole: the whole link was one ring, so `decode_stride`, `hex_val`,
 // `escape_len`, `escape_tail`, `hash` and `id` — reachable from the program
 // only because the link flattens every module into one env — tied with it,
-// and the hole could never fill. The rings end at the prelude: what the link
-// carries past them is never searched.
+// and the hole could never fill. The levels end at the prelude: what the
+// link carries past them is never searched.
 fn search_outward(vocab, row_rejected, hole_h, cand_start) =
-  [OwnModule, AuthoredImport, Prelude] |> fold(([], []), search_ring(vocab, row_rejected, hole_h, cand_start))
+  [[Scope, OwnModule], [AuthoredImport], [Prelude]] |> fold(([], []), search_level(vocab, row_rejected, hole_h, cand_start))
 
-fn search_ring(vocab, row_rejected, hole_h, cand_start, acc, ring) = match acc {
+fn search_level(vocab, row_rejected, hole_h, cand_start, acc, level) = match acc {
   (found, refused) => if len(found) > 0 {
     acc
   } else {
-    match verify_each_enriched(vocab |> filter(found_in(ring)), hole_h, cand_start) {
+    match verify_each_enriched(vocab |> filter(found_in(level)), hole_h, cand_start) {
       (verified, cell_refused) => (
         verified,
-        refused ++ (row_rejected |> filter(refused_in(ring)) |> map(refusal_words)) ++ cell_refused
+        refused ++ (row_rejected |> filter(refused_in(level)) |> map(refusal_words)) ++ cell_refused
       ),
     }
   },
 }
 
-fn found_in(ring, c) with Pure = match c {
+fn found_in(level, c) = match c {
   EnrichedCandidate(cr) => match cr.origin {
-    ProposerVocabulary(r) => r == ring,
+    ProposerVocabulary(r) => any(ring_is(r), level),
     ProposerEnumerative => false,
   },
 }
 
-// `ring: VocabRing` is the Intent Boundary carrying the eq PROOF: the
+// `level: [VocabRing]` is the Intent Boundary carrying the eq PROOF: the
 // refusal is a bare triple, so without it `r == ring` compared a type
 // variable at emit and fell to a one-word compare.
-fn refused_in(ring: VocabRing, refusal) with Pure = match refusal {
-  (_, _, r) => r == ring,
+fn refused_in(level: [VocabRing], refusal) = match refusal {
+  (_, _, r) => any(ring_is(r), level),
 }
+
+fn ring_is(r: VocabRing, ring: VocabRing) with Pure = r == ring
 
 fn refusal_words(refusal) = match refusal {
   (name, reason, _) => (name, reason),
@@ -398,7 +531,9 @@ fn refusal_words(refusal) = match refusal {
 // resolves through is not vocabulary the developer chose.
 fn ring_of_decl(rings, decl) = {
   let dm = graph_module_of(decl)
-  if dm == rings.home {
+  if in_scope_ring(rings.top, decl) {
+    Some(Scope)
+  } else if dm == rings.home {
     Some(OwnModule)
   } else if handles_contain(rings.imported, dm) {
     Some(AuthoredImport)
@@ -409,11 +544,19 @@ fn ring_of_decl(rings, decl) = {
   }
 }
 
-// The hole's module, the modules its import edges reach and the link's
-// prelude, read once per proposal: three module nodes, compared by handle.
+// A declaration written inside the hole's own top-level declaration, that
+// declaration itself excepted: the binders the scope ring offers.
+fn in_scope_ring(top, decl) with !Mutate = match top {
+  None => false,
+  Some(t) => t != decl && enclosing_decl(decl) == Some(t),
+}
+
+// The hole's module, the modules its import edges reach, the link's prelude
+// and the top-level declaration that holds the hole, read once per proposal
+// and compared by handle.
 fn vocabulary_rings(hole_h) = {
   let home = graph_module_of(hole_h)
-  {home, imported: module_of(home).imports, prelude: link_prelude()}
+  {home, imported: module_of(home).imports, prelude: link_prelude(), top: enclosing_decl(hole_h)}
 }
 
 // Answers whether two types COULD unify, from their head constructors alone —
@@ -508,6 +651,22 @@ fn vocabulary_ref_candidate(name, decl, row, allowed_row, ring) with !Mutate = E
   reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
   writes: [],
 })
+
+// A binder or a module value whose type fits the hole: a reference to it,
+// linked to the cell it bound. Evaluating a reference performs nothing, so
+// the row gate has nothing to refuse; the proof gate judges its type and
+// refinement like every candidate's.
+fn vocabulary_value_candidate(name, decl, ring) with !Mutate = EnrichedCandidate({
+  node: linked_ref(name, decl),
+  origin: ProposerVocabulary(ring),
+  reason: Inferred("the value {name}, bound at line {scope_binder_line(decl)}, in scope at the hole"),
+  writes: [],
+})
+
+// The line a binder is written on.
+fn scope_binder_line(decl) with !Mutate = match graph_span_of(decl) {
+  Span(line, _, _, _) => line,
+}
 
 // A candidate names a declaration the hole's scope holds, so its reference
 // is minted linked to it: the candidate's judgment, its rank and its
@@ -1259,7 +1418,13 @@ fn divergence_by_denotation(nodes, target_ty) = {
     // against Square, True against False, asked as shape before).
     match nullary_ctor_names(nodes) {
       Some(names) => DivVariants(names),
-      None => DivShape,
+      // Survivors that refer to values the program holds here — a parameter,
+      // a let, a module value — differ in which value flows in, and the
+      // question names them beside the literals that also fit.
+      None => match flat_map(held_name, nodes) {
+        [] => DivShape,
+        names => DivHeld(names, distinct_denotations(denotations)),
+      },
     }
   } else if denotations_alike(denotations) {
     DivName
@@ -1275,6 +1440,17 @@ fn distinct_denotations(ds) = fold([], add_denotation, ds)
 fn add_denotation(acc, d) = match d {
   Some(v) => if any({ x => denotes_value(v, Some(x)) }, acc) { acc } else { push(acc, v) },
   None => acc,
+}
+
+// The name of a survivor that refers to a value the program holds, a
+// reference that is not a constructor; nothing for every other survivor.
+fn held_name(node) with !Mutate = match graph_node_body(node) {
+  NExpr(VarRef(name)) => match nullary_ctor_name(node) {
+    Some(_) => [],
+    None => [name],
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 // Every survivor's constructor name when each is a bare nullary constructor

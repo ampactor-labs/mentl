@@ -10,8 +10,9 @@ type Positive = Int where 0 < self
 fn kerning() -> Positive with Pure = 2
 fn width() -> Positive with Pure = 40
 fn banner() -> Int with Pure = {
-  let pad = width() / 10
+  // pad is written below the hole, so it is not in the hole's scope and the fan stays three wide
   let base: Positive = ??
+  let pad = width() / 10
   base + pad
 }
 fn main() = banner()
