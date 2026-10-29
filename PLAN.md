@@ -931,7 +931,23 @@ the last three.
    (`Hβ.effects.two-instances-of-one-effect-do-not-join`). Each modal rule
    gets one crucible fixture, red first, with its sound twin. The page's
    hop-by-hop unrolling of a `!E` under polymorphism is part of this step
-   (`Hβ.effects.sound-neg-under-poly`).
+   (`Hβ.effects.sound-neg-under-poly`). A negation must also bind the
+   handlers that answer the function's own operations while it runs,
+   because today it does not. Measured 2026-10-28 on commit f41a5767: a
+   function declared `!Net` that performs `price()`, answered by an install
+   outside it whose arm calls `fetch`, an op of `Net`, builds, and the fetch
+   runs while the function runs (`decide(1) ~> online ~> offline` exits 8,
+   the 1 plus the 7 the fetch answered), while the same function handed a
+   closure that calls `fetch` is refused, and declaring its whole row
+   (`with Pure`) refuses the extra operation. The index gives the rule: an
+   install that answers an op performed under a negation is inside that
+   negation's extent, so the arm's row is masked by the negation and
+   checked where the install covers a call of the function, and the
+   refusal names the declaration, the install and the arm. The crucibles
+   are `leak-answer-net.mn`, red first, and its twin
+   `sound-answer-offline.mn`, whose arm answers with arithmetic. Until
+   then, the claim that covers a program's handlers is its absence of the
+   effect everywhere, the first line of `mentl audit`.
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`), and an executable's
