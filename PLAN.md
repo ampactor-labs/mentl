@@ -405,6 +405,54 @@ built once and the items become its readers (§11 orders them by dependency):
   value walk and the derivative reading are its abstract and tangent
   instances.
 
+**⑨ Memory is a projection of the graph** (decided 2026-10-29). The compiler
+keeps one graph of facts, and a program's memory is one more view of it. A
+value is the record of a node. A lifetime is the extent that owns the node,
+where an extent is one run of a handler's body, from its install to its
+exit. One extent is five things at once. It is a region, where its values
+are allocated. It is a version, the instance a fork runs over. It is a
+world, the segment of the install chain a continuation carries. It is a
+checkpoint, the image at its boundary. And it is a transaction: its stores
+into memory older than itself are its journal, and its exit keeps or drops
+them. At the exit, what the result reaches survives and moves out along its
+own type, by the reach the judgment drew; everything else is reclaimed and
+zeroed in one step, so memory holds a value or zero and never garbage. A
+value is written in place where the judgment proves it is owned once. A
+value is named by its extent and its offset in it, never by a bare pointer,
+and carries no header, count, generation or capability: its type is its
+layout. The whole of a program's memory is one image, copied to save,
+re-entered to resume, moved to any host and read back as facts.
+
+Five readings follow, and each is a landing's check rather than a claim.
+(1) The row is the memory boundary: an extent whose row proves no store
+past its own region needs no barrier and no journal, and memory safety and
+effect safety are one proof. (2) Layout is a projection, as SYNTAX S2.1 says
+of text: no author writes a struct, an alignment or a placement, and the
+compiler arranges fields by their readers and by the schedule. (3) The
+install chain is the memory hierarchy: the arena is the nearest handler
+that answers `Alloc`, nesting is locality, and a memory kind (SRAM, SDRAM,
+flash, a store on another machine) is a handler of `Memory` that the clock
+calculus places. (4) Time is memory's only axis and `<~` names it: a line
+keeps a stage's last N values, handler state keeps the past across
+resumes, the image keeps everything, and a program that recomputes only
+the cone an input changed is the cursor's reactivity (⑦) applied to every
+program. (5) One evaluator, many domains: a run-time value is a node the
+evaluator writes, as a fact is a column the judgment writes, so `mentl why`
+holds for a running program and the debugger is the cursor.
+
+The author decides four things: what must never allocate (`!Alloc` on a
+stage), the budget the program fits (a claim on main's row), the depth of a
+line (`<~ delay(N)`), and `own`/`ref` where inference fails. The medium
+derives every address, lifetime, in-place write, layout, memory kind and
+page. Every mechanism the emitted runtime still carries is a fact the
+judgment does not hold yet: a barrier on for the whole program, a journal
+of one fixed size, a region kept because a root's type was not visible, a
+move at an exit, a fixed grow step. §11 orders the landings that replace
+each with the fact, and each lowers a count that only falls. The first
+landed on 2026-10-29: a module's memory starts where its static data ends
+and its first pages are what its start needs, where every module began in
+32 pages with its heap at 1 MB.
+
 ---
 
 ## §5 · real · felt · unsurpassable — three aspects of one ultimate form
@@ -539,6 +587,17 @@ environment, the reach walks (§11.1), and instantiation shared instead of
 cloned (§11.3); (3) the arena: every extent reclaims at its exit whatever its
 published result does not reach (built); (4) parallel cursors on
 deterministic `{arena, offset}` handles (§11.8).
+
+Memory is this law's own account (§4⑨). The image is the memo of every
+extent kept: a fact kept is bytes, and deriving it again is a miss. So a
+module's memory is sized from what the compiler already knows when it
+emits, never from a constant. Since 2026-10-29 the heap begins where the
+static data ends and the declared pages are the ones `_start` fills, so a
+course lesson with no arena begins in two 64 KiB pages and the grid
+controller in 34, where every module began in 32 and held 288 after its
+first allocation past them. The constants that remain, a 2 MB journal, a
+256-page grow step and a 4 GB ceiling, are the residue that §11.8's budget
+and §11.1's exhaustion fact replace.
 
 ---
 
@@ -680,6 +739,21 @@ as unknown, never as passing.
   parse, binding groups, declaration lowerings and the reach walk, emitted
   units, session answers, speculations, and the runs of spawned instances),
   and ownership's regions stay compile-time facts.
+- **A module's memory starts where its data ends, and its first pages are
+  what its start needs** (2026-10-29). The heap line, and in a spawning
+  module the shared frontier cell, begin at the static data's end aligned to
+  16 bytes, and the declared minimum covers what `_start` allocates before
+  main: the dispatch memo (1,536 bytes), the fold stack's home where a fold
+  spills, the arenas' journal (262,144 entries of 8 bytes, 2 MB) where an
+  arena is open, the area a perform's arguments cross in, and a spawned
+  instance's module values. A lesson with no arena declares two 64 KiB
+  pages and the grid controller 34. The journal's size, the 256-page grow
+  step and the 4 GB ceiling are still the wheel's constants (§11.8). The
+  runtime counts exits, kept regions, bytes reclaimed and moved, the line
+  peak and suspended arenas (`arena_stat`), and the march prints them for
+  the self-compile; none is on the board yet. The emitter lowers
+  `memory_pages` to `memory.size`, and the library declares it on the next
+  pin, because the boot judges the library's effects by its own roster (§6).
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1486,15 +1560,16 @@ the last three.
    `Hβ.lower.schedule-through-a-value`, `Hβ.verify.the-solver-is-the-search`).
    The compiler is still emitted as a module without threads (a defined
    memory, a bump allocator, no spawn import), and this is the one pin the
-   fused oracle still needs. The module's memory is sized by the program:
-   the heap base sits above the string table, the arena journal is sized to
-   the program's arenas or to a budget the program declares and the compiler
-   checks, and the grow step is the budget's, so `mentl compile` says the
-   number and a program that cannot prove it fits its budget is refused.
-   Today the three are the wheel's constants (a 1 MB heap base, a 2 MB
+   fused oracle still needs. The module's memory is sized by the program.
+   The heap base sits where the static data ends and the first pages are
+   what the start needs (built 2026-10-29: a lesson with no arena begins in
+   two 64 KiB pages, the grid controller in 34). Still open: the arena
+   journal is sized to the program's arenas or to a budget the program
+   declares and the compiler checks, and the grow step is the budget's, so
+   `mentl compile` says the number and a program that cannot prove it fits
+   its budget is refused. Today the two are the wheel's constants (a 2 MB
    journal, a 16 MB grow step, `src/backends/wasm.mn`), sized for a compile
-   of the compiler, so by those constants the grid controller asks its host
-   for 18 MB before its first reading. A handle becomes an `{arena, offset}` product
+   of the compiler. A handle becomes an `{arena, offset}` product
    (one word, by a repr pin) that is deterministic under any order. The
    demand walk that twins a direct callee by the install's schedule follows a
    `~> h` in the demanded reach into `h`'s arms. The arm twins are keyed by
@@ -1543,17 +1618,20 @@ the last three.
    The proof travels to the host, and `docs/NATIVE.md`'s hardware handlers
    are its final form. A module the compiler emits needs an engine with tail
    calls and bulk memory, and threads only when the program starts one. The
-   first host is the Daisy Seed: sonido's firmware embeds the controller's
-   module under the wasmi interpreter and answers its three WASI imports
-   itself (the ear's line in through `fd_read`, the decision out through
-   `fd_write`), and the first measurement on the board, before any other
-   change, is microseconds per reading and linear memory after 300,000
-   readings. If parsing the line's text costs the 50 ms budget, the reading
-   becomes a record: `decide` is called by a handler whose arms are the
-   host's, one import per operation, the mechanism step 7 names for
-   configuration. The RP2040 (264 KB of SRAM, no FPU, 133 MHz) needs step
-   8's memory landing first and the record form as a requirement, with
-   `wasm2c` into C if an interpreter still misses the budget.
+   board path is Mentl's own: no other repository's firmware and no outside
+   engine stands between the compiler and the chip. The native projection
+   emits the same lowering column as Thumb-2 for the Daisy Seed's Cortex-M7
+   and the RP2040's Cortex-M0+. The board's clock, codec and serial line are
+   handlers installed over `main`, one import per operation, the mechanism
+   step 7 names for configuration, and the reading reaches `decide` as a
+   record through those arms, never as text to parse. The first measurement
+   on a board, before any other change, is microseconds per reading and
+   memory after 300,000 readings, read by the program itself. The RP2040
+   (264 KB of SRAM, no FPU, 133 MHz) needs the memory landings first: a
+   module's memory sized from what its start needs (built 2026-10-29), the
+   journal and the grow step sized by a budget the program declares (step
+   8), and a proven constant footprint where the row says `!Alloc` past the
+   start (step 1's exhaustion fact).
 
 ---
 
