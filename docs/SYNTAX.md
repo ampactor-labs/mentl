@@ -559,7 +559,7 @@ Diagnostic: **`E_LambdaAsOrOr`**. `||` is logical OR (TOrOr); use `() => expr` f
 
 ## Pipe verbs — the five-verb topology
 
-Mentl has five pipe verbs. Each draws a specific shape on the page, and the layout is the topology.
+Mentl has five pipe operators. Each writes one shape of flow, and the shape on the page is the shape the compiler sees. The sections below define each one; §«Composing the five» says how they are used together, with the compiler's answer at each.
 
 ### `|>` — converge
 
@@ -1080,6 +1080,81 @@ fn lowpass(x: Sample, a) -> Sample with !Alloc =
 ```
 
 The prior is a graph node (the feedback site's own carried value), not a register copied into scope. The literal's parameter resolves to `RFbPrior` → `LFeedbackPrior`, which emits a direct read of the site's prior local, and `prev` binds it. The body is inlined, never a heap closure: a `<~` recurrence that allocated per tick would break the `!Alloc` real-time row, so the prior is a register read. A bare-expression LHS (no literal) is the feed-forward form, which computes on the current input only; the literal's parameter is what carries `y[n-1]`. The binder spelling `((prev) => body) <~ delay(1)` builds the same recurrence and is the residue §«Function literals» names. This form does more than Faust's untyped `~`: the prior carries the same refinement row (`Sample`/`Hz`/`Gain`) and the same `!Alloc` proof as the forward path. (Surface kernel correspondence: primitive #3 is the `<~` verb; under primitive #5 the prior is owned-read, not aliased.)
+
+### Composing the five — the shape of a whole program
+
+This section is written from the ultimate form PLAN §0 and §5 describe, and today's compiler is measured against it at the end. Every example is a real program in this repository, shown as `mentl fmt` writes it, with the compiler's answer at that site quoted beside it from the pinned binary.
+
+**The thesis in syntax.** A Mentl program is written in three layers and nothing else. The shape of every flow is written with the five operators, so the shape on the page is the shape the compiler holds. The claims are written on the stages: what a stage must never do (`with !Alloc`, `!Trap`, `!Network`) and what range its values keep (`Hz`, `SpinW`). What the effects do is written at the right edge, as handlers installed with `~>`, and no body ever says how an effect is handled. The compiler derives everything else: each stage's row, the ownership of every value, the schedule of every fanout, the clock and the memory of every cycle, the width of every number, and the proof that every claim holds through every call. At any position the cursor says what is true there and why, back to the decision that made it so. Where the author leaves `??`, the compiler forks the candidates, proves each, shows only the survivors and asks only when two proven meanings differ. The same program runs against a model, a recording or real hardware by swapping one handler.
+
+**One shape per operator.** The third column is what the compiler derives when the shape is written; where it cites a PLAN §11 step, that part of the derivation is open work, and the citation is replaced by the command's output when the step lands.
+
+| The shape you mean | Write | The compiler derives | Shown in |
+|---|---|---|---|
+| stages in sequence | `x \|> f \|> g` | the chain's row; a stage is applied in place, never minted, so a chain allocates nothing; a chain over a sequence yields its results outward in one pass, and deforestation is a rewrite the rows license (PLAN §11.7) | every lesson; `frame` in lesson 2 |
+| one value to several places | `dry <\| (rig.echo, rig.room)` | the input is borrowed by every branch, so the fanout cannot race; the result is the branches' product; a join aligns branches of known latency or refuses the misaligned merge (PLAN §11.7) | lesson 3, line 49 |
+| independent flows side by side | `(echoed) >< (dry)`, `fanout(render, notes)` | each branch owns its input; the schedule comes from the handler at the foot, never from the verb, and runs on every core deterministically (PLAN §11.8) | lesson 3, line 50; lesson 10, line 65 |
+| the branches rejoin | `((a) >< (b)) \|> mix(0.35)` | the product fills the stage's open slots; no tuple is built | lesson 3, lines 50 and 51 |
+| a flow that needs its own past | `{ prev => … } <~ delay(N)` | a line of depth N owned by the stage's record, allocated once, so `!Alloc` holds across the cycle; the cycle's clock is inferred, the depth may be a value read at run time, and the line is read at any tap (PLAN §11.7) | lesson 2, line 44; the controller's five recurrences in `decide` |
+| what the effects do | `body ~> inner ~> outer` | the row loses what each handler absorbs and gains what its arms perform; the install edge carries the schedule, the derivative reading or persistence; a negation holds through every handler a caller installs (PLAN §11.1) | lesson 4, `rack`; lesson 9, `~> grad`; lesson 10, `~> parallel_compose`; the controller's `~> station` and `~> arena` |
+
+**Twelve rules for using them well.** Each is checked by the compiler, so breaking one is a refusal or a worse row, never a matter of taste.
+
+1. A sequence is `|>`. Never `let x = f(y); g(x)`: the pipe is the same graph as the calls, and the reader sees the flow as one line.
+2. The datum is the last parameter. Then every function can stand as a stage, and a partial call (`mix(0.35)`, `rig.dark(300.0)`) leaves the slot the pipe fills (§«The Stage Law»).
+3. A stage is applied, never minted. A function literal standing as a stage costs the frame nothing, so a chain inside a `with !Alloc` function stays allocation-free; a closure is built only where a value escapes.
+4. Choose the fanout by ownership, not by taste. `<|` when one value is read by every branch, borrowed and race-free by construction; `><` when each branch consumes its own input. An owned value through `<|` is `E_OwnershipViolation`, so the choice is checked.
+5. Rejoin by piping the product into a stage with that many open slots. Never build the tuple by hand and take it apart on the next line; the merge is the stage's slots.
+6. Memory is a cycle with its depth written: `{ prev => … } <~ delay(N)`, where `prev` is the output N ticks ago. A maker (`fn echo(fb) = { fn stage(x) with !Alloc = … <~ delay(N); stage }`) mints one line per stage, so stereo is two calls and the two never share a byte.
+7. Handlers go at the right edge, innermost first, the sandbox outermost: `} ~> stdout_console ~> rack ~> sample_at(48000)`. Narrow a handler to one stage with parentheses, `(parse ~> catch)`, and nowhere else.
+8. Decisions live in handlers, so you swap the handler, not the body: `warm_distort` for `spectral_flux_distort` in `rack`, `sequential_compose` for `parallel_compose` under the voices, real hardware for the `station` model. The body is unchanged and re-proven each time.
+9. Say what a stage must never do, and what range its values keep: `with !Alloc`, `with !Trap`, `cutoff: Hz`, `-> SpinW`. The proof follows the shape through every call, so a claim on `decide` covers the whole decision.
+10. Where you are unsure, leave `??`. The compiler proposes what it can prove, and asks when two proven candidates mean different things.
+11. Layout is projection. Sequential verbs at the left edge, convergent verbs at the indented center (§«Canonical layout»). `mentl fmt` writes it, so nobody argues about it.
+12. Read the shape back from the compiler before you trust it: the caret on the operator, `mentl why` on an effect, `mentl where` on a declaration. If the compiler cannot say the shape in one plain sentence, either the shape is wrong or the caret is, and the second is the open work named at the end of this section.
+
+The signs that a flow has gone wrong are the drift list in CLAUDE.md: an index loop where a pipeline over a sequence belongs, a flag where a handler belongs, a closure used as a table of functions, several parallel lists where one record belongs, a cycle written as mutable state instead of `<~`.
+
+**The whole program, by example.** Lesson 3 (`examples/pulse/course/03-bus.mn`) writes a stereo bus in three lines: one sample goes to the echo and to the room, each branch is put beside the dry signal, and the pair is mixed and clipped in sequence.
+
+```
+let (echoed, roomed) = dry <| (rig.echo, rig.room)
+let l = ((echoed) >< (dry)) |> mix(0.35) |> soft_clip
+let r = ((roomed) >< (dry)) |> mix(0.5) |> soft_clip
+```
+
+The compiler's answer at each operator, from the pinned binary:
+
+```
+$ mentl examples/pulse/course/03-bus.mn:49:30
+Query: dry <| (rig.echo, rig.room) : (Float, Float)
+Effects: e + e + e1 + e1
+Why: <| fanout — result type is branch-output tuple, at examples/pulse/course/03-bus:49
+
+$ mentl examples/pulse/course/03-bus.mn:50:21
+Query: (echoed) >< (dry) : (Float, Float)
+Topology: the source of the |> at examples/pulse/course/03-bus:50:11
+Effects: Pure
+Why: >< parallel fanout — branches affinity-checked, at examples/pulse/course/03-bus:50
+
+$ mentl examples/pulse/course/03-bus.mn:63:5
+Query: { : ()
+Topology: the body the ~> governs at examples/pulse/course/03-bus:58:3
+Effects: Memory + Alloc + Sample(48000) + Trap + Mutate + WASI
+
+$ mentl examples/pulse/course/02-line.mn:44
+Query: { prev => a * x + (1.0 - a) * prev } <~ delay(1) : Float
+Effects: Mutate
+Why: through <~, at examples/pulse/course/02-line:44
+```
+
+The same bus without the operators is what every other language makes you write: a tuple built by hand and taken apart on the next line, three `let`s where one chain reads, a closure allocated per stage, and no proof that the two branches cannot race, because nothing in the text says the input is shared. The operators are not shorter for their own sake. Each one is a fact the compiler can prove because the shape says it.
+
+Lesson 4 (`04-rack.mn`) writes a limiter as a handler and chains it behind the library's distortion; the frame calls `distort` and `tame` and never says how either is done, and `mentl why examples/pulse/course/04-rack.mn frame Distort` names where the effect enters: `frame calls `distort` at examples/pulse/course/04-rack:72:11`. Lesson 10 (`10-voices.mn`) renders four voices with `><` over a list, and `mentl where examples/pulse/course/10-voices.mn render` reads the schedule from the install edge: `fanout [Thread, a branch per element]` under `~> parallel_compose`. The grid controller (`examples/grid/station.mn`) keeps its memory from one reading to the next with five `<~ delay(1)` recurrences inside `decide`, and the caret inside the first of them, `mentl examples/grid/station.mn:188`, answers `Topology: the recurrence the <~ feeds back at examples/grid/station:186:19`.
+
+**The developer's loop.** Write the shape; `mentl check` prints nothing; the caret on an operator says its shape; `mentl why` names where an effect enters and `mentl where` the schedule the install edge carries; a hole proposes the proven survivors and asks only at a tie (`mentl examples/pulse/course/08-hole.mn:50:76` proposes the one stage that fits, and `mentl accept` writes it); a refusal names the path (`mentl check examples/grid/station-leak.mn`); `mentl rename` moves a name through every edge; `mentl run` renders the sound. Every claim in this paragraph is a command that runs on the pinned binary today.
+
+**Today's distance from the ultimate form, measured at the cursor.** The caret explains `~>` and `<~` with a Topology line in plain words, and does not do the same for `<|`, `><` and `|>`: at the fanout it prints no Topology line and its Why line reads "<| fanout — result type is branch-output tuple", at `><` it reads "branches affinity-checked", and the Effects line at a site whose row is still open prints variables, `e + e + e1 + e1`, which a newcomer cannot read. `mentl teach` narrates the annotation gradient (§«Gradient narration»), and prints "(no next-step annotation)" for every declaration that has nothing to unlock, nine of ten in lesson 3. The landing that closes this distance is one sentence of PLAN §11.7: the caret says each verb's shape in one plain sentence, naming the fact the verb carries, the borrow at `<|`, the ownership and the schedule at `><`, the slots the product fills at `|>`, the row the install absorbs and charges at `~>`, the depth and the owner of the line at `<~`; the Why lines for the verbs are rewritten in the same voice; an open row is said in words; and `teach` names only the declarations that have a next step. The rest of the distance is the PLAN §11 steps the table cites, in PLAN's order, and this section adds no list of its own.
 
 ---
 

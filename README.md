@@ -1,21 +1,21 @@
 # Mentl
 
-**Mentl closes the gap between what a person means and what they are forced to write.** Most languages make you spell out what their compiler could have worked out: borrows, error plumbing, whether code is async, which effects a function has. Mentl's compiler infers those, so the source holds only your decisions: what a function must never do, what bound a value keeps, what width a number needs. At any line the compiler can tell you what is true there and why. At a hole (`??`) it proposes code it can prove, and when two proven options mean different things, it asks which one you meant instead of guessing. An effect claim you write, such as `!Network`, is either proven or the program does not build, so the same guarantees hold for code you did not write yourself. A refinement claim the verifier cannot decide is reported as pending, and the program still builds.
+Mentl closes the gap between what a person means and what they are forced to write. More and more of the software that runs machines is written with AI, and today that software is tested, reviewed and then trusted. In Mentl the rule is part of the program. A function's signature says what it must never do and what range its values keep; the compiler checks each rule through every function the code calls, and a version that breaks one does not build. Nobody has to review for that rule again, whoever or whatever edits the code next.
 
-Mentl is a programming language and self-hosting compiler with an algebraic effect system, compiled to WebAssembly. An effect is something a function does besides returning a value, such as allocating memory, printing or reaching the network, and each function's type lists its effects. A negated effect such as `!Network` is a claim the compiler proves through every call, or it refuses to build. The compiler is written in Mentl: the pinned binary in `boot/` compiles `src/` and `lib/` into a compiler that reproduces it byte for byte, and that byte-identical binary is what gets released.
+HUM's grid controller, `examples/grid/station.mn`, decides what a model flywheel and battery do as the power grid's frequency moves. Its function `decide` says it never reaches the network, never touches a file, never calls outside the program, never allocates memory and never stops the program with an error, and the compiler proves all five:
 
-## In 30 seconds
+```
+$ mentl check examples/grid/station.mn
+```
 
-A Mentl function can say what it must never do, such as reach the network. The compiler checks that claim through every function the function calls, and refuses to build the program if any of them breaks it.
-
-HUM's grid controller, `examples/grid/station.mn`, decides what a model flywheel and battery do as the power grid's frequency moves. Its function `decide` says it never reaches the network, never touches a file, never calls outside the program, never allocates memory and can never stop the program with an error, and the compiler proves all five:
+Nothing is printed. `mentl check` prints every claim it cannot prove, at its line, so an empty answer is the whole verdict.
 
 ```
 $ mentl why examples/grid/station.mn decide Network
 decide never uses Network: nothing in decide, and nothing it calls, performs an operation of Network
 ```
 
-`examples/grid/station-leak.mn` is the same program with one line added inside `decide` that reads an electricity price online. The compiler refuses to build it, and shows the path from `decide` to the network:
+`examples/grid/station-leak.mn` is the same program with one line added inside `decide` that reads an electricity price online. It does not build, and the refusal names the path from the decision to the network:
 
 ```
 $ mentl check examples/grid/station-leak.mn
@@ -23,9 +23,71 @@ effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !F
 effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:447:1-450:13
 ```
 
-The Quick start below installs the `mentl` command in three lines.
+What is not proven: that the controller's decisions are good, which recordings test; a rule is proven for the function and everything it calls, while a closure made under one handler and run under another is still open (PLAN §11.1); and a claim the verifier cannot decide is reported as pending, and the program still builds. The demo the controller runs in plays on a phone: https://ampactor.dev/hum. The Quick start below installs the `mentl` command in three lines.
 
-## See it
+## What Mentl is
+
+Mentl is a programming language with an algebraic effect system, compiled to WebAssembly, and its compiler is written in Mentl: the pinned binary in `boot/` compiles `src/` and `lib/` into a compiler that reproduces it byte for byte, and that binary is what is released. An effect is something a function does besides returning a value, such as allocating memory, printing or reaching the network. The compiler infers each function's effects, types, ownership and bounds, so the source holds only the author's decisions: what a function must never do (`!Network`), what bound a value keeps (`type SpinW = Int where -100000 <= self && self <= 100000`), what width a number needs. What an effect does is decided by the handler installed around the code with `~>`: HUM's decision commands its machines through the `Station` effect, the handler `station` is the model, and a handler for real hardware would leave `decide` unchanged. At any line, `mentl why` says what is true there and the chain of reasons, because the compiler keeps one graph of facts and every command reads it. At a hole (`??`) the compiler proposes code it can prove, and when two proven candidates mean different things it asks which one you meant instead of guessing. The aim, unchanged since the first manifesto on 2026-03-15, is to close the gap between what a person means and what a language forces them to write; PLAN.md §0 states it in full.
+
+## The five operators
+
+Every flow in Mentl is written with five operators, and the shape you write is the shape the compiler sees. Lesson 3 of the course, `examples/pulse/course/03-bus.mn`, builds a stereo bus in three lines: `<|` sends one sample to the echo and to the room, `><` puts a branch beside the dry signal, and `|>` runs the mix and the clipper in sequence:
+
+```
+let (echoed, roomed) = dry <| (rig.echo, rig.room)
+let l = ((echoed) >< (dry)) |> mix(0.35) |> soft_clip
+let r = ((roomed) >< (dry)) |> mix(0.5) |> soft_clip
+```
+
+Put the cursor on the fanout and the compiler says what it sees there:
+
+```
+$ mentl examples/pulse/course/03-bus.mn:49:30
+Query: dry <| (rig.echo, rig.room) : (Float, Float)
+Effects: e + e + e1 + e1
+Why: <| fanout — result type is branch-output tuple, at examples/pulse/course/03-bus:49
+```
+
+`~>` installs a handler over everything to its left. Lesson 4 writes a limiter as a handler and chains it behind the library's distortion, and the frame that calls `distort` and `tame` never says how either is done:
+
+```
+handler rack = spectral_flux_distort ~> limiter_at(0.6)
+…
+} ~> stdout_console ~> rack ~> sample_at(48000)
+```
+
+```
+$ mentl why examples/pulse/course/04-rack.mn frame Distort
+frame uses Distort: frame calls `distort` at examples/pulse/course/04-rack:72:11 → `distort` is an operation of Distort, declared at dsp/spectral:19:1
+```
+
+`<~` feeds a value back from the previous step. An echo is the current sample plus a share of what the stage put out a quarter of a second ago, and the delay line is memory the stage owns, so the stage is proven to allocate nothing (`lib/dsp/README.md`):
+
+```
+fn stage(x: Float) with !Alloc = { prev => x + fb * prev } <~ delay(12000)
+```
+
+The grid controller uses the same operator for its memory from one reading to the next: the ten-second average that `decide` compares each level against is `{ p => … } <~ delay(1)`, and the caret inside it names the loop:
+
+```
+$ mentl examples/grid/station.mn:188
+Query: p : Int
+Topology: the recurrence the <~ feeds back at examples/grid/station:186:19
+Effects: Pure
+```
+
+Lesson 10 renders four voices with `><` over a list and `~> parallel_compose` to run the branches on threads:
+
+```
+$ mentl where examples/pulse/course/10-voices.mn render
+→ render(ref sr: Int, own frames: Int) -> [[Float]] with Memory + Alloc + Trap + WasiThreads(a, e)  at examples/pulse/course/10-voices:65
+  ~> parallel_compose absorbs Thread, answers [[Float]] at 65:25-65:86
+  fanout [Thread, a branch per element] at 65:25-65:66
+```
+
+How the five are used together, with the compiler's answer at each, is docs/SYNTAX.md's "Composing the five" (`mentl map "Composing the five"`).
+
+## The smallest refusal
 
 ```
 effect Net {
@@ -51,20 +113,14 @@ Write `banner` as `greeting(name)` and the claim holds. A network operation then
 
 ### The same, on a real program
 
-Each line below is a command and what it prints today.
-
-```
-$ mentl check examples/grid/station.mn
-```
-
-Nothing. Every claim in the grid controller is proven: `decide` says it never allocates, never reaches the network or a file, never calls outside the program and never stops with an error; each power command is typed to its machine's rating; the cut that copies a reading's timestamp is proven to stay inside the line. `mentl check` prints any claim it cannot prove, at its line, so an empty answer is the whole verdict.
+Each line below is a command and what it prints today. Beyond the five rules on `decide`, each power command is typed to its machine's rating, and the cut that copies a reading's timestamp is proven to stay inside the line.
 
 ```
 $ mentl audit examples/grid/station.mn | head -1
 Nothing in this module uses Network, so it is sandboxed (it never reaches the network)
 ```
 
-The audit's first line is the claim that covers the whole module, handlers included: no function in it performs a network operation. The compiled module imports three functions from its host, `fd_read`, `fd_write` and `proc_exit`, and nothing else in it can touch the world.
+The audit's first line is the claim that covers the whole module, handlers included: no function in it performs a network operation. As any WebAssembly module, the compiled controller can call only what it imports, and it imports three functions from its host: `fd_read`, `fd_write` and `proc_exit`.
 
 ```
 $ mentl why examples/grid/station.mn reading Trap
@@ -90,7 +146,7 @@ Mentl works, and it is still changing. The verifier is sound for what it decides
 
 ## Quick start
 
-The compiler is one WebAssembly module, `boot/mentl.wasm`, importing WASI preview1 and nothing else, so any engine that speaks that one interface hosts it. In a terminal the host is the stock `wasmtime`, pinned by version and digest; in the browser, Mentl Space (`ide/`, served at https://space.ampactor.dev/) runs the same binary in a worker.
+The compiler is one WebAssembly module, `boot/mentl.wasm`. It imports WASI preview1 and nothing else, and it needs an engine with tail calls and, today, the threads feature, because every module the compiler emits declares its memory shared: in a terminal the stock `wasmtime` 36, pinned by version and digest; in the browser, Mentl Space (`ide/`, served at https://space.ampactor.dev/) runs the same binary in a worker.
 
 ```sh
 git clone https://github.com/ampactor-labs/mentl.git && cd mentl
@@ -190,15 +246,15 @@ The determinism probe (one binary, one input, the same bytes) runs only with `ba
 
 PLAN.md §11 is the one ordered list, each step reading only what an earlier one built:
 
-1. The soundness core: the crown made modal, the row whole (`Fail`, divergence, partiality, every trap the emit writes said), the reach one walk.
-2. The keystone: lowering a column on the program's own handles, the deep stack spilling to the heap, and the graph's evaluator as the correctness oracle and a witness that searches boundary inputs.
-3. The face: one published summary per declaration, which verification reads, with the course and the scores judged clean.
-4. A module is a scope: imports that state capabilities, versions as a resolve handler, compatibility computed from faces.
-5. A refusal is a hole: every diagnostic answered by the proposer loop a `??` runs, and the catalog projected from the code.
-6. Edits that cost what they change, and the page that plays the course.
-7. The verbs whole and the audio arc: early exit, cycles with drivers, delay lines read at any tap, Wasatch's live sources.
-8. Forks on every core: the compiler and Verify's own solver parallel and deterministic.
-9. `!Outside` closes: the native backend and diverse double compilation.
+1. A rule written on a function also holds through a closure made under one handler and run under another, the effect row says every way a computation can stop, and one walk answers every reachability question.
+2. Lowering becomes columns on the program's own handles, so the compiler keeps no second tree of the program, and the graph gains an evaluator that gives it a reference meaning and searches for inputs that break a claim.
+3. Every declaration publishes one summary that every caller and the verifier read, so the course and the two scores check clean.
+4. A module is a scope: an import states the capabilities it may use, a version is a handler the resolver installs, and whether two packages fit is computed from their summaries.
+5. Every refusal is answered the way a `??` is: the compiler proposes the proven fix or asks the one question that separates two, and the catalog of its messages is projected from the code.
+6. An edit re-judges only what it changed, the session outlives its process, and the page plays a lesson while you read it.
+7. The five operators are whole: early exit stops at the first hit, every cycle has a driver and an inferred clock, a delay line is read at any tap, and Wasatch plays from live sources.
+8. Proposals and the compiler's own work run on every core, with the same bytes in any order, and the verifier's own solver is that search.
+9. The native backend compiles the same program to machine code, two independent compilations are compared, and every script under `tools/` has become a `mentl` verb.
 
 ## Documents
 
