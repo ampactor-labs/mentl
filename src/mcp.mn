@@ -22,8 +22,8 @@
 // (the march's write-through sink) and diagnostics render on stderr
 // through the root handler — the forwarder below re-performs every report
 // outward, so an MCP client's log pane shows the same lines the verdict
-// carries. Spans are file-local by construction on this channel: the
-// judge reads the proposal alone (the stdin contract), no lib weave.
+// carries. A span names the proposal's own lines: the judge reads the
+// proposal as a module of the project, with the library it runs with.
 import types
 
 import backends/wasm
@@ -74,17 +74,30 @@ handler console_bank with lines = [] {
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at
-// the gate (battery_compile's law: an error or a hole refuses; gated_plan is
-// the one home; no proc_exit — the server outlives every verdict). Emission
-// streams through wat_to_file so stdout stays protocol-only; a refused
-// proposal never opens the artifact at all. Returns the diagnostic lines,
-// the errors the judgment reported and what the gate did.
+// the gate (`gated_compile`, the law the battery reads too: an error or a
+// hole refuses; no proc_exit — the server outlives every verdict). The
+// proposal is a module of the project it was proposed to: it is written
+// beside the server's artifact and linked through the walk every compile
+// uses, so its imports resolve to the library the project runs with and its
+// spans name its own lines. A sibling module of the project does not
+// resolve from there yet (PLAN §11, a module is a scope). The gate hears the
+// proposal's own layer (`Project`), as `mentl check` does. Emission streams
+// through wat_to_file so stdout stays protocol-only; a refused proposal
+// never opens the artifact at all. Returns the diagnostic lines, the errors
+// the judgment reported and what the gate did.
 fn mcp_judge(source, wat_path) = {
-  let lowered =
-    source |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
-  let left = gated_write(lowered, wat_path)
-  (banked_lines(), diag_errors(), left)
-} ~> wasi_filesystem ~> compile_context
+  {
+    fs_mkdir(".build")
+    fs_mkdir(".build/mcp")
+    fs_write_file("{mcp_proposal_module()}.mn", source)
+  } ~> wasi_filesystem
+  let judged = gated_compile(mcp_proposal_module(), wat_path, Project)
+  (heard_lines(judged), judged.errors, judged.left)
+}
+
+// The module a proposal's text stands as while it is judged, beside the
+// artifact; the walk reads it from `<module>.mn`.
+fn mcp_proposal_module() with Pure = ".build/mcp/proposal"
 
 // The verdict's head states exactly what the gate did — refused or proven
 // whole. The diagnostic text follows verbatim: the refusal's teaching IS the
@@ -147,7 +160,7 @@ fn mcp_tools_result() = JObj([
                     // drift-audit: ignore — prose inside a JSON string literal (the audit's string-literal blindness)
                     (
                       "description",
-                      JStr("Complete Mentl source for one self-contained module. Declare your own effects; fn main() makes it an executable.")
+                      JStr("Complete Mentl source for one module. Its imports resolve to the library the project runs with (a sibling module of the project does not resolve yet); fn main() makes it an executable.")
                     )
                   ])
                 )

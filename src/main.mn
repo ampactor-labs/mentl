@@ -2079,24 +2079,15 @@ fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 // Returns (what the compile left, error-count, banked classes).
 //
 // The fixture is a MODULE: its link is its import DAG plus the prelude edge,
-// judged as every compile judges one (driver.mn), so a run fixture compiles
-// from its module path exactly as a propose fixture is read at one, and the
-// program lowered is the one its link holds.
+// judged as every compile judges one (`gated_compile`), so a run fixture
+// compiles from its module path exactly as a propose fixture is read at one,
+// and the program lowered is the one its link holds. The battery hears every
+// module (`Census`), and the refuse contract compares the reports' CLASSES,
+// never the rendered lines, so no substring scan over prose decides a verdict.
 fn battery_compile(module: String, stem) = {
-  driver_link_scoped(module, Census)
-  let lowered = link_program() |> saturate_pass |> lower_program |> reachable_from_main
-  // THE SAME law the CLI compile applies, batch-shaped: an error or a hole
-  // refuses, the plan's settle point included. `gated_plan` is the law's one
-  // home; this policy counts and continues where the CLI compile proc_exits.
-  // The refuse contract reads the classes through the bank, which forwards
-  // every report, so every line still reaches stderr.
-  let left = gated_write(lowered, battery_wat_path(stem))
-  // THE CLASSES, never the rendered lines: the refuse contract compares
-  // names, so no substring scan over prose decides a verdict.
-  let classes = banked_classes()
-  let nerr = diag_errors()
-  (left, nerr, classes)
-} ~> wasi_filesystem ~> compile_context
+  let judged = gated_compile(module, battery_wat_path(stem), Census)
+  (judged.left, judged.errors, report_classes(judged.reports))
+}
 
 fn battery_run(dir) = {
   // The fixture paths are flat before the first micro: each step indexes

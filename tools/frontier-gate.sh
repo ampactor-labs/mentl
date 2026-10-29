@@ -3166,8 +3166,8 @@ for i in "${!compilers[@]}"; do
   # The Synth-gate as an agent-facing surface: newline-delimited JSON-RPC,
   # one tool (propose). One scripted session exercises the whole contract:
   # handshake, tools/list, a violating proposal REFUSED with teaching
-  # diagnostics at FILE-LOCAL spans (the stdin channel judges the proposal
-  # alone — no lib weave, so spans are the agent's own lines), the honest
+  # diagnostics at the proposal's own lines (the proposal is judged as a
+  # module of the project, with the library, from .build/mcp), the honest
   # sibling PROVEN with the artifact landing on disk (only proven bytes
   # ever do), a malformed call (isError:true, teaches), an unknown method
   # (-32601), and ping. Seen RED on the pre-verb boot (unknown verb: the
@@ -3186,17 +3186,17 @@ for i in "${!compilers[@]}"; do
   # It read `at 3:1` and broke the day the diagnostic render gained its
   # module half — a gate welded to a render, snapped by improving the
   # render, the RENDER-PARSE class this session spent the day naming.
-  # `at <stdin>:3:1` is strictly STRONGER: the mcp transport feeds the
-  # claim on stdin, so a teaching span that pointed at any OTHER file
-  # would now fail where before it passed — which is exactly the
-  # file-local property the pass line claims.
+  # `at .build/mcp/proposal:3:1` names the proposal's module: the gate
+  # judges the proposal from that path, so a teaching span that pointed at
+  # any OTHER file would fail here — which is exactly the property the
+  # pass line claims, the agent's own lines named.
   # TWO errors, re-derived by hand (§9.11): `fn bad() with !E = op()` with
   # no handler anywhere violates its own declared `!E` (E_EffectMismatch)
   # AND lets E reach the executable root unhandled (E_EffectUnhandled), and
   # every error refuses.
   if grep -q 'REFUSED — 2 error' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectMismatch' "$mcp_dir/out.jsonl" \
-     && grep -q 'at <stdin>:3:1' "$mcp_dir/out.jsonl" \
+     && grep -q 'at .build/mcp/proposal:3:1' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectUnhandled' "$mcp_dir/out.jsonl"; then
     pass "mcp propose REFUSES with file-local teaching spans"
   else
@@ -3258,8 +3258,8 @@ for i in "${!compilers[@]}"; do
      && grep -q 'Nothing in this module uses Alloc' "$ses_dir/out.jsonl" \
      && grep -qE 'annotation density|→ add' "$ses_dir/out.jsonl" \
      && ! grep -qE 'iterate (uses|performs) ' "$ses_dir/out.jsonl" \
-     && grep -q 'PROVEN — every claim in the program is proven' "$ses_dir/out.jsonl"; then
-    pass "resident session: one derivation, live query + at + audit + teach reads, propose coexists"
+     && [ "$(grep -c 'PROVEN — every claim in the program is proven' "$ses_dir/out.jsonl")" = "2" ]; then
+    pass "resident session: one derivation, live query + at + audit + teach reads, propose coexists and resolves the library"
   else
     fail "resident session (resident-lines=$(grep -c 'session: graph resident' "$ses_dir/err.log"); see $ses_dir/out.jsonl)"
   fi

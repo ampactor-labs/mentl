@@ -6,3 +6,4 @@
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"audit","arguments":{}}}
 {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"teach","arguments":{}}}
 {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"propose","arguments":{"source":"fn main() = 42"}}}
+{"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "propose", "arguments": {"source": "import io\n\nimport strings\n\nfn main() = {\n  print_string(str_concat_all([\"proven with the library\", \"\\n\"]))\n  0\n}\n"}}}

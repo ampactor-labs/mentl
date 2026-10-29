@@ -274,6 +274,24 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
   },
 }
 
+// One module judged and gated as every compile judges one: its link walked
+// from its path (the import DAG plus the prelude edge), the program lowered,
+// and the gate's law applied, with the artifact streamed to `wat_path` only
+// when every claim is proven. The audience sets what the register narrates:
+// the battery hears every module, the gate the proposal's own layer. The
+// answer is one record of facts, what the compile left, how many errors it
+// reported, the reports the judgment banked and the scope they were heard
+// in. The lines a verdict prints (`heard_lines`) and the classes a contract
+// compares (`report_classes`) are projections of that record, so a caller
+// renders only what it reads, and the battery and the MCP gate are two
+// readers of one law.
+fn gated_compile(module: String, wat_path, audience) = {
+  driver_link_scoped(module, audience)
+  let left =
+    link_program() |> saturate_pass |> lower_program |> reachable_from_main |> gated_write(??, wat_path)
+  {errors: diag_errors(), left, reports: diag_banked(), scope: diag_scope_of()}
+} ~> wasi_filesystem ~> compile_context
+
 // The CLI's refusal: say the count when there are errors, and exit 1 with
 // nothing on stdout.
 fn refuse_to_emit(refused) = {
@@ -627,9 +645,15 @@ fn own_release_of(acc, entry) = match entry {
   _ => acc,
 }
 
-// The banked reports as the root handler printed them, in report order —
-// the text an mcp verdict carries.
-fn banked_lines() = str_concat_all(map(banked_line, diag_banked()))
+// A gated compile's reports as the root handler printed them, in report
+// order — the text an mcp verdict carries: every error, and the narrations
+// the register's scope heard, so the verdict says what `mentl check` says.
+fn heard_lines(judged) =
+  judged.reports |> filter(bank_heard(judged.scope, ??)) |> map(banked_line) |> str_concat_all
+
+fn bank_heard(scope, entry) = match entry {
+  (diag, _, _, dlayer) => diag_severity(diag) == SError || scope_hears(scope, diag, dlayer),
+}
 
 fn banked_line(entry) = match entry {
   (diag, msg, dmod, _) => diag_line(diag, msg, dmod),
@@ -640,9 +664,12 @@ fn report_line(entry) = match entry {
   (diag, msg, dmod, _) => "\n{diag_text(diag, msg, dmod)}",
 }
 
-// The banked reports' CLASSES, in report order — what a refuse contract
-// compares, never a substring of rendered prose.
-fn banked_classes() = map(banked_class, diag_banked())
+// Reports' CLASSES, in report order — what a refuse contract compares,
+// never a substring of rendered prose: a gated compile's, or the bank's as
+// it stands.
+fn report_classes(reports) = map(banked_class, reports)
+
+fn banked_classes() = report_classes(diag_banked())
 
 fn banked_class(entry) = match entry {
   (diag, _, _, _) => diag_code(diag),

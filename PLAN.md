@@ -731,6 +731,13 @@ as unknown, never as passing.
   `island` and `level` first, where the neighbouring arms of the same `if`
   use `draw` and `spin_w`. A nested function in scope is not offered
   (measured 2026-10-29).
+- **The gate's proposal is judged beside the server's artifact** (§11.4): a
+  proposal sent to `mentl mcp` resolves the library the project runs with
+  and not a sibling module of the project, because its text stands in
+  `.build/mcp/` while it is judged, not beside `main.mn`. The gate's JSON
+  reader refuses a `\uXXXX` escape ("unrecognized escape sequence",
+  lib/json.mn), so a client that escapes non-ASCII is refused; a client
+  that sends UTF-8 raw, as Claude Code does, is read (measured 2026-10-29).
 - **The judgment is one pass; schemes are still values** (§11.3): a candidate
   is judged against a version of the one live graph, and a declaration's type
   is frozen when its judgment exits.
