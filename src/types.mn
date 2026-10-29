@@ -1673,15 +1673,6 @@ type ExecutableBoundary
   // lower-time mint dies here.
   | InterpBoundary([Int])
 
-// The install-shape column's value: a `~>` install site's handler
-// expression and its config-arg program handles. The handler expression's
-// reference leads to the handler's declaration, and its type is the
-// instantiated `Handler(inst)`, the effect instance this install serves; the
-// config handles are where the config's instantiation is read: together they
-// key the arms it runs (lower.mn's arm_site_pairs). `NoInstall` comes first
-// so a virgin cell reads as it.
-type InstallShape = NoInstall | InstallOf(Int, [Int])
-
 // What a call's judgment built of its product: the APPLIED call, whose value
 // is the callee's result, or the product SUSPENDED at a slot — a partial
 // application, the closure awaiting its field. Decided once, at the judgment,
@@ -1689,8 +1680,11 @@ type InstallShape = NoInstall | InstallOf(Int, [Int])
 // lowering and the gradient read the decision and never take the arguments
 // apart to re-make it (before 2026-10-13 the lowering re-read the authored
 // `??` to decide, so a saturated call holding a value hole would have minted
-// a closure).
-type CallShape = CallApplied | CallSuspended
+// a closure). An applied `list_set` whose every target the store-age walk
+// found to be the extent's own, a list allocated at the depth the store
+// stands at, is applied FRESH: its slot is younger than every arena open at
+// the store, so the emitter writes it with no barrier.
+type CallShape = CallApplied | CallSuspended | CallAppliedFresh
 
 // A call's positional product, the judgment's own (infer.mn's infer_call_node): the
 // declared slots in order as the nodes that fill them — an argument, the
@@ -1700,7 +1694,7 @@ type CallShape = CallApplied | CallSuspended
 // shape the judgment decided. Written once
 // at the call node, a column of the version; the lowering reads it and
 // resolves no callee by name. `NoProduct` comes first so a virgin cell
-// reads as it, the `NoInstall` precedent.
+// reads as it.
 type CallProduct = NoProduct | ProductOf([Node], [Int], CallShape)
 
 // The emittable-fn enumeration's entry kind (lowering-is-a-column, the
@@ -1799,6 +1793,21 @@ type StoreClaim = {
   returns: Option([Int]),
   stores: [(Int, [Int])],
 }
+
+// The arena-roots column's value: what may root an arena's extent from
+// outside it, the judgment's answer at the `~>` install that opens the
+// arena. Unknown, where the body applies a function nothing names, writes
+// memory nothing names, or calls a member of its own group before the
+// group's claims are said; free, where no store the judgment saw targets
+// memory older than the extent; or the stores that may, each as the store
+// site and the value stored (the cell the emitter reads the leaf from, or 0
+// for a store the exit cannot read as a value). A handler installed above
+// the extent may still commit into its state while the body runs, which the
+// emitter asks of the install's row once every judgment has ended.
+// `OpensNoArena` comes first so a virgin cell reads as it. Every other fact
+// of an install is read off its node: the handler expression is its right
+// side, and its config is the product the judgment wrote there.
+type ArenaRoots = OpensNoArena | RootsUnknown | RootsFree | RootedAt([(Int, Int)])
 
 // An edge arriving at a declaration, held at the declaration's handle: a
 // reference the judgment linked to it, a node whose comment names it in
@@ -2327,14 +2336,16 @@ type VerbRole
 // name when it is a plain reference, and how many branches borrow it; how
 // many branches a `><` runs and the schedule the installs over it carry;
 // which stage of how many a `|>` completes and whether a fanout's product
-// fills the chain's first stage's open slots; the handler a `~>` installs
-// and the effects its arms answer; the depth a `<~` declares, None where it
-// is not a literal, and the name of the function whose record owns the line.
+// fills the chain's first stage's open slots; the handler a `~>` installs,
+// the effects its arms answer and, where it opens an arena, what the
+// judgment knows of the extent's roots (`ArenaRoots`, said in a sentence);
+// the depth a `<~` declares, None where it is not a literal, and the name of
+// the function whose record owns the line.
 type VerbShape
   = ShareShape(Option(String), Int)
   | FanShape(Int, Schedule)
   | ChainShape(Int, Int, Bool)
-  | InstallShape(String, [String])
+  | InstallShape(String, [String], Option(String))
   | LoopShape(Option(Int), String)
 
 // One verb on the path from a declaration down to a node: the site's handle
@@ -2575,6 +2586,7 @@ fn applicability_text(a) = match a {
 // (the graph module's root version) at the verb entries.
 type Version = {
   accepted: [(String, Span, String, Reason)],
+  arena_roots: [[[[ArenaRoots]]]],
   below: Option(Version),
   binders: [[[[[BinderFact]]]]],
   births: [[[[Int]]]],
@@ -2594,7 +2606,6 @@ type Version = {
   holes_col: [Int],
   holes_pend: [Int],
   in_edges: [[[[[InEdge]]]]],
-  installs: [[[[InstallShape]]]],
   instances: [[[[[Int]]]]],
   late: [[[[[Int]]]]],
   link_now: Option(Int),
@@ -3781,10 +3792,9 @@ effect GraphRead {
   // node, newest first. At a hole it is what the fill must satisfy; at a
   // let's value it is the annotation a reader of the binder may stand on.
   graph_claims_of(Int) -> [Ty]
-  // The install-shape column's read, by the install's handle: the install
-  // emit, a perform the install answers in its own frame, and the emitted
-  // reach all key the install's arms from one home.
-  graph_install_at(Int) -> InstallShape
+  // The arena-roots column's read, by the install's handle: the emitter's
+  // exit, the census and the caret read what may root an arena's extent.
+  graph_arena_roots_at(Int) -> ArenaRoots
   // The call-product column's read: the lowering's, which resolves no
   // callee by name and re-decides no shape
   // (Hβ.lower.callee-resolved-by-name-in-the-module-env), and the
@@ -3983,9 +3993,10 @@ effect GraphWrite {
   // noted by infer.mn's claim_refinement where the claim is raised. A column
   // of the version, so a restored judgment's claims go with it.
   graph_claim_note(Int, Ty)
-  // The install-shape column's write: the ~> install's lowering notes the
-  // shape at the install node's handle; lowering runs after the judgment.
-  graph_install_note(Int, InstallShape)
+  // The arena-roots column's write: the judgment notes, at the install node
+  // of each `~>` that opens an arena, what may root its extent, a column of
+  // the version so a restored judgment's answer goes with it.
+  graph_arena_roots_note(Int, ArenaRoots)
   // The call-product column's write: the judgment notes each call's
   // positional product at the call node — the ONE reader of a callee's
   // parameters — with the open slots' cells and the shape it decided

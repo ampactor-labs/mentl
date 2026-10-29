@@ -1,0 +1,17 @@
+// expect: 3
+// An extent the judgment proves root-free: its body allocates pairs into a
+// list of its own and answers the list's length, a word. The emitter writes
+// the witness at its exit, which stops the program if any barrier journaled
+// a store since the extent opened; the exit then reclaims everything the
+// body built. The result adds the regions the arenas kept, which is none.
+import arena
+
+fn pairs() = {
+  let xs = make_list(3)
+  list_set(xs, 0, (1, 10))
+  list_set(xs, 1, (2, 20))
+  list_set(xs, 2, (3, 30))
+  len(xs)
+} ~> arena
+
+fn main() = pairs() + arena_stat(ArKept)

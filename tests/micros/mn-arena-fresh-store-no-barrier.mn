@@ -1,0 +1,18 @@
+// expect: 6
+// A list allocated inside the extent and filled slot by slot with pairs:
+// every store's target is the extent's own, so the judgment marks each call
+// a fresh store and the emitter writes the plain `list_set` with no barrier.
+// The exit reclaims the list and the pairs; the sum leaves as a word.
+import arena
+
+fn add_first(acc, p) = match p {
+  (a, _) => acc + a,
+}
+
+fn main() = {
+  let xs = make_list(3)
+  list_set(xs, 0, (1, 10))
+  list_set(xs, 1, (2, 20))
+  list_set(xs, 2, (3, 30))
+  fold(0, add_first, xs)
+} ~> arena

@@ -2093,7 +2093,7 @@ fn declared_call_leaves(h, callee, d) = if walking_state(d) {
 // failing refutes nothing. A body the reading entered already answers what
 // the declaration publishes (`walk_entries`).
 fn entered_leaves(h, callee, d, params, body) = match graph_product_at(h) {
-  ProductOf(slots, _, CallApplied) => if len(slots) == len(params) {
+  ProductOf(slots, _, CallApplied) | ProductOf(slots, _, CallAppliedFresh) => if len(slots) == len(params) {
     match walk_enter(d) {
       Some(true) => applied_leaves(callee),
       Some(false) => body_at_call(callee, d, params, slots, body),
@@ -2130,7 +2130,7 @@ fn under_post(callee, leaves) = match graph_chase(callee) {
 // whose arms the walk is already inside is unknown.
 fn perform_leaves(h, callee, op, en: String, providers) = {
   let args = match graph_product_at(h) {
-    ProductOf(slots, _, CallApplied) => slots,
+    ProductOf(slots, _, CallApplied) | ProductOf(slots, _, CallAppliedFresh) => slots,
     ProductOf(_, _, CallSuspended) | NoProduct => [],
   }
   let dims = op_dims(op)
@@ -2519,7 +2519,7 @@ fn signature_leaves(h, callee, path) = match generic_signature(callee) {
     (qs, dps, dret) => match var_along(qs, dret, path) {
       Some(at) => match at {
         (q, rest) => match graph_product_at(h) {
-          ProductOf(slots, _, CallApplied) => Some(scheme_occurrences(qs, dps) |> filter(occ_source_of(q, ??)) |> flat_map(occurrence_leaves(slots, rest, ??)) |> map(LMay)),
+          ProductOf(slots, _, CallApplied) | ProductOf(slots, _, CallAppliedFresh) => Some(scheme_occurrences(qs, dps) |> filter(occ_source_of(q, ??)) |> flat_map(occurrence_leaves(slots, rest, ??)) |> map(LMay)),
           ProductOf(_, _, CallSuspended) | NoProduct => None,
         },
       },
@@ -3921,7 +3921,7 @@ fn stage_application(sh, applied) = match graph_node_body(sh) {
   NExpr(VarRef(_)) => Some((sh, applied)),
   NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
     ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
-    ProductOf(_, _, CallApplied) => None,
+    ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) => None,
     NoProduct => None,
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)

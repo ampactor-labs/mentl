@@ -118,6 +118,12 @@ type CensusShape
   | CsMatch
   | CsMatchDestructure
   | CsMatchOption
+  // The arena installs by what the judgment knows of their roots
+  // (`ArenaRoots`): those whose roots it left unknown, whose exits keep what
+  // they cannot read, a count the board holds and which only falls; and
+  // those some store it saw may root from outside, whose exits journal it.
+  | CsArenaUnknown
+  | CsArenaRooted
   // A string literal whose text contains the needle — the `text` facet's
   // shape, the one reach into what the wheel WRITES rather than what it
   // calls: the emit's WAT is string literals, and no identifier edge reaches
@@ -1323,6 +1329,8 @@ fn census_label(shape) = match shape {
   CsMatch => "match site(s)",
   CsMatchDestructure => "match(es) whose one arm takes a product apart",
   CsMatchOption => "match(es) over Some/None",
+  CsArenaUnknown => "arena install(s) whose roots the judgment left unknown",
+  CsArenaRooted => "arena install(s) a store the judgment saw may root from outside",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
   CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
@@ -1365,6 +1373,8 @@ fn census_name(shape) = match shape {
   CsMatch => "match",
   CsMatchDestructure => "match-destructure",
   CsMatchOption => "match-option",
+  CsArenaUnknown => "arena-unknown",
+  CsArenaRooted => "arena-rooted",
   CsText(needle) => "text {needle}",
   CsProse(needle) => "prose {needle}",
   CsProseClass(c) => "prose-{prose_class_name(c)}",
@@ -1403,7 +1413,9 @@ fn census_roster() = [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume]
   CsRecordPattern,
   CsMatch,
   CsMatchDestructure,
-  CsMatchOption
+  CsMatchOption,
+  CsArenaUnknown,
+  CsArenaRooted
 ] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
 
 fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
@@ -1513,8 +1525,8 @@ fn census_note(shape, h) with !Mutate = match shape {
   CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
-  | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption | CsText(_)
-  | CsFieldRead(_) => None,
+  | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
+  | CsArenaUnknown | CsArenaRooted | CsText(_) | CsFieldRead(_) => None,
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1569,8 +1581,8 @@ fn census_site_at(shape, h) with !Mutate = match shape {
   CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
-  | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption | CsText(_)
-  | CsFieldRead(_) => span_of_node_raw(h),
+  | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
+  | CsArenaUnknown | CsArenaRooted | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
 }
 
 // The line the note shows, located: a comment's lines are its source lines
@@ -1860,6 +1872,16 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     NExpr(MatchExpr(s, arms)) => !arm_list_match(s) && any(option_arm, arms),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => false,
+  },
+  // An install that opens an arena carries what the judgment knows of its
+  // roots; every other node reads as no arena.
+  CsArenaUnknown => match graph_arena_roots_at(h) {
+    RootsUnknown => true,
+    RootsFree | RootedAt(_) | OpensNoArena => false,
+  },
+  CsArenaRooted => match graph_arena_roots_at(h) {
+    RootedAt(_) => true,
+    RootsUnknown | RootsFree | OpensNoArena => false,
   },
   CsText(needle) => match body {
     NExpr(LitString(s)) => str_contains(s, needle),

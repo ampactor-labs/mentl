@@ -491,6 +491,23 @@ fn verb_path_of(h) with !Mutate = {
   }
 }
 
+// What the caret says of the extent an arena install opens, read off the
+// roots the judgment wrote at the install (`ArenaRoots`): nothing it saw can
+// root the extent, the stores that may, or that it could not tell. Nothing
+// for an install that opens no arena, which has no cell.
+fn extent_memory_of(h) with !Mutate = match graph_arena_roots_at(h) {
+  RootsFree => Some("nothing the judgment sees can root the extent it opens, so its exit moves the result and reclaims the rest"),
+  RootedAt(roots) => Some("stores at {join(", ", map(root_line, roots))} may root the extent it opens, which its exit journals"),
+  RootsUnknown => Some("what may root the extent it opens is not known, so its exit keeps what it cannot read"),
+  OpensNoArena => None,
+}
+
+fn root_line(root) with !Mutate = match root {
+  (site, _) => match graph_span_of(site) {
+    Span(line, _, _, _) => "line {int_to_str(line)}",
+  },
+}
+
 // The verb at the node itself, with the fact it carries (`VerbShape`), so
 // the caret on an operator says the shape in one sentence. A pipe inside a
 // chain reports the whole chain and the stage it completes.
@@ -510,7 +527,8 @@ fn verb_shape_of(h, path) with !Mutate = if len(path) == 0 {
       match tee_arms(r) {
         Some(arms) => handler_effect_names(arms),
         None => [],
-      }
+      },
+      extent_memory_of(h)
     )),
     NExpr(PipeExpr(PFeedback, _, r)) => Some(LoopShape(
       match feedback_depth(r) {
@@ -787,10 +805,16 @@ fn shape_text(shape) = match shape {
       "the |> runs {shape_count(n, "stage", "stages")} in sequence, this one completing stage {int_to_str(k)}{tail}"
     }
   },
-  InstallShape(name, effs) => if len(effs) == 0 {
-    "the ~> installs `{name}` over everything to its left"
-  } else {
-    "the ~> installs `{name}` over everything to its left, answering {join(", ", effs)}"
+  InstallShape(name, effs, memory) => {
+    let base = if len(effs) == 0 {
+      "the ~> installs `{name}` over everything to its left"
+    } else {
+      "the ~> installs `{name}` over everything to its left, answering {join(", ", effs)}"
+    }
+    match memory {
+      Some(fact) => "{base}; {fact}",
+      None => base,
+    }
   },
   LoopShape(depth, owner) => match depth {
     Some(n) => "the <~ feeds back the output {shape_count(n, "tick", "ticks")} ago; its line is owned by `{owner}` and allocated once",

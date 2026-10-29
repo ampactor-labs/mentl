@@ -2564,10 +2564,13 @@ fn emit_planned(plan) = match plan {
     ) ~> arena
     // A live arena's leaves are settled here, before any function is
     // written, because every barrier and every claim writes a leaf's index.
+    // The handlers' state table is built inside an extent of its own, so
+    // only the effect names it answers survive to the registry.
     set_arena_leaves(
       if arena_on { evac_leaf_list(fold_closures.evac) } else { [] },
       arena_on,
-      arena_on && yield_seen > 0
+      arena_on && yield_seen > 0,
+      if arena_on { journaling_effects() ~> arena } else { [] }
     )
     if arena_on { emit_arena_runtime(spawns) ~> arena } else { () }
     if fold_stack { emit_fold_stack_runtime(spawns) ~> arena }
@@ -4781,8 +4784,10 @@ fn emit_runtime_imports(wasi_ops) = {
 // allocates. The kinds are the ways the emit's own hand stops a run: a claim
 // the row states (a pattern's, a precondition `trap()` checks, or a partial
 // instruction's the fragment left open, checked where the instruction would
-// trap), an exhaustion Alloc states, an image another compiler wrote, and
-// the compiler's own invariant.
+// trap), an exhaustion Alloc states, an image another compiler wrote, the
+// compiler's own invariant, and the arena's witness: a barrier that journaled
+// inside an extent the judgment proved root-free, which is the store-age
+// walk wrong at the install the stop names.
 type Stop
   = StopClaim
   | StopPrecondition
@@ -4791,6 +4796,7 @@ type Stop
   | StopImage
   | StopInvariant
   | StopNoHandler
+  | StopWitness
 
 fn stop_said(k) with Pure = match k {
   StopClaim => "a pattern's claim failed",
@@ -4800,13 +4806,23 @@ fn stop_said(k) with Pure = match k {
   StopImage => "the image was written by another compiler",
   StopInvariant => "the compiler broke its own invariant",
   StopNoHandler => "a perform found no handler — the compiler broke its own invariant",
+  StopWitness => "a barrier journaled inside an extent the judgment proved root-free — the store-age walk is wrong",
 }
 
 // What the stop's line is built from, laid in the data section through the
 // channel every literal takes, so the runtime reads each piece where it is.
 fn stop_literals() = map(
   stop_said,
-  [StopClaim, StopPrecondition, StopExhausted, StopNoThread, StopImage, StopInvariant, StopNoHandler]
+  [
+    StopClaim,
+    StopPrecondition,
+    StopExhausted,
+    StopNoThread,
+    StopImage,
+    StopInvariant,
+    StopNoHandler,
+    StopWitness
+  ]
 ) ++ [
   "trap: ",
   " at ",
@@ -5532,21 +5548,26 @@ fn emit_arena_reentry() = {
 // emit an arena as its body — and whether a computation can suspend through
 // one, which a module that never yields cannot.
 effect ArenaLeaves {
-  set_arena_leaves([(String, Shape)], Bool, Bool)
+  set_arena_leaves([(String, Shape)], Bool, Bool, [Int])
   arena_leaves() -> [(String, Shape)]
   arena_leaf_index(String) -> Option(Int)
   arena_live() -> Bool
   arena_suspends() -> Bool
+  // The effects whose handlers commit a journaled value into their state, as
+  // interned names, settled with the leaves, so every arena's exit reads one
+  // list.
+  arena_journaling_effects() -> [Int]
 }
 
-handler arena_registry with demanded = false, leaves = [], index = smap_new(), live = false, suspends = false {
+handler arena_registry with demanded = false, leaves = [], index = smap_new(), live = false, suspends = false, journaling = [] {
   arena_demand_note() => resume() with demanded = true,
   arena_demanded() => resume(demanded),
-  set_arena_leaves(xs, on, susp) => resume() with leaves = xs, index = smap_build(leaf_numbering(xs)), live = on, suspends = susp,
+  set_arena_leaves(xs, on, susp, js) => resume() with leaves = xs, index = smap_build(leaf_numbering(xs)), live = on, suspends = susp, journaling = js,
   arena_leaves() => resume(leaves),
   arena_leaf_index(sig) => resume(smap_get(index, sig)),
   arena_live() => resume(live),
   arena_suspends() => resume(suspends),
+  arena_journaling_effects() => resume(journaling),
 }
 
 // A leaf's index is its position plus one — the number a journal entry, a
@@ -5594,17 +5615,72 @@ fn emit_arena(h, b) = {
   wat_emit("    (local.set $__ar_v_{hs})\n")
   if arena_suspends() {
     wat_emit("    (if (i32.and (global.get $yield_flag) (i32.ne (global.get $yield_k) (i32.const 0))) (then (call $arena_suspend (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs})) (call $__k_arena_extend (i32.const {int_to_str(leaf_code(face_leaf(t)))}))) (else\n")
-    emit_arena_exit(hs, t, ev)
+    emit_arena_exit(h, hs, t, ev)
     wat_emit("    ))\n")
   } else {
-    emit_arena_exit(hs, t, ev)
+    emit_arena_exit(h, hs, t, ev)
   }
   wat_emit("    (local.get $__ar_v_{hs})\n")
 }
 
+// Whether the judgment proved nothing can root this extent from outside it
+// (`ArenaRoots`, noted at the install): every root it noted stores a word,
+// which no barrier journals, and no handler above the extent commits a
+// journaled value into its state while the body runs. An install whose roots
+// it left unknown, or never noted, is not free.
+fn arena_root_free(h) = match graph_arena_roots_at(h) {
+  RootsFree => nothing_commits_above(h),
+  RootedAt(roots) => !any(root_journals, roots) && nothing_commits_above(h),
+  RootsUnknown | OpensNoArena => false,
+}
+
+// Whether every effect the body passes up is known and none is answered by a
+// handler whose state takes a journaled value (`arena_journaling_effects`,
+// settled once per module).
+fn nothing_commits_above(h) = match arena_body_effects(h) {
+  Some(effects) => !any(is_journaling, effects),
+  None => false,
+}
+
+fn is_journaling(e) = any(same_name(e, ??), arena_journaling_effects())
+
+fn same_name(a, b) = a == b
+
+// The effects whose handlers commit a journaled value into their state, read
+// once per module from every handler declaration (`handlers_state_cells`):
+// an arena whose body performs one is rooted from above it.
+fn journaling_effects() = flat_map(journaling_effects_of, handlers_state_cells())
+
+fn journaling_effects_of(entry) = match entry {
+  (enames, cells) => if any(evac_journals, cells) { enames } else { [] },
+}
+
+// A root the exit would have to read: a store the exit cannot read as a value
+// (cell 0), or one whose stored value a barrier journals.
+fn root_journals(root) = match root {
+  (_, cell) => cell == 0 || evac_journals(cell),
+}
+
 // The exit itself, the body's value parked in its register: sweep, move the
 // value through its leaf, close, and read the value at its final address.
-fn emit_arena_exit(hs, t, ev) = {
+//
+// THE WITNESS. Where the judgment proved the extent root-free, the journal
+// must hold nothing written since the extent opened, and the exit says so
+// before it sweeps: a barrier that fired inside a proven root-free extent is
+// the store-age walk wrong, and the candidate stops there, saying so and
+// naming the install, rather than reclaim on a false proof (the march and
+// every battery run under it). The check stands only on the ordinary exit:
+// an abandoning perform leaves with the yield flag raised and its arguments
+// journaled in the instance's area, which the sweep moves as it always did.
+fn emit_arena_exit(h, hs, t, ev) = {
+  if arena_root_free(h) {
+    // A module that never yields has no flag to read (Law 7), and no exit
+    // of its arenas is an abandon's.
+    let ordinary = if arena_suspends() { "(i32.eqz (global.get $yield_flag))" } else { "(i32.const 1)" }
+    wat_emit("    (if (i32.and {ordinary} (i32.ne (global.get $ar_jn) (local.get $__ar_j_{hs}))) (then {stopped(StopWitness, h)}))\n")
+  } else {
+    ()
+  }
   wat_emit("    (local.set $__ar_g_{hs} (call $arena_sweep (local.get $__ar_m_{hs}) (local.get $__ar_j_{hs})))\n")
   match ev {
     EvShape(_) => wat_emit("    (local.set $__ar_r_{hs} (local.get $__ar_v_{hs}))\n    (if (local.get $__ar_g_{hs}) (then (if (call $ar_young (local.get $__ar_v_{hs})) (then (local.set $__ar_r_{hs} (call $evac_{evac_sig(t)} (local.get $__ar_v_{hs})))))))\n"),
@@ -7812,7 +7888,7 @@ fn emit_expr(expr) = match expr {
           enumerate(args)
         )
         let site_repr = repr_of(lookup_ty(h))
-        let target = direct_call_target(cname2, args)
+        let target = direct_call_target(h, cname2, args)
         // A tail call must agree with the ENCLOSING fn's native result exactly;
         // when the callee's emitted result is the word face of a wide site type
         // the deref must run after the call, so the tail form demotes there —
@@ -8837,10 +8913,13 @@ fn perform_vector_at(h, args) = site_vector(args, result_repr_at(h, h))
 // lives reaches it through its barrier, `$list_set_j`, carrying the leaf of
 // the value it stores (pushed here, after the arguments): the one place the
 // stored value's type is known, read under the bracket the call is emitted
-// in. A word stores with no barrier, since a word never points. A call
+// in. A word stores with no barrier, since a word never points, and so does
+// a store the judgment found fresh (`store_is_fresh`): a list its own extent
+// allocated is younger than every arena open at the store, so its slot is
+// never journaled and the barrier would only cost its compare. A call
 // through `list_set` as a value carries no leaf and reaches the slot's table
 // face (`slot_face`), which journals with none.
-fn direct_call_target(cname2: String, args) = if len(args) == 3 && arena_live() && cname2 == vocab_symbol("list_set") {
+fn direct_call_target(h, cname2: String, args) = if len(args) == 3 && arena_live() && cname2 == vocab_symbol("list_set") && !store_is_fresh(h) {
   match store_leaf(args[2]) {
     Some(k) => {
       wat_emit("    (i32.const {int_to_str(k)})\n")
@@ -8850,6 +8929,15 @@ fn direct_call_target(cname2: String, args) = if len(args) == 3 && arena_live() 
   }
 } else {
   cname2
+}
+
+// Whether the store at this site writes a list its own extent allocated, the
+// call's shape the judgment wrote (`CallAppliedFresh`). A module whose arenas
+// can suspend may resume the store's frame inside a younger instance than
+// the one that allocated the list, so there every store keeps its barrier.
+fn store_is_fresh(h) = !arena_suspends() && match graph_product_at(h) {
+  ProductOf(_, _, CallAppliedFresh) => true,
+  ProductOf(_, _, CallApplied) | ProductOf(_, _, CallSuspended) | NoProduct => false,
 }
 
 // The leaf a stored value moves through, or none for a word.

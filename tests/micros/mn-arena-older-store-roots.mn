@@ -1,0 +1,15 @@
+// expect: 42
+// A pair allocated inside the extent and stored into a list the caller
+// owns: the list is older than the arena, so the store roots the extent
+// (the judgment notes it at the install, and the barrier journals it), and
+// the exit moves the pair out through its leaf. Read after the exit, the
+// pair is whole.
+import arena
+
+fn main() = {
+  let keep = make_list(1)
+  list_set(keep, 0, (40, 2)) ~> arena
+  match list_index(keep, 0) {
+    (a, b) => a + b,
+  }
+}

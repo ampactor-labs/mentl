@@ -54,6 +54,7 @@ import strings
 // ones, a trie populated where something was entered.
 fn root_version() = Version{
   accepted: [],
+  arena_roots: pt_empty(),
   below: None,
   binders: pt_empty(),
   births: pt_empty(),
@@ -73,7 +74,6 @@ fn root_version() = Version{
   holes_col: [],
   holes_pend: [],
   in_edges: pt_empty(),
-  installs: pt_empty(),
   instances: pt_empty(),
   late: pt_empty(),
   link_now: None,
@@ -146,7 +146,7 @@ fn version_canon(v) = v.canon
 
 fn version_boundaries(v) = v.boundaries
 
-fn version_installs(v) = v.installs
+fn version_arena_roots(v) = v.arena_roots
 
 fn version_links(v) = v.links
 
@@ -500,7 +500,7 @@ fn supersede_one(gone, s) = wmap_add(gone, s, 1)
 // same live graph through the same effect discipline. State is internal to
 // the handler; callers never see the columns as a value except as a
 // Version they hand back; access is only through perform.
-handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx {
+handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), arena_roots = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx {
   graph_chase(handle) => resume(chase_node(nodes, seed, handle, 0)),
   graph_chase_handle(handle) => resume(chase_handle(nodes, seed, handle, 0)),
   graph_epoch() => resume(epoch),
@@ -531,6 +531,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // that installed it waits for it.
   resume(Version{
     accepted,
+    arena_roots,
     below: Some(seed),
     binders,
     births,
@@ -550,7 +551,6 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
     holes_col,
     holes_pend,
     in_edges,
-    installs,
     instances,
     late,
     link_now,
@@ -577,7 +577,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // (lib/imap.mn's pt_merge), and every other fact is the kept instance's
   // as it left it. O(what the kept instance wrote); FV's columns die with
   // the extent that built them.
-  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), installs = pt_merge(installs, fv.installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = fv.superseded, link_now = fv.link_now, tails_idx = fv.tails_idx,
+  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), arena_roots = pt_merge(arena_roots, fv.arena_roots), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = fv.superseded, link_now = fv.link_now, tails_idx = fv.tails_idx,
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write rebinds the column it wrote: pt_set answers the root as it
   // stands when the path was this version's own, else the copied root.
@@ -942,11 +942,11 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
     if seed.next > 0 { trap() } else { 0 }
     resume() with accepted = push(accepted, (path, span, text, proof))
   },
-  graph_install_note(h, ish) => // The install-shape column: a cell at the install node's handle, written
-  // by the lowering, which runs after the judgment; a re-lower writes the
-  // same shape.
-  resume() with installs = pt_set(installs, h, ish),
-  graph_install_at(h) => resume(col_get(h, installs, seed, version_installs)),
+  graph_arena_roots_note(h, roots) => // The arena-roots column: a cell at the install node of each `~>` that
+  // opens an arena, written by the judgment when the body is judged; a later
+  // round writes this round's answer over it.
+  resume() with arena_roots = pt_set(arena_roots, h, roots),
+  graph_arena_roots_at(h) => resume(col_get(h, arena_roots, seed, version_arena_roots)),
   graph_product_note(h, slots, holes, shape) => // The call-product column's one write — the judgment's, a column of the
   // version: a candidate or a Mycroft round that noted a product and is
   // restored leaves the cell as it found it.
@@ -1625,7 +1625,7 @@ fn hole_is_open_slot(h) = match graph_parent_of(h) {
 
 fn suspended_at(p, h) = match graph_product_at(p) {
   ProductOf(nodes, _, CallSuspended) => any({ n => n == h }, nodes),
-  ProductOf(_, _, CallApplied) | NoProduct => false,
+  ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) | NoProduct => false,
 }
 
 fn row_of_child(acc, c) = match acc {

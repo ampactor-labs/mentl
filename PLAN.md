@@ -426,7 +426,13 @@ re-entered to resume, moved to any host and read back as facts.
 Five readings follow, and each is a landing's check rather than a claim.
 (1) The row is the memory boundary: an extent whose row proves no store
 past its own region needs no barrier and no journal, and memory safety and
-effect safety are one proof. (2) Layout is a projection, as SYNTAX S2.1 says
+effect safety are one proof. Built in part on 2026-10-29. The store-age
+walk marks a list store into a list its own extent allocated, on the call's
+shape, and records what may root each arena's extent, on the install's
+shape, so neither fact needs a column of its own. The emitter writes the
+marked store with no barrier where no arena can suspend, and the exit of an
+extent proven root-free checks that no barrier journaled inside it, so
+every run checks the walk. (2) Layout is a projection, as SYNTAX S2.1 says
 of text: no author writes a struct, an alignment or a placement, and the
 compiler arranges fields by their readers and by the schedule. (3) The
 install chain is the memory hierarchy: the arena is the nearest handler
@@ -445,8 +451,9 @@ stage), the budget the program fits (a claim on main's row), the depth of a
 line (`<~ delay(N)`), and `own`/`ref` where inference fails. The medium
 derives every address, lifetime, in-place write, layout, memory kind and
 page. Every mechanism the emitted runtime still carries is a fact the
-judgment does not hold yet: a barrier on for the whole program, a journal
-of one fixed size, a region kept because a root's type was not visible, a
+judgment does not hold yet: a barrier at every store the walk cannot prove
+its extent's own and at every store of a program that yields, a journal of
+one fixed size, a region kept because a root's type was not visible, a
 move at an exit, a fixed grow step. §11 orders the landings that replace
 each with the fact, and each lowers a count that only falls. The first
 landed on 2026-10-29: a module's memory starts where its static data ends
@@ -757,6 +764,33 @@ as unknown, never as passing.
   because the boot judges the library's effects by its own roster (§6), and
   two micros state the counts (tests/micros/mn-memory-pages-start.mn answers
   2, mn-memory-pages-arena.mn answers 34).
+- **A store into a list its own extent allocated has no barrier, and an
+  arena install says what can root its extent** (2026-10-29). The
+  store-age walk answers both facts on cells the judgment already writes,
+  and the graph gains no column. A `list_set` whose every target is memory
+  its own frame allocated, inside the arenas it holds open, is applied
+  fresh (`CallAppliedFresh`, a case of the call's shape), and the emitter
+  writes it with no barrier in a module whose arenas never suspend. A
+  module that yields keeps every barrier, because a frame can resume
+  inside a younger arena instance than the one that allocated its list.
+  At each arena install the judgment notes what may root the extent from
+  outside: the stores it saw, none, or unknown (an application nothing
+  names, a write into memory nothing names, a group member called before
+  its claim is said). That note is all the install column holds now. The
+  handler expression and its config are read off the install node and the
+  product the judgment wrote there, where every install used to carry a
+  copy of both, so the self-compile's line peak fell 74 KB (282,316 KB to
+  282,242 KB on the same wheel). An extent with no root that journals,
+  whose body passes up no effect whose handler commits a journaled value,
+  carries a witness at its exit: with the yield flag clear, a journal that
+  moved since the extent opened stops the program and names the install.
+  The census shapes `arena-unknown` (on the board at 29) and
+  `arena-rooted` count the installs, and the caret at `~> arena` says which
+  case it is. The micros that never yield lose three barriers each and
+  carry the witness; the wheel yields, so its 196 list-store barriers stay,
+  and none of its 63 arena exits is proven root-free (§11.8 owns both).
+  Most of the wheel's unknown installs, and lesson 11's section, apply a
+  function through a record's function-typed field, the read §11.3 owes.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1445,7 +1479,11 @@ the last three.
    the rules it misses. The batteries address a hole and a declaration by
    identity, never by `L:C`, so every fixture can be canonical.
    `mentl fmt --check` at zero over src, lib, examples and tests is a line on
-   the board.
+   the board. A comment written between two stages of a `|>` chain is moved
+   above the declaration, and the chain is laid out with the `|>` ending a
+   line and the next stage at column 0 (found 2026-10-29 while writing
+   examples/hello/five.mn, on both the pinned boot and main's); the render
+   keeps each comment at the stage it precedes, one stage per line.
 
 6. **Edits cost what they change, and the page plays the course.** The
    edit's cone gets a cutoff (`Hβ.session.edit-cone-cutoff`): a declaration
@@ -1572,7 +1610,18 @@ the last three.
    `mentl compile` says the number and a program that cannot prove it fits
    its budget is refused. Today the two are the wheel's constants (a 2 MB
    journal, a 16 MB grow step, `src/backends/wasm.mn`), sized for a compile
-   of the compiler. A handle becomes an `{arena, offset}` product
+   of the compiler. A store keeps its barrier wherever the store-age walk
+   cannot prove its target is its own extent's, which today includes every
+   store in a module that yields: the judgment does not yet know which
+   frames can suspend between an allocation and a store, so the compiler,
+   which yields, keeps all of its list-store barriers. An extent is proven
+   root-free only when no handler answering an effect its body passes up
+   keeps a pointer in its state, asked per handler and not per operation,
+   so no arena in the compiler is root-free yet: each passes up a read of
+   the graph, the environment or the WAT output, whose handlers keep
+   pointers (and one graph read, the emitted-function lookup, does store
+   its index). A handle becomes an
+   `{arena, offset}` product
    (one word, by a repr pin) that is deterministic under any order. The
    demand walk that twins a direct callee by the install's schedule follows a
    `~> h` in the demanded reach into `h`'s arms. The arm twins are keyed by

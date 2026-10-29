@@ -112,6 +112,36 @@ fn handler_state_count(hd) = match handler_shape_at(hd) {
   None => 0,
 }
 
+// Every handler declaration with the effects its arms answer, as interned
+// names, and the state cells its arms commit into. A handler installed above
+// an extent commits into a record older than the extent while the body runs,
+// so an arena whose body performs one of its effects is rooted by each
+// committed value a barrier journals (the emitter reads the cells' classes
+// once per module, where it settles the arenas' leaves). Read once the whole
+// program is judged, over every declaration the decls column holds, so a
+// handler declared in a module judged after an arena's is seen.
+fn handlers_state_cells() = flat_map(handler_state_cells_of, graph_decls_at())
+
+fn handler_state_cells_of(d) = match graph_node_body(d) {
+  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => [(map(intern_str, handler_arm_enames(d)), handler_state_writes(Some(d)))],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
+}
+
+// The effects an arena's body passes to the handlers above it, as interned
+// names, read off the install's own row notes once every judgment has ended:
+// an install's note is its body's row with the arena's absorption removed
+// (`row_of_subtree` reads it so). None while a row's tail may still grow,
+// which the emitter reads as roots it cannot know.
+fn arena_body_effects(h) = graph_rows_at(h) |> fold(Some([]), join_known_effects)
+
+fn join_known_effects(acc, r) = match acc {
+  Some(names) => match resolve_row(r) {
+    EfRow(present, _, tail) => if tail_may_grow(tail) { None } else { Some(names ++ map(eff_name_handle, present)) },
+  },
+  None => None,
+}
+
 // Per-effect arm-name groups for a handler, projected live from its decl.
 fn handler_arm_groups(hd) = match handler_shape_at(hd) {
   Some((_, _, _, arms)) => build_handler_arm_names(hd, arms),
@@ -983,7 +1013,7 @@ fn lower_named_call(handle, fh, name: String, r_args, lo_args) = if name == "to_
 // a callee that failed to resolve raises E_MissingVariable, an armed class,
 // so that program emits zero bytes and has no module to collapse.
 fn partial_unfilled(fh, shape) = match shape {
-  CallApplied => None,
+  CallApplied | CallAppliedFresh => None,
   CallSuspended => if reaches_substrate(fh) {
     None
   } else {
@@ -1671,11 +1701,20 @@ fn pinned_word(right, hd) = match handler_pinned_effect(hd) {
   None => 0,
 }
 
+// The handler expression an install runs: its node's right side, as the
+// judgment judged it (a chain's install node is registered again with its
+// outermost member there, `infer_chain_install`).
+fn install_handler_expr(ih) = match graph_node_body(ih) {
+  NExpr(PipeExpr(PTee, _, right)) => Some(right),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
+}
+
 // The same word read off an install the lowering has finished, through the
-// handler expression its note holds.
-fn install_word_at(ih, hd, ename: String) = match graph_install_at(ih) {
-  InstallOf(right, _) => served_word(right, hd, ename),
-  NoInstall => 0,
+// handler expression its node holds.
+fn install_word_at(ih, hd, ename: String) = match install_handler_expr(ih) {
+  Some(right) => served_word(right, hd, ename),
+  None => 0,
 }
 
 // The stack entry of an install the lowering has finished, which the emit's
@@ -1684,9 +1723,9 @@ fn installed_entry(ih, hd) = Installed(
   ih,
   hd,
   projection_of(hd),
-  match graph_install_at(ih) {
-    InstallOf(right, _) => pinned_word(right, hd),
-    NoInstall => 0,
+  match install_handler_expr(ih) {
+    Some(right) => pinned_word(right, hd),
+    None => 0,
   }
 )
 
@@ -2921,14 +2960,11 @@ fn lower_install(left, right, hd, handle) = {
   // continuation pass reads (`capture_frame`).
   let lo_l = lower_expr(left)
   lower_handler_pop()
-  let config_args = extract_handler_config_args(right)
-  // The install-shape column (lowering-is-a-column step i): the handler
-  // expression and the config-arg program handles, noted at the install
-  // node. The config arguments are this frame's own expressions; the state
+  // The config arguments are this frame's own expressions, the product the
+  // judgment wrote at the handler expression (`install_config`); the state
   // belongs to the declaration, whose init fn the install calls
   // (`lower_init_decl`).
-  graph_install_note(handle, InstallOf(right, config_args))
-  let config_inits = config_args |> map(lower_expr)
+  let config_inits = install_config(right) |> map(lower_expr)
   match proj {
     // The reading replaces the install: no record, no world push. The
     // seed is the reading's one config argument, and it keeps the lowered
@@ -3028,26 +3064,6 @@ fn lower_feedback_body(left, fb_handle) = match inlinable_lambda(left) {
     lo
   },
   None => lower_expr(left),
-}
-
-// Config args from `~> handler(arg1, arg2)` — the parameterized-handler
-// factory's arguments, lowered and written FIRST into the install record
-// (before state inits). The install constructs the config PRODUCT, and the
-// product is the judgment's, read off the install's own node (the
-// call-product column): a `~> handler(args)` install is a call and carries
-// it at the call node; a bare `~> handler` of a config'd handler is the
-// zero-arg product — every field filled from its decl default (SYNTAX
-// §«Default parameter values») — written at the reference node
-// (`note_bare_handler_product`, infer.mn); a handler without config, or a
-// tee over a plain fn value, has none.
-fn extract_handler_config_args(node) = match graph_node_body(node) {
-  NExpr(CallExpr(_callee, args)) => call_product_nodes(node, args),
-  NExpr(VarRef(_)) => match graph_product_at(node) {
-    ProductOf(nodes, _, _) => nodes,
-    NoProduct => [],
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => [],
 }
 
 // Fanout lowering — ONE path for `<|` and `>< `, discriminated by the
@@ -6851,12 +6867,12 @@ fn callee_target(c) = match c {
   Synthesized(_) => None,
 }
 
-fn install_target(ih) = match graph_install_at(ih) {
-  NoInstall => None,
-  InstallOf(right, _) => match tee_handler_decl(right) {
+fn install_target(ih) = match install_handler_expr(ih) {
+  Some(right) => match tee_handler_decl(right) {
     Some(hd) => enclosing_decl(hd),
     None => None,
   },
+  None => None,
 }
 
 fn vocabulary_target(n: String) = match env_resolve_linked(n) {
@@ -7931,15 +7947,15 @@ fn twin_site_key(h, c) = twin_key(spec_site_pairs(h, c))
 // answer runs at the answer its install gives it, and a wide answer crosses
 // the driver and every continuation at its own width (the continuation
 // face, wasm.mn).
-fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
-  NoInstall => [],
-  InstallOf(hexpr_h, cfg_hs) => match tee_handler_decl(hexpr_h) {
+fn arm_site_pairs(install_h) = match install_handler_expr(install_h) {
+  Some(hexpr_h) => match tee_handler_decl(hexpr_h) {
     None => [],
     Some(hd) => match graph_published(hd) {
-      Some((scheme, _, _)) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs),
+      Some((scheme, _, _)) => arm_pairs_of(judgment_pair(scheme), hexpr_h, install_config(hexpr_h)),
       None => [],
     },
   },
+  None => [],
 }
 
 fn arm_pairs_of(jp, hexpr_h, cfg_hs) = match jp {

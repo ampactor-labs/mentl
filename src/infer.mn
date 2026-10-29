@@ -4823,7 +4823,7 @@ fn infer_expr(ref handle) = {
                 // The commit stores into the install's record: its claim is
                 // on the state field it names.
                 match fty {
-                  TVar(sb) => ages_store_binder(sb, [uh]),
+                  TVar(sb) => ages_store_binder(uh, sb, [uh]),
                   TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
                   | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
                   | TAlias(_, _) | TValue(_) => demand_move(uh),
@@ -5277,9 +5277,12 @@ fn seq_force_list(ah, ptys, i, span: ValidSpan) = if i >= len(ptys) {
   seq_force_list(ah, ptys, i + 1, span)
 }
 
+// A saturated call of a sequence primitive, judged by its face. The answer
+// says whether it is a list store into a list its own extent allocated
+// (`ages_list_store`), which the call's shape carries.
 fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   let elem = TVar(mint(Inferred("sequence element")))
-  match seq_op_sig(cname, elem) {
+  let fresh = match seq_op_sig(cname, elem) {
     Some(sig) => match sig {
       (ptys, ret) => {
         seq_force_list(args, ptys, 0, span)
@@ -5290,18 +5293,23 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
         } else {
           ()
         }
-        // An in-place store: its claim is on the buffer it writes.
+        // An in-place store: its claim is on the buffer it writes, and the
+        // answer says whether every target is the extent's own, which the
+        // call's shape carries for the barrier (`CallAppliedFresh`).
         if cname == "list_set" && len(args) == 3 {
-          ages_store(list_index(args, 0), [list_index(args, 2)])
+          ages_list_store(handle, list_index(args, 0), [list_index(args, 2)])
         } else {
-          ()
+          false
         }
       },
     },
     // A table member with no face row is unreachable by construction
     // (is_seq_op and seq_op_sig enumerate the same names); the floor keeps
     // productive-under-error alive if they ever diverge.
-    None => graph_bind(handle, TList(elem), Located(span, Inferred("sequence"))),
+    None => {
+      graph_bind(handle, TList(elem), Located(span, Inferred("sequence")))
+      false
+    },
   }
   // Hβ.infer.seq-op-row-from-callee RESOLVED (2026-07-24): the callee's OWN
   // declared row, read live — the same Carried-Truth read
@@ -5320,6 +5328,7 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   }
   // What the face writes, asked of the arguments it writes.
   ages_mutation_call(handle, fh, args)
+  fresh
 }
 
 // A partial sequence primitive's precondition is a claim on its face,
@@ -5375,8 +5384,10 @@ fn substrate_row(fh) = match graph_chase(fh) {
 // place — or a holed substrate call, which the lowering never mints (its pipe
 // completes it, and a hole left in value position is refused as a hole). A
 // holed form carries the cells typing the slots left open past the
-// arguments (`open_slot_cells`), which ride the call node's product.
-type CallForm = CallSaturated | CallPartial([Int]) | CallSubstrateHoled([Int])
+// arguments (`open_slot_cells`), which ride the call node's product. An
+// applied `list_set` into a list its own extent allocated is saturated
+// fresh, which the call's shape carries to the emitter (`CallAppliedFresh`).
+type CallForm = CallSaturated | CallSaturatedFresh | CallPartial([Int]) | CallSubstrateHoled([Int])
 
 // Where a call stands. A call at a STAGE — a `|>`'s right side, a `<|`
 // branch — is handed the piped value, and where its callee's arrow is not
@@ -5397,7 +5408,7 @@ fn site_is_operand(site) = match site {
 }
 
 fn form_holes(form) = match form {
-  CallSaturated => [],
+  CallSaturated | CallSaturatedFresh => [],
   CallPartial(cells) => cells,
   CallSubstrateHoled(cells) => cells,
 }
@@ -5406,6 +5417,7 @@ fn form_holes(form) = match form {
 // and the gradient to read.
 fn form_shape(form) = match form {
   CallSaturated => CallApplied,
+  CallSaturatedFresh => CallAppliedFresh,
   CallPartial(_) => CallSuspended,
   CallSubstrateHoled(_) => CallSuspended,
 }
@@ -5419,7 +5431,7 @@ fn infer_call_expr(func, args, handle, span: ValidSpan, site) = match infer_call
   // is completed in place and mints nothing, which is why the pipe judges
   // its stage through `infer_call_node` alone.
   CallPartial(_) => inf_add_row_at(handle, construction_row()),
-  CallSaturated => (),
+  CallSaturated | CallSaturatedFresh => (),
   CallSubstrateHoled(_) => (),
 }
 
@@ -5481,8 +5493,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
   // pipe stage mismatched (14 census sites). An under-applied or holed
   // seq-op call is the product-with-holes like any other call.
   if reaches_substrate(func) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(func)) {
-    infer_seq_op(cname, func, args, handle, span)
-    CallSaturated
+    if infer_seq_op(cname, func, args, handle, span) { CallSaturatedFresh } else { CallSaturated }
   }
   // A HOLED/under-applied substrate call is the product-with-holes built
   // from the FACE (seq_op_sig — the same one home the saturated path
@@ -6408,7 +6419,7 @@ fn inlinable_lambda_arity(node, n) = match graph_node_body(node) {
 fn infer_stage(stage, arity) = match graph_node_body(stage) {
   NExpr(CallExpr(rf, rargs)) => match infer_call_node(rf, rargs, stage, graph_span_of(stage), AtStage) {
     CallPartial(_) => (),
-    CallSaturated => (),
+    CallSaturated | CallSaturatedFresh => (),
     CallSubstrateHoled(_) => (),
   },
   // A bare name standing as a stage is its call (SYNTAX §«|> — converge»).
@@ -6776,12 +6787,12 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
   // own: what the scope held before it is older than every store inside.
   let projection = projection_of_effects(map(eff_name_str, arm_names))
   let opens_arena = install_opens_arena(projection)
-  if opens_arena { ages_depth(1) } else { () }
+  if opens_arena { ages_arena_open() } else { () }
   inf_enter_fn(body_row_h, span, [])
   inf_mark_install_frame(arm_names)
   infer_expr(left)
   exit_frame()
-  if opens_arena { ages_depth(-1) } else { () }
+  let roots = if opens_arena { ages_arena_close() } else { None }
   infer_expr(right)
   install_own_op_check(hd, arm_names, right)
   let attach = install_reason(hd, right, span)
@@ -6844,6 +6855,14 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
     // declaration, so the body's row passes through.
     None => inf_add_row_at(handle, body_row),
   }
+  // What may root an arena's extent is the one fact of an install no edge
+  // carries: its handler expression is the node's right side, and its config
+  // is the product written there (`install_config`), which the lowering and
+  // the emit read where they stand.
+  match roots {
+    Some(rs) => graph_arena_roots_note(handle, rs),
+    None => (),
+  }
   graph_bind(handle, TVar(left), born)
 }
 
@@ -6871,6 +6890,13 @@ fn install_mutation(site, right, residual) = match tee_handler_decl(right) {
   None => residual,
 }
 
+// The config an install hands its handler, written first into the install
+// record before the state's inits: the product the judgment wrote at the
+// handler expression. A `~> handler(args)` install carries it at the call
+// node; a bare `~> handler` of a configured handler carries the zero-argument
+// product at the reference, every field filled from its declared default
+// (`note_bare_handler_product`); a handler without config, or a tee over a
+// plain function value, has none.
 fn install_config(right) = match graph_product_at(right) {
   ProductOf(nodes, _, _) => nodes,
   NoProduct => [],
@@ -9439,15 +9465,25 @@ fn rows_copy_rest(eb, ec, names, span: ValidSpan, reason) = match eb {
 // frame around it, a nested fn declared there: memory older than the
 // closure's frame, whose age the frame holding the closure reads at its own
 // (`binder_mutation`), so the closure's claim names the binder.
-type StoreTarget = TgParam(Int) | TgState(Int) | TgCapture(Int) | TgOlder
+// A target older than the scope carries the arena depth it was bound at: a
+// let bound at depth `d` predates the arenas opened since, and memory the
+// scope never bound (a parameter read past an arena, a module value, a part
+// of another value) predates them all (0).
+type StoreTarget = TgParam(Int) | TgState(Int) | TgCapture(Int) | TgOlder(Int)
 
 // What a scope is to a store: a declared function with its parameters, a
 // closure with its own (whose captures predate any call of it), or a
 // handler's arms with its state fields and its config parameters.
 type AgeScopeKind = AgeFn([Int]) | AgeClosure([Int]) | AgeArm(String, [Int], [Int])
 
+// An arena the scope holds open: the stores noted so far that may root it
+// from outside (the site and the stored cell, or 0 for a store the exit
+// cannot read as a value), and whether what may root it is unknown.
+type OpenArena = {roots: [(Int, Int)], unknown: Bool}
+
 // A scope being judged: its kind, the lets it bound with the depth of the
-// arenas it had opened around each, the depth now, the parameter stores it
+// arenas it had opened around each, the arenas it holds open now (innermost
+// last, each with what was noted of it), the parameter stores it
 // has noted for an arena, the parameters it writes, the captures it writes,
 // whether it ticks a line its own record owns, whether it writes memory
 // older than itself beyond those (`older`), the parameters it applies with
@@ -9459,10 +9495,10 @@ type AgeScopeKind = AgeFn([Int]) | AgeClosure([Int]) | AgeArm(String, [Int], [In
 // it: memory older than the frame, and the frame's parameters it may be.
 type AgeScope = {
   applies: [(Int, [Handed])],
+  arenas: [OpenArena],
   branches: [(Int, [Int])],
   captures: [Int],
   deferred: [(Int, Int, [(Bool, [Int])])],
-  depth: Int,
   kind: AgeScopeKind,
   lets: [(Int, Int)],
   mutated: [Int],
@@ -9523,10 +9559,10 @@ handler store_ages(seed: AgesSeed) with scopes = seed.scopes, groups = seed.grou
     scopes,
     AgeScope({
       applies: [],
+      arenas: [],
       branches: [],
       captures: [],
       deferred: [],
-      depth: 0,
       kind,
       lets: [],
       mutated: [],
@@ -9735,12 +9771,12 @@ fn add_index(acc, i) = if index_in(acc, i) { acc } else { push(acc, i) }
 
 fn target_is_param(t) = match t {
   TgParam(_) => true,
-  TgState(_) | TgCapture(_) | TgOlder => false,
+  TgState(_) | TgCapture(_) | TgOlder(_) => false,
 }
 
 fn target_param_index(params, t) = match t {
   TgParam(b) => handle_position(params, b),
-  TgState(_) | TgCapture(_) | TgOlder => -1,
+  TgState(_) | TgCapture(_) | TgOlder(_) => -1,
 }
 
 fn store_at_index(params, entry) = match entry {
@@ -9764,41 +9800,129 @@ fn handle_is(a, b) = a == b
 // it.
 fn ages_let(h) = match ages_top() {
   Some(scope) => match scope {
-    AgeScope(r) => ages_put(AgeScope({...r, lets: push(r.lets, (h, r.depth))})),
+    AgeScope(r) => ages_put(AgeScope({...r, lets: push(r.lets, (h, len(r.arenas)))})),
   },
   None => (),
 }
 
-// An arena the scope opens around what follows (1), and closes (-1): what the
-// scope held before it is older than every store inside it.
-fn ages_depth(delta) = match ages_top() {
-  Some(scope) => match scope {
-    AgeScope(r) => ages_put(AgeScope({...r, depth: r.depth + delta})),
+// An arena the scope opens around what follows, and closes: what the scope
+// held before it is older than every store inside it. The scope keeps what
+// the stores inside note of the arena (`OpenArena`), and the close answers
+// it as the install's roots (`ArenaRoots`), which the install notes once its
+// body is judged (`infer_pipe_tee_one`).
+fn ages_arena_open() = match ages_top() {
+  Some(AgeScope(r)) => ages_put(AgeScope({...r, arenas: push(r.arenas, OpenArena{roots: [], unknown: false})})),
+  None => (),
+}
+
+fn ages_arena_close() = match ages_top() {
+  Some(AgeScope(r)) => match last(r.arenas) {
+    OpenArena(e) => {
+      ages_put(AgeScope({...r, arenas: drop_last(r.arenas)}))
+      Some(open_roots(e))
+    },
+  },
+  None => None,
+}
+
+// What the stores inside the extent said of it: unknown where one could not
+// be placed, free where none targeted older memory, else the stores that did.
+fn open_roots(e) =
+  if e.unknown { RootsUnknown } else if len(e.roots) == 0 { RootsFree } else { RootedAt(e.roots) }
+
+// Every arena the scope holds open is declared unknown: a write the scope
+// cannot place, a function applied that nothing names, a member of its own
+// group called before the group's claims are said. Guarded, since an
+// application nothing names is common in a judgment and a walk over an
+// empty list still allocates its iterator.
+fn ages_arenas_unknown() = match ages_top() {
+  Some(AgeScope(r)) => if len(r.arenas) > 0 { ages_put(AgeScope({...r, arenas: map(open_unknown, r.arenas)})) } else { () },
+  None => (),
+}
+
+fn open_unknown(e) = match e {
+  OpenArena(o) => OpenArena({...o, unknown: true}),
+}
+
+// One store that may root every arena opened since depth `d`: the site, and
+// each cell its leaf is read from, or 0 for a store the exit cannot read as
+// a value (a raw store, a line's tick), which roots whatever it writes. A
+// scope with no arena open past `d` notes nothing and allocates nothing.
+fn ages_roots_note(site, cells, d) = match ages_top() {
+  Some(AgeScope(r)) => if len(r.arenas) > d {
+    ages_put(AgeScope({...r, arenas: map(root_into(site, cells, d, ??), enumerate(r.arenas))}))
+  } else {
+    ()
   },
   None => (),
 }
 
-// A store of values of the cells' types into the value at `target_h`.
-fn ages_store(target_h, cells) = match ages_top() {
-  Some(scope) => each(ages_settle(scope, cells, ??), store_targets(target_h, scope, ToArena)),
+fn root_into(site, cells, d, pair) = match pair {
+  (i, OpenArena(o)) => if i >= d {
+    OpenArena({...o, roots: o.roots ++ map(root_pair(site, ??), cells)})
+  } else {
+    OpenArena(o)
+  },
+}
+
+fn root_pair(site, cell) = (site, cell)
+
+// Whether the scope holds an arena open: the roots are asked only then.
+fn scope_holds_arenas(scope) = match scope {
+  AgeScope(r) => len(r.arenas) > 0,
+}
+
+// A store of values of the cells' types into the value at `target_h`, made
+// at `site`: a target older than an arena open here roots that arena, and
+// each cell is read as a move where the target may be older.
+fn ages_store(site, target_h, cells) = match ages_top() {
+  Some(scope) => each(ages_settle(site, scope, cells, ??), store_targets(target_h, scope, ToArena)),
   None => each(demand_move, cells),
 }
 
-// A store into a binder itself — a state commit's. A commit into the arm's
-// own state is already the field's write (`StateFact.writes`, noted before
-// any arm was judged), so it notes nothing more: the install reads it there.
-fn ages_store_binder(b, cells) = match ages_top() {
-  Some(scope) => each(commit_settle(scope, cells, ??), binder_targets(b, scope, ToArena)),
+// A list slot's store (`list_set`), the one store the emitter can write with
+// no barrier: where no target is older than the extent the store stands in
+// (memory its own frame allocated since the innermost arena it holds open,
+// or since the frame began where it holds none), the slot is younger than
+// every arena open at the store. The answer rides the call's own shape
+// (`CallAppliedFresh`), so no cell is written for it. A transport (a
+// callee's store into its parameter, asked at the call) and a commit keep
+// their barrier whatever the walk finds.
+fn ages_list_store(site, target_h, cells) = match ages_top() {
+  Some(scope) => {
+    let targets = store_targets(target_h, scope, ToArena)
+    each(ages_settle(site, scope, cells, ??), targets)
+    len(targets) == 0
+  },
+  None => {
+    each(demand_move, cells)
+    false
+  },
+}
+
+// A store into a binder itself — a state commit's, at the value's node. A
+// commit into the arm's own state is already the field's write
+// (`StateFact.writes`, noted before any arm was judged), so it notes nothing
+// more: the install reads it there.
+fn ages_store_binder(site, b, cells) = match ages_top() {
+  Some(scope) => each(commit_settle(site, scope, cells, ??), binder_targets(b, scope, ToArena)),
   None => each(demand_move, cells),
 }
 
-fn commit_settle(scope, cells, t) = match t {
+fn commit_settle(site, scope, cells, t) = match t {
   TgState(_) => (),
-  TgParam(_) | TgCapture(_) | TgOlder => ages_settle(scope, cells, t),
+  TgParam(_) | TgCapture(_) | TgOlder(_) => ages_settle(site, scope, cells, t),
 }
 
-fn ages_settle(scope, cells, t) = match t {
-  TgOlder | TgCapture(_) => each(demand_move, cells),
+fn ages_settle(site, scope, cells, t) = match t {
+  TgOlder(d) => {
+    each(demand_move, cells)
+    ages_roots_note(site, cells, d)
+  },
+  TgCapture(_) => {
+    each(demand_move, cells)
+    ages_roots_note(site, cells, 0)
+  },
   TgParam(b) => match ages_top() {
     Some(now) => match now {
       AgeScope(r) => ages_put(AgeScope({...r, stores: push(r.stores, (b, cells))})),
@@ -9808,7 +9932,10 @@ fn ages_settle(scope, cells, t) = match t {
   TgState(b) => match scope {
     AgeScope(r) => match r.kind {
       AgeArm(_, _, _) => state_store_note(b, cells),
-      AgeFn(_) | AgeClosure(_) => each(demand_move, cells),
+      AgeFn(_) | AgeClosure(_) => {
+        each(demand_move, cells)
+        ages_roots_note(site, cells, 0)
+      },
     },
   },
 }
@@ -9827,8 +9954,23 @@ fn ages_mutation(site, target_h) = match ages_top() {
   Some(scope) => {
     frame_settle(site, scope, store_targets(target_h, scope, ToFrame))
     branch_mutation(site, target_h)
+    if scope_holds_arenas(scope) {
+      each(raw_root(site, ??), store_targets(target_h, scope, ToArena))
+    } else {
+      ()
+    }
   },
   None => (),
+}
+
+// A write the exit cannot read as a value — a raw store, a callee's write
+// into a parameter — roots every arena its target predates, whatever it
+// writes (cell 0). A parameter of the scope's own at depth zero predates no
+// arena, and deeper it reads as older.
+fn raw_root(site, t) = match t {
+  TgOlder(d) => ages_roots_note(site, [0], d),
+  TgCapture(_) | TgState(_) => ages_roots_note(site, [0], 0),
+  TgParam(_) => (),
 }
 
 // Which extent a target is read against: an arena open around the store (the
@@ -9862,17 +10004,17 @@ fn frame_settle(site, scope, targets) = {
 
 fn param_written(t) = match t {
   TgParam(b) => ages_note_mutated(b),
-  TgState(_) | TgCapture(_) | TgOlder => (),
+  TgState(_) | TgCapture(_) | TgOlder(_) => (),
 }
 
 fn older_noted(t) = match t {
   TgCapture(b) => ages_note_capture(b),
-  TgOlder | TgState(_) => ages_note_older(),
+  TgOlder(_) | TgState(_) => ages_note_older(),
   TgParam(_) => (),
 }
 
 fn older_than_frame(scope, t) = match t {
-  TgOlder | TgCapture(_) => true,
+  TgOlder(_) | TgCapture(_) => true,
   TgParam(_) => false,
   TgState(b) => len(store_targets(b, scope, ToFrame)) > 0,
 }
@@ -9882,6 +10024,7 @@ fn older_than_frame(scope, t) = match t {
 fn ages_mutate_older(site) = {
   inf_add_row_at(site, mutate_row())
   ages_note_older()
+  ages_arenas_unknown()
 }
 
 fn ages_note_older() = match ages_top() {
@@ -9889,9 +10032,14 @@ fn ages_note_older() = match ages_top() {
   None => (),
 }
 
-fn ages_note_opaque() = match ages_top() {
-  Some(AgeScope(r)) => if r.opaque { () } else { ages_put(AgeScope({...r, opaque: true})) },
-  None => (),
+// An application nothing names: the scope is opaque, and every arena it
+// holds open may be rooted by what the application wrote.
+fn ages_note_opaque() = {
+  ages_arenas_unknown()
+  match ages_top() {
+    Some(AgeScope(r)) => if r.opaque { () } else { ages_put(AgeScope({...r, opaque: true})) },
+    None => (),
+  }
 }
 
 fn ages_note_record() = match ages_top() {
@@ -9911,9 +10059,12 @@ fn ages_note_capture(b) = match ages_top() {
 // The scope applies its own parameter `p`, handing each slot a parameter of
 // its own or nothing it can name; a caller reads what the function it hands
 // at `p` writes, by the age of what reaches it.
-fn ages_note_applies(p, handed) = match ages_top() {
-  Some(AgeScope(r)) => ages_put(AgeScope({...r, applies: push(r.applies, (p, handed))})),
-  None => (),
+fn ages_note_applies(p, handed) = {
+  ages_arenas_unknown()
+  match ages_top() {
+    Some(AgeScope(r)) => ages_put(AgeScope({...r, applies: push(r.applies, (p, handed))})),
+    None => (),
+  }
 }
 
 // The position of a binder among the scope's own parameters — a declared
@@ -10199,7 +10350,7 @@ fn leaf_claim(leaf, value_h, depth) = if depth > 8 {
         },
         None => None,
       },
-      ProductOf(_, _, CallApplied) => match partial_decl(callee) {
+      ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) => match partial_decl(callee) {
         Some(d) => match graph_store_claim_of(d) {
           Some(StoreClaim(s)) => if len(s.returned) == 0 {
             None
@@ -10436,7 +10587,7 @@ fn partial_over_member(h) = match graph_node_body(h) {
         None => None,
       },
     },
-    ProductOf(_, _, CallApplied) | NoProduct => None,
+    ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) | NoProduct => None,
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => None,
@@ -10488,15 +10639,20 @@ fn ages_note_deferred(site, callee, args) = {
 // as older. A closure's deferred call is settled by the function declaring
 // it, so what the closure hands — its own parameters, its captures — is older
 // to that function or nothing it can name: the ages it records say so.
-fn ages_note_deferred_aged(site, callee, args) = match ages_top() {
-  Some(scope) => match scope {
-    AgeScope(r) => match r.kind {
-      AgeFn(params) => ages_put(AgeScope({...r, deferred: push(r.deferred, (site, callee, map(handed_age(scope, params, ??), args)))})),
-      AgeClosure(params) => ages_put(AgeScope({...r, deferred: push(r.deferred, (site, callee, map(closure_handed_age(scope, params, ??), args)))})),
-      AgeArm(_, _, _) => (),
+fn ages_note_deferred_aged(site, callee, args) = {
+  // What the member writes is not said yet, so every arena open here may be
+  // rooted by it.
+  ages_arenas_unknown()
+  match ages_top() {
+    Some(scope) => match scope {
+      AgeScope(r) => match r.kind {
+        AgeFn(params) => ages_put(AgeScope({...r, deferred: push(r.deferred, (site, callee, map(handed_age(scope, params, ??), args)))})),
+        AgeClosure(params) => ages_put(AgeScope({...r, deferred: push(r.deferred, (site, callee, map(closure_handed_age(scope, params, ??), args)))})),
+        AgeArm(_, _, _) => (),
+      },
     },
-  },
-  None => (),
+    None => (),
+  }
 }
 
 fn handed_age(scope, params, arg) = match arg {
@@ -10513,7 +10669,7 @@ fn arg_age(scope, params, ah) =
 
 fn add_target_age(scope, params, age, t) = match age {
   (older, ps) => match t {
-    TgOlder | TgCapture(_) => (true, ps),
+    TgOlder(_) | TgCapture(_) => (true, ps),
     TgParam(b) => (older, add_index(ps, handle_position(params, b))),
     TgState(b) => if len(store_targets(b, scope, ToFrame)) > 0 { (true, ps) } else { age },
   },
@@ -10676,19 +10832,24 @@ fn stage_row(site, stage, piped, crow) = match stage_application(stage, [piped])
 // answering it — so the race rule reads it off their row.
 fn tick_mutation(handle) = match ages_top() {
   Some(scope) => match scope {
-    AgeScope(r) => match r.kind {
-      AgeArm(_, _, _) => {
-        graph_row_note(handle, mutate_row())
-        ages_note_mutated(handle)
-      },
-      AgeFn(_) => {
-        inf_add_row_owner_at(handle, mutate_row())
-        ages_note_older()
-      },
-      AgeClosure(_) => {
-        inf_add_row_owner_at(handle, mutate_row())
-        ages_note_record()
-      },
+    AgeScope(r) => {
+      match r.kind {
+        AgeArm(_, _, _) => {
+          graph_row_note(handle, mutate_row())
+          ages_note_mutated(handle)
+        },
+        AgeFn(_) => {
+          inf_add_row_owner_at(handle, mutate_row())
+          ages_note_older()
+        },
+        AgeClosure(_) => {
+          inf_add_row_owner_at(handle, mutate_row())
+          ages_note_record()
+        },
+      }
+      // The line predates every arena the scope holds open, so the tick
+      // roots each of them with what its barrier journals.
+      ages_roots_note(handle, [0], 0)
     },
   },
   None => (),
@@ -10735,13 +10896,13 @@ fn store_targets(h, scope, view) = match graph_node_body(h) {
     // function's, the module's own.
     None => match graph_ref_decl(h) {
       Some(d) => let_targets(d, scope, view),
-      None => [TgOlder],
+      None => [TgOlder(0)],
     },
   },
   NExpr(CallExpr(callee, args)) => call_targets(callee, args, scope, view),
   NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, [left]) {
     Some((callee, args)) => call_targets(callee, args, scope, view),
-    None => [TgOlder],
+    None => [TgOlder(0)],
   },
   // A store into a part of a value is a store into memory the whole reaches:
   // a product built here is its parts' memory, a part read off a value is
@@ -10759,7 +10920,7 @@ fn store_targets(h, scope, view) = match graph_node_body(h) {
   NExpr(BlockExpr(_, f)) => store_targets(f, scope, view),
   NExpr(IfExpr(_, t, e)) => store_targets(t, scope, view) ++ store_targets(e, scope, view),
   NExpr(MatchExpr(_, arms)) => flat_map(arm_targets(scope, view, ??), arms),
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [TgOlder],
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [TgOlder(0)],
 }
 
 fn field_targets(scope, view, field) = match field {
@@ -10777,25 +10938,25 @@ fn binder_targets(b, scope, view) = match scope {
   AgeScope(r) => match graph_binder_of(b) {
     Some(fact) => match fact {
       ParamFact(_) => match r.kind {
-        AgeFn(params) => if view_owns_binders(view, r.depth) && any(handle_is(b, ??), params) {
+        AgeFn(params) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), params) {
           [TgParam(b)]
         } else {
-          [TgOlder]
+          [TgOlder(0)]
         },
         AgeClosure(params) => if any(handle_is(b, ??), params) {
-          if view_owns_binders(view, r.depth) { [TgParam(b)] } else { [TgOlder] }
+          if view_owns_binders(view, len(r.arenas)) { [TgParam(b)] } else { [TgOlder(0)] }
         } else {
           capture_target(view, b)
         },
-        AgeArm(_, _, _) => [TgOlder],
+        AgeArm(_, _, _) => [TgOlder(0)],
       },
       StateFact(_) => match r.kind {
-        AgeArm(_, states, _) => if view_owns_binders(view, r.depth) && any(handle_is(b, ??), states) {
+        AgeArm(_, states, _) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), states) {
           [TgState(b)]
         } else {
-          [TgOlder]
+          [TgOlder(0)]
         },
-        AgeFn(_) => [TgOlder],
+        AgeFn(_) => [TgOlder(0)],
         AgeClosure(_) => capture_target(view, b),
       },
       // A part taken off a value is the value's memory.
@@ -10817,17 +10978,17 @@ fn binder_targets(b, scope, view) = match scope {
 // reads it as older, since the closure's frame allocated none of it.
 fn capture_target(view, b) = match view {
   ToFrame => [TgCapture(b)],
-  ToArena | ToBranch(_) => [TgOlder],
+  ToArena | ToBranch(_) => [TgOlder(0)],
 }
 
 fn let_targets(b, scope, view) = match scope {
   AgeScope(r) => match find(let_at(b, ??), r.lets) {
     Some(found) => match found {
-      (_, d) => if view_owns_let(view, b, d, r.depth) { store_targets(b, scope, view) } else { [TgOlder] },
+      (_, d) => if view_owns_let(view, b, d, len(r.arenas)) { store_targets(b, scope, view) } else { [TgOlder(d)] },
     },
     None => match r.kind {
       AgeClosure(_) => capture_target(view, b),
-      AgeFn(_) | AgeArm(_, _, _) => [TgOlder],
+      AgeFn(_) | AgeArm(_, _, _) => [TgOlder(0)],
     },
   },
 }
@@ -10842,7 +11003,7 @@ fn let_at(b, entry) = match entry {
 // the call.
 fn call_targets(callee, args, scope, view) = match graph_node_body(callee) {
   NExpr(VarRef(cname)) => match binder_read_by(callee) {
-    Some(_) => [TgOlder],
+    Some(_) => [TgOlder(0)],
     None => if cname == "alloc" {
       []
     } else if cname == "addr_at" {
@@ -10851,25 +11012,25 @@ fn call_targets(callee, args, scope, view) = match graph_node_body(callee) {
       match callee_summary(callee) {
         Some(StoreClaim(s)) => match s.returns {
           Some(idxs) => flat_map(arg_targets(args, scope, view, ??), idxs),
-          None => [TgOlder],
+          None => [TgOlder(0)],
         },
-        None => [TgOlder],
+        None => [TgOlder(0)],
       }
     },
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => [TgOlder],
+  | NRow(_) | NParam(_) => [TgOlder(0)],
 }
 
 fn arg_targets(args, scope, view, i) = if i >= 0 && i < len(args) {
   let ah = list_index(args, i)
   match graph_node_body(ah) {
-    NExpr(LabeledArg(_, _)) => [TgOlder],
+    NExpr(LabeledArg(_, _)) => [TgOlder(0)],
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => store_targets(ah, scope, view),
   }
 } else {
-  [TgOlder]
+  [TgOlder(0)]
 }
 
 // A call into a declared function asks every parameter the function stores
@@ -10881,16 +11042,16 @@ fn ages_call(site, callee_h, cname: String, arg_handles) = match raw_store_targe
   RsAll => ages_mutate_older(site),
   RsNone => {
     match callee_summary(callee_h) {
-      Some(StoreClaim(s)) => each(ages_transport(arg_handles, ??), s.stores),
+      Some(StoreClaim(s)) => each(ages_transport(site, arg_handles, ??), s.stores),
       None => (),
     }
     ages_mutation_call(site, callee_h, arg_handles)
   },
 }
 
-fn ages_transport(args, entry) = match entry {
+fn ages_transport(site, args, entry) = match entry {
   (i, cells) => if i >= 0 && i < len(args) {
-    ages_store(list_index(args, i), cells ++ [list_index(args, i)])
+    ages_store(site, list_index(args, i), cells ++ [list_index(args, i)])
   } else {
     each(demand_move, cells)
   },
@@ -15217,7 +15378,7 @@ fn source_leaf(src) = match src {
 // completed by the piped value.
 fn application_of(h) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => match graph_product_at(h) {
-    ProductOf(nodes, _, CallApplied) => match fn_leaves(callee) {
+    ProductOf(nodes, _, CallApplied) | ProductOf(nodes, _, CallAppliedFresh) => match fn_leaves(callee) {
       [one] => Some((one, nodes)),
       _ => None,
     },

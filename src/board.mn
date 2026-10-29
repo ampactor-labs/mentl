@@ -213,6 +213,18 @@ fn board_bounds() = [
   // declaration whose own module and span hold it, a read that indexes no
   // list.
   Bound({ceiling: 137, question: QVerifyDebt}),
+  // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
+  // §4⑨): an install whose body applies a function nothing names (a field
+  // of a parameter, a value out of sight), writes memory nothing names, or
+  // calls a member of its own group before the group's claims are said, so
+  // its exit keeps what it cannot read instead of carrying the witness a
+  // root-free extent carries. Born 2026-10-29 at the measured count, 29 of
+  // the wheel's arena installs, most of them bodies that call through a
+  // record's function-typed field, the read PLAN §11.3 owes
+  // (`Hβ.verify.higher-order-refinement`). Falls as the claim machinery
+  // reads through what it cannot name today; the landing that makes an
+  // install root-free names it.
+  Bound({ceiling: 29, question: QCensus(CsArenaUnknown)}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, eleven lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned
