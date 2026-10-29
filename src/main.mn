@@ -1548,7 +1548,11 @@ fn test_check_run(entry_module) =
 // L:C at L2:C2` is the reference edge's: the name at L:C reads the
 // declaration that stands at L2:C2. `// rename L:C to NEW: N name(s)` is the
 // rename verb's, decided as the verb decides it with nothing written: the
-// names it writes, or `refuses <word>` for why it writes none.
+// names it writes, or `refuses <word>` for why it writes none. `// at L:C:
+// <shape>` is the caret's topology facet at the operator standing at L:C:
+// the shape the verb carries there, in the short form `show_shape_want`
+// writes (`<| x 2`, `>< 2 Seq`, `|> 2 product`, `~> rack Distort`, `<~ 1
+// stage`), so the sentence's voice may change without a fixture moving.
 type Expect
   // the exit, and the prefix of the line a stop must say on fd 2 ("" when
   // the contract names none)
@@ -1562,6 +1566,7 @@ type Expect
   | ExpectDeclared(Int, Int, Int, Int)
   | ExpectRename(Int, Int, String, String)
   | ExpectCanonical
+  | ExpectAt(Int, Int, String)
 
 // A teach fixture's contract (D4): what the gradient answers at the
 // declaration on line L — one proven annotation whose source is the text,
@@ -1593,6 +1598,8 @@ fn battery_expect(src) = {
     Some(ExpectUnreachable(battery_line_rest(src, 16, 16)))
   } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// refs of ") {
     battery_refs_expect(src)
+  } else if byte_len(src) >= 6 && str_eq(str_slice(src, 0, 6), "// at ") {
+    battery_at_expect(src)
   } else if byte_len(src) >= 12 && str_eq(str_slice(src, 0, 12), "// declared ") {
     battery_declared_expect(src)
   } else if byte_len(src) >= 10 && str_eq(str_slice(src, 0, 10), "// rename ") {
@@ -1716,6 +1723,16 @@ fn battery_declared_expect(src) = {
   let dline = battery_expect_digits(src, at_start, 0)
   let dcol_start = battery_skip_digits(src, at_start) + 1
   Some(ExpectDeclared(line, col, dline, battery_expect_digits(src, dcol_start, 0)))
+}
+
+// `// at L:C: <shape>` — the address, then the shape's short form after the
+// colon and one space.
+fn battery_at_expect(src) = {
+  let line = battery_expect_digits(src, 6, 0)
+  let col_start = battery_skip_digits(src, 6) + 1
+  let col = battery_expect_digits(src, col_start, 0)
+  let want_start = battery_skip_digits(src, col_start) + 2
+  Some(ExpectAt(line, col, battery_line_rest(src, want_start, want_start)))
 }
 
 // `// rename L:C to NEW: <want>` — the address, the name to its colon, the
@@ -1896,6 +1913,62 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
   }
 )
 
+// THE CARET'S SHAPE AT AN OPERATOR: the topology facet's own-verb frame at
+// the address, compared in the short form the contract is written in.
+fn battery_at_step(stem, path: String, line, col, want: String) = battery_view(
+  path,
+  line,
+  col,
+  {
+    None => {
+      print_string("FAIL(at) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+      1
+    },
+    Some((_, view)) => match view {
+      CursorView(_, _, topology, _, _, _, _, _) => {
+        let got = shape_want_of(topology)
+        if str_eq(got, want) {
+          print_string("PASS {stem}: at {int_to_str(line)}:{int_to_str(col)} {want}\n")
+          0
+        } else {
+          print_string("FAIL(at) {stem}: wanted {want}, got {got}\n")
+          1
+        }
+      },
+    },
+  }
+)
+
+// The shape of the verb at the caret, or `none` where the caret is not on a
+// verb: the last frame of the topology is the node's own.
+fn shape_want_of(frames) = fold("none", shape_want_step, frames)
+
+fn shape_want_step(acc, frame) = match frame {
+  VerbFrame(_, role) => match role {
+    VerbSite(shape) => show_shape_want(shape),
+    ChainSource | ChainStage(_, _) | FanBranch(_, _) | ShareBranch(_, _) | FanInput | InstallBody
+    | InstallHandler | Recurrence | FeedbackDelay => acc,
+  },
+}
+
+// The shape's short form: the verb, then its facts in order.
+fn show_shape_want(shape) = match shape {
+  ShareShape(input, n) => {
+    let what = match input {
+      Some(name) => name,
+      None => "_",
+    }
+    "<| {what} {int_to_str(n)}"
+  },
+  FanShape(n, s) => ">< {int_to_str(n)} {schedule_word(s)}",
+  ChainShape(k, n, merges) => "|> {int_to_str(k)} {int_to_str(n)}{if merges { " product" } else { "" }}",
+  InstallShape(name, effs) => if len(effs) == 0 { "~> {name}" } else { "~> {name} {join(" ", effs)}" },
+  LoopShape(depth, owner) => match depth {
+    Some(n) => "<~ {int_to_str(n)} {owner}",
+    None => "<~ _ {owner}",
+  },
+}
+
 // THE REACH BATTERY: the fixture's link judged as the query verb judges it,
 // and the names `mentl query <fixture> unreachable` lists compared to the
 // contract's, in source order. The rows are read inside the judgment that
@@ -2069,6 +2142,7 @@ fn battery_step(path: String) = {
       ExpectUnreachable(want) => battery_reach_step(stem, path_to_module(path), want),
       ExpectRefs(name, want) => battery_refs_step(stem, path_to_module(path), name, want),
       ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, path_to_module(path), line, col, dline, dcol),
+      ExpectAt(line, col, want) => battery_at_step(stem, path_to_module(path), line, col, want),
       ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
       ExpectRun(want, said) => match battery_compile(path_to_module(path), stem) {

@@ -1,0 +1,11 @@
+// at 9:18: <| x 2
+// The caret on a `<|` says what it shares and with how many branches.
+fn inc(n) = n + 1
+
+fn dbl(n) = n * 2
+
+fn main() = {
+  let x = 3
+  let (a, b) = x <| (inc, dbl)
+  a + b - 10
+}

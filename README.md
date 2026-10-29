@@ -44,8 +44,21 @@ Put the cursor on the fanout and the compiler says what it sees there:
 ```
 $ mentl examples/pulse/course/03-bus.mn:49:30
 Query: dry <| (rig.echo, rig.room) : (Float, Float)
+Topology: the <| shares `dry` with 2 branches, borrowed, so they cannot race
 Effects: e + e + e1 + e1
-Why: <| fanout — result type is branch-output tuple, at examples/pulse/course/03-bus:49
+Why: the product of the <| branches' results, the input borrowed by each, at examples/pulse/course/03-bus:49
+```
+
+One column to the right, on the `><`, and then on the first `|>`:
+
+```
+$ mentl examples/pulse/course/03-bus.mn:50:21
+Query: (echoed) >< (dry) : (Float, Float)
+Topology: the >< runs 2 branches, each owning its input, in sequence, since no schedule is installed over it, inside the source of the |> at examples/pulse/course/03-bus:50:11
+
+$ mentl examples/pulse/course/03-bus.mn:50:31
+Query: ((echoed) >< (dry)) |> mix(0.35) : Float
+Topology: the |> runs 2 stages in sequence, this one completing stage 1, and the fanout's product fills the first stage's open slots
 ```
 
 `~>` installs a handler over everything to its left. Lesson 4 writes a limiter as a handler and chains it behind the library's distortion, and the frame that calls `distort` and `tame` never says how either is done:

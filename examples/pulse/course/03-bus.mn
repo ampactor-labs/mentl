@@ -17,7 +17,7 @@
 // called on the two values directly (SYNTAX §«`|>` — converge»). The
 // operators show the shape of the bus. Put the cursor on the fanout to see it:
 //
-//   mentl examples/pulse/course/03-bus.mn:49    `<|`: two branches, the input shared
+//   mentl examples/pulse/course/03-bus.mn:49:30    the `<|`: what it shares, with how many branches
 import audio/wav
 
 import dsp/clock

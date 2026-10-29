@@ -1128,22 +1128,29 @@ The compiler's answer at each operator, from the pinned binary:
 ```
 $ mentl examples/pulse/course/03-bus.mn:49:30
 Query: dry <| (rig.echo, rig.room) : (Float, Float)
+Topology: the <| shares `dry` with 2 branches, borrowed, so they cannot race
 Effects: e + e + e1 + e1
-Why: <| fanout — result type is branch-output tuple, at examples/pulse/course/03-bus:49
+Why: the product of the <| branches' results, the input borrowed by each, at examples/pulse/course/03-bus:49
 
 $ mentl examples/pulse/course/03-bus.mn:50:21
 Query: (echoed) >< (dry) : (Float, Float)
-Topology: the source of the |> at examples/pulse/course/03-bus:50:11
+Topology: the >< runs 2 branches, each owning its input, in sequence, since no schedule is installed over it, inside the source of the |> at examples/pulse/course/03-bus:50:11
 Effects: Pure
-Why: >< parallel fanout — branches affinity-checked, at examples/pulse/course/03-bus:50
+Why: the product of the >< branches' results, each branch owning its input, at examples/pulse/course/03-bus:50
+
+$ mentl examples/pulse/course/03-bus.mn:50:31
+Query: ((echoed) >< (dry)) |> mix(0.35) : Float
+Topology: the |> runs 2 stages in sequence, this one completing stage 1, and the fanout's product fills the first stage's open slots
+Effects: Pure
 
 $ mentl examples/pulse/course/03-bus.mn:63:5
 Query: { : ()
-Topology: the body the ~> governs at examples/pulse/course/03-bus:58:3
+Topology: the ~> installs `stdout_console` over everything to its left, answering Console, inside the body the ~> governs at examples/pulse/course/03-bus:58:3
 Effects: Memory + Alloc + Sample(48000) + Trap + Mutate + WASI
 
 $ mentl examples/pulse/course/02-line.mn:44
 Query: { prev => a * x + (1.0 - a) * prev } <~ delay(1) : Float
+Topology: the <~ feeds back the output 1 tick ago; its line is owned by `stage` and allocated once
 Effects: Mutate
 Why: through <~, at examples/pulse/course/02-line:44
 ```
@@ -1154,7 +1161,7 @@ Lesson 4 (`04-rack.mn`) writes a limiter as a handler and chains it behind the l
 
 **The developer's loop.** Write the shape; `mentl check` prints nothing; the caret on an operator says its shape; `mentl why` names where an effect enters and `mentl where` the schedule the install edge carries; a hole proposes the proven survivors and asks only at a tie (`mentl examples/pulse/course/08-hole.mn:50:76` proposes the one stage that fits, and `mentl accept` writes it); a refusal names the path (`mentl check examples/grid/station-leak.mn`); `mentl rename` moves a name through every edge; `mentl run` renders the sound. Every claim in this paragraph is a command that runs on the pinned binary today.
 
-**Today's distance from the ultimate form, measured at the cursor.** The caret explains `~>` and `<~` with a Topology line in plain words, and does not do the same for `<|`, `><` and `|>`: at the fanout it prints no Topology line and its Why line reads "<| fanout — result type is branch-output tuple", at `><` it reads "branches affinity-checked", and the Effects line at a site whose row is still open prints variables, `e + e + e1 + e1`, which a newcomer cannot read. `mentl teach` narrates the annotation gradient (§«Gradient narration»), and prints "(no next-step annotation)" for every declaration that has nothing to unlock, nine of ten in lesson 3. The landing that closes this distance is one sentence of PLAN §11.7: the caret says each verb's shape in one plain sentence, naming the fact the verb carries, the borrow at `<|`, the ownership and the schedule at `><`, the slots the product fills at `|>`, the row the install absorbs and charges at `~>`, the depth and the owner of the line at `<~`; the Why lines for the verbs are rewritten in the same voice; an open row is said in words; and `teach` names only the declarations that have a next step. The rest of the distance is the PLAN §11 steps the table cites, in PLAN's order, and this section adds no list of its own.
+**What the cursor says today, and what it does not yet.** Each of the five operators answers at the caret with one sentence naming the fact it carries, as the block above shows: the borrow at `<|`, the ownership and the schedule at `><`, the stage completed and the slots the product fills at `|>`, the handler and the effects its arms answer at `~>`, the depth and the owner of the line at `<~`. A fixture states what the caret must say at an operator with `// at L:C: <shape>` (tests/micros/mn-shape-*.mn), in a short form of the shape, so the sentence's voice may change without a fixture moving. `mentl teach` narrates the annotation gradient (§«Gradient narration»), names the declarations that have a next step, and says once which have none ("nothing to unlock in seconds, note_hz, shape, frame, build_rig, main" on lesson 3). What the caret does not yet say in words: the Effects line at a site whose row is still open prints variables, `e + e + e1 + e1`, which a newcomer cannot read; that is PLAN §11.1, the row whole. The rest of the distance is the PLAN §11 steps the table cites, in PLAN's order, and this section adds no list of its own.
 
 ---
 
