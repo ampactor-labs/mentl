@@ -446,6 +446,42 @@ replaced, and it follows from the design rather than being assumed. Proving
 first and extracting second is the only sound order. The effect row serves
 both halves: it decides which rewrites are legal and which candidates are.
 
+### §5.V · The verbs at the north star — three layers, and the medium derives the rest
+
+A program is written in three layers and nothing else. The shape of every
+flow is written with the five operators: `|>` runs stages in sequence, `<|`
+sends one input to several branches, `><` runs independent pipelines side by
+side, `~>` installs a handler over everything to its left, and `<~` feeds a
+value back from the previous step. So the shape on the page is the shape the
+medium holds. The claims are written on the stages: what a stage must never
+do (`with !Alloc`) and what range its values keep (`-> SpinW`). What the
+effects do is written at the right edge, as handlers, and no body says how
+an effect is handled. The medium derives the rest: each stage's row, the
+ownership of every value, the schedule of every fanout, the clock and the
+memory of every cycle, the width of every number, and the proof that every
+claim holds through every call and every handler installed anywhere, over
+time. At any operator the cursor says the shape in one plain sentence and
+names the fact it carries: the borrow at `<|`, the ownership and the
+schedule at `><`, the stage completed and the slots the product fills at
+`|>`, the handler and the effects its arms answer at `~>`, the depth and the
+owner of the line at `<~` (built 2026-10-29; `mentl
+examples/pulse/course/03-bus.mn:49:30` answers "the <| shares `dry` with 2
+branches, borrowed, so they cannot race").
+
+SYNTAX §«Composing the five» is the canon: one shape per operator with what
+the medium derives when it is written, twelve rules for writing with the
+five, lesson 3 of the course as the whole program with the cursor's answer
+at each operator, and the distance between this picture and the artifact,
+each row citing the §11 step that closes it. Every example of the syntax,
+anywhere, is a real program in this repository, in canonical layout, with
+the medium's answer at that site quoted from the pin (CLAUDE.md, "How to
+talk about Mentl"). The wheel is the first program held to this canon. Much
+of it was written before the canon and reads as its counter-example: index
+loops where a pipeline over a sequence belongs, flags where a handler
+belongs, tuples built by hand and taken apart on the next line. The census
+measures that drift, step 5's `tighten` rewrites it (§11.5), and none of it
+is a style to copy into new code.
+
 ### §5.U · The value layer — one record read at four altitudes
 
 A handler, its state, a closure, evidence, a continuation, a branch thunk, a
@@ -664,7 +700,12 @@ as unknown, never as passing.
   `E_ThreadedBranchEffect` refuses a stateful handler that a branch reaches, a
   store that a branch makes into memory older than itself, and code reached
   by a branch that writes memory older than its own frame. SIMD and GPU run
-  their branches one after another. A function value's writes are read
+  their branches one after another. A program that starts no thread and
+  performs no shared-memory operation owns an unshared memory, so an engine
+  needs only tail calls and bulk memory to host it, and the compiler is such
+  a program (pin f2721cd5). A program that waits on an address keeps its
+  memory shared (tests/micros/mn-shared-memory-wait-keeps-shared.mn). A
+  function value's writes are read
   through its claim, written where its judgment ends. The claim places its
   parameters by the arguments a call passes, a capture by the binder's age in
   the frame that holds the value, its own feedback line by the value's age,
@@ -677,6 +718,18 @@ as unknown, never as passing.
   `parallel_compose`'s arms are emitted once, at the word face, so a branch
   that answers a Float traps where its join is read at the site's face
   (§11.2).
+- **The caret says an open row as its variables** (§11.1): at lesson 3's
+  fanout, `mentl examples/pulse/course/03-bus.mn:49:30`, the Effects line
+  prints `e + e + e1 + e1`, the branches' row variables, which a newcomer
+  cannot read, while the Topology and Why lines at the same site say the
+  shape in words (measured 2026-10-29).
+- **A hole's candidates come from its type and the module's functions, never
+  from the binders around it** (§11.5). The grid controller's rush-hour
+  power replaced by `??` fans `0`, `1` and `-1`, "inferred from the type's
+  integer inhabitants", tries the prelude's `read_one_byte` and `fs_dir_fd`
+  and refuses both at the row, and never offers `draw`, `spin_w` or `hour`,
+  which are in scope at the hole (measured 2026-10-29 on pin e4c8c79d, the
+  field summary `mentl main.mn:0` on a copy of `examples/grid/station.mn`).
 - **The judgment is one pass; schemes are still values** (§11.3): a candidate
   is judged against a version of the one live graph, and a declaration's type
   is frozen when its judgment exits.
@@ -870,6 +923,9 @@ consumes, without checking, sibling items that have no comma between them.
    structure it touches (`mentl query`, `where`, `why`, `<file:line>`).
 4. Build the landing whole, prove and pin it with `mentl land`, commit on
    main, push, and delete the item's paragraph from §11.
+5. A landing starts from a written definition of done and the check that
+   proves it, and every claim of progress is a command's output from this
+   session, never a memory.
 
 ---
 
@@ -969,7 +1025,10 @@ the last three.
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`), and an executable's
    row is the row of `main` and of its inits
-   (`Hβ.effects.executable-row-includes-inits`). Each op belongs to the
+   (`Hβ.effects.executable-row-includes-inits`). A row the judgment has not
+   yet closed at a site is said at the caret in words, naming whose rows it
+   waits on; today the caret prints its variables (`e + e + e1 + e1` at
+   lesson 3's fanout). Each op belongs to the
    effect that matches what it does
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`): the ops of a `*Write` effect write
@@ -1213,7 +1272,11 @@ the last three.
    obligations it discharges). A declaration with an authored clause is still
    offered the further locks its dependents rely on. Teach reads a lexical
    ring up the parent edge, builds calls with argument holes, and proposes a
-   record for a positional product. One obligation value is rendered once for
+   record for a positional product. The fan at a hole reaches the binders in
+   scope at the hole first (parameters, earlier lets, feedback and arm
+   binders), each offered as a reference when its type fits, then the
+   module's functions, then the imports and the prelude, with the literal
+   seeds beside them; names are ranked by proximity. One obligation value is rendered once for
    the caret, teach, audit and smt (smt asserts the negation along with its
    declarations). A declaration's Why is its signature's, and a module gets a
    lede of its own. The step also covers the self-proposal benchmark,
@@ -1416,7 +1479,15 @@ the last three.
    `Hβ.lower.schedule-through-a-value`, `Hβ.verify.the-solver-is-the-search`).
    The compiler is still emitted as a module without threads (a defined
    memory, a bump allocator, no spawn import), and this is the one pin the
-   fused oracle still needs. A handle becomes an `{arena, offset}` product
+   fused oracle still needs. The module's memory is sized by the program:
+   the heap base sits above the string table, the arena journal is sized to
+   the program's arenas or to a budget the program declares and the compiler
+   checks, and the grow step is the budget's, so `mentl compile` says the
+   number and a program that cannot prove it fits its budget is refused.
+   Today the three are the wheel's constants (a 1 MB heap base, a 2 MB
+   journal, a 16 MB grow step, `src/backends/wasm.mn`), sized for a compile
+   of the compiler, so by those constants the grid controller asks its host
+   for 18 MB before its first reading. A handle becomes an `{arena, offset}` product
    (one word, by a repr pin) that is deterministic under any order. The
    demand walk that twins a direct callee by the install's schedule follows a
    `~> h` in the demanded reach into `h`'s arms. The arm twins are keyed by
@@ -1462,6 +1533,20 @@ the last three.
    tests/frontier`). The gate keeps what no contract covers yet (a verb's
    text, an edit workflow, a project route), and each of these becomes a
    contract that the battery gains, until the gate is empty.
+   The proof travels to the host, and `docs/NATIVE.md`'s hardware handlers
+   are its final form. A module the compiler emits needs an engine with tail
+   calls and bulk memory, and threads only when the program starts one. The
+   first host is the Daisy Seed: sonido's firmware embeds the controller's
+   module under the wasmi interpreter and answers its three WASI imports
+   itself (the ear's line in through `fd_read`, the decision out through
+   `fd_write`), and the first measurement on the board, before any other
+   change, is microseconds per reading and linear memory after 300,000
+   readings. If parsing the line's text costs the 50 ms budget, the reading
+   becomes a record: `decide` is called by a handler whose arms are the
+   host's, one import per operation, the mechanism step 7 names for
+   configuration. The RP2040 (264 KB of SRAM, no FPU, 133 MHz) needs step
+   8's memory landing first and the record form as a requirement, with
+   `wasm2c` into C if an interpreter still misses the budget.
 
 ---
 
