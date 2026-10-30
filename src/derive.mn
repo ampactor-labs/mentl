@@ -756,15 +756,15 @@ fn jvp_unary(h, op, jx) = {
 
 // A primitive's partials, written once as the linear program both
 // projections read. An Int does not move with the seed, and a truncation, a
-// conversion to Int and a floor are steps whose derivative is zero wherever
-// it exists; the square root's is the tangent over twice the root, the root
-// a residual bound once.
+// conversion to Int, a floor and every operation on a word's bits are steps
+// whose derivative is zero wherever it exists; the square root's is the
+// tangent over twice the root, the root a residual bound once.
 fn jvp_prim(h, p, jargs) = match p {
   FloatSqrt => match jargs {
     [jx] => if act_rank(jv_act(jx)) == 0 { jvp_prim_step(h, p, jargs) } else { jvp_sqrt(h, jx) },
     _ => jvp_prim_step(h, p, jargs),
   },
-  FloatOfInt | FloatToInt | FloatFloor => jvp_prim_step(h, p, jargs),
+  FloatOfInt | FloatToInt | FloatFloor | I32Xor | I32Or | I32And | I32Shl | I32ShrU | I32ShrS | I32Clz => jvp_prim_step(h, p, jargs),
 }
 
 fn jvp_prim_step(h, p, jargs) = match seq_values(h, jargs) {

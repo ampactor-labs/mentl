@@ -10348,6 +10348,13 @@ fn primitive_op(p) with Pure = match p {
   FloatToInt => "i32.trunc_f64_s",
   FloatFloor => "f64.floor",
   FloatSqrt => "f64.sqrt",
+  I32Xor => "i32.xor",
+  I32Or => "i32.or",
+  I32And => "i32.and",
+  I32Shl => "i32.shl",
+  I32ShrU => "i32.shr_u",
+  I32ShrS => "i32.shr_s",
+  I32Clz => "i32.clz",
 }
 
 // A primitive's instruction at its site. The conversion the machine refuses
@@ -10362,12 +10369,12 @@ fn emit_primitive(h, p) = match p {
   } else {
     wat_emit("    ({primitive_op(p)})\n")
   },
-  FloatOfInt | FloatFloor | FloatSqrt => wat_emit("    ({primitive_op(p)})\n"),
+  FloatOfInt | FloatFloor | FloatSqrt | I32Xor | I32Or | I32And | I32Shl | I32ShrU | I32ShrS | I32Clz => wat_emit("    ({primitive_op(p)})\n"),
 }
 
 // The width a primitive's instruction leaves on the stack.
 fn primitive_repr(p) with Pure = match p {
-  FloatToInt => RI32,
+  FloatToInt | I32Xor | I32Or | I32And | I32Shl | I32ShrU | I32ShrS | I32Clz => RI32,
   FloatOfInt | FloatFloor | FloatSqrt => RF64,
 }
 

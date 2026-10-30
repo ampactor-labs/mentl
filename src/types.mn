@@ -1376,9 +1376,32 @@ type Primitive
   | FloatFloor
   // the IEEE square root: a negative argument answers NaN
   | FloatSqrt
+  // the bits of two words, combined bit by bit: exclusive or, or, and
+  | I32Xor
+  | I32Or
+  | I32And
+  // a word's bits shifted by a count taken modulo 32: left, right filling
+  // zeros, right filling the sign
+  | I32Shl
+  | I32ShrU
+  | I32ShrS
+  // the count of zero bits above a word's highest one bit, 32 for zero
+  | I32Clz
 
 // The primitives every link declares, in one roster.
-fn primitives() = [FloatOfInt, FloatToInt, FloatFloor, FloatSqrt]
+fn primitives() = [
+  FloatOfInt,
+  FloatToInt,
+  FloatFloor,
+  FloatSqrt,
+  I32Xor,
+  I32Or,
+  I32And,
+  I32Shl,
+  I32ShrU,
+  I32ShrS,
+  I32Clz
+]
 
 // The name a primitive is declared under.
 fn primitive_name(p) with Pure = match p {
@@ -1386,6 +1409,13 @@ fn primitive_name(p) with Pure = match p {
   FloatToInt => "float_to_int",
   FloatFloor => "floor",
   FloatSqrt => "sqrt",
+  I32Xor => "i32_xor",
+  I32Or => "i32_or",
+  I32And => "i32_and",
+  I32Shl => "i32_shl",
+  I32ShrU => "i32_shr_u",
+  I32ShrS => "i32_shr_s",
+  I32Clz => "i32_clz",
 }
 
 // The Boolean algebra lives as functions in effects.mn; the ADT lives
