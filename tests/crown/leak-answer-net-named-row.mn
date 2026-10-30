@@ -1,0 +1,29 @@
+// CROWN: a negation written through a named row binds the arm too. decide
+// says it never uses Outside, which holds Net, and online's arm answers its
+// price() with a fetch, an op of Net. Expect E_EffectMismatch, naming the
+// clause as written.
+effect Net {
+  fetch() -> Int
+}
+
+effect Disk {
+  read_disk() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+type Outside = Net + Disk
+
+fn decide(x) with !Outside = x + price()
+
+handler online {
+  price() => resume(fetch()),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = decide(1) ~> online ~> offline

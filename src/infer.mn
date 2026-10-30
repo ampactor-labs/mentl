@@ -6863,18 +6863,19 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
       // install's remainder through an instance of the world cell, so the
       // verdict does not wait on which of the two the program states first.
       note_world_remainder(er.world, body_row, handled_names, span)
-      inf_add_row_at(
-        handle,
-        if absorbs_arms(projection) {
-          absorb_row(
-            body_row,
-            mk_ef_closed(handled_names),
-            install_mutation(handle, right, residual_with_config_args(er.residual, er.config, right))
-          )
-        } else {
-          body_row
-        }
-      )
+      if absorbs_arms(projection) {
+        let residual = residual_with_config_args(er.residual, er.config, right)
+        // The mirror of A5: an arm runs inside the extent of the perform it
+        // answers, so the negations of the declarations below the body hold
+        // of the arm (`arms_under_negations`).
+        arms_under_negations(right, left, residual, span)
+        inf_add_row_at(
+          handle,
+          absorb_row(body_row, mk_ef_closed(handled_names), install_mutation(handle, right, residual))
+        )
+      } else {
+        inf_add_row_at(handle, body_row)
+      }
     },
     // A handler held by a value — a let, a parameter — names no handler
     // declaration, so the body's row passes through.
@@ -6889,6 +6890,338 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
     None => (),
   }
   graph_bind(handle, TVar(left), born)
+}
+
+// WHILE A DECLARATION RUNS, ITS NEGATIONS HOLD OF THE ARMS THAT ANSWER IT
+// (PLAN §11.1(a)). An arm runs inside the extent of the perform it answers,
+// so every declaration on a path from the install's body to that perform is
+// running while the arm runs, and what each one's clause negates holds of
+// the arm too. The arm's row is read off its judged body (`row_of_subtree`),
+// its present part alone: the remainder its resume runs is the install's
+// body, which A5's check judges, and a handler's state starts at the
+// install, outside every declaration below it. The check is per op: an arm
+// whose op no negating declaration performs is not read, and an arm's row
+// is read only where one does (`arm_breach`). Declarations are judged
+// before the declarations that call them (`scc_groups`), so the handler's
+// arms and every body below the install are judged here. The handler's
+// residual row holds every effect its arms and its state use, so an
+// install whose residual names nothing a declaration of the program
+// negates is done before any arm is read. A clause that names an effect is
+// a reference to the effect's declaration, so the negating declarations are
+// read off the effects' own references.
+fn arms_under_negations(right, left, residual, span) = {
+  let uses = residual_uses(residual)
+  match uses |> flat_map(effect_refs) |> flat_map(negating_owner(uses, ??)) {
+    [] => (),
+    gated => match tee_arms(right) {
+      Some(arms) => arms |> flat_map(arm_op_effect) |> name_set_canonicalize |> each(effect_answers_held(arms, gated, left, tee_handler_name(right), span, ??)),
+      None => (),
+    },
+  }
+}
+
+fn residual_uses(residual) = match resolve_row(residual) {
+  EfRow(present, _, _) => filter(not_mutate, present),
+}
+
+// The arms that answer one effect, against the negating declarations; each
+// declaration counts where a call from the install's body reaches it with
+// no install between that answers the effect.
+fn effect_answers_held(arms, gated, left, hname: String, span, e) = {
+  let answering = filter(answers_effect(e, ??), arms)
+  let reach = {done: wmap_new(16), eff: e, reached: wmap_new(64)}
+  gated |> each(negating_decl_held(answering, left, reach, hname, span, ??))
+}
+
+fn answers_effect(e, arm) = name_set_contains(arm_op_effect(arm), e)
+
+fn effect_refs(f) = match env_resolve(eff_name_str(f)) {
+  Some(ed) => row_refs(ed, []),
+  None => [],
+}
+
+// The references that stand for a declaration in a clause: its own, and,
+// where one stands in a named row (`type Outside = Net + Disk`), the named
+// row's, since a clause that names the row names its members.
+fn row_refs(d, seen) = graph_refs_of(d) |> flat_map(ref_through_rows(seen, ??))
+
+fn ref_through_rows(seen, r) = match graph_parent_of(r) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(RowAliasStmt(_, _)) => if any(same_node(p, ??), seen) { [] } else { row_refs(p, push(seen, p)) },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [r],
+  },
+  None => [r],
+}
+
+fn same_node(a, b) = a == b
+
+// The declaration a reference stands in, where its clause negates one of the
+// effects.
+fn negating_owner(used, r) = match nearest_fn(r) {
+  Some(g) => match graph_node_body(g) {
+    NStmt(FnStmt(_, _, _, clause, _)) => if any(clause_negates(clause, ??), used) { [g] } else { [] },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
+  },
+  None => [],
+}
+
+// The nearest declaration of a function that holds a node.
+fn nearest_fn(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(FnStmt(_, _, _, _, _)) => Some(p),
+    NModule(_) => None,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => nearest_fn(p),
+  },
+  None => None,
+}
+
+// Where a reference stands, climbing toward the install's body: inside it;
+// behind an install below that answers the effect, so the perform is
+// answered there; or in a declaration, whose own references decide.
+type Climb = ClimbIn | ClimbBlocked | ClimbOut(Int)
+
+fn climb_from(h, left, eff) = if h == left {
+  ClimbIn
+} else {
+  match graph_parent_of(h) {
+    Some(p) => match graph_node_body(p) {
+      NExpr(PipeExpr(PTee, l, hnd)) => if l == h && tee_absorbs_here(hnd, eff) { ClimbBlocked } else { climb_from(p, left, eff) },
+      NStmt(FnStmt(_, _, _, _, _)) => ClimbOut(p),
+      NModule(_) => ClimbBlocked,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => climb_from(p, left, eff),
+    },
+    None => ClimbBlocked,
+  }
+}
+
+// Whether a call from the install's body reaches a declaration: one of its
+// references stands in the body, or in a declaration that is reached. Each
+// question walks the declarations above it once (`visited`, its own); a
+// declaration found reached is kept for every later question
+// (`kept_reached`), since that answer cannot change.
+fn ref_reached(left, reach, visited, r) = match climb_from(r, left, reach.eff) {
+  ClimbIn => true,
+  ClimbBlocked => false,
+  ClimbOut(e) => decl_reached(e, left, reach, visited),
+}
+
+fn decl_reached(e, left, reach, visited) = match wmap_get(reach.reached, e) {
+  Some(_) => true,
+  None => match wmap_get(visited, e) {
+    Some(_) => false,
+    None => {
+      wmap_add(visited, e, 1)
+      any(ref_reached(left, reach, visited, ??), graph_refs_of(e)) && kept_reached(reach.reached, e)
+    },
+  },
+}
+
+fn kept_reached(table, e) = {
+  wmap_add(table, e, 1)
+  true
+}
+
+// One negating declaration against the arms of the effect: where calls from
+// the install's body reach it, the performs of the arms' ops while it runs,
+// in its body and in the functions handed to it at those calls, since it is
+// what runs them. A declaration whose own row neither names the effect nor
+// is left open for a function handed to it performs none of the ops, so it
+// is not climbed from. The functions handed to it are read at every call of
+// it, which can only add a perform to judge. The first arm that uses an
+// effect the clause negates refuses the install, once per declaration
+// (`reach.done`).
+fn negating_decl_held(answering, left, reach, hname: String, span, g) = match wmap_get(reach.done, g) {
+  Some(_) => (),
+  None => {
+    wmap_add(reach.done, g, 1)
+    match graph_node_body(g) {
+      NStmt(FnStmt(gname, _, _, clause, body)) => if decl_may_perform(g, reach.eff) && decl_reached(g, left, reach, wmap_new(16)) {
+        let walk = {effs: [reach.eff], seen: wmap_new(64)}
+        wmap_add(walk.seen, g, 1)
+        let performs = op_performs(body, walk) ++ flat_map(site_handed_performs(walk, ??), graph_refs_of(g))
+        match find_map(arm_breach(clause, performs, ??), answering) {
+          Some(breach) => report_answer_breach(gname, g, clause, hname, breach, span),
+          None => (),
+        }
+      },
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => (),
+    }
+  },
+}
+
+// Whether a declaration's row names the effect or is still open, so it may
+// perform one of the effect's ops while it runs.
+fn decl_may_perform(g, e) = match chase_ty(TVar(g)) {
+  TFun(_, _, row) => note_carries([e], row),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => true,
+}
+
+// The functions handed to a declaration at a call of it, walked for the
+// performs they make while it runs.
+fn site_handed_performs(walk, r) = match graph_parent_of(r) {
+  Some(p) => match graph_node_body(p) {
+    NExpr(CallExpr(f, args)) => if f == r { flat_map(handed_performs(??, walk), args) } else { [] },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
+  },
+  None => [],
+}
+
+// What an arm performs of its own: its body's row, without the remainder
+// its resume runs. `Mutate` stays out: it is a store into memory older
+// than the frame that makes the store, so an arm's store is the arm's own
+// and the install answers for it by the age of what it reaches
+// (`install_mutation`); a declaration's `!Mutate` speaks of its own frame.
+// An arm that never resumes ends the extents below it at the perform, so
+// it runs after them and is bound by none of their negations.
+fn arm_uses(arm) =
+  if arm_grade(arm) == RNone { [] } else { arm_row_uses(arm) |> filter(not_mutate) }
+
+fn arm_row_uses(arm) = match row_of_subtree(arm.body) {
+  Some(EfRow(present, _, _)) => present,
+  None => [],
+}
+
+fn not_mutate(e) = !names_mutate(e)
+
+// The effect whose op an arm answers.
+fn arm_op_effect(arm) = match graph_ref_decl(arm.op) {
+  Some(op) => match graph_published(op) {
+    Some((_, _, EffectOpScheme(en, _, _))) => [ENamed(intern_str(en))],
+    None | Some(_) => [],
+  },
+  None => [],
+}
+
+// The body of an install below, walked for the effects it does not absorb:
+// the same walk where it absorbs none of them, a walk of its own over the
+// rest where it absorbs some, and nothing where it absorbs them all.
+fn past_install(l, hnd, walk, step) = match filter(passes_install(hnd, ??), walk.effs) {
+  [] => [],
+  effs => if len(effs) == len(walk.effs) {
+    step(l, walk)
+  } else {
+    step(l, {...walk, effs, seen: wmap_new(64)})
+  },
+}
+
+fn passes_install(hnd, e) = !tee_absorbs_here(hnd, e)
+
+fn clause_negates(clause, e) = declares_absent(clause, eff_name_str(e))
+
+// A declaration's body, walked once per walk: a second call of it adds
+// nothing the first did not find.
+fn entered_once(d, body, walk, step) = match wmap_get(walk.seen, d) {
+  Some(_) => [],
+  None => {
+    wmap_add(walk.seen, d, 1)
+    step(body, walk)
+  },
+}
+
+// Whether a call's charge carries one of the effects, or may, where the
+// call charged nothing a reader can see or its row is still open.
+fn site_carries(site, effs) = match graph_rows_at(site) {
+  [] => true,
+  notes => any(note_carries(effs, ??), notes),
+}
+
+fn note_carries(effs, note) = match resolve_row(note) {
+  EfRow(present, _, tail) => any(name_set_contains(effs, ??), present) || match tail {
+    EtClosed => false,
+    EtOpen(_) => true,
+    EtAll => true,
+  },
+}
+
+// The performs below a node of ops of the walk's effects, each with the call
+// that makes it; an install below answers what it absorbs.
+fn op_performs(h, walk) = match graph_node_body(h) {
+  NExpr(CallExpr(f, args)) => callee_performs(h, f, walk) ++ flat_map(op_performs(??, walk), args),
+  NExpr(PipeExpr(PForward, l, stage)) => op_performs(l, walk) ++ callee_performs(h, stage, walk),
+  NExpr(PipeExpr(PTee, l, hnd)) => op_performs(hnd, walk) ++ past_install(l, hnd, walk, op_performs),
+  NStmt(FnStmt(_, _, _, _, _)) => [],
+  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => [],
+  body @ (
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_)
+  ) => flat_map(op_performs(??, walk), body_child_handles(body)),
+}
+
+fn callee_performs(site, f, walk) = match graph_node_body(f) {
+  NExpr(VarRef(_)) => match graph_ref_decl(f) {
+    Some(d) => match graph_published(d) {
+      Some((_, _, EffectOpScheme(en, _, _))) => if name_set_contains(walk.effs, ENamed(intern_str(en))) { [{op: d, site}] } else { [] },
+      None | Some(_) => match graph_node_body(d) {
+        NStmt(FnStmt(_, _, _, _, body)) => if site_carries(site, walk.effs) { entered_once(d, body, walk, op_performs) } else { [] },
+        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+        | NRow(_) | NParam(_) => [],
+      },
+    },
+    None => [],
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => op_performs(f, walk),
+}
+
+// A function handed to a negating declaration runs while it does: a
+// literal's body, a named function's, or a partial application's callee's.
+fn handed_performs(arg, walk) = match graph_node_body(arg) {
+  NExpr(VarRef(_)) => callee_performs(arg, arg, walk),
+  NExpr(CallExpr(f, _)) => callee_performs(arg, f, walk),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => op_performs(arg, walk),
+}
+
+// An arm that answers one of the performs and uses an effect the clause
+// negates: the perform, the arm with what it uses, and the effect. The
+// arm's row is read here, once an arm is known to answer a perform of the
+// declaration.
+fn arm_breach(clause, performs, arm) = match graph_ref_decl(arm.op) {
+  Some(op) => match find(performs_op(op, ??), performs) {
+    Some(p) => breach_of(clause, arm, p.site, arm_uses(arm)),
+    None => None,
+  },
+  None => None,
+}
+
+fn breach_of(clause, arm, site, uses) = match find(clause_negates(clause, ??), uses) {
+  Some(eff) => Some({arm, eff, site, uses}),
+  None => None,
+}
+
+fn performs_op(op, p) = p.op == op
+
+// The refusal stands at the install and reads as every negation's does: the
+// declaration and its clause's negations as written, then the path from the
+// perform it makes, through the arm that answers it, to the operation the
+// arm uses.
+fn report_answer_breach(gname: String, decl, clause, hname: String, breach, span) = {
+  let arm = breach.arm
+  let path =
+    "while {gname} runs, `{site_callee(graph_node_body(breach.site))}` is performed at {site_address(breach.site)}, and `{hname}`'s arm at {site_address(arm.op)} answers it: {enters_path(hname, body_entry(breach.eff, arm.body, []))}"
+  report(EEffectMismatch(
+    EfRow([], flat_map(negation_written, clause), EtAll),
+    EfRow(breach.uses, [], EtClosed),
+    EffectEnters(eff_name_str(breach.eff), decl, Inferred(path)),
+    span
+  ))
+}
+
+// The name a clause term negates, as its author wrote it.
+fn negation_written(term) = match term {
+  (t, negated, _) => if negated {
+    match t {
+      RtEff(name, _) => [name],
+      RtGroup(_) => [],
+    }
+  } else {
+    []
+  },
 }
 
 // An install answers for what its arms write of the config it hands them, as

@@ -1,0 +1,25 @@
+// CROWN: the negation binds the arm that answers a callback's operation.
+// run never uses Net and calls the function it is handed, which performs
+// price(); online's arm answers it with a fetch, so the fetch would run
+// while run runs. Expect E_EffectMismatch.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+fn run(f) with !Net = f()
+
+fn ask() = price()
+
+handler online {
+  price() => resume(fetch()),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = run(ask) ~> online ~> offline

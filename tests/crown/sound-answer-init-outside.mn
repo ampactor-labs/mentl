@@ -1,0 +1,22 @@
+// CROWN, a sound twin: a handler's state starts at the install, before its
+// body runs, so the fetch that sets it runs outside decide, and the arm
+// that answers decide's price() only reads the state. Accepted.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+fn decide(x) with !Net = x + price()
+
+handler cached with quote = fetch() {
+  price() => resume(quote),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = decide(1) ~> cached ~> offline

@@ -1,0 +1,24 @@
+// CROWN, a sound twin: the handler fetches only in the arm for refresh(),
+// which decide never performs; the arm that answers decide's price() uses
+// nothing. Accepted.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+  refresh() -> Int
+}
+
+fn decide(x) with !Net = x + price()
+
+handler online {
+  price() => resume(7),
+  refresh() => resume(fetch()),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = decide(1) ~> online ~> offline

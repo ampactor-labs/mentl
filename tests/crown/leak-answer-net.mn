@@ -1,0 +1,24 @@
+// CROWN: a negation binds the handler that answers the declaration's own
+// operation. decide says it never uses Net and performs price(); the
+// install of online answers price with an arm that fetches, an op of Net,
+// so the fetch would run while decide runs. Expect E_EffectMismatch at the
+// install, naming decide, its price() and online's arm.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+fn decide(x) with !Net = x + price()
+
+handler online {
+  price() => resume(fetch()),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = decide(1) ~> online ~> offline

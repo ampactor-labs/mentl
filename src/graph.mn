@@ -301,8 +301,10 @@ fn unsuperseded(superseded, h) = match wmap_get(superseded, h) {
 fn born_outside(module, seed, m: Int, handle) = module_at(module, seed, handle) != m
 
 // The tree's own edge, child to parent: drawn here, where a parent's body
-// registers, for every node that body holds — a module's declarations and
-// the link's modules included. The last registration wins, which is the
+// registers, for every node that body holds — a module's declarations, the
+// link's modules, and the names a declaration's clause or a named row
+// writes included, so a name in a clause reaches the declaration whose
+// decision it is. The last registration wins, which is the
 // tree a desugaring leaves (a `let`'s value is a child of the match its
 // block becomes); a candidate a restored version minted held only nodes
 // minted in that version, and a re-mint at the same handle redraws its
@@ -313,6 +315,8 @@ fn put_parents(parent, p, body) =
 fn body_children_for_parent(body) = match body {
   NModule(m) => m.decls,
   NLink(l) => l.modules,
+  NStmt(FnStmt(_, _, _, clause, _)) => body_child_handles(body) ++ written_row_nodes(clause),
+  NStmt(RowAliasStmt(_, terms)) => written_row_nodes(terms),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => body_child_handles(body),
 }
 

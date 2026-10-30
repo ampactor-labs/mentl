@@ -2104,6 +2104,39 @@ a function-typed parameter is the same gate: `f: () -> Int with !E`
 constrains `f`'s row at every call of `f`, and a sibling parameter's row is
 judged on its own.
 
+**The negation also binds the handlers that answer the declaration's
+operations.** An arm runs inside the extent of the perform it answers, so a
+declaration's negations hold of every arm that answers an operation it
+performs, wherever the install stands. In tests/crown/leak-answer-net.mn,
+`decide` performs `price` and the arm that answers it fetches:
+
+```
+fn decide(x) with !Net = x + price()
+
+handler online {
+  price() => resume(fetch()),
+}
+
+fn main() = decide(1) ~> online ~> offline
+```
+
+`mentl check` refuses the install: "decide is declared `with !Net`, which
+does not allow Net, and decide uses Net: while decide runs, `price` is
+performed at tests/crown/leak-answer-net:14:30, and `online`'s arm at
+tests/crown/leak-answer-net:17:3 answers it: online calls `fetch` at
+tests/crown/leak-answer-net:17:21". The compiler before this rule built the
+program, and the fetch ran while `decide` ran (exit 8). This holds
+through a callee (leak-answer-net-through-callee.mn), through a function
+handed to the declaration (leak-answer-net-callback.mn) and through a named
+row (leak-answer-net-named-row.mn). It is judged per operation, so an arm
+for an operation the declaration never performs is not judged
+(sound-answer-other-arm.mn). A handler's state starts at the install,
+outside every declaration below it (sound-answer-init-outside.mn), and an
+arm that never resumes ends the declaration before it runs
+(sound-answer-abandon.mn). `Mutate` is the exception: it is a store into
+memory older than the frame that makes the store, so an arm's store is the
+arm's own, and the install answers for it by the age of what it reaches.
+
 A negation leaves every other effect to the body, whatever else its clause states: `with !Mutate` means "anything except this effect" (universe-minus), a **negative capability stance**. This is how Mentl expresses region freezes and borrows (`ref`) in the row algebra, without a separate borrow checker.
 
 **`Mutate` is a store into memory older than the frame that makes the store**: a parameter's memory, a capture, a module value, a part of another value, or the feedback line that a function's record owns. So `!Mutate` proves that a function leaves every memory that existed before it ran as it found it, and `fn poke(ref xs) with !Mutate = list_set(xs, 0, 5)` is rejected. A store into memory the frame allocated builds a value and performs nothing. A store into a parameter's memory performs `Mutate` in the function that makes it, and a caller is charged with it only where the argument it passes is older than its own frame. With `fn fill(buf, v) = list_set(buf, 0, v)`, `fn make() with !Mutate = make_list(1) |> fill(??, 4)` holds, and a caller that passes `fill` its own parameter passes the write on to its own callers. An install is charged for its arms the same way: a state that its init built belongs to the install, and a write the arms make to a config is charged by the age of what the install passes them. A `<~` tick writes its line, which every call shares, so `fn step(x) with !Mutate = ({ prev => prev + x }) <~ delay(1)` is rejected. The members of a cycle record what they write when the cycle's judgment ends, and are read again until no claim grows. A function value carries its claim as it carries its contract (a lambda's claim and a nested fn's claim are written where their judgment ends), so a call through it is charged `Mutate` only where the memory it reaches is older than the caller's frame. A parameter it writes is judged by the argument passed, a capture it writes by the binder's age in the frame that holds the value, its own feedback line by the value's age (a closure's line lives in its record), and the functions it applies by what the callee passes them, including a fold's accumulator where the stage passes it back. So `fn run() with !Mutate = { let c = counter(); c(1) }` holds over a counter whose tick is charged by the closure's own row, and `fn k(buf) with !Mutate = { let g = { x => list_set(buf, 0, x) }; g(7) }` is rejected, because the capture is `k`'s parameter (tests/micros/mn-mutate-negation-refuses.mn, mn-mutate-tick-refuses.mn, mn-mutate-fresh-is-construction.mn, mn-mutate-closure-line-is-the-value.mn, mn-mutate-capture-fresh.mn, mn-mutate-capture-param-refuses.mn, mn-mutate-through-callback-param.mn).

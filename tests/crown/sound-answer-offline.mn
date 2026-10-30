@@ -1,0 +1,18 @@
+// CROWN, the sound twin: the same decide under an install whose arm
+// answers price with a number, so nothing uses Net while decide runs.
+// Accepted.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+fn decide(x) with !Net = x + price()
+
+handler quoted {
+  price() => resume(7),
+}
+
+fn main() = decide(1) ~> quoted

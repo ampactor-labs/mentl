@@ -1,0 +1,25 @@
+// CROWN: the negation binds the arm through a callee. decide never uses
+// Net, and the helper it calls performs price(), which online's arm
+// answers with a fetch, so the fetch would run while decide runs. Expect
+// E_EffectMismatch.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+fn quote() = price()
+
+fn decide(x) with !Net = x + quote()
+
+handler online {
+  price() => resume(fetch()),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = decide(1) ~> online ~> offline

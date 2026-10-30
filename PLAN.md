@@ -879,6 +879,26 @@ as unknown, never as passing.
   after its memory grows by 256 pages. Every lesson allocates its file's
   buffer after the start, at a size it computes when it runs, so none is
   constant until the evaluator computes such sizes first (§11.2).
+- **A negation binds the handlers that answer its declaration's
+  operations** (2026-10-30). An arm runs inside the extent of the perform
+  it answers, so at an install the judgment holds each arm to the
+  negations of every declaration a call from the body reaches that
+  performs the arm's op: `fn decide(x) with !Net = x + price()` under an
+  install whose `price` arm fetches (an op of `Net`) is refused at the
+  install, naming decide's clause, the perform and the arm, where the boot
+  before built it and the fetch ran while decide ran (exit 8). It holds
+  through a callee, through a function handed to the declaration and
+  through a named row (`!Outside` for `Net + Disk`), per op (an arm for an
+  op decide never performs is not judged), and not for an arm that never
+  resumes, which ends decide before it runs. `Mutate` is left to the age
+  rule that defines it, since an arm's store is the arm's own and the
+  install answers for it. The install finds the declarations that negate
+  an effect its handler uses through that effect's references, because a
+  clause's names and a named row's terms now have parent edges to the
+  declaration that holds them, and it reads an arm's own row only where a
+  declaration it reaches performs the arm's op. Eight crucibles state it
+  (tests/crown/leak-answer-net*.mn and sound-answer-*.mn): the boot
+  before accepted all four leaks.
 - **`xs >< f` is the sequence fanout** (2026-10-30). When the right side
   of `><` is a stage (a function literal, a declared function's name, or a
   call that leaves its last arguments open), the judgment types the node as
@@ -1234,26 +1254,10 @@ the last three.
    (`Hβ.effects.two-instances-of-one-effect-do-not-join`). Each modal rule
    gets one crucible fixture, red first, with its sound twin. The page's
    hop-by-hop unrolling of a `!E` under polymorphism is part of this step
-   (`Hβ.effects.sound-neg-under-poly`). A negation must also bind the
-   handlers that answer the function's own operations while it runs,
-   because today it does not. Measured 2026-10-28 on commit f41a5767: a
-   function declared `!Net` that performs `price()`, answered by an install
-   outside it whose arm calls `fetch`, an op of `Net`, builds, and the fetch
-   runs while the function runs (`decide(1) ~> online ~> offline` exits 8,
-   the 1 plus the 7 the fetch answered), while the same function handed a
-   closure that calls `fetch` is refused, and declaring its whole row
-   (`with Pure`) refuses the extra operation. A clause has never listed the
-   row since 2026-10-30, so no positive cap stands in for this rule (the
-   micro that showed a cap refusing the new operation went with the cap).
-   The index gives the rule: an
-   install that answers an op performed under a negation is inside that
-   negation's extent, so the arm's row is masked by the negation and
-   checked where the install covers a call of the function, and the
-   refusal names the declaration, the install and the arm. The crucibles
-   are `leak-answer-net.mn`, red first, and its twin
-   `sound-answer-offline.mn`, whose arm answers with arithmetic. Until
-   then, the claim that covers a program's handlers is its absence of the
-   effect everywhere, the first line of `mentl audit`.
+   (`Hβ.effects.sound-neg-under-poly`). A negation binds the handlers that
+   answer the function's own operations while it runs (built 2026-10-30,
+   §7); the install finds the negating declarations by a climb of its own,
+   which the reach (c) replaces.
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`), and an executable's

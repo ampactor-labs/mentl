@@ -269,11 +269,24 @@ fn term_is_pure(t) = match t {
   RtGroup(_) => false,
 }
 
-// Whether a term names the effect `ename`: the name itself, or a group that
-// adds it.
-fn term_spells(t, ename: String) = match t {
-  RtEff(n, _) => eff_name_str(n) == ename,
-  RtGroup(ts) => any({ (u, neg, conn) => !neg && conn == EcUnion && term_spells(u, ename) }, ts),
+// Whether a term names the effect `ename`: the name itself, a named row
+// that holds it (`type Outside = Net + Disk`), or a group that adds it. A
+// named row met again on its own path names nothing more; its cycle is
+// refused where the row is declared.
+fn term_spells(t, ename: String) = term_spells_past(t, ename, [])
+
+fn term_spells_past(t, ename: String, seen) = match t {
+  RtEff(n, _) => eff_name_str(n) == ename || named_row_spells(n, ename, seen),
+  RtGroup(ts) => any(member_spells(ename, seen, ??), ts),
+}
+
+fn member_spells(ename: String, seen, member) = match member {
+  (u, neg, conn) => !neg && conn == EcUnion && term_spells_past(u, ename, seen),
+}
+
+fn named_row_spells(n, ename: String, seen) = match row_alias_triples(n) {
+  Some(triples) => !row_name_seen(seen, n) && any(member_spells(ename, seen ++ [eff_name_str(n)], ??), triples),
+  None => false,
 }
 
 // A declaration's clause holds decisions about the row the compiler infers

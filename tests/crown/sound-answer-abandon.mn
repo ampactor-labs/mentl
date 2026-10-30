@@ -1,0 +1,22 @@
+// CROWN, a sound twin: an arm that never resumes ends decide at the
+// perform, so its fetch runs after decide has stopped, outside every
+// negation decide states. Accepted.
+effect Net {
+  fetch() -> Int
+}
+
+effect Price {
+  price() -> Int
+}
+
+fn decide(x) with !Net = x + price()
+
+handler giving_up {
+  price() => fetch(),
+}
+
+handler offline {
+  fetch() => resume(7),
+}
+
+fn main() = decide(1) ~> giving_up ~> offline
