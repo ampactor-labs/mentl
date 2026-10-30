@@ -1,25 +1,30 @@
 // hello: Mentl's five operators, once each.
 // `mentl run examples/hello/five.mn` prints:
 //   hello
-//   1 *
-//   3 ***
+//   2 **
 //   6 ******
+//   12 ************
 import io
 
+fn double(n) = n * 2
+
 // <~ adds each number to the total before it.
-fn total(x) = { t => t + x } <~ delay(1)
+// `!Alloc` is checked on every build: a version
+// of this stage that allocates does not build.
+fn add(x) with !Alloc = { t => t + x } <~ delay(1)
 
 fn bar(n) = join("", repeat(n, "*"))
 
 fn say(n, b) = print("{n} {b}\n")
 
-// <| sends the total to two places, and
-// |> hands both to `say`, which prints them.
-fn row(x) = (total(x) <| (int_to_str, bar)) |> say
+// <| sends each total to two stages, and |>
+// hands both answers to `say`.
+fn row(x) = (add(x) <| (int_to_str, bar)) |> say
 
 // ~> sends what `print` writes to the screen.
 fn main() = {
-  // >< greets and counts side by side.
-  (print("hello\n")) >< (each(row, range(1, 4)))
+  print("hello\n")
+  // >< doubles every number, each a branch.
+  each(row, [1, 2, 3] >< double)
   0
 } ~> stdout_console
