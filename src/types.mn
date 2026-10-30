@@ -6075,12 +6075,24 @@ fn render_row(row) with !Mutate = match row {
       EtOpen(vs) => if len(vs) == 0 {
         if len(p) == 0 && len(a) == 0 { "Pure" } else { head }
       } else {
-        let tails = show_list(vs, render_row_edge, " + ")
+        let tails = show_list(edges_said_once(vs), render_row_edge, " + ")
         if len(p) == 0 && len(a) == 0 { tails } else { "{head} + {tails}" }
       },
     }
   },
 }
+
+// Two edges that chase to one free cell through the same mask say the same
+// thing, so a row says it once: the tail is keyed by cell, and a row can
+// hold both (`partition`'s two calls of `filter` each reach its predicate's
+// row through a cell of its own).
+fn edges_said_once(vs) = fold([], edge_said_once, vs)
+
+fn edge_said_once(acc, e: RowEdge) =
+  if any(same_said_edge(e, ??), acc) { acc } else { push(acc, e) }
+
+fn same_said_edge(e: RowEdge, x: RowEdge) =
+  graph_chase_handle(x.cell) == graph_chase_handle(e.cell) && x.mask == e.mask
 
 fn show_effrow(row) with !Mutate = render_row(row) ~> var_names
 
