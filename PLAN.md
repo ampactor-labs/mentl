@@ -972,14 +972,19 @@ as unknown, never as passing.
   prints `e + e + e1 + e1`, the branches' row variables, which a newcomer
   cannot read, while the Topology and Why lines at the same site say the
   shape in words (measured 2026-10-29).
-- **A hole's fan ranks a name by how often it is used near the hole**
-  (§11.5). The binders in scope and the module's values are offered beside
-  the literal seeds and judged by the hole's refinement like any candidate,
-  but the rank does not read the arms beside the hole: at the grid
-  controller's rush-hour power replaced by `??`, the question names `hz`,
-  `island` and `level` first, where the neighbouring arms of the same `if`
-  use `draw` and `spin_w`. A nested function in scope is not offered
-  (measured 2026-10-29).
+- **A hole's fan names what the arms beside it use first** (2026-10-30).
+  The binders in scope and the module's values are offered beside the
+  literal seeds and judged by the hole's refinement like any candidate. A
+  name used in another arm of the `if` chain or the `match` that holds the
+  hole ranks above every name that is not, however often that one is used
+  nearby, and the proximity score orders the names within each tier: at
+  the grid controller's rush-hour power replaced by `??`, the question now
+  names `spin_w`, `island_t` and `draw` first, where it named `hz`,
+  `island` and `level` (tests/proposals/neighbour-arm-first.mn). A nested
+  function written above the hole is in its scope and fills a stage by
+  reference (nested-fn-in-scope.mn), unless its body reaches the hole's
+  own declaration (nested-fn-reaching.mn): the walk that excludes such
+  recursion now records the nearest function that holds a reference.
 - **The gate's proposal is judged beside the server's artifact** (§11.4): a
   proposal sent to `mentl mcp` resolves the library the project runs with
   and not a sibling module of the project, because its text stands in
@@ -1516,10 +1521,7 @@ the last three.
    obligations it discharges). A declaration with an authored clause is still
    offered the further locks its dependents rely on. Teach reads a lexical
    ring up the parent edge, builds calls with argument holes, and proposes a
-   record for a positional product. The fan ranks the names the hole's
-   neighbouring arms use above names that are merely used often nearby, and
-   offers a nested function in scope when its body does not reach the hole's
-   declaration. One obligation value is rendered once for
+   record for a positional product. One obligation value is rendered once for
    the caret, teach, audit and smt (smt asserts the negation along with its
    declarations). A declaration's Why is its signature's, and a module gets a
    lede of its own. The step also covers the self-proposal benchmark,

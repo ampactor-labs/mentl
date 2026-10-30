@@ -3921,7 +3921,9 @@ fn parse_record_type_fields(ref tokens, pos) = {
       | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => ([], Some(fresh_handle(sp)), expect(tokens, skip_ws(tokens, after_dots), TRBrace)),
     }
   } else {
-    let name = ident_at(tokens, p)
+    // A field's name reads `own` and `ref` as names, as a record literal's
+    // does (`name_at`), so a record type renders and parses back alike.
+    let name = name_at(tokens, p, "a field name")
     let p1 = expect(tokens, p + 1, TColon)
     match parse_type_ty(tokens, skip_ws(tokens, p1)) {
       (ty, p2) => {

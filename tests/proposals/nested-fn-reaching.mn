@@ -1,0 +1,10 @@
+// propose 7:8: fill id
+// A nested function whose body calls the hole's own declaration is not
+// offered: filling the hole with it would make `f` call itself through
+// `again`. The prelude's `id` is the one stage left.
+fn f(x: Int) -> Int = {
+  fn again(y: Int) -> Int = if y > 10 { f(y - 1) } else { y }
+  x |> ??
+}
+
+fn main() = f(1)

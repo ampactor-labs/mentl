@@ -1,0 +1,9 @@
+// propose 7:58: ask value arm or often or k or 0 or 1 or -1
+// The arms beside a hole name what it most likely means: `arm` is used in
+// the chain's other arms and comes first, before `often`, which the
+// conditions use more often. The boot asked `often or arm or k`, by how
+// often each is used near the hole.
+fn f(often: Int, arm: Int, k: Int) -> Int =
+  if k == often + often + often { arm } else if k == 1 { ?? } else { arm + 1 }
+
+fn main() = f(1, 2, 3)

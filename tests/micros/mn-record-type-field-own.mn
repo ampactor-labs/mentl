@@ -1,0 +1,8 @@
+// expect: 7
+// A record field may be named `own` in a type as it may in a literal: the
+// type `{own: Int}` parses, so the type the compiler renders for a record
+// with such a field reads back as written. The boot refused the annotation
+// ("expected a name, found `own`").
+fn owner_of(r: {own: Int}) = r.own
+
+fn main() = owner_of({own: 7})
