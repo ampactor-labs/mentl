@@ -404,27 +404,23 @@ fn argmax_or_default(ranked: [(Float, Handle)], caret) = match caret {
 // inference writes). The structure is the GNode; the
 // extraction is reproducible.
 //
-// The eight-arm fan — the ONE projection body `cursor_at_handle` serves.
-// The eight aspects of the one read (PLAN §2), each arm a tentacle.
+// The one projection body `cursor_at_handle` serves: the eight aspects of the
+// one read (PLAN §2), one stage each, sent the node and its kind by one `<|`.
 fn cursor_view_of(handle) = match graph_chase(handle) {
   GNode(kind, _reason) => {
     let pos = (handle, kind)
+    // In order: the graph and the environment (Query); the handlers
+    // (Propose, Synth's multi-shot); the five verbs (Topology); the row
+    // (Unlock); ownership as an effect (Trace); refinement (Verify); the
+    // gradient (Teach); the inference and its reasons (Why).
     match pos <| (
-      // 1. Graph + Env (Query)
       { (_, k) => k },
-      // 2. Handlers (Propose) — Synth's MultiShot
       { (h, _) => propose_at(h) },
-      // 3. Five verbs (Topology)
       { (h, _) => verb_path_of(h) },
-      // 4. Boolean row (Unlock)
       { (h, k) => row_facet_at(h, k) },
-      // 5. Ownership-as-effect (Trace)
       { (_, k) => ownership_of_kind(k) },
-      // 6. Refinement (Verify)
       { (h, _) => verify_pending_at(h) },
-      // 7. Continuous gradient (Teach)
       { (h, _) => teach_gradient(h) },
-      // 8. HM live + Reasons (Why)
       { (h, _) => teach_why(h) }
     ) {
       (query, propose, topology, row, trace, verify, teach, why) => CursorView(query, propose, topology, row, trace, verify, teach, why),

@@ -1,7 +1,7 @@
 // expect: refuse E_DerivativeUnreachable
-// A product seed reaching what the reverse projection does not carry
-// REFUSES, naming the construct and the vector-forward reading
-// (`Hβ.derive.vector-forward`) — never a slope of zero. Here the extent
+// A product seed that reaches what the reverse reading does not carry is
+// refused: the refusal names the construct and says to seed one Float at
+// a time, and it never answers with a slope of zero. Here the extent
 // calls through a function value with an active argument: forward, the call
 // takes the derivative face; in reverse, the adjoint would have to cross a
 // record the reading cannot see past, and the reading says so.

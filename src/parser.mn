@@ -2066,6 +2066,7 @@ fn binop_loop(ref tokens, left, first: ValidSpan, pos, min_prec, slot) = {
   let p = skip_ws(tokens, pos)
   match infix_of(kind_at(tokens, p)) {
     InfixVerb(k) => if pipe_prec(k) >= min_prec {
+      operator_comments_refused(tokens, k, pos, p)
       match right_operand(tokens, p, pipe_prec(k), slot) {
         (right, p2) => binop_loop(tokens, verb_node(k, left, right, upto(tokens, first, p2)), first, p2, min_prec, slot),
       }
@@ -2088,6 +2089,29 @@ fn binop_loop(ref tokens, left, first: ValidSpan, pos, min_prec, slot) = {
     },
     NotInfix => binop_end(tokens, left, pos),
   }
+}
+
+// A comment between a chain's operator and either of its operands stands
+// inside the chain and is refused where it stands (SYNTAX §Comments): one
+// look past the newlines before the operator and one after it. A comment
+// after a chain's last stage stands past the chain, where no operator
+// follows it.
+fn operator_comments_refused(tokens, k, before, op) = match k {
+  PForward | PFanout(_) => {
+    comment_at_refused(tokens, skip_seps_only(tokens, before))
+    comment_at_refused(tokens, skip_seps_only(tokens, op + 1))
+  },
+  PTee | PFeedback => (),
+}
+
+fn comment_at_refused(tokens, i) = match kind_at(tokens, i) {
+  TComment(_) => report(PCommentInChain(span_at(tokens, i))),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => (),
 }
 
 // The operand right of the operator at `p`, read at one level tighter than

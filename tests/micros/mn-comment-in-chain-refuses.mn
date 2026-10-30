@@ -1,0 +1,10 @@
+// expect: refuse P_CommentInChain
+// A comment between two stages of a `|>` chain is refused where it stands:
+// a stage's intent belongs on its own declaration, whose first line the
+// caret shows wherever the stage is used.
+fn double(x) = x * 2
+
+fn main() = 3
+  |> double
+  // and then double again
+  |> double

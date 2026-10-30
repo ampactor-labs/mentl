@@ -442,7 +442,7 @@ fn jv_plain(e) = jv([], e, LinZero, AInactive)
 // a value.
 fn grad_consumed(h, j) = match jv_ans(j) {
   AGrad(_, _, _) => dv_refuse(
-    "a gradient is read by destructuring where it is asked (`let \{a, b\} = d(v)`); holding it as a value is `Hβ.derive.gradient-as-a-value`",
+    "a gradient cannot be held as a value yet; destructure it where it is asked (`let \{a, b\} = d(v)`)",
     h
   ),
   ANone => (),
@@ -705,7 +705,7 @@ fn jvp(e, env, cx) = match e {
   LHandleWith(h, b, hn, hd, inits, arms) => jvp_install(h, b, hn, hd, inits, arms, env, cx),
   LDerive(h, _, _) => {
     dv_refuse(
-      "a derivative reading inside a derivative reading is the second-order reading, which is not built yet (`Hβ.derive.second-order`)",
+      "a derivative reading inside a derivative reading is the second-order reading, which does not exist yet",
       h
     )
     dv_forward_only(h, LwSecondOrder)
@@ -1639,7 +1639,7 @@ fn grad_destructure(h, qh, lin, fields, js, arms, env, cx) = match arms {
     },
     None => {
       dv_refuse(
-        "a gradient is read by a record or tuple pattern naming the seed's Float fields, where it is asked; this pattern does not (`Hβ.derive.gradient-as-a-value`)",
+        "this pattern does not name the seed's Float fields; read a gradient with a record or tuple pattern that does",
         h
       )
       jv(jv_pre(js), LConst(h, LInt(0)), LinZero, ALost(h, LwGradientValue))
@@ -1647,7 +1647,7 @@ fn grad_destructure(h, qh, lin, fields, js, arms, env, cx) = match arms {
   },
   other => {
     dv_refuse(
-      "a gradient is read by one destructuring arm where it is asked; a match with several arms over it is `Hβ.derive.gradient-as-a-value`",
+      "a match over a gradient cannot have several arms yet; read the gradient with one pattern",
       h
     )
     jv(jv_pre(js), LConst(h, LInt(0)), LinZero, ALost(h, LwGradientValue))
@@ -2894,7 +2894,7 @@ fn expand_install(ld, owner: String) = match ld {
           None => (MReverse, LBlock(h, rv_stmts(jv_pre(jb), [], roots) ++ [jv_val(jb)])),
           Some((bh, why)) => {
             dv_refuse(
-              "a product seed reaches {only_story(why, if bh == 0 { h } else { bh })}, which the reverse reading cannot carry; the vector-forward reading is `Hβ.derive.vector-forward`",
+              "a product seed reaches {only_story(why, if bh == 0 { h } else { bh })}, which the reverse reading cannot carry; seed one Float at a time to read it forward",
               h
             )
             (MForward, body)
@@ -2904,7 +2904,7 @@ fn expand_install(ld, owner: String) = match ld {
     },
     None => {
       dv_refuse(
-        "the seed of a derivative reading must be a Float variable in scope, or a record or tuple of Floats — a local or a capture; a top-level binding is `Hβ.derive.global-seed`",
+        "the seed of a derivative reading must be a local or captured Float, or a record or tuple of them; bind a top-level value to a local first",
         h
       )
       (MForward, body)

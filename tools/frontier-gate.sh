@@ -1806,9 +1806,9 @@ for i in "${!compilers[@]}"; do
   # agree to 1e-6. RED on boot 8ee3d09a (refused: a seed had to be a Float
   # variable). derive-grad-series: the same product seed over scene 1's
   # distortion, whose reach recurs through lib/math.mn's series — the
-  # reverse projection does not carry a recursion, so the reading REFUSES
-  # naming the vector-forward reading (`Hβ.derive.vector-forward`), never a
-  # slope of zero.
+  # reverse projection does not carry a recursion, so the reading refuses
+  # and says to seed one Float at a time, never answering with a slope of
+  # zero.
   run_program "$compiler" derive-grad \
     "$ROOT/tests/frontier/derive-crucible/grad.mn" 42 derive "$dir"
   run_refusal_linked "$compiler" derive-grad-series \

@@ -848,6 +848,15 @@ as unknown, never as passing.
   with every place the compiler recognized the name, and the compiler's own
   two fanouts use the form (`mentl query src/main.mn "refs of fanout"` finds
   none).
+- **No comment stands inside an operator chain** (2026-10-30). The
+  parser refuses a comment between two stages of a `|>`, between two
+  branches of a `><`, or among the stages of a `<|`, at the comment, with
+  `P_CommentInChain` (tests/micros/mn-comment-in-chain-refuses.mn, which
+  the boot before accepted and ran to 12). The one site in the project, the
+  caret's eight-stage `<|` in src/cursor.mn, now carries its comment above
+  the statement. The formatter can no longer meet a comment inside a chain,
+  so the layout it once wrote for one (the comment moved above the
+  declaration, the next stage at column 0) cannot arise.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1539,11 +1548,7 @@ the last three.
    the rules it misses. The batteries address a hole and a declaration by
    identity, never by `L:C`, so every fixture can be canonical.
    `mentl fmt --check` at zero over src, lib, examples and tests is a line on
-   the board. A comment written between two stages of a `|>` chain is moved
-   above the declaration, and the chain is laid out with the `|>` ending a
-   line and the next stage at column 0 (found 2026-10-29 while writing
-   examples/hello/five.mn, on both the pinned boot and main's); the render
-   keeps each comment at the stage it precedes, one stage per line. fmt
+   the board. fmt
    writes the sequence fanout `xs >< f` without branch parentheses where
    its own module declares `f`, since it reads the parse and no judgment;
    a stage the module only imports (`xs >< int_to_str`) keeps the branch
@@ -1645,7 +1650,7 @@ the last three.
    product seed is answered through a call made through a value, a perform, a
    `<~` line, a record carrying a tangent, an install, an early return, a
    query inside a callee and a recursion; today the reverse projection refuses
-   these, naming the vector-forward reading. A gradient held as a value is a
+   these and says to seed one Float at a time. A gradient held as a value is a
    record the row sees. The transpose crosses iteration and the record. A
    `<~` line's history is priced by the row. And a line that a closure record
    owns carries its tangent.

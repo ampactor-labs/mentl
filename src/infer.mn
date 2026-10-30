@@ -2727,13 +2727,13 @@ fn held_has_poly(held, name: String) = any(
   {
     (d, _, _, _) => match d {
       TPolyRecursionSignature(owner, _) => owner == name,
-      PExpectedToken(_, _) | PUnclosedConstruct(_, _) | PUnexpectedToken(_, _) | ERedundantBraces(_)
-      | ELambdaFence(_) | ERedundantFnOnLambda(_) | ELambdaAsOrOr(_) | EOrphanHandlerAttach(_)
-      | ENotAKeyword(_, _) | EEffArgNotLiteral(_) | EInternalInvariant(_, _) | WRedundantWhere(_)
-      | WCommentRefUnresolved(_, _, _) | ETypeMismatch(_, _, _, _) | ETypeArityMismatch(_, _, _)
-      | EConstructorArity(_, _, _, _) | EHandlerArmArity(_, _, _, _) | EFnArityMismatch(_, _, _)
-      | EOccursCheck(_, _, _) | EMissingVariable(_, _) | EMissingImport(_, _, _, _)
-      | EDuplicateImport(_, _) | ENotARecordType(_, _) | EResumeOutsideArm(_)
+      PExpectedToken(_, _) | PCommentInChain(_) | PUnclosedConstruct(_, _) | PUnexpectedToken(_, _)
+      | ERedundantBraces(_) | ELambdaFence(_) | ERedundantFnOnLambda(_) | ELambdaAsOrOr(_)
+      | EOrphanHandlerAttach(_) | ENotAKeyword(_, _) | EEffArgNotLiteral(_) | EInternalInvariant(_, _)
+      | WRedundantWhere(_) | WCommentRefUnresolved(_, _, _) | ETypeMismatch(_, _, _, _)
+      | ETypeArityMismatch(_, _, _) | EConstructorArity(_, _, _, _) | EHandlerArmArity(_, _, _, _)
+      | EFnArityMismatch(_, _, _) | EOccursCheck(_, _, _) | EMissingVariable(_, _)
+      | EMissingImport(_, _, _, _) | EDuplicateImport(_, _) | ENotARecordType(_, _) | EResumeOutsideArm(_)
       | EResumeWorldMismatch(_, _, _) | EUnknownArgLabel(_, _) | EZeroDelayFeedback(_)
       | EInitPerformsOwnOp(_, _, _, _) | EHandlerInexhaustive(_, _, _, _) | EResumeOfNever(_, _, _)
       | EComputedDelayDepth(_) | ERestOutsideDestructure(_) | ERowAliasCycle(_, _)
@@ -7796,11 +7796,19 @@ fn boundary_result_ty(edge) = match edge {
 // receives a BORROW of the input's value. Branches run under the
 // branching ledger so any two branches that consume the same
 // outer-scope own collide.
+// A comment the weave gave a stage of a `<|` stands among the stages, which
+// SYNTAX §Comments refuses where it stands: a stage's intent belongs on its
+// own declaration, whose first line the caret shows wherever it is used.
+// The judgment reads each stage's comment once, here.
+fn stage_comment_refused(stage) =
+  if byte_len(graph_comment_at(stage)) > 0 { report(PCommentInChain(graph_comment_span_at(stage))) }
+
 fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
   infer_expr(left)
   // The stages the parse guarantees: a tuple of two or more, since a `<|`
   // over one stage is the pipe (`share_stages`, graph.mn).
   let branches = share_stages(right)
+  each(stage_comment_refused, branches)
   branch_enter(BParallel)
   let edges = infer_fanout_share_branches(branches, left, span, 0, len(branches))
   branch_exit(span)

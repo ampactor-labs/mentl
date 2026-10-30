@@ -2397,7 +2397,7 @@ fn with_run(handler_name, target_opt) = {
   pipeline_check(entry_module)
   match env_lookup(handler_name) {
     None => eprint_string("mentl --with: no handler named {handler_name} in the checked env\n"),
-    Some(_) => eprint_string("mentl --with {handler_name}: resolved; install via Hβ.cli.user-defined-entry-handler-resolution\n"),
+    Some(_) => eprint_string("mentl --with {handler_name}: found, but the command line cannot install a handler yet\n"),
   }
   // The verb is named but its install path is unbuilt — the CLI refusal
   // law: a named verb that cannot do its work exits nonzero.

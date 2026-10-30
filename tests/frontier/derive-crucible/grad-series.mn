@@ -1,14 +1,14 @@
-// grad-series.mn — a product seed over scene 1's distortion REFUSES, naming
-// what the reverse projection cannot carry.
+// grad-series.mn: a product seed over scene 1's distortion is refused, and
+// the refusal names what the reverse reading cannot carry.
 //
 // `adaptive_shape` (lib/dsp/spectral.mn) reaches tanh, exp and sin, each a
 // range-reduced series written as a recursion in lib/math.mn. A scalar seed
 // is answered forward through that recursion (derive-shape, beside this
 // leg); a product seed would be answered in reverse, and the reverse
-// projection does not carry a recursion — the residuals of every step would
-// have to be kept — so the reading refuses, naming the vector-forward
-// reading that would answer it (`Hβ.derive.vector-forward`), never a slope
-// of zero.
+// projection does not carry a recursion, since the residuals of every step
+// would have to be kept. So the reading refuses and says to seed one Float
+// at a time, which derive-shape shows the forward reading answers, and it
+// never answers with a slope of zero.
 //
 // The frontier expects E_DerivativeUnreachable, exit nonzero, zero WAT bytes.
 fn main() -> Int = {
