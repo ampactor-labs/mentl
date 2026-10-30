@@ -3950,18 +3950,23 @@ fn is_authored_hole(n) = match graph_node_body(n) {
   NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
-// The Memory ops that write (lib/memory.mn): each the address it writes, or
-// the whole image.
+// What a call writes into memory, read off the op its callee names: every op
+// of MemoryWrite writes the memory at its first argument, the ImageSwap
+// writes all of it, and an op of any other effect, or a call of anything but
+// an op, writes none (lib/memory.mn).
 type RawStore = RsNone | RsAt(Int) | RsAll
 
-fn raw_store_target(cname: String) = match cname {
-  "store_i32" => RsAt(0),
-  "store_i8" => RsAt(0),
-  "store_addr" => RsAt(0),
-  "store_f64" => RsAt(0),
-  "mem_copy" => RsAt(0),
-  "globals_save" => RsAt(0),
-  "image_restore" => RsAll,
+fn raw_store_target(c) = match graph_ref_decl(c) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, EffectOpScheme(en, _, _))) => effect_store(en),
+    None | Some(_) => RsNone,
+  },
+  None => RsNone,
+}
+
+fn effect_store(en: String) = match en {
+  "MemoryWrite" => RsAt(0),
+  "ImageSwap" => RsAll,
   _ => RsNone,
 }
 
@@ -4307,10 +4312,7 @@ fn app_kind(c) = if ref_is_constructor(c) {
   }
 } else {
   match graph_node_body(c) {
-    NExpr(VarRef(cname)) => match raw_store_target(cname) {
-      RsNone => named_app_kind(c),
-      found @ (RsAt(_) | RsAll) => AkRaw(found),
-    },
+    NExpr(VarRef(_)) => named_app_kind(c),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => AkValue,
   }
@@ -4325,7 +4327,10 @@ fn named_app_kind(c) = match graph_ref_decl(c) {
         | NRow(_) | NParam(_) => AkValue,
       },
       ConstructorScheme(_, _) => AkBuild,
-      EffectOpScheme(_, providers, _) => AkPerform(providers),
+      EffectOpScheme(en, providers, _) => match effect_store(en) {
+        RsNone => AkPerform(providers),
+        found @ (RsAt(_) | RsAll) => AkRaw(found),
+      },
       HandlerKind(_, _, _, _, _) | HandlerChainKind(_) => AkInstall,
       PrimitiveKind(_) => AkWord,
       RecordSchemeKind(_) | EffectDeclKind(_, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_)
@@ -4630,7 +4635,7 @@ fn node_stores(owner, h) = match graph_node_body(h) {
 }
 
 fn callee_stores(owner, call, callee, args) = match graph_node_body(callee) {
-  NExpr(VarRef(cname)) => match raw_store_target(cname) {
+  NExpr(VarRef(_)) => match raw_store_target(callee) {
     RsAt(i) => [store_at(owner, call, ByRaw, slot_roots(args, i))],
     RsAll => [store_at(owner, call, ByRaw, RootsAny)],
     RsNone => match graph_ref_decl(callee) {

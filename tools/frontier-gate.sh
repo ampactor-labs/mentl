@@ -2588,7 +2588,7 @@ for i in "${!compilers[@]}"; do
   fi
   if printf '%s' "$cx" | grep -q '^Effects: Pure$' \
      && printf '%s' "$cfb" | grep -q '^Effects: Mutate$' \
-     && printf '%s' "$clet" | grep -q '^Effects: Memory + Alloc, and Tick when called$' \
+     && printf '%s' "$clet" | grep -q '^Effects: Alloc, and Tick when called$' \
      && printf '%s' "$cdiv" | grep -q '^Effects: Trap$' \
      && printf '%s' "$cstage" | grep -q '^Effects: Pure when called$' \
      && printf '%s' "$cdiv" | grep -q '^Verify: pending partiality k - 1 != 0 && 100 / (k - 1) fits' \

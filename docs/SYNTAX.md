@@ -257,7 +257,7 @@ finds (tests/crown/leak-fn-type-*.mn,
 tests/micros/mn-effect-name-in-alias-fn-type.mn,
 mn-effect-name-nested-fn-type.mn).
 
-**A lowercase name in a row is a row variable**: the case rule applies to a row as it applies to a type. `f: () -> a with e` takes a callback that may perform anything, and `e` written again anywhere in the same signature (another parameter's type, or the declaration's own clause) is the same variable, just as a type variable named twice is. A parenthesized group is a row term that the clause folds as a whole, applying the group's outer connective to what the group spells. `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and the medium writes such a row back in this form.
+**A lowercase name in a row is a row variable**: the case rule applies to a row as it applies to a type. `f: () -> a with e` takes a callback that may perform anything, and `e` written again anywhere in the same signature (another parameter's type, or the declaration's own clause) is the same variable, just as a type variable named twice is. A parenthesized group is a row term that the clause folds as a whole, applying the group's outer connective to what the group spells. `with Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and the medium writes such a row back in this form.
 
 **`with` means the same thing in each of its three uses.** Everywhere it appears it reads as *"this construct is accompanied by, or carries, X"*, and the three uses are one concept, not an overload: a function carries effects (`fn f() with E`); a handler carries state (`handler h with s = init`); a resume carries a state update (`resume(v) with s = s + 1`). The grammar distinguishes them by position (a row after a signature, or `name = init` bindings after a handler or resume), and the meaning stays the same. (Installing a handler does not use `with`; it uses the `~>` verb.)
 
@@ -439,7 +439,7 @@ fn check_exhaustive(patterns) = {
 
 A nested `fn name(params) = body` is a declaration scoped to its block. Consecutive `fn` declarations in a block form one run, which is a local letrec scope: every name of the run is in scope in every body of the run and in everything after it, so siblings can call each other in either direction. The run is judged the way the module's declarations are, callee first by binding group, with each cycle judged as one unit, so every member is generalized. One nested `fn ident(x) = x` serves an Int and a String even where its caller is declared above it. Any other statement between two `fn` declarations ends the run. A later fn may capture what that statement computes, and that value does not exist yet while an earlier fn can already be called. So in `fn first() = second() + 1; let k = 2; fn second() = k` the name `second` is out of scope at `first`'s call (`E_MissingVariable`). Two declarations of one name in one run are refused (`E_DuplicateFnName`), as two at module level are, and a fn in a later run shadows a fn of the same name from an earlier run for everything after it. A block-scope `let name = (params) => body` is a closure value, and that is exactly how the two differ. The `let` binds after its value, so its name is not in scope in its own body; it is not generalized; and it may shadow: `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
-**A nested fn is minted where it is declared.** Its closure record (its captures, or an empty record if it has none) is built when the block reaches its run. Every record of the run is allocated and bound before any is filled, so a record that refers to a sibling declared after it, or to itself, holds that sibling's record. The declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»), so `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` is refused. A nested fn that captures nothing could be the module's static record and cost nothing. The charge will follow that representation once the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`). A nested fn minted inside a handler arm captures the arm's continuation, as a lambda minted there does, so its body may `resume` and the fn is a value like any other: an arm may hand it to `fold` and resume once per call (tests/micros/mn-resume-in-referenced-fn.mn).
+**A nested fn is minted where it is declared.** Its closure record (its captures, or an empty record if it has none) is built when the block reaches its run. Every record of the run is allocated and bound before any is filled, so a record that refers to a sibling declared after it, or to itself, holds that sibling's record. The declaring frame pays `Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»), so `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` is refused. A nested fn that captures nothing could be the module's static record and cost nothing. The charge will follow that representation once the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`). A nested fn minted inside a handler arm captures the arm's continuation, as a lambda minted there does, so its body may `resume` and the fn is a value like any other: an arm may hand it to `fold` and resume once per call (tests/micros/mn-resume-in-referenced-fn.mn).
 
 **A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place. A parameter's ownership grade is read from its own uses, the references whose edge reaches it, never from a shadowing binder's uses (`fn shadowed(xs) = { let xs = 5; xs + xs }` grades its unread parameter by its uses, not its spelling).
 
@@ -456,7 +456,7 @@ Surfaces primitives #2 (pattern dispatch, the handler's own shape) and #8 (HM in
 1. **Reference** an existing function, leaving as holes the fields it is not yet given: `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). This is an edge to a node that exists.
 2. **Mint** a new one, with an **arm list**: `{ pattern => body, … }`.
 
-**The cost of each appears in the row of the frame that forms it.** A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record holding the captures and the supplied fields, so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. A constructor, an op or a primitive named as a value is the partial with every slot open, and so are `hash` and `to_string`, which fold as their calls do (tests/micros/mn-fold-face-as-value.mn). Each builds the same record and pays the same (tests/micros/mn-primitive-value-allocates.mn). There is one structural exception: where a verb applies the literal in place, as the stage of a `|>` or the recurrence of a `<~`, nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which is carried in its type, and never the cost of having made it.
+**The cost of each appears in the row of the frame that forms it.** A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record holding the captures and the supplied fields, so each charges `Alloc` where it is formed, and `with !Alloc` refuses it. A constructor, an op or a primitive named as a value is the partial with every slot open, and so are `hash` and `to_string`, which fold as their calls do (tests/micros/mn-fold-face-as-value.mn). Each builds the same record and pays the same (tests/micros/mn-primitive-value-allocates.mn). There is one structural exception: where a verb applies the literal in place, as the stage of a `|>` or the recurrence of a `<~`, nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which is carried in its type, and never the cost of having made it.
 
 ### Canonical form
 
@@ -695,7 +695,7 @@ binds its parts to registers. A fanout piped into a stage with as many open
 slots merges into it (`((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)`,
 §«`|>` — converge»). Neither allocates, so `with !Alloc` accepts both. A fanout
 whose tuple escapes (returned, stored, or handed whole to a call) builds the
-tuple and charges `Memory + Alloc` in its frame, and `with !Alloc` refuses
+tuple and charges `Alloc` in its frame, and `with !Alloc` refuses
 that. A spawning schedule builds a thunk per branch, and that cost is charged
 to the install that runs it, where the install stands. So a callee declared
 `!Alloc`, like one declared `!Thread`, takes no spawning demand from a caller
@@ -936,7 +936,7 @@ layout (`~>` on its own line at left-edge indent), and a
 single-stage body renders inline. Either way it is the same node
 with the same scope.
 
-**Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h) + cost(h)`. The handler subtracts what it absorbs; anything its arms perform is added; and the install's own cost, a fact of its class, is charged to the frame it stands in: a dispatched install (a schedule included) builds the record its arms run against and pushes its world, so it costs `Memory + Alloc`, and a derivative reading (`~> grad(w)`, which replaces the install with the extent's derivative program) costs nothing.
+**Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h) + cost(h)`. The handler subtracts what it absorbs; anything its arms perform is added; and the install's own cost, a fact of its class, is charged to the frame it stands in: a dispatched install (a schedule included) builds the record its arms run against and pushes its world, so it costs `Alloc`, and a derivative reading (`~> grad(w)`, which replaces the install with the extent's derivative program) costs nothing.
 
 *An install whose record never outlives its extent could live in the frame and cost nothing; that representation is `Hβ.lower.install-record-in-the-frame`, and the charge follows it when the lowering builds it.*
 
@@ -1185,7 +1185,7 @@ Effects: Pure
 $ mentl examples/pulse/course/03-bus.mn:63:5
 Query: { : ()
 Topology: the ~> installs `stdout_console` over everything to its left, answering Console, inside the body the ~> governs at examples/pulse/course/03-bus:58:3
-Effects: Memory + Alloc + Sample(48000) + Trap + Mutate + WASI
+Effects: Alloc + Sample(48000) + MemoryWrite + Memory + Trap + Mutate + WASI
 
 $ mentl examples/pulse/course/02-line.mn:44
 Query: { prev => a * x + (1.0 - a) * prev } <~ delay(1) : Float
@@ -1321,7 +1321,7 @@ let {name, ...rest} = morgan   // bind name; rest is a record of remaining field
 let {name: n, age: a} = morgan // bind to renamed locals
 ```
 
-`{name, ...rest}` binds `rest` to a fresh record of the remaining fields, each copied at its own width, and `rest`'s own field accesses read the residual's layout. `..._` keeps the pattern open without binding the rest, exactly as in list patterns. Binding a rest builds that record, so it charges `Memory + Alloc` in the frame the pattern stands in, and `with !Alloc` refuses it (`tests/micros/mn-record-rest-alloc.mn`).
+`{name, ...rest}` binds `rest` to a fresh record of the remaining fields, each copied at its own width, and `rest`'s own field accesses read the residual's layout. `..._` keeps the pattern open without binding the rest, exactly as in list patterns. Binding a rest builds that record, so it charges `Alloc` in the frame the pattern stands in, and `with !Alloc` refuses it (`tests/micros/mn-record-rest-alloc.mn`).
 
 **A record holds one field of each name**, so the rest has none of the fields the pattern names: the row behind them lacks their names, and `rest.name` is refused where it is written (`tests/micros/mn-record-rest-lacks-the-field.mn`). A rest named twice in a signature lacks every field written in front of it in either place.
 
@@ -1966,7 +1966,7 @@ site's own instance, so no cell is built at an effect's type variable:
 [Float]) with !Alloc = { put(xs[0]); put(xs[1]) }` under `handler total with
 s = 0.0 { put(v) => resume() with s = s + v }` runs and allocates nothing. So
 a perform under `!Alloc` is accepted exactly when the op's own row is
-accepted. A held or multi-shot op's row includes `Memory + Alloc`, because
+accepted. A held or multi-shot op's row includes `Alloc`, because
 such a perform builds the reified remainder (§«Resume discipline»).
 
 **A wide value crosses a continuation in a register, never in a cell.** The
@@ -2069,12 +2069,12 @@ Resume cardinality is inferred from each handler arm body when the handler is de
 
 - **`OneShot`** is inferred when there is zero or one resume site not under a loop ancestor (or several sites, all on branch-disjoint paths), and the one use is in the arm's result position: on every path, the arm's value is the resume itself, through `if`/`match`/block tails and through a tail call into a helper that resumes at its own tail. The continuation lives on the stack, with no heap capture, and performance equals a direct call. No compile error can fire here, because the inference produces the correct kind from the body's structure.
 - **The held single resume** is inferred when the one resume site is interior (bound by `let`, or used as an operand, an argument, an element or a lambda body), so the arm keeps computing after the remainder returns: `ask() => { let r = resume(1); r * 2 }`. The remainder is reified as the continuation record and called once. The code after `resume` runs when the remainder returns, and the arm's value is what the install answers (`ask() + 1` under that arm is 4; `tests/micros/mn-oneshot-nontail-resume.mn`). The grade is `ResumeUse` (types.mn): multiplicity × position, which is ownership's return-transfer distinction applied to the continuation. The record is the real cost of holding a continuation. Freeing it after its one call, in O(1), is the landing `Hβ.lower.held-resume-record-is-not-reclaimed`. A held resume runs the remainder inside the frame that calls it (the arm, or a callee to which the arm passes a lambda that resumes), so that frame's row includes the remainder's row. The resume performs its continuation's world, which is the handler's remainder, and every install judges what the frames it runs through forbid against its own body minus what it absorbs. Under an install whose body performs `Log` after the perform, `apply(() => resume(1))` is rejected against `fn apply(f) with !Log = f() + 0` (`tests/crown/leak-resume-remainder.mn`). When that remainder performs one of the handler's own ops again, the resume runs the handler again where it stands, which gives deep-handler semantics at any depth (`tests/micros/mn-held-resume-*-reyield.mn`).
-- **`MultiShot`** is inferred when one or more resume sites are under loop or recursion ancestry, or when two sites are both reachable from one path. The continuation is captured to the heap as a closure. This enables backtracking, non-determinism and generators. **A MultiShot op's row carries `Memory + Alloc`**: the perform site reifies the remainder as a heap record, so performing the op is an allocation, and a `!Alloc` declaration around such a perform is rejected (`tests/micros/mn-multishot-perform-alloc.mn`). The op's discipline and cost are settled at pre-registration, from the parse structure, so they never depend on whether the handler comes before its performers in source order.
+- **`MultiShot`** is inferred when one or more resume sites are under loop or recursion ancestry, or when two sites are both reachable from one path. The continuation is captured to the heap as a closure. This enables backtracking, non-determinism and generators. **A MultiShot op's row carries `Alloc`**: the perform site reifies the remainder as a heap record, so performing the op is an allocation, and a `!Alloc` declaration around such a perform is rejected (`tests/micros/mn-multishot-perform-alloc.mn`). The op's discipline and cost are settled at pre-registration, from the parse structure, so they never depend on whether the handler comes before its performers in source order.
 - **`Abandon`** is inferred when the arm never resumes (zero resume sites, whatever the op's declared return). The arm's value is the install's value and the continuation is dead: the perform unwinds, and nothing after it runs, in its own frame or in any frame between it and the install whose arm answers. The unwind is structured and is never a bare return past a bracket. A frame leaves through its innermost landing point, of which there are three. The first is an install body's block: the install's driver runs (its own op dispatches the arm, and a foreign op bubbles outward), and its world restore follows. The second is an arena body's block: the arena exits as any extent does, the perform's arguments move out of the region through their leaves (their slots in the argument area were journaled where they were stored), and the rest is reclaimed. Only a live continuation suspends an arena. The third is the function's own return. Every boundary that a raised flag can cross is followed by a check of the flag: a call whose callee's row may abandon, a direct arm call of a handler whose arms may abandon, an install or an arena that is not in the frame's tail position, and a fanout's spawn and join. An abandoning perform allocates nothing, because its arguments cross in a per-instance area allocated once at start, so `with !Alloc` holds over it (`tests/micros/mn-abandon-alloc.mn`).
 
 **A continuation is captured at any position.** A held or multi-shot perform suspends the computation around it wherever it stands: a `let`'s value, after a statement, an argument, a right operand, a branch, an element, a field, an arm's body, or a `<~` body. Each frame (a function's body, a lambda's, an arm's, an install's or an arena's) is read once for the places where a yield may leave it, and at each such place the frame's remainder is created as a function. That function is the frame's own lowered tree zipped at that place: what ran before the place is dropped, only the branch the place stands in is kept, and the place's value becomes the hole the remainder takes. Each value from before the place that the remainder reads is captured into its record, next to the world the perform ran in and the `<~` lines the frame ticks. Those lines stay the frame's own: a remainder reads the prior value its cycle loaded and ticks the function's line, never a line of its own. A call, an install or an arena whose row may carry a live continuation is such a place too. When the callee yields, the frame composes its remainder onto the continuation that the callee's perform began, so each resumption returns through the call and finishes the frame. Under a handler that resumes `choose()` with 1 and then 2, `{ let x = inner(); x + 1 }` over `fn inner() = choose() * 10` answers `(10 + 1) + (20 + 1)`. A part of the frame that ran before the perform and is read after it is held in a register, so a resumption reads it and never runs it again: in `seven() * 5 + pick() + total()`, `seven()` is counted once however many times `pick` resumes. An abandoning op, whose arm never resumes, creates no remainder: it performs from any position and unwinds (§«Resume discipline»). A live continuation that reaches a thread's join traps there, since no joiner can hold it (§`><`). The fifteen positions are tested by `tests/micros/mn-capture-*.mn`.
 
-**A resumed remainder runs under the world it is resumed in.** A continuation carries its own segment of the world it was captured in: every install between the perform and the install that caught it, including that install. Beyond that segment it reaches the installs that stand where it is resumed, and that is what the rows judge. So an install that an arm wraps around its resume governs the remainder (`ask() => resume(0) ~> inner_get` answers the remainder's `get` from `inner_get`). A continuation that the arm returns (`ask() => Paused({ x => resume(x) })`) and that the program resumes later reaches the installs around that later call. Each install's remainder (what its body performs beyond the effects the install handles) is held as an instance of its handler's world cell, so a negation over a resume is checked against it wherever the program states the negation: `fn sneaky(k) with !Get = k(1)` is rejected for a `k` whose remainder performs Get, and a `k` resumed at the top of `main` with nothing answering its Get is `E_EffectUnhandled` at the root. An arm runs outside its install on every path, so its own perform reaches the handler outside, and this includes a held or multi-shot arm: the install's driver passes the body's pending perform to the arm once, and a yield the arm raises bubbles past the install. The value that a resume passes over is computed in the arm's world, before the remainder's world is entered. A resume that enters its continuation from a world other than the one its install caught it in copies the segment onto that world, so a held resume charges `Memory + Alloc` in addition to its continuation's world. (tests/micros/mn-resume-world-*.mn, mn-arm-own-perform-*.mn, tests/crown/*resume-escaped*.mn.)
+**A resumed remainder runs under the world it is resumed in.** A continuation carries its own segment of the world it was captured in: every install between the perform and the install that caught it, including that install. Beyond that segment it reaches the installs that stand where it is resumed, and that is what the rows judge. So an install that an arm wraps around its resume governs the remainder (`ask() => resume(0) ~> inner_get` answers the remainder's `get` from `inner_get`). A continuation that the arm returns (`ask() => Paused({ x => resume(x) })`) and that the program resumes later reaches the installs around that later call. Each install's remainder (what its body performs beyond the effects the install handles) is held as an instance of its handler's world cell, so a negation over a resume is checked against it wherever the program states the negation: `fn sneaky(k) with !Get = k(1)` is rejected for a `k` whose remainder performs Get, and a `k` resumed at the top of `main` with nothing answering its Get is `E_EffectUnhandled` at the root. An arm runs outside its install on every path, so its own perform reaches the handler outside, and this includes a held or multi-shot arm: the install's driver passes the body's pending perform to the arm once, and a yield the arm raises bubbles past the install. The value that a resume passes over is computed in the arm's world, before the remainder's world is entered. A resume that enters its continuation from a world other than the one its install caught it in copies the segment onto that world, so a held resume charges `Alloc` in addition to its continuation's world. (tests/micros/mn-resume-world-*.mn, mn-arm-own-perform-*.mn, tests/crown/*resume-escaped*.mn.)
 
 Both type checking and lowering depend on the cardinality. It is why Mentl can express real-time DSP and constraint-search backtracking under one effect algebra, and why a persisted multi-shot continuation is `memcpy`-serializable while a one-shot continuation is a stack frame. Writing it as an annotation, however, would be drift: authoring `@resume=` would declare what the body already proves. The body is the contract. A fact that this much depends on must be visible ("systems explain themselves", `PLAN.md §0`), so the cursor shows it read-only: `mentl where` shows the op's `TCont` as `R ->1 S` (one-shot) or `R ->* S` (multi-shot), a derived badge and never an authored annotation.
 
@@ -2479,8 +2479,8 @@ own rules at once:
    the Carried-Truth Law in the very syntax that exists to express it.
 2. **It is not intent.** The Intent Boundary Rule reserves annotations for
    decisions: a refinement, an ownership marker, a representation pin.
-   `with Memory + Alloc` on a body that obviously allocates only copies down
-   a fact the compiler already has.
+   `with Alloc` on a body that obviously allocates only copies down a fact
+   the compiler already has.
 3. **It hides the negation.** `!E` is the most important part of a signature.
    In a row of nineteen names, the one negation worth reading is hard to find
    among the names the author typed.
@@ -2489,7 +2489,7 @@ own rules at once:
 The positive row is inferred and projected. What a signature writes is a
 decision (a negation, an instance pin, a claim, `Pure`), and the full
 positive row is read at the address surface (`mentl <file:line>` renders
-`-> T with Memory + Alloc`), the way `repr` width and resume cardinality
+`-> T with Alloc`), the way `repr` width and resume cardinality
 already are. So the normal signature is `with !Alloc + !Thread`, which is
 shorter and is the part worth reading. A clause never lists the row, so a
 bare name in it decides nothing (§«With-clauses for effects»). Three
@@ -2626,8 +2626,8 @@ optional in the AST: with no rest the match requires an exact length, while
 `..._` accepts any remaining tail without binding it. `|` stays pattern
 alternation and type-variant separation, and is never list-cons syntax. A
 bound list rest is cut out as a slice of the elements past the prefix, so it
-costs what `slice` costs, `Memory + Alloc`, in the frame where the match
-stands, and it is rejected under `with !Alloc`
+costs what `slice` costs, `Memory + Alloc + MemoryWrite`, in the frame where
+the match stands, and it is rejected under `with !Alloc`
 (`tests/micros/mn-list-rest-alloc.mn`).
 It never costs the `Trap` that a slice's bounds can raise: the arm runs only
 where the list holds the prefix, so the cut is in bounds by the pattern's
@@ -3050,10 +3050,10 @@ write) waits on the instance's own stack, which grows on the heap as deep as
 the value nests. `==`, compare, hash and show complete over two trees nested
 100,000 deep through their first field (tests/micros/mn-fold-deep-tree.mn,
 mn-fold-deep-rose.mn, mn-fold-mutual-chain.mn). That memory is in the row. A
-comparison or a hash over such a type charges `Memory + Alloc` where the type
-is known. Over a type variable, the cell carries the charge as a demand,
-which is paid in a row that each instantiation owns, unless the function
-already pays `Memory + Alloc`, which is all a spill can cost. So
+comparison or a hash over such a type charges `Alloc` where the type is
+known. Over a type variable, the cell carries the charge as a demand, which
+is paid in a row that each instantiation owns, unless the function already
+pays `Alloc`, which is all a spill can cost. So
 `fn same(a: Tree, b: Tree) with !Alloc = a == b` is refused, a generic
 `fn eq2(a, b) = a == b` costs a caller something only where the caller names
 such a type, and `hash` passed to a function declared `!Alloc` is refused at
@@ -3126,7 +3126,8 @@ makes a chain differentiable.
 ### Addresses — the word that names memory
 
 An address names a location in memory: the raw memory operations read from
-and write to one (lib/memory.mn's `Memory`). Its type is `Addr`. On the
+one (lib/memory.mn's `Memory`) and write to one (its `MemoryWrite`). Its
+type is `Addr`. On the
 machine it is a word in every respect (one i32, equal by identity, hashed as
 itself), but it is not a number. `alloc` and `heap_mark` return one,
 `Cast`'s `addr` returns the address a value lives at, and every raw load and

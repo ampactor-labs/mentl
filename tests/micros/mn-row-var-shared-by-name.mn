@@ -12,6 +12,6 @@ handler h {
   op() => resume(3),
 }
 
-fn guarded(f: () -> Int with e) -> Int with Memory + Alloc + (e - E) = (f() ~> h) + 4
+fn guarded(f: () -> Int with e) -> Int with Alloc + (e - E) = (f() ~> h) + 4
 
 fn main() = guarded(() => op())

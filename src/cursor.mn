@@ -926,9 +926,9 @@ fn position_in(h, hs) = match find({ (_, x) => x == h }, enumerate(hs)) {
 // subtree's row notes (`row_of_subtree`), and for a function value also the
 // row its type carries, which calling it performs. A node typed as a
 // function is not always one to call: `let f = () => log(2)` is typed as its
-// value, and evaluating it mints the closure — `Memory + Alloc`, the fact a
-// `!Alloc` judges — which the first form hid behind `Log when called`. The
-// facet used to read the type's row for every node, which said nothing for
+// value, and evaluating it mints the closure, which charges `Alloc`, the
+// fact a `!Alloc` judges; the first form hid it behind `Log when called`.
+// The facet used to read the type's row for every node, which said nothing for
 // an expression (`100 / (k - 1)` showed no row while it charges `Trap`) and
 // was suppressed whenever it was empty.
 fn row_facet_at(h, kind) with !Mutate = match row_of_subtree(h) {

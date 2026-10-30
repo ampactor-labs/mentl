@@ -1021,11 +1021,12 @@ as unknown, never as passing.
   so `map(f, xs)` waits on `f` and never on `map`. A cell nothing under the
   position charges is the row of the position's own value. An install
   between the value and the position is said as `except` and the effects
-  it answers, and the named effects lead (`Memory + Alloc + Trap, and
-  whatever `f` performs`). A closed row is printed as before. The first
-  line `// waits L:C: <values>` states what a fixture's open row waits on
-  (tests/micros/mn-waits-*.mn). The walk is the caret's own read of the row
-  notes beside the Why walk's, which the reach (§11.1(c)) replaces.
+  it answers, and the named effects lead (`Alloc + Memory + MemoryWrite +
+  Trap, and whatever `f` performs`). A closed row is printed as before.
+  The first line `// waits L:C: <values>` states what a fixture's open row
+  waits on (tests/micros/mn-waits-*.mn). The walk is the caret's own read
+  of the row notes beside the Why walk's, which the reach (§11.1(c))
+  replaces.
 - **An executable's row is the row of `main` and of its initializers**
   (2026-10-30). An effect a module value's initializer performs with no
   handler is refused like one that reaches `main`: `let seed = ping()`
@@ -1040,6 +1041,25 @@ as unknown, never as passing.
   checked it and the run answered 4
   (tests/micros/mn-main-clause-judges-inits.mn, and its twin
   mn-main-clause-inits-hold.mn, a number computed without allocating).
+- **Memory's writes are an effect of their own** (2026-10-30).
+  lib/memory.mn declares three effects: `Memory` reads memory and works
+  with addresses, `MemoryWrite` writes memory through an address, at its
+  op's first argument (`store_i32`, `store_i8`, `store_addr`,
+  `store_f64`, `mem_copy`, `globals_save`), and `ImageSwap` replaces the
+  whole image (`image_restore`). `!MemoryWrite` says a function never
+  writes memory through an address: `fn wipe(a) with !MemoryWrite =
+  store_i32(a, 0)` is refused and `fn pages() with !MemoryWrite =
+  memory_pages()` holds (tests/micros/mn-memory-write-negation-*.mn).
+  Building a value fills a record nothing else holds yet, which is part of
+  allocating it, so a construction, a mint, a partial and a dispatched
+  install charge `Alloc`, where they charged `Memory + Alloc`:
+  `fn pair(a, b) = (a, b)` reads `with Alloc`. The rows of the compiler's
+  own functions shrank with it, and its self-compile's line peak fell 105
+  KB below the boot's on the same source. The store-age judgment reads a
+  store off the op its callee names, and that op's effect, where it
+  matched the callee's spelling, so `fn put(store_i8, xs) = store_i8(xs,
+  1)` no longer charges Mutate for a parameter that only shares an op's
+  name (tests/micros/mn-store-named-parameter-is-a-value.mn).
 - **A hole's fan names what the arms beside it use first** (2026-10-30).
   The binders in scope and the module's values are offered beside the
   literal seeds and judged by the hole's refinement like any candidate. A
@@ -1352,10 +1372,10 @@ the last three.
    (`handed_of`, `slot_flow`, `escape_hand`, `reached_of`, `escape_apply`
    among them, measured 2026-10-30). The compiler's own `render_row`,
    written as `vs |> map(render_row_edge) |> unique |> join(" + ")`, is
-   still published as `Memory + Alloc + Trap` where `render_row_edge`
-   performs `GraphRead`, `TypeRender` and `Intern` (measured 2026-10-30
-   on the group of `show_reason` and `enters_tail`), so it stays written
-   as a call of `show_list`.
+   still published without the `GraphRead`, `TypeRender` and `Intern`
+   that `render_row_edge` performs (measured 2026-10-30 on the group of
+   `show_reason` and `enters_tail`), so it stays written as a call of
+   `show_list`.
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`). An executable's
@@ -1364,10 +1384,9 @@ the last three.
    effect that matches what it does
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`); the ops of a `*Read` effect write
-   nothing, held at zero by a census, and word arithmetic is `Pure` (both
-   built 2026-10-30, §7). Memory's stores become an effect of their own, so the
-   store-age judgment reads a raw store off the op's edge, where today it
-   reads the op's spelling (`raw_store_target`). (c) The reach is one walk
+   nothing, held at zero by a census, word arithmetic is `Pure`, and
+   memory's writes are an effect of their own, `MemoryWrite`, read off the
+   op's edge (all built 2026-10-30, §7). (c) The reach is one walk
    (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
    columns, answers absence, the effect-enters chain, the race rule, the
    schedule's demand, the edit cone, `refs of`, `unreachable` and the

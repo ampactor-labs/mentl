@@ -200,7 +200,7 @@ fn build_rig(sr: Int) = {
 // signature. `!Alloc` reads as "cannot allocate", which is stronger than
 // "does not" or "was tested and didn't", and `!Sample(44_100)` states the
 // rate rule. The rest of the row (the pinned clock, the Distort effect, the
-// Memory writes) is inferred and projected when you query an address; only
+// memory writes) is inferred and projected when you query an address; only
 // the decisions are written.
 //
 // The frame index and the time come from the clock the root installed:

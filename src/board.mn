@@ -470,8 +470,11 @@ fn board_bounds() = [
   // it silenced. 110 -> 108 (2026-10-22): two markers over modes the audit
   // never matched left the prelude's strings and threading. 108 -> 85 the
   // same day: the markers over fabricating catch-alls left when each became
-  // its roster, a demand or an invariant's refusal.
-  Bound({ceiling: 85, question: QCensus(CsProseClass(PcSilencer))}),
+  // its roster, a demand or an invariant's refusal. 85 -> 84 (2026-10-30):
+  // the marker over the list of effects the machine answers itself left
+  // when MemoryWrite and ImageSwap joined it, since no audit pattern
+  // matches the list.
+  Bound({ceiling: 84, question: QCensus(CsProseClass(PcSilencer))}),
   // A STOP SAYS WHAT IT IS. Every literal that writes the instruction
   // stopping the machine is one of three, each after a said stop: a site's
   // call of the stop (the emitter's stopped_with), the stop's own end once

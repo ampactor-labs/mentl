@@ -1,0 +1,11 @@
+// expect: 3
+// A parameter that shares a store operation's name is a function value, and
+// calling it writes only what the function handed in writes: put's row is
+// its callback's, so quiet, which hands it a reader, holds to `!Mutate`.
+fn put(store_i8, xs) = store_i8(xs, 1)
+
+fn first_plus(xs, n) = list_index(xs, 0) + n
+
+fn quiet(xs) with !Mutate = put(first_plus, xs)
+
+fn main() = quiet([2])

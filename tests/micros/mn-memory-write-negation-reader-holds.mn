@@ -1,0 +1,6 @@
+// expect: 7
+// The sound twin: reading how many pages the memory holds writes nothing, so
+// pages holds to `!MemoryWrite`. A module's memory starts at two pages.
+fn pages() with !MemoryWrite = memory_pages()
+
+fn main() = pages() + 5

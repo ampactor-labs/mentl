@@ -819,7 +819,7 @@ fn base_name(b) with Pure = match b {
 // two cannot disagree. Every predicate-plus-value pair the old form kept
 // apart was a place they could drift.
 //
-// The row is Memory + Alloc, not Pure, because the answer is constructed:
+// The row is Alloc, not Pure, because the answer is constructed:
 // the constructor charge bills Some(d), once per scanned digit byte. That
 // is the honest row for the shape, and the shape is right — a predicate
 // beside a value is exactly the split this deletes. What should cost

@@ -2135,14 +2135,14 @@ type ShapeRead = WholeShape | OuterShape | MovedShape
 // learns reaches the other whichever is known first, and whatever the base
 // holds under a written name stays its own.
 //
-// A SPILL is a fold's demand: a comparison or a hash over a type whose own
-// type recurs through a field the fold does not reach last keeps
-// the work each level leaves pending in memory, so the frame that folds it
-// pays `Memory + Alloc` (fold_spill). Over a variable the cost waits in the
-// row cell the demand names, which that frame's row carries, and the type
-// the variable is bound to decides it: one that can spill binds the cell to
-// `Memory + Alloc`, one that cannot leaves it free for the exit to drop, and
-// one holding variables hands the demand on to them.
+// A spill is a fold's demand: a comparison or a hash over a type that
+// recurs through a field the fold does not reach last keeps the work each
+// level leaves pending in memory, so the frame that folds it pays `Alloc`
+// (fold_spill). Over a variable the cost waits in the row cell the demand
+// names, which that frame's row carries, and the type the variable is bound
+// to decides it: one that can spill binds the cell to `Alloc`, one that
+// cannot leaves it free for the exit to drop, and one holding variables
+// hands the demand on to them.
 type TypeDemand
   = DemandNumber(NumericGate)
   | DemandShape(ShapeRead)

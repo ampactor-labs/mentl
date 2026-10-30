@@ -1,0 +1,9 @@
+// check: refuse E_EffectMismatch
+// A write into memory is an effect of its own, `MemoryWrite`: wipe says it
+// never writes memory and stores a word.
+fn wipe(a) with !MemoryWrite = store_i32(a, 0)
+
+fn main() = {
+  wipe(null_addr())
+  0
+}

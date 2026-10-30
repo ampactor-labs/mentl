@@ -1,9 +1,9 @@
 // expect: refuse E_EffectMismatch
-// A LIST PATTERN'S REST IS CUT: binding `...rest` calls the runtime's `slice`
-// for the elements past the prefix, so the match performs what `slice`
-// performs — `Memory + Alloc` — and a fn declaring `!Alloc` around it is a
-// false absence proof. The allocation audit found sixteen such rests in the
-// wheel on its first run (Hβ.effects.allocation-audit-at-the-settle-point).
+// A list pattern's rest is cut out: binding `...rest` calls the runtime's
+// `slice` for the elements past the prefix, so the match performs what
+// `slice` performs, `Memory + Alloc + MemoryWrite`, and a function declaring
+// `!Alloc` around it is refused. The allocation audit found sixteen such
+// rests in the compiler on its first run.
 fn after_first(xs) with !Alloc = match xs {
   [_, ...rest] => len(rest),
   _ => 0,

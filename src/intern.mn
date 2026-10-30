@@ -97,17 +97,16 @@ handler intern_view(table) {
   intern_table_view() => resume(table),
 }
 
-// THE MEDIUM'S OWN VOCABULARY — the names the wheel itself interns by
-// literal: the effects the judgment charges by name (a construction's
-// `Memory + Alloc`, an arena's `Arena`, a partial primitive's `Trap`, a
-// store's `Mutate`) and the ones the teaching surface classifies (`IO`,
-// `Network`). Every table is BORN holding them — its state init inserts them
-// in this order, so their handles are the same in every table (1 through 7)
-// and a fork's view always finds them: a program with no literal and no
-// library (the frontier's stage-ring demo, whose link is two files) asks for
-// `Memory` from inside a proposal once a closure mint is charged, and for
-// `Mutate` once a store is. A literal intern anywhere in the wheel names one
-// of these.
+// The names the compiler itself interns from a literal: the effects the
+// judgment charges by name (a construction's `Alloc`, an arena's
+// `Memory + Arena`, a partial primitive's `Trap`, a store's `Mutate`) and
+// the ones the teaching surface classifies (`IO`, `Network`). Every table
+// starts holding them, inserted in this order, so each has the same handle
+// in every table (1 through 7) and a fork's view always finds them: a
+// program with no literal and no library (the frontier's stage-ring demo,
+// whose link is two files) asks for `Alloc` from inside a proposal once a
+// closure mint is charged, and for `Mutate` once a store is. A literal
+// intern anywhere in the compiler names one of these.
 fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena", "Mutate"]
 
 // A table born holding the vocabulary: fresh buckets and entries with the

@@ -9,8 +9,7 @@
 // JsonValue ADT immediately structures it. Downstream code matches
 // on JsonValue variants, never on raw JSON text.
 //
-// Per kernel-closure discipline (insight #13): pure substrate;
-// composition on Memory + Alloc; no new effects.
+// The module declares no effect of its own.
 //
 // A number is the Int an integer token spells (JInt), or the Float the
 // medium's own reader makes of any other number (JNum), so an integer field

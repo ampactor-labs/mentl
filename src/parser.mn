@@ -1640,7 +1640,7 @@ fn parse_op_params(ref tokens, pos) = {
 // clause.
 // Eight: Graph (HandlerDeclStmt carries config+state lists). Handler
 // (Pure parse). Verb (|> through ident → optional config → optional
-// state → arms). Row (Memory + Alloc for AST). Ownership (ref tokens;
+// state → arms). Row (Alloc for AST). Ownership (ref tokens;
 // own per fresh nstmt). Refinement (Stmt where stmt_well_formed(self)).
 // Gradient (bottom: name only; top: full surface). Reason (span +
 // Declared(name)). Drift refused: 7 (no parallel arrays — config and

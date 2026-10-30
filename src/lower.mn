@@ -1441,7 +1441,7 @@ fn edges_may_yield_by(ref vs: [RowEdge], effect_pred) = match vs {
 // A free row holds only what its gates admit, so a closed cap among them
 // bounds every row it can come to hold: one naming no effect the predicate
 // holds of keeps the row out of it, as a fold's pending work is capped at
-// `Memory + Alloc` (infer.mn's `spill_row`).
+// `Alloc` (infer.mn's `spill_row`).
 fn capped_without(cell, effect_pred) = gates_at(cell) |> any({
   g => match gate_row(g) {
     EfRow(names, _, t) => match t {
@@ -1567,19 +1567,15 @@ fn eff_names_of(names) = flatten(map(
   names
 ))
 
-// Builtin effects have no handler record — the raw substrate IS their
-// handler (wasm instruction / WASI import). Drop them from the evidence
-// layout so user effects keep their correct indices. The builtin set is
-// carried as DATA (one membership projection), not an inline `== "X"`
-// chain. The ultimate form carries builtin-ness STRUCTURALLY as an
-// EffectDeclKind variant (BuiltinEffect vs UserEffect) read from the
-// graph; that touches the effect-declaration substrate in both layers
-// (peer Hβ.row.builtin-effect-kind) and changes no evidence bytes —
-// the membership result is identical, so it composes after L1.
+// The effects a row dispatches to handlers: every effect but those the
+// machine answers itself, whose operations are instructions or host
+// imports and which have no handler record.
 fn row_dispatched_names(names) = filter((n) => !is_builtin_effect(n), names)
 
-// drift-audit: ignore — byte-parity requires the SAME name set the seed filters (row_dispatched_names data segs 6496/6512/6528); a structural BuiltinEffect EffectDeclKind variant must change both layers together (peer Hβ.row.builtin-effect-kind, post-L1) or the evidence layout diverges from m2's.
-fn is_builtin_effect(ename) = index_of_name(["Memory", "Alloc", "WASI"], ename, 0) >= 0
+// Memory's reads, its writes, the image swap, allocation and the host's
+// system interface.
+fn is_builtin_effect(ename) =
+  index_of_name(["Memory", "MemoryWrite", "ImageSwap", "Alloc", "WASI"], ename, 0) >= 0
 
 // op_name → its declaring effect's name via EffectOpScheme ("" if not an
 // effect op in scope — productive-under-error). The graph carries the

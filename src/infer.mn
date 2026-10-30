@@ -2597,10 +2597,10 @@ fn judge_fn_run(decls) = {
   inf_keep_close()
 }
 
-// A `fn` declared in a block is MINTED where it is declared: lowering builds
-// its closure record there — its captures, or an empty record with none — so
-// the declaring frame pays `Memory + Alloc` once per nested fn, as it pays
-// for a lambda it mints (real 2026-09-30: `fn adder(k) with !Alloc = { fn
+// A `fn` declared in a block is minted where it is declared: lowering builds
+// its closure record there (its captures, or an empty record with none), so
+// the declaring frame pays `Alloc` once per nested fn, as it pays for a
+// lambda it mints (real 2026-09-30: `fn adder(k) with !Alloc = { fn
 // add(x) = x + k; add }` checked clean and allocated, and every maker in
 // lib/dsp returning its nested stage carried a row of `Pure`, found by the
 // allocation audit's first frontier run). A nested fn capturing nothing could
@@ -4181,9 +4181,9 @@ fn op_entry(eff, op_decl, opname: String) = match graph_parent_of(op_decl) {
 }
 
 // An op the walk reaches for an effect not its own charges that effect by
-// what the judgment reads of the call: a raw store whose address is older
-// than the frame performs Mutate (`raw_store_target`).
-fn foreign_op_charge(opname: String, en: String) = match raw_store_target(opname) {
+// what the judgment reads of the call: a store whose address is older than
+// the frame performs Mutate (`effect_store`).
+fn foreign_op_charge(opname: String, en: String) = match effect_store(en) {
   RsAt(_) | RsAll => "`{opname}`, a store into memory older than the frame it runs in",
   RsNone => "`{opname}`, an operation of {en}",
 }
@@ -5432,7 +5432,7 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   // Hβ.infer.seq-op-row-from-callee RESOLVED (2026-07-24): the callee's OWN
   // declared row, read live — the same Carried-Truth read
   // infer_call_saturated makes. The seq-op family's honest rows
-  // (push/slice/list_concat/make_list carry Memory + Alloc, lists.mn) now
+  // (push/slice/list_concat/make_list carry Alloc + MemoryWrite, lists.mn) now
   // attribute at every call site. The 2026-07-17 revert's OOM was one
   // representation era stale (measured then on the 559k-line wheel against
   // the 4GB ceiling; the current wheel compiles at ~694MB peak — the
@@ -6185,7 +6185,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // unify_args_positionally. What the call owes is what every function the
   // callee can be demands, read along its edges (`call_owes`).
   call_owes(fn_leaves(fh), args, handle, span)
-  ages_call(handle, fh, cname, args)
+  ages_call(handle, fh, args)
 }
 
 // THE PERFORM GROUNDS ITS INSTANCE (E1). An op parameter that shares its name
@@ -9636,17 +9636,17 @@ fn row_end_roots(end) = match end {
   RowEndClosed => [],
 }
 
-// THE SPILL, a fold's demand on a type cell. A comparison or a hash folds
-// its operand's whole structure, and
-// over a type whose own type recurs through a field the fold does not reach
-// last, the work each level leaves pending lives in memory (fold_spill,
-// types.mn), so the frame that folds it pays `Memory + Alloc` wherever the
-// type is known at the site. Over a variable the charge waits in a row cell
-// of its own, which the frame's row carries and the variable's demand names
-// (DemandSpill), and the one writer decides it from the type the variable
-// is bound to: one that can spill binds the cell to `Memory + Alloc`, judged
-// there by every gate the cell carries; one that cannot leaves it free, for
-// the declaration's exit to drop; one holding variables hands the demand on.
+// The spill, a fold's demand on a type cell. A comparison or a hash folds
+// its operand's whole structure, and over a type that recurs through a
+// field the fold does not reach last, the work each level leaves pending
+// lives in memory (fold_spill, types.mn), so the frame that folds it pays
+// `Alloc` wherever the type is known at the site. Over a variable the
+// charge waits in a row cell of its own, which the frame's row carries and
+// the variable's demand names (DemandSpill), and the one writer decides it
+// from the type the variable is bound to: one that can spill binds the
+// cell to `Alloc`, judged there by every gate the cell carries; one that
+// cannot leaves it free, for the declaration's exit to drop; one holding
+// variables hands the demand on.
 // A signature variable takes its row into the signature, so each
 // instantiation pays in a row of its own, and a function value's row carries
 // the cell its body's folds wait in, so the gate on a callback refuses a
@@ -9723,7 +9723,7 @@ fn spill_wait(vars, span) = {
 fn spill_rows_free(cell) = spill_rows_held([cell])
 
 // The row a fold's pending work waits in: free until the type it reads is
-// known, and capped at `Memory + Alloc`, all it can come to hold, so a
+// known, and capped at `Alloc`, all it can come to hold, so a
 // reader of a row carrying it knows how little it performs before it is
 // decided.
 fn spill_row(reason, span) = {
@@ -11586,7 +11586,7 @@ fn arg_targets(args, scope, view, i) = if i >= 0 && i < len(args) {
 // into of the argument that fills it: for an arena, the parameters it stores
 // cells into; for the write, the parameters it writes. A raw store asks of
 // the address it writes.
-fn ages_call(site, callee_h, cname: String, arg_handles) = match raw_store_target(cname) {
+fn ages_call(site, callee_h, arg_handles) = match raw_store_target(callee_h) {
   RsAt(i) => mutation_transport(site, arg_handles, i),
   RsAll => ages_mutate_older(site),
   RsNone => {
@@ -16708,15 +16708,13 @@ fn qmap_find(qmap, name: String) = if len(qmap) == 0 {
   }
 }
 
-// Every value CONSTRUCTION lowers to alloc + stores, so the judgment
-// charges what the lowering performs (the sugar-charge law at the value
-// layer). Measured before the charge existed (2026-08-01, the four-face
-// and ctor probes): tuple/list/record literals AND payload ctors all
-// published Pure while allocating — a false `with Pure` proof at every
-// literal, and the real-time `!Alloc` teaching unsound against them.
-// Presents, no edges (values — freshness moot); nullary tags and the
-// tuple-const READ charge nothing (immediate words, no allocation).
-fn construction_row() = mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc"))])
+// Building a value (a tuple, list or record literal, or a constructor with a
+// payload) allocates its record and fills its fields, so the judgment
+// charges `Alloc`. Filling a record nothing else holds yet is part of
+// making it: no memory that existed before is written, so the build is
+// neither `MemoryWrite` nor `Memory`. A nullary constructor and a constant
+// tuple's read are words the code already holds, and charge nothing.
+fn construction_row() = mk_ef_closed([ENamed(intern_str("Alloc"))])
 
 // A PRODUCT'S CHARGE: the record it builds, where it builds one. A tuple
 // literal and a fanout each answer a product, and a consumer that takes the

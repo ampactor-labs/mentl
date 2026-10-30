@@ -93,9 +93,9 @@ Lesson 10 renders four voices with `><` over a list and `~> parallel_compose` to
 
 ```
 $ mentl where examples/pulse/course/10-voices.mn render
-→ render(ref sr: Int, own frames: Int) -> [[Float]] with Memory + Alloc + Trap + WasiThreads(a, e)  at examples/pulse/course/10-voices:65
-  ~> parallel_compose absorbs Thread, answers [[Float]] at 65:25-65:86
-  fanout [Thread, a branch per element] at 65:25-65:66
+→ render(ref sr: Int, own frames: Int) -> [[Float]] with Alloc + Memory + MemoryWrite + Trap + WasiThreads(a, e)  at examples/pulse/course/10-voices:65
+  ~> parallel_compose absorbs Thread, answers [[Float]] at 65:25-65:80
+  fanout [Thread, a branch per element] at 65:25-65:60
 ```
 
 How the five are used together, with the compiler's answer at each, is docs/SYNTAX.md's "Composing the five" (`mentl map "Composing the five"`).

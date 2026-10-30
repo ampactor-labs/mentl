@@ -4,7 +4,7 @@
 // 16-bit samples. Both halves are plain byte writes into one buffer the
 // caller sizes ONCE (`wav_alloc`) before a single sample renders, so a
 // render loop that has sworn `!Alloc` can fill the buffer sample by sample
-// (`store_i8` is a Memory write, never an allocation) and the finished
+// (`store_i8` is a MemoryWrite, never an allocation) and the finished
 // file is the buffer itself — a String, because a String IS a byte
 // sequence (PLAN §4①), handed to `print` or `fs_write_file` unchanged.
 //
@@ -78,7 +78,7 @@ fn pcm16(x: Sample) -> Int = float_to_int(x * 32767.0)
 // two's-complement 16-bit pattern.
 fn store_pcm16(p: Addr, s: Int) = store_u16(p, if s < 0 { s + 65536 } else { s })
 
-// Write stereo frame `i` — left then right — into the buffer. Two Memory
+// Write stereo frame `i` — left then right — into the buffer. Two memory
 // writes per channel and nothing else: this is what a `!Alloc` render
 // loop calls once per frame. The channels are `Sample`s: the file holds
 // only what the unit range bounds, and a caller hands in a claim, not a

@@ -912,7 +912,7 @@ fn read_past_a_move(d) = !is_move_demand(d)
 // ─── THE ALLOCATION AUDIT — what a unit's code builds, read against the row
 // the judgment gave it ────────────────────────────────────────────────────
 //
-// The judgment charges `Memory + Alloc` where a construct builds a record;
+// The judgment charges `Alloc` where a construct builds a record;
 // the emission decides where a record is built. Those are two readings of
 // one fact, and six constructs once allocated with no row saying so because
 // the two disagreed (`Hβ.effects.install-allocates-unrowed`), each found by

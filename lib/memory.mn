@@ -8,17 +8,17 @@
 //   1. The type checker knows the signatures.
 //   2. The developer can read what operations exist.
 //   3. They participate in the graph like every other effect.
-//   4. Effect rows are honest — `with Memory` means "this function
-//      stores into or loads from linear memory." Arithmetic on a word's
-//      bits (`i32_xor` and its six siblings) is a primitive and performs
-//      nothing.
+//   4. Effect rows are honest: `Memory` in a row means the function reads
+//      linear memory, `MemoryWrite` that it writes it, and `ImageSwap` that
+//      it replaces the whole image. Arithmetic on a word's bits (`i32_xor`
+//      and its six siblings) is a primitive and performs nothing.
 //
 // This is the single source of truth for substrate operations.
 // If an operation isn't declared here, it doesn't exist.
 //
-// Memory — linear memory read/write. Operations on WASM's linear
-// memory. Each maps to one instruction. The developer writes the
-// intent; the substrate emits the opcode.
+// Memory, MemoryWrite, ImageSwap: reads of linear memory, writes into it,
+// and the swap of the whole image. Each op maps to one instruction or one
+// emitted routine.
 // Cast — a value's address. A heap value's word IS the address of its
 // record ("a handle IS a word"), and addr answers it as one, typed, so it
 // stays an address wherever it goes: an arena's exit that finds one of its
@@ -33,25 +33,14 @@ effect Cast {
 }
 
 effect Memory {
-  // 32-bit store/load — full i32 word at address
+  // 32-bit load — the full i32 word at an address
   //
-  // (addr, value)
-  store_i32(Addr, Int)
   // (addr) -> value
   load_i32(Addr) -> Int
-  // 8-bit store/load — single byte at address
+  // 8-bit load — the single byte at an address
   //
-  // (addr, byte)
-  store_i8(Addr, Int)
   // (addr) -> byte (0-255)
   load_i8(Addr) -> Int
-  // Bulk memory copy — src to dst, n bytes, as bits. Bits carry no type,
-  // so a copy that writes memory older than an open arena keeps that
-  // arena's region, and no copied byte is ever read as an address; a store
-  // that says what it stores is how a program keeps an arena reclaiming.
-  //
-  // (dst, src, n)
-  mem_copy(Addr, Addr, Int)
   // An address is the word that names memory: what an allocation answers,
   // what a load reads from and a store writes to. It is a word in every
   // machine respect and not a number — it moves by addr_at, never by
@@ -69,8 +58,6 @@ effect Memory {
   addr_diff(Addr, Addr) -> Int
   // (addr) -> the address stored there
   load_addr(Addr) -> Addr
-  // (addr, value) — journaled where the slot is older than an open arena
-  store_addr(Addr, Addr)
   // The address no allocation answers, which a virgin slot reads.
   null_addr() -> Addr
   // How many 64 KiB pages the memory holds now, so a program can read its
@@ -93,13 +80,11 @@ effect Memory {
   // the region). Everywhere else the world's writers stay the emitted
   // pushes and bracket restores.
   world_restore(Int)
-  // 64-bit float store/load — the WIDE-value boundary pair (§5.U): a wide
-  // value crosses the word altitude BY REFERENCE (its address is a word, a
-  // handle IS a word); these two ops are the deref/ref that cash the native
-  // width at a typed site. Project 1:1 to f64.load / f64.store.
+  // 64-bit float load, the wide-value boundary (§5.U): a wide value
+  // crosses the word altitude by reference (its address is a word, a handle
+  // is a word), and this op reads its native width at a typed site, 1:1
+  // to f64.load. `store_f64` is its pair in `MemoryWrite`.
   //
-  // (addr, value)
-  store_f64(Addr, Float)
   // (addr) -> value
   load_f64(Addr) -> Float
   // The image [0, heap-line) plus the mutable globals IS the whole program
@@ -117,15 +102,46 @@ effect Memory {
   image_key() -> Int
   // globals_area — the globals record's byte size (8 bytes per global).
   globals_area() -> Int
+}
+
+// MemoryWrite: a write into linear memory through an address. Every op
+// writes the memory at its first argument, so the judgment reads what a
+// store reaches off the op's effect, and `!MemoryWrite` says a function
+// never writes memory through an address. Building a value is `Alloc`:
+// filling a record nothing else holds yet is part of making it. A store
+// into memory older than the frame making it also performs Mutate, which
+// the judgment charges where it sees the address's age.
+effect MemoryWrite {
+  // (addr, value) — the full i32 word at an address
+  store_i32(Addr, Int)
+  // (addr, byte) — the single byte at an address
+  store_i8(Addr, Int)
+  // (addr, value) — an address into a slot; journaled where the slot is
+  // older than an open arena
+  store_addr(Addr, Addr)
+  // (addr, value) — the wide-value pair of `load_f64`, 1:1 to f64.store
+  store_f64(Addr, Float)
+  // Bulk memory copy — src to dst, n bytes, as bits. Bits carry no type,
+  // so a copy that writes memory older than an open arena keeps that
+  // arena's region, and no copied byte is ever read as an address; a store
+  // that says what it stores is how a program keeps an arena reclaiming.
+  //
+  // (dst, src, n)
+  mem_copy(Addr, Addr, Int)
   // globals_save — write every mutable global to an 8-byte-slot record at
   // dst. Slot 0 is the heap line (the persist packer patches it to the
   // image extent so restore rewinds allocation to the persisted moment).
   globals_save(Addr)
-  // image_restore — the whole-image swap: stage the wire's globals+image
-  // above both heaps, copy the image down over [0, size), restore the
-  // globals, return the wire's named continuation address. Raw preamble
-  // choreography (no allocation may interleave; the caller's heap values
-  // die under it — read everything you need into locals first).
+}
+
+// ImageSwap: the swap of the whole image, which writes every byte of memory
+// and so reaches every value at once.
+effect ImageSwap {
+  // image_restore — stage the wire's globals+image above both heaps, copy
+  // the image down over [0, size), restore the globals, return the wire's
+  // named continuation address. Raw preamble choreography (no allocation
+  // may interleave; the caller's heap values die under it — read
+  // everything you need into locals first).
   image_restore(Addr) -> Addr
 }
 

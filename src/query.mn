@@ -90,7 +90,7 @@ type CensusShape
   // against the row inferred from the body", so each name is a hand-copy of
   // a proven fact and widening one leaf edits every signature above it; it
   // is not INTENT — the Intent Boundary Rule reserves annotations for
-  // decisions, and `with Memory + Alloc` on a body that obviously allocates
+  // decisions, and `with Alloc` on a body that obviously allocates
   // is dictation; and it BURIES THE SIGNAL — `!E` is the crown, and the one
   // negation worth reading is a needle in a haystack the author typed. The
   // positive row is inferred and projected at the address surface; what a

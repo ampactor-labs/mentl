@@ -1,14 +1,10 @@
 // expect: refuse E_PurityViolated
 //
-// The constructor-row charge's contract (graduated 2026-08-01 with the
-// landing, pin 4a822b299c — banked RED against the pre-charge boot,
-// which compiled all three decls clean). The class: every constructor
-// form allocates, so a declared `with Pure` over a tuple/list/record
-// literal is a FALSE PROOF and `!Alloc` (real-time) falsely admits
-// every literal. The judgment charges Memory + Alloc at the
-// construction judgments (presents, no edges; nullary tags and the
-// tuple-const READ stay chargeless — they allocate nothing); this file
-// refuses at all three decls.
+// Every form that builds a value allocates its record, so a tuple, list or
+// record literal charges `Alloc` where it is built. A `with Pure` declared
+// over one is refused, here at all three declarations, and `!Alloc`
+// refuses every literal. A nullary constructor and a constant tuple's read
+// allocate nothing and charge nothing.
 
 fn pure_tuple(a, b) with Pure = (a, b)
 
