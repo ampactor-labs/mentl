@@ -257,10 +257,10 @@ fn gated_plan(lowered) = match gate_reads(lowered) {
 }
 
 // What a gated compile left at its artifact's path: the gate withheld the
-// module, or the module is on disk. A path that does not open is the
-// filesystem's failure, said where `fs_create` performs it — a host fault,
-// never a verdict on the program.
-type Artifact = ArtifactRefused | ArtifactWritten
+// module, or the module is on disk, with the memory its plan settled. A path
+// that does not open is the filesystem's failure, said where `fs_create`
+// performs it: a host fault, never a verdict on the program.
+type Artifact = ArtifactRefused | ArtifactWritten(m)
 
 // The gate carried to a file, for the routes that write one rather than
 // stream to stdout: the module is streamed to `path` through wat_to_file, so
@@ -273,7 +273,7 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
       emit_planned(plan)
     } ~> wat_to_file(fd)
     fs_close(fd)
-    ArtifactWritten
+    ArtifactWritten(plan.start)
   },
 }
 
@@ -356,19 +356,62 @@ fn compile_remainder() = {
 }
 
 // The module's footprint, said in the census scope beside the heap and arena
-// lines: what main claims, graded, and what the start needs, or that main
-// claims nothing and the memory may grow to the wasm32 ceiling. A claim is
-// pending: nothing yet proves the run fits it, and the program stops rather
-// than grow past it.
+// lines, graded. Where nothing allocates after the start, the memory is
+// fixed at what the start needs: constant, or a claim proven. Where
+// something does, the line names it along the path `mentl why` walks, and a
+// claim is pending, since nothing yet proves the run fits it; the program
+// stops rather than grow past it. The entry module's declarations that say
+// `with !Alloc` close the line, since each never allocates, whatever the
+// program around it does.
 fn footprint_line(start) = match diag_scope_of() {
   ScopeAll => said(footprint_text(start)),
   ScopeNone => (),
   ScopeProject(_) => (),
 }
 
-fn footprint_text(start) = match start.claim {
-  Some(c) => "footprint: claimed {c.bytes} bytes ({start.max_pages} pages), pending, since nothing yet proves the run fits it; the start needs {start.need} bytes ({start.pages} pages); the memory may grow to the claim and no further\n",
-  None => "footprint: no claim on main; the memory may grow to 4 GB in steps of 256 pages\n",
+fn footprint_text(start) = match start.growth {
+  MemoryFixed => "footprint: {fixed_grade(start.claim)}: {start.need} bytes ({start.pages} pages), all the start needs, since no Alloc is in main's row or a module value's; the memory never grows\n",
+  GrowsAt(h) => grown_text(start, allocation_path(h)),
+  GrowsAsLibrary => grown_text(start, "the module has no main, so its host calls its functions when it chooses"),
+  GrowsWithSpawns => grown_text(start, "each instance the module spawns takes its own run of the heap"),
+  GrowsWithArgs => grown_text(start, "the start reads main's arguments from the host, at a size the host decides"),
+  GrowsWithEnv => grown_text(start, "the launch gate reads the host's variables, at a size the host decides"),
+}
+
+fn grown_text(start, why: String) =
+  "footprint: {grown_grade(start)}, since {why}{alloc_free_stages()}\n"
+
+fn fixed_grade(claim) = match claim {
+  Some(c) => "claimed {c.bytes} bytes, proven",
+  None => "constant",
+}
+
+fn grown_grade(start) = match start.claim {
+  Some(c) => "claimed {c.bytes} bytes ({start.max_pages} pages), pending; the start needs {start.need} bytes ({start.pages} pages) and the memory may grow to the claim and no further",
+  None => "not constant; the memory may grow to 4 GB in steps of 256 pages",
+}
+
+// What allocates after the start, along the path `mentl why` walks from it
+// to the operation: `main`'s declaration, or a module value's initializer.
+fn allocation_path(h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, body)) => "{name} allocates after the start: {enters_path(name, body_entry(alloc_name(), body, [h]))}",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "a module value's initializer allocates what the start does not size: {enters_path("the initializer", body_entry(alloc_name(), h, [h]))}",
+}
+
+// The entry module's declarations that say they never allocate
+// (`declares_absent`), each a clause the judgment checks through every call
+// on every build.
+fn alloc_free_stages() = match map_fn_stmts(link_entry_decls(), alloc_free_name) |> flatten {
+  [] => "",
+  [one] => ". {one} is declared never to allocate",
+  names => ". {join(", ", names)} are declared never to allocate",
+}
+
+fn alloc_free_name(name: String, h) = match graph_node_body(h) {
+  NStmt(FnStmt(_, _, _, clause, _)) => if declares_absent(clause, "Alloc") { [name] } else { [] },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn heap_line(at: String) = match diag_scope_of() {

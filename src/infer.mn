@@ -3951,16 +3951,22 @@ fn carriers_in_order(eff, h) = carrying_children(
   }
 )
 
-// Whether the install at a tee absorbs the effect — its handler's arms name
-// it, the same read the tee's row takes (`infer_pipe_tee`). What the body
-// charges of an absorbed effect never reaches the declaration's row, so the
-// walk that descended into the body there named a site the row did not
-// carry: a root leak made by a handler's own arm was answered with another
-// handler's arm under the same chain (measured 2026-10-13).
+// Whether the install at a tee absorbs the effect: its handler's arms name
+// it and its class takes what the arms answer out of the body's row
+// (`absorbs_arms`), the same reads the tee's row takes (`infer_pipe_tee`).
+// What the body charges of an absorbed effect never reaches the
+// declaration's row, so the walk that descended into the body there named a
+// site the row did not carry: a root leak made by a handler's own arm was
+// answered with another handler's arm under the same chain (measured
+// 2026-10-13). An arena absorbs nothing, so the walk enters its body and
+// names the allocation there.
 fn tee_absorbs_here(hnd, eff) = match tee_arms(hnd) {
-  Some(arms) => any({ n => eff_name_str(n) == eff_name_str(eff) }, derive_handler_enames(arms, 0, [])) && !tee_serves_another(hnd, eff),
+  Some(arms) => arms_absorb(derive_handler_enames(arms, 0, []), eff) && !tee_serves_another(hnd, eff),
   None => false,
 }
+
+fn arms_absorb(names, eff) =
+  absorbs_arms(projection_of_effects(map(eff_name_str, names))) && any({ n => eff_name_str(n) == eff_name_str(eff) }, names)
 
 // Whether the install serves an instance the effect provably is not, so what
 // the body performs of it passes the install and the walk enters the body.
@@ -6840,11 +6846,15 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
       note_world_remainder(er.world, body_row, handled_names, span)
       inf_add_row_at(
         handle,
-        absorb_row(
-          body_row,
-          mk_ef_closed(handled_names),
-          install_mutation(handle, right, residual_with_config_args(er.residual, er.config, right))
-        )
+        if absorbs_arms(projection) {
+          absorb_row(
+            body_row,
+            mk_ef_closed(handled_names),
+            install_mutation(handle, right, residual_with_config_args(er.residual, er.config, right))
+          )
+        } else {
+          body_row
+        }
       )
     },
     // A handler held by a value — a let, a parameter — names no handler
@@ -6986,15 +6996,31 @@ fn eff_arg_of_node(n) = match literal_eff_arg(n) {
 // src/effects.mn): a dispatched install — a schedule's included — builds the
 // record its arms run against and pushes its world; a derivative reading
 // replaces the install with the extent's derivative program and builds
-// nothing; an arena builds no record either, but its exit moves what
-// survives into the frame's own region and asks every handler around it to
-// name the slots it wrote in place. An install whose handler does not
-// resolve is dispatched.
+// nothing; an arena builds no record either, and its exit asks every
+// handler around it to name the slots it wrote in place. The exit's move
+// allocates only to carry out what the body allocated, so an arena
+// allocates exactly when its body does, and the body's own row says so
+// (`absorbs_arms`). An install whose handler does not resolve is
+// dispatched.
 fn install_cost(projection) = match projection {
   PDerivative => mk_ef_pure(),
   PSchedule(_) => construction_row(),
   PDispatch => construction_row(),
-  PArena => mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc")), ENamed(intern_str("Arena"))]),
+  PArena => mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Arena"))]),
+}
+
+// Whether an install takes what its arms answer out of its body's row and
+// adds what the arms perform. An arena does neither: the lowering puts the
+// arena itself where the install stands, so its arms never run and the
+// body's allocations still happen, in the arena's region (lib/arena.mn).
+// Its row is its body's, and a body that allocates nothing leaves no
+// `Alloc` on the install. The tee's row and the Why walk read this one
+// answer.
+fn absorbs_arms(projection) = match projection {
+  PArena => false,
+  PDerivative => true,
+  PSchedule(_) => true,
+  PDispatch => true,
 }
 
 fn install_opens_arena(projection) = match projection {

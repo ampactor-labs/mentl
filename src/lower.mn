@@ -130,10 +130,16 @@ fn handler_state_cells_of(d) = match graph_node_body(d) {
 
 // The effects an arena's body passes to the handlers above it, as interned
 // names, read off the install's own row notes once every judgment has ended:
-// an install's note is its body's row with the arena's absorption removed
-// (`row_of_subtree` reads it so). None while a row's tail may still grow,
-// which the emitter reads as roots it cannot know.
+// an arena's note is its body's row whole, since an arena absorbs nothing
+// (`absorbs_arms`), and `row_of_subtree` reads it so. None while a row's
+// tail may still grow, which the emitter reads as roots it cannot know.
 fn arena_body_effects(h) = graph_rows_at(h) |> fold(Some([]), join_known_effects)
+
+// Whether an arena's install allocates: its row notes say `Alloc`, which
+// they do exactly when its body allocates, or carry a tail that may.
+fn arena_allocates(h) = graph_rows_at(h) |> any(note_allocates)
+
+fn note_allocates(r) = row_allocates(resolve_row(r))
 
 fn join_known_effects(acc, r) = match acc {
   Some(names) => match resolve_row(r) {
@@ -7824,6 +7830,40 @@ fn program_opens_arenas() = match env_lookup("main") {
 }
 
 fn names_arena(e) = eff_name_str(e) == "Arena"
+
+// Whether a declaration allocates: its row carries `Alloc` as the executable
+// gate reads it (`root_settle`), through the instances of its free cells. A
+// row that is still open may carry it.
+fn decl_allocates(dh) = match chase_ty(TVar(dh)) {
+  TFun(_, _, row) => row_allocates(row_through_instances(row)),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
+}
+
+// The node of a module value's initializer where the start runs it and it
+// allocates, since nothing yet sizes what an initializer allocates; None
+// where its row says it does not.
+fn init_allocation(entry) = match entry {
+  (_, init) => {
+    let h = lexpr_handle(init)
+    match row_of_subtree(h) {
+      Some(row) => if row_allocates(row) { Some(h) } else { None },
+      None => Some(h),
+    }
+  },
+}
+
+fn row_allocates(row) = match row {
+  EfRow(present, _, tail) => any(names_alloc, present) || match tail {
+    EtClosed => false,
+    EtOpen(_) => true,
+    EtAll => true,
+  },
+}
+
+fn names_alloc(e) = e == alloc_name()
+
+fn alloc_name() = ENamed(intern_str("Alloc"))
 
 // What `main` claims the program fits in, in bytes, and where `main` stands:
 // its clause's `Footprint(bytes)` (lib/memory.mn), the one decision the

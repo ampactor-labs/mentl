@@ -6528,7 +6528,15 @@ fn effect_breach(declared, inferred, why) = {
 // What the module's start function allocates before main runs, one case per
 // part, each carried beside its bytes; the footprint refusal says them in
 // words.
-type StartPart = DispatchMemo | FoldStackHome | ArenaJournal | ArenaJournalFloor | PerformArgs | SpawnedValues
+type StartPart
+  = DispatchMemo
+  | FoldStackHome
+  | ArenaJournal
+  | ArenaJournalFloor
+  | PerformArgs
+  | SpawnedValues
+  | LineRings
+  | MainParams
 
 // One part of what a program's start allocates, as the refusal says it.
 fn start_part_text(part) = match part {
@@ -6539,7 +6547,8 @@ fn start_part_text(part) = match part {
 // does not allocate.
 fn holds_journal(part) = match part {
   (ArenaJournal, _) | (ArenaJournalFloor, _) => true,
-  (DispatchMemo, _) | (FoldStackHome, _) | (PerformArgs, _) | (SpawnedValues, _) => false,
+  (DispatchMemo, _) | (FoldStackHome, _) | (PerformArgs, _) | (SpawnedValues, _) | (LineRings, _)
+  | (MainParams, _) => false,
 }
 
 fn start_part_words(kind) = match kind {
@@ -6549,6 +6558,8 @@ fn start_part_words(kind) = match kind {
   ArenaJournalFloor => "the arenas' journal at the least an arena can keep",
   PerformArgs => "the area a perform's arguments cross in",
   SpawnedValues => "the module values a spawned instance reads",
+  LineRings => "the rings of the `<~` lines top-level functions own",
+  MainParams => "the empty lists main's parameters start as",
 }
 
 // The bare names a clause wrote, the ones that decide nothing: its present

@@ -1,0 +1,10 @@
+// expect: 2
+// A program whose main allocates after its start keeps a memory that can
+// grow. One list of 262,144 words (1 MB) crosses the 2 pages the start
+// needs, and the allocator grows the memory by 256 pages, so memory_pages
+// answers 258 and the program answers 2. A memory fixed at the start's
+// pages would stop the run here instead.
+fn main() = {
+  let xs = make_list(262144)
+  memory_pages() - 256
+}

@@ -1,0 +1,11 @@
+// memory: 3 3
+// A half-second echo at 48 kHz keeps a 24,000-deep `<~` line, whose ring
+// the start allocates once (96,008 bytes), and nothing allocates after the
+// start. So the module's memory is the 3 pages the start needs, and it
+// never grows. The boot before this landing left the ring out of the
+// start's parts and declared 2 pages that could grow to 65,536.
+fn echo(x) = ((prev) => x + prev) <~ delay(24000)
+
+fn drive(n, acc) = if n == 0 { acc } else { drive(n - 1, echo(1)) }
+
+fn main() = drive(50000, 0)

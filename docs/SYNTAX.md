@@ -1039,7 +1039,10 @@ fn total_of(n) = (build(n) |> fold(0, add)) ~> arena   // the list dies; the sum
 Like a schedule and a reading, the install is recognized by the effect its
 handler answers. It builds no record and pushes no world, and it charges
 `Arena`, an effect no handler answers, so `main`'s row shows whether a program
-opens an arena, and a program that opens none pays nothing at a store. A store
+opens an arena, and a program that opens none pays nothing at a store. Its
+arms never run, so the install's row is its body's: an arena around a body
+that allocates nothing leaves no `Alloc` on the install, and `mentl why`
+names an allocation inside the body (tests/micros/mn-footprint-constant-arena.mn). A store
 into older memory is known where it happens: a list slot's `list_set`, a
 handler's state commit and a `<~` tick each journal the slot with the type
 known at the store, wherever the judgment cannot prove that the target belongs
@@ -2043,7 +2046,7 @@ import arena
 fn main() with Footprint(4194304) = memory_pages() ~> arena
 ```
 
-It answers 18, and `mentl compile` declares the module's memory as `(memory (export "memory") 18 64)`: the memory starts in the 18 pages of 64 KB its start needs and may grow to the 64 pages that cover 4,194,304 bytes, no further. With no claim the same program starts in 34 pages, because the arenas' journal takes 2 MB where the claim gives it a quarter of 4 MB. A claim the start already exceeds is refused with `E_FootprintExceeded` (tests/micros/mn-footprint-start-exceeds.mn).
+It answers 18, and `mentl compile` declares the module's memory as `(memory (export "memory") 18 18)`: the 18 pages of 64 KB its start needs and no more, since nothing allocates after the start, so the claim is proven. A program that allocates after its start may grow to the pages that cover its claim and no further, and its run stops saying memory is exhausted past them (tests/micros/mn-footprint-cap-stops.mn). With no claim the same program starts in 34 pages, because the arenas' journal takes 2 MB where the claim gives it a quarter of 4 MB. A claim the start already exceeds is refused with `E_FootprintExceeded` (tests/micros/mn-footprint-start-exceeds.mn).
 
 ### Installation in `with` clauses
 

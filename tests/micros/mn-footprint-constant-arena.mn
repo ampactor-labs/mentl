@@ -1,0 +1,9 @@
+// memory: 34 34
+// An arena around a body that allocates nothing allocates nothing either.
+// Its arms never run, so the install's row is its body's and main carries
+// no Alloc. The memory is the 34 pages the start needs, 32 of them the
+// arenas' journal, and it never grows. The boot before this landing charged
+// the install with Alloc and declared 34 pages that could grow to 65,536.
+import arena
+
+fn main() = memory_pages() ~> arena

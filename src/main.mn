@@ -1553,10 +1553,13 @@ fn test_check_run(entry_module) =
 // the shape the verb carries there, in the short form `show_shape_want`
 // writes (`<| x 2`, `>< 2 Seq`, `|> 2 product`, `~> rack Distort`, `<~ 1
 // stage`), so the sentence's voice may change without a fixture moving.
+// `// memory: P M` is the planned module's memory: the pages it begins with
+// and the pages it may grow to, read off the start the plan settled.
 type Expect
   // the exit, and the prefix of the line a stop must say on fd 2 ("" when
   // the contract names none)
   = ExpectRun(Int, String)
+  | ExpectMemory(Int, Int)
   | ExpectRefuse(String)
   | ExpectCheckRefuse(String)
   | ExpectPropose(Int, Int, ProposeWant)
@@ -1606,6 +1609,11 @@ fn battery_expect(src) = {
     battery_rename_expect(src)
   } else if byte_len(src) >= 17 && str_eq(str_slice(src, 0, 17), "// fmt: canonical") {
     Some(ExpectCanonical)
+  } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// memory: ") {
+    Some(ExpectMemory(
+      battery_expect_digits(src, 11, 0),
+      battery_expect_digits(src, battery_skip_digits(src, 11) + 1, 0)
+    ))
   } else if byte_len(src) < 12 {
     None
   } else if !str_eq(str_slice(src, 0, 11), prefix) {
@@ -2148,9 +2156,26 @@ fn battery_step(path: String) = {
           // already held at zero, and the line a stop must say; the command
           // that invoked the battery runs the module and prints PASS or
           // FAIL(run) in this line's place.
-          ArtifactWritten => {
+          ArtifactWritten(_) => {
             print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
             0
+          },
+        },
+      },
+      // The plan's verdict alone: the pages the written module's memory
+      // begins with and may grow to, as the plan settled them.
+      ExpectMemory(pages, max) => match battery_compile(path_to_module(path), stem) {
+        (left, _, _) => match left {
+          ArtifactRefused => {
+            print_string("FAILC {stem}\n")
+            1
+          },
+          ArtifactWritten(start) => if start.pages == pages && start.max_pages == max {
+            print_string("PASS {stem}: memory {int_to_str(pages)} {int_to_str(max)}\n")
+            0
+          } else {
+            print_string("FAIL(memory) {stem}: wanted {int_to_str(pages)} {int_to_str(max)}, and the module declares {int_to_str(start.pages)} {int_to_str(start.max_pages)}\n")
+            1
           },
         },
       },

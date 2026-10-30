@@ -602,7 +602,9 @@ emits, never from a constant. Since 2026-10-29 the heap begins where the
 static data ends and the declared pages are the ones `_start` fills, so a
 course lesson with no arena begins in two 64 KiB pages and the grid
 controller in 34, where every module began in 32 and held 288 after its
-first allocation past them. The constants that remain, a 2 MB journal, a
+first allocation past them. Since 2026-10-30 a program that allocates
+nothing after its start declares those pages as its maximum too. The
+constants that remain for a program that does allocate, a 2 MB journal, a
 256-page grow step and a 4 GB ceiling, are the residue that §11.8's budget
 and §11.1's exhaustion fact replace.
 
@@ -818,22 +820,57 @@ as unknown, never as passing.
   open no arena where the start holds a journal. It is judged where the
   module is planned, and `mentl check` now plans every whole executable as
   compile does, so check refuses what compile refuses. The census scope
-  prints the footprint beside the heap and arena lines, graded (`footprint:
-  claimed 4194304 bytes (64 pages), pending, since nothing yet proves the
-  run fits it; the start needs 1116416 bytes (18 pages); the memory may
-  grow to the claim and no further`, or `footprint: no claim on main; the
-  memory may grow to 4 GB in steps of 256 pages`), and
+  prints the footprint beside the heap and arena lines, graded (the next
+  entry gives its forms), and
   `mentl where` shows every declaration's clause beside its inferred row
   (`with Footprint(4194304) (declared)`; at the grid controller's
   `decide`, its five negations). Five micros state it:
-  mn-footprint-arena-fits answers 18 and its module declares `(memory
-  (export "memory") 18 64)`, mn-footprint-no-arena answers 2 under `2 2`,
+  mn-footprint-arena-fits answers 18 in a memory of 18 pages that never
+  grows (the next entry), mn-footprint-no-arena answers 2 under `2 2`,
   mn-footprint-start-exceeds and mn-footprint-too-small-for-an-arena are
-  refused, and mn-footprint-cap-stops stops saying memory is exhausted. The claim bounds the run; that the run fits
-  it is not proven (§11.8). An effect's parameters are parsed as an op's
+  refused, and mn-footprint-cap-stops stops saying memory is exhausted.
+  Where something allocates after the start, the claim bounds the run and
+  that the run fits it is not proven (§11.8). An effect's parameters are parsed as an op's
   are, a name and a type with no node, so the claim's own declaration adds
   no cell to the compiler's graph: the self-compile's line peak fell 10 KB
   below the boot's on the same wheel (284,130 KB against 284,140 KB).
+- **A program that allocates nothing after its start has a memory that
+  never grows** (2026-10-30). The emitter asks what allocates once the
+  start has run: `main`, where its row carries `Alloc` as the executable
+  gate reads it, or a module value's initializer whose row does, since
+  nothing yet sizes what an initializer allocates. Where nothing does, the
+  module's maximum is the pages its start needs: `fn main() =
+  memory_pages()` declares `(memory (export "memory") 2 2)`, where the boot
+  before declared `2 65536`, and a claim on such a program is proven. An
+  arena's install now has its body's row, because its arms never run: an
+  arena around a body that allocates nothing leaves no `Alloc` on `main`
+  (`memory_pages() ~> arena` declares `34 34` where the boot declared
+  `34 65536`), and `mentl why <file> main Alloc` names the allocation
+  inside an arena's body, where the boot named the arena's own arm. The
+  census scope's footprint line (`mentl < file`) gives the grade:
+  `footprint: constant: 67808 bytes (2 pages), all the start needs, since
+  no Alloc is in main's row or a module value's; the memory never grows`,
+  `footprint: claimed 4194304 bytes, proven: …`, or, for every course
+  lesson and the grid controller, `footprint: not constant; the memory may
+  grow to 4 GB in steps of 256 pages, since main allocates after the
+  start: main calls …`, the path `mentl why` walks, then the entry
+  module's declarations that say `with !Alloc` (`frame`; the controller's
+  `decide`). A fixed memory has to hold everything `_start` allocates, so
+  the start's parts now include the rings of the `<~` lines top-level
+  functions own and the empty lists `main`'s parameters start as, which
+  they had left out: a 24,000-deep echo line's 96,008-byte ring makes its
+  module 3 pages, fixed, where the start was counted at 2 and the run grew.
+  A start that reads `main`'s arguments or the host's variables reads a
+  size the host decides, a module with no `main` runs its functions when
+  its host calls them, and each instance a spawning module starts takes its
+  own run of the heap, so each of those memories can grow, and the line
+  says which reason holds. A
+  fixture states a planned module's memory on its first line (`// memory:
+  P M`: tests/micros/mn-footprint-constant.mn, mn-footprint-constant-arena.mn
+  and mn-footprint-constant-line.mn), and mn-footprint-grows.mn answers 2
+  after its memory grows by 256 pages. Every lesson allocates its file's
+  buffer after the start, at a size it computes when it runs, so none is
+  constant until the evaluator computes such sizes first (§11.2).
 - **`xs >< f` is the sequence fanout** (2026-10-30). When the right side
   of `><` is a stage (a function literal, a declared function's name, or a
   call that leaves its last arguments open), the judgment types the node as
@@ -1678,7 +1715,9 @@ the last three.
    is a claim on main (built 2026-10-30: `with Footprint(bytes)` caps the
    memory at the pages that cover the claim, gives the arenas' journal a
    quarter of it up to 2 MB, and refuses a claim the start already
-   exceeds). Still open: the journal is sized to the program's own arenas,
+   exceeds). A program that allocates nothing after its start declares
+   the pages its start needs as its maximum, so its claim is proven (built
+   2026-10-30). Still open: the journal is sized to the program's own arenas,
    and a program that cannot prove its whole run fits its claim is refused
    when it is built; today a run that outgrows its claim stops saying
    memory is exhausted. Without a claim the journal (2 MB), the grow step
@@ -1764,7 +1803,9 @@ the last three.
    module's memory sized from what its start needs (built 2026-10-29), the
    journal and the grow step sized by a budget the program declares (step
    8), and a proven constant footprint where the row says `!Alloc` past the
-   start (step 1's exhaustion fact).
+   start (built 2026-10-30 for a program that allocates nothing after its
+   start; a size the program computes waits for step 2's evaluator, and
+   running out of memory as a row fact is step 1's).
 
 ---
 

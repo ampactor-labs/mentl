@@ -1,0 +1,6 @@
+// memory: 2 2
+// Nothing this program runs allocates after its start: main's row carries
+// no Alloc, so the module declares its memory at the 2 pages the start
+// needs, with no room to grow. The boot before this landing declared 2
+// pages that could grow to 65,536.
+fn main() = memory_pages()

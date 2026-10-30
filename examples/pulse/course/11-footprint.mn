@@ -22,10 +22,10 @@
 // and the arenas' census, read through `arena_stat`: extents ended, regions
 // kept, kilobytes reclaimed and moved. The program counts nothing itself;
 // each number is one the emitted module keeps. Measured on the pinned
-// compiler (2026-10-29):
+// compiler (2026-10-30):
 //
-//   11-footprint: 290 pages of 64 KiB held; heap line 2933688 bytes before
-//   the first section, 2933688 after the last extent ended; 5 extents
+//   11-footprint: 290 pages of 64 KiB held; heap line 2933800 bytes before
+//   the first section, 2933800 after the last extent ended; 5 extents
 //   ended, 0 kept their memory, 0 KB reclaimed, 0 KB moved
 //
 // The heap line stands where it stood: four sections and the loop around
@@ -37,7 +37,16 @@
 // memory by 256 pages (16 MB), the compiler's own constant until a program
 // states its footprint (PLAN §11, forks on every core).
 //
-//   mentl examples/pulse/course/11-footprint.mn:99:78    the extent at `~> arena`
+// Compiled from this directory as `mentl < 11-footprint.mn`, the compiler
+// says why the memory can grow at all: "footprint: not constant; the
+// memory may grow to 4 GB in steps of 256 pages, since main allocates after
+// the start: main calls `wav_alloc` at <stdin>:122:26", the path from there
+// to the operation, and "frame is declared never to allocate". The buffer's
+// size is computed from `seconds()` when the program runs, so a memory
+// fixed at what the start needs waits for the evaluator that would compute
+// it first (PLAN §11, the keystone).
+//
+//   mentl examples/pulse/course/11-footprint.mn:108:78    the extent at `~> arena`
 //   mentl why examples/pulse/course/11-footprint.mn frame Alloc    no Alloc enters the frame
 //   mentl audit examples/pulse/course/11-footprint.mn    the frame is real-time safe
 import audio/wav

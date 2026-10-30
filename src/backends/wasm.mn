@@ -1457,8 +1457,10 @@ fn alloc_walk(unit, e) = match e {
     let body = alloc_walk(unit, b)
     s || body
   },
+  // The exit allocates only to move out what the body allocated, so it is a
+  // construct here only where the install's row says `Alloc`.
   LArena(h, b) => {
-    let built = alloc_at(unit, h, AsArena)
+    let built = arena_allocates(h) && alloc_at(unit, h, AsArena)
     let body = alloc_walk(unit, b)
     built || body
   },
@@ -2460,26 +2462,32 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       // does single-threaded. Where an arena lives in a module that yields,
       // its re-entry is a k too, resident beside the composer.
       let arena_on = arena_demanded()
-      // The module values and the memory its start needs, settled once: the
-      // footprint `main` claims is checked here, before the gate, so a claim
-      // the start already exceeds withholds the module.
-      let value_lets = collect_top_value_lets(lowered)
-      let start = start_memory(
-        arena_on,
-        fold_families_spill(fold_families),
-        wasi_ops,
-        yield_seen,
-        yield_arity,
-        len(value_lets),
-        data_end
-      )
-      let table_fn_names = all_fn_names ++ k_helper_names(yield_seen > 0, arena_on)
-      set_string_entries(string_entries)
       // The per-fn `<~` line lists, seeded for the install emit (a handler
       // record is sized by the sum over its arm fns) and read here for the
       // static owners: top-level fns and their twins, whose lines ride
       // instance globals rather than a record slot.
       set_fn_lines(fn_lines)
+      // The module values, the static `<~` lines' owners and the memory the
+      // start needs, settled once: the footprint `main` claims is checked
+      // here, before the gate, so a claim the start already exceeds withholds
+      // the module, and what allocates after the start decides whether the
+      // memory can grow.
+      let value_lets = collect_top_value_lets(lowered)
+      let line_owners = static_line_owners(top_fn_names, fn_lines, spec_recs, init_lets_lines(value_lets))
+      let start = start_memory({
+        arena_on,
+        data_end,
+        env_gate: byte_len(roster) > 0,
+        fold_stack: fold_families_spill(fold_families),
+        lets: value_lets,
+        main_args: main_args_of(main_param_count(), top_fn_names),
+        rings: static_ring_bytes(line_owners, derived.rings),
+        wasi_ops,
+        yield_arity,
+        yield_seen,
+      })
+      let table_fn_names = all_fn_names ++ k_helper_names(yield_seen > 0, arena_on)
+      set_string_entries(string_entries)
       // The MultiShot handlers the module runs, each with its one driver.
       let redrives = if yield_seen > 0 { redrive_handlers(table_fn_names, twin_base_set) } else { [] }
       // The call vectors, collected ONCE — the floor tree and every twin under
@@ -2501,7 +2509,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         jvp_faces: jvp_face_map(derived.faces),
         jvp_names,
         jvp_recs,
-        line_owners: static_line_owners(top_fn_names, fn_lines, spec_recs, init_lets_lines(value_lets)),
+        line_owners,
         lowered,
         redrives,
         spec_names,
@@ -2663,16 +2671,7 @@ fn emit_planned(plan) = match plan {
     each(emit_one_redrive, redrives)
     emit_init_lines(line_owners, tangent_rings)
     emit_init_lets(value_lets)
-    emit_start(
-      top_fn_names,
-      value_lets,
-      len(line_owners) > 0,
-      main_param_count(),
-      yield_seen,
-      start,
-      arena_on,
-      env_roster
-    )
+    emit_start(top_fn_names, value_lets, len(line_owners) > 0, yield_seen, start, arena_on, env_roster)
     emit_footer()
   } ~> unwind_scope(yield_seen > 0),
 }
@@ -4492,7 +4491,7 @@ fn emit_ring_zero(ring) = match ring {
 
 fn emit_tangent_ring(ring) = match ring {
   TangentRing(r) => {
-    emit_alloc(8 + r.depth * 8, "state_tmp")
+    emit_alloc(tangent_ring_size(ring), "state_tmp")
     wat_emit("    (global.set $")
     wat_emit(tline_global_name(r.site, r.owner))
     wat_emit(" (local.get $state_tmp))\n")
@@ -5032,9 +5031,22 @@ fn pages_covering(bytes) with Pure = (bytes + 65535) / 65536
 // What `_start` allocates before main runs, each part the size `emit_start`
 // writes: the dispatch memo, the fold stack's home when a fold spills, the
 // arenas' journal when an arena is open, the area a perform's arguments
-// cross in, and the module values a spawned instance reads from the root.
-fn start_parts(fold_stack, arena_on, yield_slots, mvals, journal) =
-  [(DispatchMemo, memo_bytes())] ++ if fold_stack { [(FoldStackHome, fold_home_bytes())] } else { [] } ++ if arena_on { [(journal_part(journal), journal_bytes(journal))] } else { [] } ++ if yield_slots > 0 { [(PerformArgs, yield_area_bytes(yield_slots))] } else { [] } ++ if mvals > 0 { [(SpawnedValues, 8 * mvals)] } else { [] }
+// cross in, the module values a spawned instance reads from the root, the
+// rings of the static `<~` lines (`$__init_lines`), and the empty lists
+// main's parameters start as. A part of no bytes is not allocated.
+fn start_parts(fold_stack, arena_on, yield_slots, mvals, journal, rings, params) = [
+  (DispatchMemo, memo_bytes()),
+  (FoldStackHome, if fold_stack { fold_home_bytes() } else { 0 }),
+  (journal_part(journal), if arena_on { journal_bytes(journal) } else { 0 }),
+  (PerformArgs, yield_area_bytes(yield_slots)),
+  (SpawnedValues, 8 * mvals),
+  (LineRings, rings),
+  (MainParams, params)
+] |> filter(part_allocates)
+
+fn part_allocates(part) = match part {
+  (_, bytes) => bytes > 0,
+}
 
 // A journal at the floor is said as the least an arena can keep, so a
 // refusal names why a small claim cannot hold an arena.
@@ -5060,24 +5072,86 @@ fn journal_floor() with Pure = 1024
 
 fn journal_bytes(entries) with Pure = 8 * entries
 
-// The pages the memory may grow to: those that cover `main`'s claim, else
-// 65,536 (4 GB, the wasm32 ceiling).
-fn max_pages_for(footprint) with Pure = match footprint {
-  Some(c) => pages_covering(c.bytes),
-  None => 65536,
+// The pages the memory may grow to: the start's own where nothing allocates
+// after it, else those that cover `main`'s claim, else 65,536 (4 GB, the
+// wasm32 ceiling).
+fn max_pages_for(growth, footprint, pages) with Pure = match growth {
+  MemoryFixed => pages,
+  GrowsAt(_) | GrowsAsLibrary | GrowsWithSpawns | GrowsWithArgs | GrowsWithEnv => match footprint {
+    Some(c) => pages_covering(c.bytes),
+    None => 65536,
+  },
+}
+
+// Whether the memory can grow past what the start needs (`growth_of`). It
+// cannot where nothing allocates after the start and the start allocates
+// nothing whose size the host decides, so the memory is declared at exactly
+// the start's pages. It can where `main`'s declaration or a module value's
+// initializer allocates (the node), where the module has no main and its
+// host calls its functions when it chooses, where each instance it spawns
+// takes its own run of the heap, where the start reads `main`'s arguments
+// from the host, or where the launch gate reads the host's variables.
+type Growth = MemoryFixed | GrowsAt(Int) | GrowsAsLibrary | GrowsWithSpawns | GrowsWithArgs | GrowsWithEnv
+
+// What `_start` hands `main`: nothing; the host's arguments as the first
+// parameter, read through `wasi_args`, and an empty list for each one after
+// it; or, where the module links no `wasi_args`, an empty list for every
+// parameter. An empty list is one fresh word.
+type MainArgs = TakesNothing | TakesHostArgs(Int) | TakesEmptyLists(Int)
+
+fn main_args_of(params, top_fn_names) = if params == 0 {
+  TakesNothing
+} else if ls_find_str_local(top_fn_names, vocab_symbol("wasi_args"), 0) >= 0 {
+  TakesHostArgs(params)
+} else {
+  TakesEmptyLists(params)
+}
+
+fn main_args_bytes(args) with Pure = match args {
+  TakesNothing => 0,
+  TakesHostArgs(n) => 4 * (n - 1),
+  TakesEmptyLists(n) => 4 * n,
+}
+
+// The bytes the static `<~` rings take, each owner's lines sized under the
+// owner's own bracket and each tangent ring beside its line, as
+// `$__init_lines` allocates them.
+fn static_ring_bytes(owners, rings) =
+  fold(0, owner_ring_bytes, owners) + fold(0, tangent_ring_bytes, rings)
+
+fn owner_ring_bytes(acc, owner) = match owner {
+  (_, lines, pairs, enc) => {
+    spec_ctx_set(pairs, enc)
+    let bytes = fold(acc, line_bytes, lines)
+    spec_ctx_clear()
+    bytes
+  },
+}
+
+fn line_bytes(acc, line) = match line {
+  (h, depth, _) => acc + line_ring_bytes(h, depth),
+}
+
+fn tangent_ring_bytes(acc, ring) = acc + tangent_ring_size(ring)
+
+fn tangent_ring_size(ring) = match ring {
+  TangentRing(r) => 8 + r.depth * 8,
 }
 
 // The module's memory at its start, settled once where the module is planned
 // and read where it is written: the footprint `main` claims, whether it
-// spawns, whether a fold spills, the slots a perform's arguments cross in,
-// where the heap starts, the journal's entries, the parts `_start` allocates
-// and the bytes they need, the pages the memory begins with and the pages it
-// may grow to.
+// spawns, whether a fold spills, what `_start` hands `main`, the slots a
+// perform's arguments cross in, where the heap starts, the journal's
+// entries, the parts `_start` allocates and the bytes they need, what can
+// grow the memory after the start, the pages the memory begins with and the
+// pages it may grow to.
 type StartMemory = {
   claim: Option({at: Int, bytes: Int}),
   fold_stack: Bool,
+  growth: Growth,
   heap_base: Int,
   journal: Int,
+  main_args: MainArgs,
   max_pages: Int,
   need: Int,
   pages: Int,
@@ -5087,29 +5161,71 @@ type StartMemory = {
 }
 
 // The parts the start allocates, summed above the heap's start into what the
-// start needs, kept in one record, and held to main's claim.
-fn start_memory(arena_on, fold_stack, wasi_ops, yield_seen, yield_arity, nlets, data_end) = {
+// start needs, kept in one record, and held to main's claim. `facts` holds
+// what the plan settled before it: whether an arena is open and a fold
+// spills, where the data ends, whether the launch gate runs, the module
+// values, what main takes, the static rings' bytes and what the module
+// performs and yields.
+fn start_memory(facts) = {
   let claim = program_footprint()
   let journal = journal_for(claim)
-  let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
-  let yield_slots = if yield_seen > 0 { yield_area_slots(yield_arity) } else { 0 }
-  start_parts(fold_stack, arena_on, yield_slots, if spawns { nlets } else { 0 }, journal) |> start_above(heap_base_of(data_end)) |> start_record(claim, fold_stack, journal, spawns, yield_slots) |> held_to_claim
+  let spawns = ls_find_str_local(facts.wasi_ops, "spawn_task", 0) >= 0
+  let yield_slots = if facts.yield_seen > 0 { yield_area_slots(facts.yield_arity) } else { 0 }
+  start_parts(
+    facts.fold_stack,
+    facts.arena_on,
+    yield_slots,
+    if spawns { len(facts.lets) } else { 0 },
+    journal,
+    facts.rings,
+    main_args_bytes(facts.main_args)
+  ) |> start_above(heap_base_of(facts.data_end)) |> start_record(
+    claim,
+    facts.fold_stack,
+    growth_of(facts, spawns),
+    journal,
+    facts.main_args,
+    spawns,
+    yield_slots
+  ) |> held_to_claim
+}
+
+fn growth_of(facts, spawns) = match env_resolve("main") {
+  None => GrowsAsLibrary,
+  Some(dh) => if decl_allocates(dh) {
+    GrowsAt(dh)
+  } else {
+    match find_map(init_allocation, facts.lets) {
+      Some(h) => GrowsAt(h),
+      None => if spawns { GrowsWithSpawns } else { host_growth(facts) },
+    }
+  },
+}
+
+fn host_growth(facts) = match facts.main_args {
+  TakesHostArgs(_) => GrowsWithArgs,
+  TakesNothing | TakesEmptyLists(_) => if facts.env_gate { GrowsWithEnv } else { MemoryFixed },
 }
 
 // What the start needs: the heap's start and every part above it.
 fn start_above(heap_base, parts) = {heap_base, need: parts |> fold(heap_base, part_bytes), parts}
 
-fn start_record(claim, fold_stack, journal, spawns, yield_slots, above) = StartMemory{
-  claim,
-  fold_stack,
-  heap_base: above.heap_base,
-  journal,
-  max_pages: max_pages_for(claim),
-  need: above.need,
-  pages: pages_covering(above.need),
-  parts: above.parts,
-  spawns,
-  yield_slots,
+fn start_record(claim, fold_stack, growth, journal, main_args, spawns, yield_slots, above) = {
+  let pages = pages_covering(above.need)
+  StartMemory{
+    claim,
+    fold_stack,
+    growth,
+    heap_base: above.heap_base,
+    journal,
+    main_args,
+    max_pages: max_pages_for(growth, claim, pages),
+    need: above.need,
+    pages,
+    parts: above.parts,
+    spawns,
+    yield_slots,
+  }
 }
 
 // A claim the start already exceeds is refused where `main` stands, so the
@@ -5153,8 +5269,9 @@ fn emit_memory_decl(start, shares, wants_rmw, carries_lets) = {
   // start above it and what `_start` allocates before main (`start_parts`),
   // so a program with no arena begins in two pages and one with an arena in
   // the pages its journal takes, where every module began in 32. The max is
-  // the pages that cover the footprint `main` claims, else 65536 (4 GB, the
-  // wasm32 ceiling). THE ALLOCATOR GROWS THE MEMORY ON DEMAND
+  // the first pages themselves where nothing allocates after the start
+  // (`Growth`), else the pages that cover the footprint `main` claims, else
+  // 65536 (4 GB, the wasm32 ceiling). THE ALLOCATOR GROWS THE MEMORY ON DEMAND
   // ($memory_reach, beside $alloc): the bump line crossing the current size
   // grows by at least 256 pages and never past the max, and a grow the host
   // refuses, or one the max leaves no room for, stops the run saying memory
@@ -7027,8 +7144,11 @@ fn lexpr_leaves_value(e) = match e {
 // where every perform is argless, so the area is a record of its own.
 fn yield_area_slots(arity) = if arity > 1 { arity } else { 1 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, start, arena_on, env_roster: String) = {
-  let {fold_stack, heap_base, journal, spawns: threaded, yield_slots, ..._} = start
+// One empty list `_start` hands main for a parameter: a fresh word.
+fn emit_empty_list_arg(_) = wat_emit(" (call $alloc (i32.const 4))")
+
+fn emit_start(top_fn_names, value_lets, has_lines, yield_seen, start, arena_on, env_roster: String) = {
+  let {fold_stack, heap_base, journal, main_args, spawns: threaded, yield_slots, ..._} = start
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -7086,35 +7206,21 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, star
     )
   }
   if has_main {
-    // main is graph-known → DIRECT call (never virtualize a known
-    // operator): static closure as __state, one EMPTY-LIST arg per
-    // declared param. main's result IS the exit code (Unix vocabulary;
-    // the seed's _start and the whole micro battery key on it — never
-    // dropped). The arg is a fresh alloc'd word — virgin-zero in the
-    // bump image = a len-0 flat list — NOT the literal 0: a main that
-    // READS its param (the CLI's len(argv)) on address 0 read whatever
-    // the process's scratch held — 0 in m2's layout, ≥2 in m3's, so m3
-    // dispatched every stdin compile to ParseError/help and emitted
-    // NOTHING (the 0/45 battery, the empty m4). Real WASI argv is the
-    // named peer Hβ.emit.wasi-argv-in-start.
+    // main is called directly, with its static closure as its state and
+    // what `_start` hands it (`MainArgs`), and its result is the process's
+    // exit code. `wasi_args` has no captures, so its state is 0. An empty
+    // list is a fresh word, zero in a fresh heap, never the address 0, which
+    // a main that reads its parameter would read as whatever the start left
+    // there.
     wat_emit("    (call ${main_sym} (global.get ${main_sym})")
-    // main's FIRST param IS argv — read the live process args (Hβ.emit.wasi-argv-
-    // in-start, closed). wasi_args has no captures, so __state = 0 (the
-    // __init_lets precedent). Any further params (none in practice) stay empty
-    // lists. A 0-param main() gets nothing — the micros never touch argv.
-    if main_params > 0 {
-      // wasi_args needs io.mn linked. A params-taking main WITHOUT it (the micro
-      // harness links memory+strings+lists+prelude only) gets the empty list —
-      // the pre-argv behavior — never a dangling $wasi_args.
-      let args_sym = vocab_symbol("wasi_args")
-      if ls_find_str_local(top_fn_names, args_sym, 0) >= 0 {
+    match main_args {
+      TakesNothing => (),
+      TakesHostArgs(n) => {
+        let args_sym = vocab_symbol("wasi_args")
         wat_emit(" (call ${args_sym} (i32.const 0))")
-      } else {
-        wat_emit(" (call $alloc (i32.const 4))")
-      }
-      each((_) => wat_emit(" (call $alloc (i32.const 4))"), range(1, main_params))
-    } else {
-      ()
+        each(emit_empty_list_arg, range(1, n))
+      },
+      TakesEmptyLists(n) => each(emit_empty_list_arg, range(0, n)),
     }
     wat_emit(")\n")
     // band B k1: the UNHANDLED-YIELD backstop — a yield no install caught,
