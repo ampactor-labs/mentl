@@ -276,13 +276,35 @@ fn term_spells(t, ename: String) = match t {
   RtGroup(ts) => any({ (u, neg, conn) => !neg && conn == EcUnion && term_spells(u, ename) }, ts),
 }
 
-fn build_declared_row(effs) = build_row_seen(effs, [], [])
+// A declaration's clause holds decisions about the row the compiler infers
+// from its body, and never lists that row: a negation (`!Alloc`, never), an
+// instance pin (`Sample(48000)`, the instance every perform of the effect
+// runs at), a claim on an effect with no operations (`Footprint(bytes)`), or
+// `Pure` (nothing). Every effect the clause does not mention is left to the
+// body, so the declared row's tail is open, except under `Pure` and where
+// the clause names a row variable, whose row the signature shares. A bare
+// name decides nothing, and `mentl tighten` removes it.
+fn build_declared_row(effs) = open_declared(effs, build_row_seen(effs, [], []))
 
 // A signature's own clause: a lowercase name in it is a ROW VARIABLE, read
 // from the signature's scope `rvars` (name → cell) as a type variable is,
 // so `fn run(f: () -> a with e) with Memory + e` names one row in both
 // places. A name the scope does not hold mints a cell of its own.
-fn build_declared_row_in(effs, rvars) = build_row_seen(effs, [], rvars)
+fn build_declared_row_in(effs, rvars) = open_declared(effs, build_row_seen(effs, [], rvars))
+
+fn open_declared(effs, row) = if has_pure_declared(effs) {
+  row
+} else {
+  match row {
+    EfRow(p, a, EtClosed) => ef_make(p, a, EtAll),
+    EfRow(_, _, EtOpen(_)) | EfRow(_, _, EtAll) => row,
+  }
+}
+
+// A function type's row as its author wrote it. A type has no body for the
+// compiler to read, so its row is what calling the value performs, every
+// name it lists and nothing else; a negation in it leaves the rest open.
+fn build_type_row(effs) = build_row_seen(effs, [], [])
 
 // A name whose env kind is RowAliasKind builds ITS row WHOLE through
 // this same fold and the outer connective applies to the RESULT —
@@ -1053,7 +1075,9 @@ fn row_subsumes(ref body_row, ref gate_row) = {
         // design. This read stays a read.
         //
         // An EtAll body must carry at least the gate's mask: ¬A ⊆ ¬B iff B ⊆ A.
-        EtAll => if forbidden_names_disjoint(pb, ag) {
+        // A pin the gate states binds its own effect: a present name that
+        // shares a pinned name must be the pinned instance.
+        EtAll => if forbidden_names_disjoint(pb, ag) && all(pin_holds(pg, ??), pb) {
           match tb {
             EtClosed => true,
             EtOpen(_) => true,
@@ -1594,6 +1618,17 @@ fn eff_admits(gate_name: EffName, body_name: EffName) = if eff_name_handle(gate_
 }
 
 fn present_admitted(ref bp, ref gp) = all((b) => any((g) => eff_admits(g, b), gp), bp)
+
+// Under an open gate, a body charge is held by the gate's pins: free when no
+// pin shares its name, else admitted only by one of the gate's entries, so
+// `with Sample(48000)` refuses a callee's `Sample(44100)` and leaves every
+// other effect to the body.
+fn pin_holds(gp, b) = !any(pins_name_of(b, ??), gp) || any(eff_admits(??, b), gp)
+
+fn pins_name_of(b, g) = match g {
+  EParameterized(_, _) => eff_name_handle(g) == eff_name_handle(b),
+  ENamed(_) | EPure => false,
+}
 
 // Two instances are ROUTE-distinct when every value either carries is known
 // and they are not the same instance: an install serves the instance its

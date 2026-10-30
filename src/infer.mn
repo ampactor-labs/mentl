@@ -3787,14 +3787,12 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
     } else {
       None
     }
-    // THE TEACHING READS THE POSITIVE HALF ONLY (A4, 2026-09-27). A
-    // negation is a proof claim, never an inventory, and comparing the
-    // whole declared row narrated `!Mutate + Any` as "over-declared"
-    // against a Pure body — false at every negation-only signature, which
-    // is the normal signature once the positive row is inferred. So the
-    // bare declared names are judged alone: beyond the proven row they are
-    // over-declared; within it they are an inventory (the projected row
-    // written by hand); absent, there is nothing to teach.
+    // The teaching reads the bare positive names alone: a negation is a
+    // proof and a pin or a claim is a decision, while a bare name decides
+    // nothing, since the clause leaves the row open. Within the proven row
+    // the bare names are an inventory (the projected row written by hand),
+    // beyond it they are over-declared, and over an open body row (a
+    // callback's row rides its tail) nothing is known to teach.
     match declared_bare_row(declared_row) {
       Some(bare) => match ground {
         Some(g) => if row_subsumes(bare, g) {
@@ -3802,13 +3800,6 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
         } else {
           report(TOverDeclared(declared_row, g, name, span))
         },
-        // An OPEN body row (a callback's row rides its tail): the bare
-        // positive names are a CAP on what the callbacks may perform, and
-        // the cap is a GATE (`declared_gate` below, A3-pos) — a deliberate
-        // narrowing, not an inventory. This arm narrated the cap as an
-        // inventory for exactly one landing (A4), while a positive row
-        // installed nothing, which is how the wheel's 164 open-row caps
-        // were swept; with the gate armed, nothing is said here.
         None => (),
       },
       None => (),
@@ -3877,8 +3868,8 @@ fn mismatch_reason(name: String, declared_row, body_row, decl, span: ValidSpan) 
 }
 
 // The body's present effects the declaration refuses: a name its negation
-// forbids, or — under a closed declared row, a cap — a name no declared
-// positive admits.
+// forbids, a name at another instance than the one its pin states, or, under
+// a closed row (`Pure`, a function type's), a name the row does not list.
 fn offending_names(declared_row, body_row) = match declared_row {
   EfRow(dp, da, dt) => match body_row {
     EfRow(bp, _, _) => filter(not_admitted(dp, da, dt, ??), bp),
@@ -3888,7 +3879,7 @@ fn offending_names(declared_row, body_row) = match declared_row {
 fn not_admitted(dp, da, dt, present) = any(eff_forbids(??, present), da) || match dt {
   EtClosed => !any(eff_admits(??, present), dp),
   EtOpen(_) => false,
-  EtAll => false,
+  EtAll => !pin_holds(dp, present),
 }
 
 // The chains a declaration's row is made of — one per effect its resolved
@@ -4218,15 +4209,13 @@ fn note_decl(node) = graph_decl_note(node)
 
 fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
 
-// The gate a declaration installs: its empty closed cap (`Pure`), its
-// negation (`!E`, a universe-minus row), or — A3-pos, 2026-09-27 — the
-// CLOSED row itself: a declared `with E + !F` is a cap, "at most E, never
-// F", and it reaches every free terminal of the body's row through each
-// edge's mask (`gate_through_mask`'s closed arm: `Pg ∪ mask`, `A ∖ mask`),
-// so a HOF's callbacks may perform at most what the cap admits. It used to
-// install the negation half alone, and a positive cap constrained nothing:
-// `fn run(f) with E = f()` accepted `run(() => op_f())` (measured on boot
-// d27fc81d before this landing).
+// The gate a declaration installs: the empty closed row under `Pure`, or
+// its open row, the negations it forbids and the pins it states. It reaches
+// every free terminal of the body's row through each edge's mask
+// (`gate_through_mask`), so a higher-order function's callbacks are held to
+// the same decisions as its own body: `fn run(f) with !E = f()` refuses
+// `run(() => op_e())`, and `fn run(f) with Sample(48000) = f()` refuses a
+// callback that reads a 44.1 kHz clock.
 fn declared_gate(declared_row, has_pure, why) = if has_pure {
   Some(mk_gate(mk_ef_pure(), why))
 } else {
@@ -15912,7 +15901,7 @@ fn written_row_meaning(c, terms, owner) = match graph_chase(c) {
   GNode(NRowBound(bound), _) => bound,
   GNode(NBound(_), _) | GNode(NFree(_), _) | GNode(NRowFree(_), _) | GNode(NRecordRowBound(_, _), _)
   | GNode(NErrorHole(_), _) => {
-    let folded = build_declared_row(terms)
+    let folded = build_type_row(terms)
     graph_bind_row(c, folded, owner)
     folded
   },

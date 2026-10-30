@@ -1,0 +1,10 @@
+// CROWN — a negation on a higher-order function holds its callbacks: `run`
+// is declared `with !F`, so the callback handed to it, which performs F, is
+// refused at the argument edge, and the refusal names `run`'s declaration.
+// Expect E_EffectMismatch.
+effect E { op_e() -> Int }
+effect F { op_f() -> Int }
+handler he { op_e() => resume(1) }
+handler hf { op_f() => resume(10) }
+fn run(f) with !F = f() + op_e()
+fn main() = (run(() => op_f())) ~> he ~> hf

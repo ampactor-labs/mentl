@@ -791,6 +791,19 @@ as unknown, never as passing.
   and none of its 63 arena exits is proven root-free (§11.8 owns both).
   Most of the wheel's unknown installs, and lesson 11's section, apply a
   function through a record's function-typed field, the read §11.3 owes.
+- **A `with` clause states decisions and never lists the row**
+  (2026-10-30). A declaration's clause leaves every effect it does not
+  mention to the body: `fn rate() with Sample(48000) = { print(…);
+  sample_rate() / 1000 }` builds and answers 48, where the pin used to
+  forbid the print. A pin binds its own effect inside the open row, so a
+  48 kHz function calling a 44.1 kHz reader is refused and the refusal
+  names both instances; a claim on an effect with no operations rides the
+  clause; `Pure` is the one clause that closes the row; a bare name decides
+  nothing, `T_RowInventory` says so and `mentl tighten` removes it. A
+  function type's row stays the interface, what calling the value performs.
+  The positive cap is gone, with the four fixtures that tested it; a
+  negation holds a higher-order function's callbacks, and the handlers that
+  answer a function's own operations are §11.1(a)'s.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1131,7 +1144,10 @@ the last three.
    runs while the function runs (`decide(1) ~> online ~> offline` exits 8,
    the 1 plus the 7 the fetch answered), while the same function handed a
    closure that calls `fetch` is refused, and declaring its whole row
-   (`with Pure`) refuses the extra operation. The index gives the rule: an
+   (`with Pure`) refuses the extra operation. A clause has never listed the
+   row since 2026-10-30, so no positive cap stands in for this rule (the
+   micro that showed a cap refusing the new operation went with the cap).
+   The index gives the rule: an
    install that answers an op performed under a negation is inside that
    negation's extent, so the arm's row is masked by the negation and
    checked where the install covers a call of the function, and the

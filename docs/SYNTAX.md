@@ -200,18 +200,40 @@ The parser has no special recognizer for the turbofish. A separate scanner for e
 
 ### With-clauses for effects
 
+**A clause states decisions about the row the compiler infers from the
+body, and never lists that row.** Its terms join with `+`, and each is one
+of four decisions:
+
+- `!E`, a negation: the function never performs E, proven through every
+  call (§«Negation in `with` clauses»).
+- `E(args)` on an effect with operations, an instance pin: wherever the
+  function performs E, it runs at these arguments.
+- `E(args)` on an effect with no operations, a claim the medium checks.
+- `Pure`: the function performs nothing. It is the one clause that closes
+  the row, and the identity of `+`.
+
+Every effect a clause does not mention is left to the body. In
+tests/micros/mn-clause-pin-leaves-row-open.mn the pin says which clock
+`rate` reads, and nothing about printing:
+
 ```
-fn fetch(url: String) with IO + Network =
-  ...
+fn rate() with Sample(48000) = {
+  print("reading the clock\n")
+  sample_rate() / 1000
+}
 ```
 
-Multiple effects join with `+`. Negation: `!E`. Parameterized: `E(arg)`. Combinations:
-```
-fn audio_stage(samples) with Sample(44100) + !Alloc + IO =
-  ...
-```
-
-`Pure` is the identity element of `+`. Writing `with Pure` is allowed (and an explicit purity declaration); `with Pure + IO` simplifies to `with IO`.
+`mentl run` prints `reading the clock` and the program answers 48. A pin
+binds its own effect: in tests/micros/mn-clause-pin-refuses-other-instance.mn
+a function pinned to 48 kHz calls one that reads the 44.1 kHz clock, and
+`mentl check` refuses it, ``frame_rate is declared `with Sample(48000)`,
+which does not allow Sample(44100), and frame_rate uses Sample(44100):
+frame_rate calls `old_rate` at …``. Decisions combine without a list, so
+`with Sample(48000) + !Alloc + !Network` pins the clock and forbids two
+effects, and the body may do anything else. A bare name such as `with
+Mutate` decides nothing, since the compiler infers it: `mentl check`
+reports it (`T_RowInventory`) and `mentl tighten` removes it, keeping the
+clause's negations (tests/micros/mn-clause-bare-name-decides-nothing.mn).
 
 **Every name in a row is a declared effect, a row alias, a row variable or
 `Pure`, or the declaration is refused.** A term that names no effect in the
@@ -223,7 +245,9 @@ inside a type. If an unknown name were read as an effect of that name,
 `fn quiet() with !Nowhere = 1` would check clean and constrain nothing
 (tests/micros/mn-effect-name-resolves.mn, mn-effect-name-in-fn-type.mn).
 
-**A function type's row means what a declaration's clause means.** `f: () ->
+**A function type's row is what calling the value performs.** A type has no
+body for the compiler to read, so its row lists every effect a call of the
+value may perform, and a negation in it leaves the rest open. `f: () ->
 Int with !Both` keeps its row as its author wrote it, read where every named
 row is known. That holds whatever writes the type: a parameter, a return, a
 let's annotation, an op's signature, a constructor's field, a handler's
@@ -2055,7 +2079,7 @@ a function-typed parameter is the same gate: `f: () -> Int with !E`
 constrains `f`'s row at every call of `f`, and a sibling parameter's row is
 judged on its own.
 
-Used alone (for example `with !Mutate`), a negation creates a **negative capability stance**, meaning "anything except this effect" (universe-minus). This is how Mentl expresses region freezes and borrows (`ref`) in the row algebra, without a separate borrow checker.
+A negation leaves every other effect to the body, whatever else its clause states: `with !Mutate` means "anything except this effect" (universe-minus), a **negative capability stance**. This is how Mentl expresses region freezes and borrows (`ref`) in the row algebra, without a separate borrow checker.
 
 **`Mutate` is a store into memory older than the frame that makes the store**: a parameter's memory, a capture, a module value, a part of another value, or the feedback line that a function's record owns. So `!Mutate` proves that a function leaves every memory that existed before it ran as it found it, and `fn poke(ref xs) with !Mutate = list_set(xs, 0, 5)` is rejected. A store into memory the frame allocated builds a value and performs nothing. A store into a parameter's memory performs `Mutate` in the function that makes it, and a caller is charged with it only where the argument it passes is older than its own frame. With `fn fill(buf, v) = list_set(buf, 0, v)`, `fn make() with !Mutate = make_list(1) |> fill(??, 4)` holds, and a caller that passes `fill` its own parameter passes the write on to its own callers. An install is charged for its arms the same way: a state that its init built belongs to the install, and a write the arms make to a config is charged by the age of what the install passes them. A `<~` tick writes its line, which every call shares, so `fn step(x) with !Mutate = ({ prev => prev + x }) <~ delay(1)` is rejected. The members of a cycle record what they write when the cycle's judgment ends, and are read again until no claim grows. A function value carries its claim as it carries its contract (a lambda's claim and a nested fn's claim are written where their judgment ends), so a call through it is charged `Mutate` only where the memory it reaches is older than the caller's frame. A parameter it writes is judged by the argument passed, a capture it writes by the binder's age in the frame that holds the value, its own feedback line by the value's age (a closure's line lives in its record), and the functions it applies by what the callee passes them, including a fold's accumulator where the stage passes it back. So `fn run() with !Mutate = { let c = counter(); c(1) }` holds over a counter whose tick is charged by the closure's own row, and `fn k(buf) with !Mutate = { let g = { x => list_set(buf, 0, x) }; g(7) }` is rejected, because the capture is `k`'s parameter (tests/micros/mn-mutate-negation-refuses.mn, mn-mutate-tick-refuses.mn, mn-mutate-fresh-is-construction.mn, mn-mutate-closure-line-is-the-value.mn, mn-mutate-capture-fresh.mn, mn-mutate-capture-param-refuses.mn, mn-mutate-through-callback-param.mn).
 
@@ -2405,21 +2429,22 @@ own rules at once:
 
 **The fix needs no new syntax: the signature leaves the positive clause out.**
 The positive row is inferred and projected. What a signature writes is a
-decision (a negation, an instance pin, `Pure`), and the full positive row is
-read at the address surface (`mentl <file:line>` renders
+decision (a negation, an instance pin, a claim, `Pure`), and the full
+positive row is read at the address surface (`mentl <file:line>` renders
 `-> T with Memory + Alloc`), the way `repr` width and resume cardinality
 already are. So the normal signature is `with !Alloc + !Thread`, which is
-shorter and is the part worth reading. Three mechanisms support it:
+shorter and is the part worth reading. A clause never lists the row, so a
+bare name in it decides nothing (§«With-clauses for effects»). Three
+mechanisms support it:
 
 - **`T_RowInventory`** reports a clause whose bare positive names are all
   proven by the body's row, where that row is ground: a cell nothing charged,
   or a resolved row with no free terminal (`enforce_row_gate`, src/infer.mn).
-  Over an open body row (a callback's row is carried in its tail) the bare
-  names are a cap, and the cap is a gate (below). That is a decision rather
-  than an inventory, so nothing is reported. `T_OverDeclared` covers the
-  ground case where a declared name is beyond the proven row, and reads only
-  the positive half: a signature with only negations is never
-  "over-declared" (it used to report `!Mutate + Any` against a Pure body).
+  Over an open body row (a callback's row is carried in its tail) nothing is
+  known to report. `T_OverDeclared` covers the ground case where a bare name
+  is beyond the proven row, and reads only the positive half: a signature
+  with only negations is never "over-declared" (it used to report `!Mutate +
+  Any` against a Pure body).
 - **`mentl tighten`** writes each reported clause's residue (its negations
   and instance pins, or no clause at all) and never the proven row. The
   medium's own source was migrated this way: 1,490 clauses, after which the
@@ -2428,20 +2453,17 @@ shorter and is the part worth reading. Three mechanisms support it:
 - **`mentl verify` bounds the shape** (`CsAuthoredPositiveRow`, `src/board.mn`)
   at zero on the wheel: a capability nobody writes needs no name.
 
-**A positive row that remains is a cap, and the cap is a gate.**
-`fn run(f) with E = f()` states that `run`'s body, callbacks included,
-performs at most E. The argument edge for `run(() => op_f())` is rejected
-with `E_EffectMismatch`, and the error names `run`'s declaration, exactly as
-for a negation. A `~>` mask inside the body widens what reaches the gate (`Pg ∪
-mask` on the push: `fn run2(f) with E = ((f()) ~> hf) + op_e()` accepts a
-callback that performs F, because `hf` absorbs it before the gate). So a
-positive row on a higher-order function is a decision the medium enforces.
-Write one when the cap is meant, and otherwise let inference project the
-row. The two micros that carried `with Abort` on a try/catch higher-order
-function, whose thunks allocate and choose, were rejected once the gate was
-enforced and lost their caps. A positive row cannot express what their
-comment asked of it (`try_with_abort_catch`: a row "to
-allow the outer scope's effects to flow").
+**A higher-order function holds its callbacks with negations.** `fn
+run(f) with !F = f() + op_e()` refuses `run(() => op_f())` at the argument
+edge, and the error names `run`'s declaration
+(tests/crown/leak-negation-callback.mn). A `~>` mask inside the body
+answers what it absorbs before the negation is read, so `fn run2(f) with !F
+= ((f()) ~> hf) + op_e()` accepts that callback, because `hf` answers its F
+(tests/crown/sound-negation-callback-masked.mn). A negation binds what the
+function and its callbacks perform. It does not yet bind a handler outside
+the function that answers one of the function's own operations by doing
+what the negation forbids, which is the open step the crown made modal
+names (PLAN, the soundness core).
 
 There is no `capability` keyword: `capability X = <row>` would be structurally the same as `type X = <row>`. A row is a type-level value, so naming one is a type alias, and a second keyword for it would be the redundant form that Governing Principle 2 rejects. Nominal row identity would be record-style branding, but capabilities require structural composition, so the transparent alias is the right form.
 
@@ -3676,7 +3698,7 @@ which the parser builds as the pipe it is (§«`<|` — diverge»).
 | Code                  | Trigger                                       | Applicability        | Action                                          |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only; a negation is a proof claim and is never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
-| `T_RowInventory`      | a declared clause whose bare positive names are all proven by the body's ground row: the projected row written out by hand (§«A signature is not an inventory»). Over an open body row, the bare names are a cap that the declaration installs as a gate, and nothing is narrated | `MachineApplicable` | `mentl tighten` writes the residue: negations, instance pins, or no clause |
+| `T_RowInventory`      | a declared clause whose bare positive names are all proven by the body's ground row: the projected row written out by hand, which decides nothing (§«A signature is not an inventory»). Over an open body row nothing is narrated | `MachineApplicable` | `mentl tighten` writes the residue: negations, instance pins, claims, or no clause |
 | `T_WordSlotBox`       | a wide value (a Float) boxed into a fresh cell to cross a callee's slot sized for a word, such as a list primitive's element (`list_set`), inside a unit whose row does not say `Alloc`. The cost belongs to the representation, not the program, until the slot takes the value's own width (`Hβ.value.seq-element-stride-carrier`). Reported at the settle point by the allocation audit, which refuses every allocation that is the program's own | `MaybeIncorrect` | keep the value at a word's width where the slot is one, or wait for the carrier |
 | `W_RedundantWhere`    | `type X = Y where true`: a vacuous predicate  | `MachineApplicable`  | drop the `where true`; the alias is transparent |
 

@@ -1,0 +1,18 @@
+// expect: 3
+// A bare name in a clause lists nothing: `decide` names `Mutate` and also
+// prints, and the clause leaves Console to the body, so the program builds.
+// Its negation still holds, and the check reports the bare name as the
+// inferred row written by hand.
+import io
+
+effect Net {
+  fetch(url: String) -> Int
+}
+
+fn decide(hz: Int) -> Int with Mutate + !Net = {
+  let n = { k => k + 1 } <~ delay(1)
+  print("deciding\n")
+  hz + n
+}
+
+fn main() = decide(2) ~> stdout_console

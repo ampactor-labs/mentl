@@ -1,0 +1,12 @@
+// CROWN — the control for leak-negation-callback: `run2` is declared
+// `with !F` too, but its body installs `hf` around the callback, so the F the
+// callback performs is answered inside and never reaches the negation; and
+// `run`, which declares nothing, admits the callback. Expect NO
+// E_EffectMismatch.
+effect E { op_e() -> Int }
+effect F { op_f() -> Int }
+handler he { op_e() => resume(1) }
+handler hf { op_f() => resume(10) }
+fn run(f) = f() + op_e()
+fn run2(f) with !F = ((f()) ~> hf) + op_e()
+fn main() = (run(() => op_f()) + run2(() => op_f())) ~> he ~> hf

@@ -5016,8 +5016,8 @@ fn diag_message(d) with !Mutate = match d {
   ECatchAllOverSum(roster, _, _) => "the catch-all stands for `{roster_inline(roster)}` — a constructor declared later would join it unread; write the roster (`mentl tighten` writes it)",
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
-  TOverDeclared(declared, used, name, _) => "function '{name}' declares {render_row(declared)} but body only uses {render_row(used)} — tighten the signature to unlock capabilities" ~> var_names,
-  TRowInventory(declared, used, name, _) => "function '{name}' declares {render_row(declared)}, which is exactly what the body proves ({render_row(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue" ~> var_names,
+  TOverDeclared(declared, used, name, _) => "'{name}' names {render_row(bare_names_row(declared))} in its clause, but its body performs only {render_row(used)}. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it" ~> var_names,
+  TRowInventory(declared, used, name, _) => "'{name}' names {render_row(bare_names_row(declared))} in its clause, which the compiler already infers from its body ({render_row(used)}). A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it" ~> var_names,
   TWordSlotBox(what, unit, _) => "{what} is boxed into a fresh cell in `{unit}`, whose row does not say `Alloc` — a wide value crossing a slot sized for a word: the representation's cost, not the program's, until the slot takes the value's own width (Hβ.value.seq-element-stride-carrier)",
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(name, _) => "'{name}' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade",
@@ -6476,7 +6476,12 @@ fn effect_breach(declared, inferred, why) = {
   let clause = "`with {render_row(declared)}`"
   match unlocated(why) {
     EffectEnters(eff, site, next) => match graph_node_body(site) {
-      NStmt(FnStmt(name, _, _, _, _)) => "{name} is declared {clause}, which does not allow {eff}, and {name} uses {eff}: {enters_path(name, next)}",
+      NStmt(FnStmt(name, _, _, _, _)) => {
+        // The effect as the body uses it, with its instance, so a pin's
+        // conflict reads as the two instances.
+        let used = used_instance(inferred, eff)
+        "{name} is declared {clause}, which does not allow {used}, and {name} uses {used}: {enters_path(name, next)}"
+      },
       NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
       | NRow(_) | NParam(_) => "the declaration says {clause}, which does not allow {eff}: {show_reason(EffectEnters(eff, site, next))}",
     },
@@ -6487,6 +6492,32 @@ fn effect_breach(declared, inferred, why) = {
     | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
     | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => "the declaration says {clause}, and the code here uses {row_breach(declared, inferred)}, which that clause does not allow: {show_reason(why)}",
   }
+}
+
+// The bare names a clause wrote, the ones that decide nothing: its present
+// entries with no instance, as a row of their own.
+fn bare_names_row(declared) = match declared {
+  EfRow(p, _, _) => EfRow(filter(names_bare, p), [], EtClosed),
+}
+
+fn names_bare(e) = match e {
+  ENamed(_) => true,
+  EParameterized(_, _) | EPure => false,
+}
+
+// How the body uses an effect the refusal names: the inferred row's entry of
+// that name with its instance (`Sample(44100)`), else the bare name.
+fn used_instance(inferred, eff: String) = match inferred {
+  EfRow(present, _, _) => match find(names_effect(intern_str(eff), ??), present) {
+    Some(e) => show_eff_name(e),
+    None => eff,
+  },
+}
+
+fn names_effect(h, e) = match e {
+  ENamed(n) => n == h,
+  EParameterized(n, _) => n == h,
+  EPure => false,
 }
 
 // The first declaration on an effect's path whose own clause negates the

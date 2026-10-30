@@ -1,0 +1,14 @@
+// expect: 48
+// A pin says which instance an effect runs at, and nothing else: `rate`
+// reads the 48 kHz clock and also prints, and its clause leaves Console to
+// the body, so the program builds and answers the rate in kHz.
+import dsp/clock
+
+import io
+
+fn rate() with Sample(48000) = {
+  print("reading the clock\n")
+  sample_rate() / 1000
+}
+
+fn main() = rate() ~> stdout_console ~> sample_at(48000)

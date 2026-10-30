@@ -385,8 +385,10 @@ fn board_bounds() = [
   // the init's pin left with the census. 41 -> 40 (2026-10-22): the note on
   // a load crossing the image's end left with the partial conversion's call.
   // 40 -> 39 (2026-10-22): the wildcard-zero bound's note on the pin its
-  // count was read at left when the bound reached zero.
-  Bound({ceiling: 39, question: QCensus(CsProseClass(PcCommit))}),
+  // count was read at left when the bound reached zero. 39 -> 38
+  // (2026-10-30): the declared gate's note on the boot that accepted a
+  // positive cap left with the cap.
+  Bound({ceiling: 38, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
