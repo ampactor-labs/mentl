@@ -1050,13 +1050,11 @@ fn edges_keep_completion(ref vs: [RowEdge], ceiling: Int, sig_keep: [Int]) = mat
 //   gate tail Closed: body must be closed with present ⊆ gate.present.
 //   gate tail Open:   the gate is polymorphic — body's knowns must fit
 //                    the gate's knowns; the tails unify later.
-fn row_subsumes(ref body_row, ref gate_row) = {
-  // Subsumption is a READ — resolve without compressing. The graph has ONE
-  // writer (inference); a gate check runs from every projection (egraph
-  // is_pure, the gradient's narrowing read, the census), and a read that
-  // rebinds row vars would make every projection a writer. Compression
-  // (resolve_row_compress) lives at unify_row alone, where inference
-  // already owns the bind.
+fn row_subsumes(ref body_row, ref gate_row) with !GraphWrite + !RowWrite = {
+  // A gate check runs from every projection (egraph is_pure, the gradient's
+  // narrowing read, the census), so it resolves rows without compressing
+  // them: compression (resolve_row_compress) lives at unify_row alone,
+  // where inference owns the bind.
   // A body tail STILL EtOpen after resolve is GENUINELY free (NRowFree) —
   // empty after full inference: a monomorphic fn accumulated no further
   // effect, so the body performs exactly its present names and the free

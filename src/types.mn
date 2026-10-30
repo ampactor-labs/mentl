@@ -3662,12 +3662,6 @@ effect GraphRead {
   graph_chase(Int) -> GNode
   // the canonical ROOT handle of a TVar chain (union-find find)
   graph_chase_handle(Int) -> Int
-  // THE VERSION (types.mn Version): this instance's state as a value — the
-  // cells it wrote, every other fact it keeps, and the version it was seeded
-  // with below them. An instance installed with it as its seed reads through
-  // it and writes a column of its own; nothing is copied, since the instance
-  // below writes nothing while a seeded instance runs
-  graph_version() -> Version
   // the column this instance wrote and the version it reads through for the
   // rest — the state-passed occurs family's seed, for the bracketed
   // pre-check that holds no column of its own
@@ -3728,8 +3722,6 @@ effect GraphRead {
   graph_comment_at(Int) -> String
   // the comment's own source span, carried from parse (zero span if absent) — the reference diagnostics anchor here
   graph_comment_span_at(Int) -> Span
-  // draw a resolved comment-reference edge (owner node -> referent decl node), entered among the referent's in-edges
-  graph_attach_comment_ref(owner: Int, referent: Int)
   // the comment owners naming this declaration — its in-edges that are mentions
   graph_comment_refs_of(decl: Int) -> [Int]
   // the e-graph canonical pointer at a handle — the equivalence weave's find step (returns the handle itself if it is its own e-class root). One co-indexed weave, exactly like the nodes column's TVar union-find; egraph_extract chases it live.
@@ -3755,11 +3747,6 @@ effect GraphRead {
   // declarations carry (`graph_holes_publish`) — the executable gate's
   // whole input.
   graph_holes_at() -> [Int]
-  // The emittable-fn enumeration's by-name read: every entry noted under
-  // NAME (the identity projection beside the ordered column). The
-  // synthesized-family repr read and the enumeration reader take this
-  // instead of scanning the column.
-  graph_emitfn_at(String) -> [EmitFnEntry]
   // THE SIGNATURE COLUMN's read (lowering-is-a-column (ii)): the emitted
   // symbol's settled ABI. None means no record minted that symbol — a
   // hand-written runtime fn, whose face is the word floor. The floor is
@@ -3865,6 +3852,23 @@ effect RowWrite {
 effect GraphWrite {
   graph_fresh_ty(Reason) -> Handle
   graph_fresh_row(Reason) -> Handle
+  // THE VERSION (types.mn Version): this instance's state as a value — the
+  // cells it wrote, every other fact it keeps, and the version it was seeded
+  // with below them. An instance installed with it as its seed reads through
+  // it and writes a column of its own; nothing is copied, since the instance
+  // below writes nothing while a seeded instance runs. It is a write's op
+  // because the version is what a fork keeps (`graph_keep`): a reader that
+  // only reads has no use for it.
+  graph_version() -> Version
+  // draw a resolved comment-reference edge (owner node -> referent decl node), entered among the referent's in-edges
+  graph_attach_comment_ref(owner: Int, referent: Int)
+  // The emittable-fn enumeration's by-name read: every entry noted under
+  // NAME (the identity projection beside the ordered column). The
+  // synthesized-family repr read and the enumeration reader take this
+  // instead of scanning the column. It writes as it reads: the projection
+  // is built on the first read after a note, because building it at every
+  // note cost more.
+  graph_emitfn_at(String) -> [EmitFnEntry]
   // edge-link a node's body into the one graph at its handle (the program column of the handle's page); resolves via graph_node_body
   graph_register_node(Int, NodeBody)
   // attach parse-collected comment prose + its span to a node's handle (the comment column of the handle's page); resolves via graph_comment_at — a comment is graph content

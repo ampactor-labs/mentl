@@ -230,6 +230,14 @@ fn board_bounds() = [
   // text one statement at a time through the one install that reads a
   // statement.
   Bound({ceiling: 28, question: QCensus(CsArenaUnknown)}),
+  // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
+  // handler's state in the arm of an op whose effect's name says it reads
+  // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
+  // brought to 0 in the same landing: the comment-reference edge, the
+  // version a fork keeps and the emitted-function lookup that builds its
+  // index on the first read moved into GraphWrite, and the assembler's
+  // token cursor, two of whose ops move it, is named a cursor.
+  Bound({ceiling: 0, question: QCensus(CsReadOpWrites)}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, eleven lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned

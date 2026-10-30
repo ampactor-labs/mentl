@@ -260,9 +260,10 @@ fn wat_tokens(t) = {
 
 // Reading
 //
-// The cursor over the tokens, its position the handler's state. Past the
-// last token every read is the text's end, one token built once.
-effect AsmRead {
+// The cursor over the tokens, its position the handler's state: two of its
+// ops move it, so it is a cursor and not a read. Past the last token every
+// read is the text's end, one token built once.
+effect AsmCursor {
   asm_next() -> WTok
   asm_peek() -> WTok
   asm_peek_head() -> WTok

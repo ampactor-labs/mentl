@@ -300,8 +300,6 @@ fn stmt_binders_toward(stmt, child) with !Mutate = match stmt {
   | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _) | RowAliasStmt(_, _) => [],
 }
 
-fn arm_with_body(child, arm) with Pure = arm.body == child
-
 fn state_name(field) with Pure = field.name
 
 fn expr_binders_toward(e, child) with !Mutate = match e {

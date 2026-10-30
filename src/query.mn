@@ -124,6 +124,11 @@ type CensusShape
   // those some store it saw may root from outside, whose exits journal it.
   | CsArenaUnknown
   | CsArenaRooted
+  // The ops of an effect whose name says it reads must read (PLAN §11.1(b)):
+  // a resume that writes a handler's state in the arm of such an op is a
+  // write declared as a read, which a `!...Write` clause cannot see. The
+  // board holds the count at zero.
+  | CsReadOpWrites
   // A string literal whose text contains the needle — the `text` facet's
   // shape, the one reach into what the wheel WRITES rather than what it
   // calls: the emit's WAT is string literals, and no identifier edge reaches
@@ -1331,6 +1336,7 @@ fn census_label(shape) = match shape {
   CsMatchOption => "match(es) over Some/None",
   CsArenaUnknown => "arena install(s) whose roots the judgment left unknown",
   CsArenaRooted => "arena install(s) a store the judgment saw may root from outside",
+  CsReadOpWrites => "resume(s) writing a handler's state in the arm of a Read effect's op",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
   CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
@@ -1375,6 +1381,7 @@ fn census_name(shape) = match shape {
   CsMatchOption => "match-option",
   CsArenaUnknown => "arena-unknown",
   CsArenaRooted => "arena-rooted",
+  CsReadOpWrites => "read-op-writes",
   CsText(needle) => "text {needle}",
   CsProse(needle) => "prose {needle}",
   CsProseClass(c) => "prose-{prose_class_name(c)}",
@@ -1415,7 +1422,8 @@ fn census_roster() = [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume]
   CsMatchDestructure,
   CsMatchOption,
   CsArenaUnknown,
-  CsArenaRooted
+  CsArenaRooted,
+  CsReadOpWrites
 ] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
 
 fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
@@ -1526,7 +1534,7 @@ fn census_note(shape, h) with !Mutate = match shape {
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaUnknown | CsArenaRooted | CsText(_) | CsFieldRead(_) => None,
+  | CsArenaUnknown | CsArenaRooted | CsReadOpWrites | CsText(_) | CsFieldRead(_) => None,
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1582,7 +1590,7 @@ fn census_site_at(shape, h) with !Mutate = match shape {
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaUnknown | CsArenaRooted | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
+  | CsArenaUnknown | CsArenaRooted | CsReadOpWrites | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
 }
 
 // The line the note shows, located: a comment's lines are its source lines
@@ -1883,6 +1891,13 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     RootedAt(_) => true,
     RootsUnknown | RootsFree | OpensNoArena => false,
   },
+  // A resume that writes the handler's state, where the arm it stands in
+  // answers an op of an effect whose name says it reads.
+  CsReadOpWrites => match body {
+    NExpr(ResumeExpr(_, updates)) => len(updates) > 0 && in_read_arm(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
   CsText(needle) => match body {
     NExpr(LitString(s)) => str_contains(s, needle),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
@@ -1896,6 +1911,39 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     | NRow(_) | NParam(_) => false,
   },
 }
+
+// Whether a node stands in a handler's arm for an op of an effect whose name
+// ends in `Read`: the climb meets the handler declaration through the arm's
+// body, and the arm's op reaches its effect by the parent edge.
+fn in_read_arm(h) with !Mutate = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => match find(arm_with_body(h, ??), arms) {
+      Some(arm) => op_of_read_effect(arm.op),
+      None => false,
+    },
+    NStmt(FnStmt(_, _, _, _, _)) | NModule(_) => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => in_read_arm(p),
+  },
+  None => false,
+}
+
+// Whether a handler's arm has this node as its body.
+fn arm_with_body(child, arm) with Pure = arm.body == child
+
+fn op_of_read_effect(op_ref) with !Mutate = match graph_ref_decl(op_ref) {
+  Some(op) => match graph_parent_of(op) {
+    Some(e) => match graph_node_body(e) {
+      NStmt(EffectDeclStmt(name, _, _)) => names_a_read(name),
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
+    },
+    None => false,
+  },
+  None => false,
+}
+
+fn names_a_read(name: String) with !Mutate =
+  byte_len(name) >= 4 && str_slice(name, byte_len(name) - 4, byte_len(name)) == "Read"
 
 // A node with no comment holds no prose, so an empty needle lists every
 // comment and never every node.

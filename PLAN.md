@@ -739,9 +739,17 @@ as unknown, never as passing.
   bounds charges `Trap` (lesson 7, Pulse). A frequency computed from a sine or
   a product is a claim the interval fragment cannot decide yet (Pulse,
   Wasatch). The page cannot play a lesson yet (§11.6).
-- **Some effect names do not match what their ops do** (§11.1): GraphRead
-  holds writes, GraphWrite holds reads, and `Memory` holds pure word
-  arithmetic, so a function that only does arithmetic on words is not `Pure`.
+- **`Memory` holds pure word arithmetic** (§11.1), so a function that only
+  does arithmetic on words is not `Pure`. The ops of an effect whose name
+  says it reads write nothing (2026-10-30): the census `read-op-writes`,
+  held at zero on the board, counts the resumes that write a handler's
+  state in such an op's arm. It found four. The comment-reference edge,
+  the version a fork keeps and the emitted-function lookup, which builds
+  its index on the first read after a note, moved into GraphWrite, and the
+  assembler's token cursor, two of whose ops move it, is named
+  `AsmCursor`. `row_subsumes` now states that it only reads, `with
+  !GraphWrite + !RowWrite`, where a comment said so. GraphWrite still holds
+  the version, an op that only reads, because a fork keeps what it returns.
 - **Effect-op parameters have no names** (§11.5): an op's declaration types
   its parameters by position, `fs_read_file(String) -> String`, so each
   handler arm names them itself, and no two arms have to agree.
@@ -1281,12 +1289,8 @@ the last three.
    lesson 3's fanout). Each op belongs to the
    effect that matches what it does
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
-   `Hβ.memory.word-arithmetic-is-memory`): the ops of a `*Write` effect write
-   and the ops of a `*Read` effect read. A census held at zero checks this
-   through the published write fact (`graph_version` and
-   `graph_attach_comment_ref` move into GraphWrite). Then a comment saying
-   that a function only reads the graph (`row_subsumes`'s) becomes the
-   negation it states, `with !GraphWrite`, and the comment is removed. Word
+   `Hβ.memory.word-arithmetic-is-memory`); the ops of a `*Read` effect write
+   nothing, held at zero by a census (built 2026-10-30, §7). Word
    arithmetic leaves `Memory` in two pins at the bootstrap seam: first it is
    registered as primitives that the library shadows, then the library's
    declarations are deleted. After that, a function doing only arithmetic on
