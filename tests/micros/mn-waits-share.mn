@@ -1,0 +1,10 @@
+// waits 6:18: f g
+// The caret on a `<|` whose stages are parameters says that the row there
+// waits on what each stage performs, which each call of `both` decides. It
+// names the two stages, never the variables that stand for their rows.
+fn both(x, f, g) = {
+  let (a, b) = x <| (f, g)
+  a + b
+}
+
+fn main() = both(3, { n => n + 1 }, { n => n * 2 }) - 10

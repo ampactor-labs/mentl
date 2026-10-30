@@ -982,11 +982,27 @@ as unknown, never as passing.
   `parallel_compose`'s arms are emitted once, at the word face, so a branch
   that answers a Float traps where its join is read at the site's face
   (§11.2).
-- **The caret says an open row as its variables** (§11.1): at lesson 3's
-  fanout, `mentl examples/pulse/course/03-bus.mn:49:30`, the Effects line
-  prints `e + e + e1 + e1`, the branches' row variables, which a newcomer
-  cannot read, while the Topology and Why lines at the same site say the
-  shape in words (measured 2026-10-29).
+- **The caret says an open row by the values it waits on** (2026-10-30).
+  At lesson 3's fanout, `mentl examples/pulse/course/03-bus.mn:49:30` says
+  `Effects: whatever `rig.echo` and `rig.room` perform`, where the boot
+  printed `e + e + e1 + e1`, the branches' row variables. For each free row
+  cell, the caret finds the innermost node under the position whose own row
+  notes charge that cell and names what the node applies: a call's callee,
+  a pipe's stage, a `<|` branch, or the function value a call is handed,
+  so `map(f, xs)` waits on `f` and never on `map`. A cell nothing under the
+  position charges is the row of the position's own value. An install
+  between the value and the position is said as `except` and the effects
+  it answers, and the named effects lead (`Memory + Alloc + Trap, and
+  whatever `f` performs`). A closed row is printed as before. The first
+  line `// waits L:C: <values>` states what a fixture's open row waits on
+  (tests/micros/mn-waits-*.mn). The walk is the caret's own read of the row
+  notes beside the Why walk's, which the reach (§11.1(c)) replaces.
+- **An effect a module value's initializer performs with no handler is
+  refused** like one that reaches `main`: `let seed = ping()` above `fn
+  main() = seed + 1` is E_EffectUnhandled, "a module value, computed before
+  main runs, uses Ping: its initializer calls `ping`". The footprint asks
+  the initializers' rows whether anything allocates after the start. A
+  claim on `main` does not yet judge them (§11.1).
 - **A hole's fan names what the arms beside it use first** (2026-10-30).
   The binders in scope and the module's values are offered beside the
   literal seeds and judged by the hole's refinement like any candidate. A
@@ -1288,12 +1304,13 @@ the last three.
    which the reach (c) replaces.
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
-   beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`), and an executable's
-   row is the row of `main` and of its inits
-   (`Hβ.effects.executable-row-includes-inits`). A row the judgment has not
-   yet closed at a site is said at the caret in words, naming whose rows it
-   waits on; today the caret prints its variables (`e + e + e1 + e1` at
-   lesson 3's fanout). Each op belongs to the
+   beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`). An executable's
+   row is the row of `main` and of its initializers
+   (`Hβ.effects.executable-row-includes-inits`): an initializer's unhandled
+   effect is refused and the footprint reads the initializers' rows (§7),
+   but `main`'s clause still judges `main` alone, so `fn main() with !Alloc
+   = len(table)` over `let table = make_list(4)` checks and runs, exit 4
+   (measured 2026-10-30). Each op belongs to the
    effect that matches what it does
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`); the ops of a `*Read` effect write

@@ -1,0 +1,6 @@
+// waits 6:20: none
+// A row the judgment has closed waits on nothing: the caret says what it
+// performs, and names no value.
+fn inc(n) = n + 1
+
+fn main() = inc(1) + inc(2) - 5

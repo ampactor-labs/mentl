@@ -1,0 +1,15 @@
+// waits 13:19: f
+// An install over a call of a parameter takes the effect it answers out of
+// what the call waits on: the caret names the parameter, and says that
+// `Ping` is answered here.
+effect Ping {
+  ping() -> Int
+}
+
+handler pong {
+  ping() => resume(1),
+}
+
+fn quiet(f) = f() ~> pong
+
+fn main() = quiet(() => ping() + 1) - 2

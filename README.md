@@ -45,7 +45,7 @@ Put the cursor on the fanout and the compiler says what it sees there:
 $ mentl examples/pulse/course/03-bus.mn:49:30
 Query: dry <| (rig.echo, rig.room) : (Float, Float)
 Topology: the <| shares `dry` with 2 branches, borrowed, so they cannot race
-Effects: e + e + e1 + e1
+Effects: whatever `rig.echo` and `rig.room` perform
 Why: the product of the <| branches' results, the input borrowed by each, at examples/pulse/course/03-bus:49
 ```
 

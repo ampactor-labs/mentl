@@ -42,6 +42,8 @@ import types
 
 import effects
 
+import format
+
 import graph
 
 import infer
@@ -756,13 +758,86 @@ fn tee_answers(r, en: String) with !Mutate = match tee_arms(r) {
 // The row facet spoken. A function value whose evaluation performs nothing
 // — a reference to a declaration — says only what calling it performs.
 fn show_row_facet(row) = match row {
-  Evaluates(r) => show_effrow(r),
-  WhenCalled(e, c) => if row_subsumes(e, mk_ef_pure()) {
-    "{show_effrow(c)} when called"
+  Evaluates(r) => show_said_row(r),
+  WhenCalled(e, c) => if said_pure(e) {
+    "{show_said_row(c)} when called"
   } else {
-    "{show_effrow(e)}, and {show_effrow(c)} when called"
+    "{show_said_row(e)}, and {show_said_row(c)} when called"
   },
   HoleRow => "whatever its position permits — a hole states no row",
+}
+
+fn said_pure(r) = match r {
+  SaidClosed(row) => row_subsumes(row, mk_ef_pure()),
+  SaidOpen(_, _) => false,
+}
+
+// What the facet's rows wait on, the evaluation's first.
+fn facet_waits(row) = match row {
+  Evaluates(r) => said_waits(r),
+  WhenCalled(e, c) => said_waits(e) ++ said_waits(c),
+  HoleRow => [],
+}
+
+fn said_waits(r) = match r {
+  SaidClosed(_) => [],
+  SaidOpen(_, waits) => waits,
+}
+
+// A row said to a person, its variables named in one extent. A closed row
+// is written as the row algebra writes it. An open row names its effects,
+// then what each free cell waits on, by the text of the values it names.
+fn show_said_row(r) with !Mutate = said_text(r) ~> var_names
+
+fn said_text(r) with !Mutate = match r {
+  SaidClosed(row) => render_row(row),
+  SaidOpen(named, waits) => {
+    let lead = if len(named) == 0 { "" } else { "{render_row(mk_ef_closed(named))}, and " }
+    "{lead}{waits_said(waits)}"
+  },
+}
+
+// The cells an open row waits on, said: every cell no install masks in one
+// phrase, then each masked cell in its own, with what the install answers.
+fn waits_said(waits) with !Mutate = {
+  let plain = waits |> filter(wait_unmasked) |> flat_map(wait_values)
+  let lead = if len(plain) == 0 { [] } else { [whatever(plain, [])] }
+  join(", and ", lead ++ (waits |> filter(wait_masked) |> map(masked_said)))
+}
+
+fn wait_cell(w: RowWait) = w.cell
+
+fn wait_values(w: RowWait) = w.values
+
+fn wait_mask(w: RowWait) = w.mask
+
+fn wait_unmasked(w) = len(wait_mask(w)) == 0
+
+fn wait_masked(w) = !wait_unmasked(w)
+
+fn masked_said(w) with !Mutate = whatever(wait_values(w), wait_mask(w))
+
+// One phrase of an open row: "whatever" and the values, each by its text in
+// backticks and said once, then "except" and the effects an install between
+// them and the position answers.
+fn whatever(values, mask) with !Mutate = {
+  let names = values |> map(value_text) |> unique |> map(quoted)
+  let verb = if len(names) == 1 { "performs" } else { "perform" }
+  let except = if len(mask) == 0 { "" } else { " except {said_list(map(render_eff_name, mask))}" }
+  "whatever {said_list(names)} {verb}{except}"
+}
+
+// A value as its author writes it: the formatter's canonical text, whose
+// names follow the reference edges, so a rename is said as renamed.
+fn value_text(n) with !Mutate = render_body_tokens(n, graph_node_body(n))
+
+fn quoted(s: String) = "`{s}`"
+
+// A list said in prose: "a", "a and b", "a, b and c".
+fn said_list(items) = if len(items) <= 1 {
+  join("", items)
+} else {
+  "{join(", ", take(len(items) - 1, items))} and {last(items)}"
 }
 
 // The topology facet spoken, innermost verb first, each site placed by the
@@ -859,10 +934,141 @@ fn position_in(h, hs) = match find({ (_, x) => x == h }, enumerate(hs)) {
 fn row_facet_at(h, kind) with !Mutate = match row_of_subtree(h) {
   None => HoleRow,
   Some(eval) => match ty_of_kind(h, kind) {
-    TFun(_, _, call) => WhenCalled(eval, call),
+    TFun(_, _, call) => {
+      let called = said_at(h, call)
+      WhenCalled(said_at(h, eval) |> said_without(said_waits(called) |> map(wait_cell)), called)
+    },
     TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => Evaluates(eval),
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => Evaluates(said_at(h, eval)),
   },
+}
+
+// A function value's evaluation, less the cells its call row waits on: a
+// `<|` applies its branch where the branch stands, so the branch's own
+// notes charge what calling it performs, and the caret says that once, as
+// what the value performs when called.
+fn said_without(cells, r) with !Mutate = match r {
+  SaidClosed(_) => r,
+  SaidOpen(named, waits) => {
+    let kept = filter(wait_outside(cells, ??), waits)
+    if len(kept) == 0 { SaidClosed(mk_ef_closed(named)) } else { SaidOpen(named, kept) }
+  },
+}
+
+fn wait_outside(cells, w) = cell_absent(cells, wait_cell(w))
+
+// A row at a position as the caret says it. A row with no free cell is
+// closed. An open row keeps the effects it names and, for each free cell,
+// the values that cell waits on: until a caller supplies them, the row there
+// is whatever those values perform, and a variable's letter says none of it.
+fn said_at(h, row) with !Mutate = match resolve_row(row) {
+  EfRow(named, _, EtOpen(edges)) => SaidOpen(named, row_waits(h, edges |> fold([], rooted_edge))),
+  EfRow(_, _, EtClosed) | EfRow(_, _, EtAll) => SaidClosed(row),
+}
+
+// Two edges that chase to one free cell are one thing the row waits on: the
+// cell keeps what both paths subtract, as a row's tail does for one cell.
+fn rooted_edge(acc, e) with !Mutate =
+  tail_set_insert(acc, row_edge(graph_chase_handle(edge_cell(e)), edge_mask(e)))
+
+// The free cells a row is open on.
+fn open_cells(row) with !Mutate = match resolve_row(row) {
+  EfRow(_, _, EtOpen(edges)) => edges |> fold([], rooted_edge) |> map(edge_cell),
+  EfRow(_, _, EtClosed) | EfRow(_, _, EtAll) => [],
+}
+
+// What each free cell of an open row waits on, in the order the position's
+// text first reaches it. A cell's values are where its row enters: the
+// innermost node under the position whose own row notes charge the cell. A
+// cell that nothing under the position charges is the row its own value's
+// type says calling it performs, so it waits on that value.
+fn row_waits(h, edges) with !Mutate = match row_entries(map(edge_cell, edges), h) {
+  (_, found) => {
+    let entries = found |> map(entry_keyed) |> sort |> map(keyed_carrier)
+    let reached = entries |> map(entry_cell) |> unique
+    let unreached = edges |> map(edge_cell) |> filter(cell_absent(reached, ??))
+    reached ++ unreached |> map(wait_of(h, edges, entries, ??))
+  },
+}
+
+fn entry_cell(entry) = match entry {
+  (c, _) => c,
+}
+
+// An entry keyed by where its node stands, as the Why walk orders carriers:
+// a block lists its final before its statements, and the sentence follows
+// the text.
+fn entry_keyed(entry) = match entry {
+  (_, n) => (span_order_key(graph_span_of(n)), entry),
+}
+
+fn entry_for(h, c) = (c, h)
+
+fn enters_cell(c, entry) = entry_cell(entry) == c
+
+fn cell_in(cells, c) = any(same_cell(c, ??), cells)
+
+fn cell_absent(cells, c) = !cell_in(cells, c)
+
+fn same_cell(a, b) with Pure = a == b
+
+fn edge_on(c, e) = edge_cell(e) == c
+
+// The cells a subtree's row notes charge, and where each enters it: a node
+// whose own notes charge a cell that no node below it charges.
+fn row_entries(cells, h) with !Mutate = match fold(([], []), child_entries(cells, ??, ??), node_children(h)) {
+  (below, entries) => {
+    let charged = graph_rows_at(h) |> flat_map(open_cells) |> filter(cell_in(cells, ??))
+    let entering = charged |> filter(cell_absent(below, ??)) |> unique
+    (unique(below ++ charged), entries ++ map(entry_for(h, ??), entering))
+  },
+}
+
+fn child_entries(cells, acc, child) with !Mutate = match acc {
+  (below, entries) => match row_entries(cells, child) {
+    (more, found) => (below ++ more, entries ++ found),
+  },
+}
+
+fn wait_of(h, edges, entries, c) with !Mutate = {
+  let values = entries |> filter(enters_cell(c, ??)) |> flat_map(entry_values(c, ??))
+  let mask = match find(edge_on(c, ??), edges) {
+    Some(e) => edge_mask(e),
+    None => [],
+  }
+  RowWait{cell: c, mask, values: if len(values) == 0 { [h] } else { values }}
+}
+
+// The values whose row an entry charges. A call or a stage that is handed a
+// function value whose call row is the cell waits on what it was handed: a
+// call of `map` waits on the function it is handed, whose row `map` only
+// passes on. Otherwise it waits on what the node applies: a call's callee, a
+// pipe's stage, or the node itself, which is how a `<|` branch is its own
+// stage.
+fn entry_values(c, entry) with !Mutate = match entry {
+  (_, n) => match graph_node_body(n) {
+    NExpr(CallExpr(callee, args)) => handed_or(c, args, callee),
+    NExpr(PipeExpr(PForward, piped, stage)) => if hands_cell(c, piped) { [piped] } else { stage_values(c, stage) },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [n],
+  },
+}
+
+fn stage_values(c, stage) with !Mutate = match graph_node_body(stage) {
+  NExpr(CallExpr(_, args)) => handed_or(c, args, stage),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [stage],
+}
+
+fn handed_or(c, args, applied) with !Mutate = {
+  let handed = filter(hands_cell(c, ??), args)
+  if len(handed) == 0 { [applied] } else { handed }
+}
+
+// Whether a value is a function whose call row is open on the cell.
+fn hands_cell(c, v) with !Mutate = match graph_chase(v) {
+  GNode(NBound(TFun(_, _, row)), _) => cell_in(open_cells(row), c),
+  GNode(_, _) => false,
 }
 
 // The Propose aspect: ONE read fills both the op's allowed row and the

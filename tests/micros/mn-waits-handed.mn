@@ -1,0 +1,7 @@
+// waits 5:24: f
+// A call that hands a parameter to `map` waits on what the parameter
+// performs. The row of `map` itself is closed, so the caret names the
+// parameter and never `map`.
+fn each_of(f, xs) = map(f, xs)
+
+fn main() = len(each_of({ n => n + 1 }, [1, 2])) - 2

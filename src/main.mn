@@ -1555,6 +1555,9 @@ fn test_check_run(entry_module) =
 // stage`), so the sentence's voice may change without a fixture moving.
 // `// memory: P M` is the planned module's memory: the pages it begins with
 // and the pages it may grow to, read off the start the plan settled.
+// `// waits L:C: <values>` is the caret's Effects facet at L:C: the values
+// an open row there waits on, each by its text once, in the facet's order,
+// or `none` where the row is closed.
 type Expect
   // the exit, and the prefix of the line a stop must say on fd 2 ("" when
   // the contract names none)
@@ -1570,6 +1573,7 @@ type Expect
   | ExpectRename(Int, Int, String, String)
   | ExpectCanonical
   | ExpectAt(Int, Int, String)
+  | ExpectWaits(Int, Int, String)
 
 // A teach fixture's contract (D4): what the gradient answers at the
 // declaration on line L — one proven annotation whose source is the text,
@@ -1603,6 +1607,8 @@ fn battery_expect(src) = {
     battery_refs_expect(src)
   } else if byte_len(src) >= 6 && str_eq(str_slice(src, 0, 6), "// at ") {
     battery_at_expect(src)
+  } else if byte_len(src) >= 9 && str_eq(str_slice(src, 0, 9), "// waits ") {
+    battery_waits_expect(src)
   } else if byte_len(src) >= 12 && str_eq(str_slice(src, 0, 12), "// declared ") {
     battery_declared_expect(src)
   } else if byte_len(src) >= 10 && str_eq(str_slice(src, 0, 10), "// rename ") {
@@ -1741,6 +1747,16 @@ fn battery_at_expect(src) = {
   let col = battery_expect_digits(src, col_start, 0)
   let want_start = battery_skip_digits(src, col_start) + 2
   Some(ExpectAt(line, col, battery_line_rest(src, want_start, want_start)))
+}
+
+// `// waits L:C: <values>` — the address, then the values after the colon
+// and one space.
+fn battery_waits_expect(src) = {
+  let line = battery_expect_digits(src, 9, 0)
+  let col_start = battery_skip_digits(src, 9) + 1
+  let col = battery_expect_digits(src, col_start, 0)
+  let want_start = battery_skip_digits(src, col_start) + 2
+  Some(ExpectWaits(line, col, battery_line_rest(src, want_start, want_start)))
 }
 
 // `// rename L:C to NEW: <want>` — the address, the name to its colon, the
@@ -1947,6 +1963,34 @@ fn battery_at_step(stem, path: String, line, col, want: String) = battery_view(
   }
 )
 
+// THE CARET'S OPEN ROW: the Effects facet at the address, compared by the
+// values its row waits on, each by its text, so the sentence's voice may
+// change without a fixture moving.
+fn battery_waits_step(stem, path: String, line, col, want: String) = battery_view(
+  path,
+  line,
+  col,
+  {
+    None => {
+      print_string("FAIL(waits) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+      1
+    },
+    Some((_, view)) => match view {
+      CursorView(_, _, _, row, _, _, _, _) => {
+        let names = facet_waits(row) |> flat_map(wait_values) |> map(value_text) |> unique
+        let got = if len(names) == 0 { "none" } else { join(" ", names) }
+        if str_eq(got, want) {
+          print_string("PASS {stem}: waits at {int_to_str(line)}:{int_to_str(col)} {want}\n")
+          0
+        } else {
+          print_string("FAIL(waits) {stem}: wanted {want}, got {got}\n")
+          1
+        }
+      },
+    },
+  }
+)
+
 // The shape of the verb at the caret, or `none` where the caret is not on a
 // verb: the last frame of the topology is the node's own.
 fn shape_want_of(frames) = fold("none", shape_want_step, frames)
@@ -2143,6 +2187,7 @@ fn battery_step(path: String) = {
       ExpectRefs(name, want) => battery_refs_step(stem, path_to_module(path), name, want),
       ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, path_to_module(path), line, col, dline, dcol),
       ExpectAt(line, col, want) => battery_at_step(stem, path_to_module(path), line, col, want),
+      ExpectWaits(line, col, want) => battery_waits_step(stem, path_to_module(path), line, col, want),
       ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
       ExpectRun(want, said) => match battery_compile(path_to_module(path), stem) {
@@ -2510,27 +2555,25 @@ fn new_project(name) = {
 fn scaffold_project(name: String) = {
   let dest = "{name}.mn"
   if fs_exists(dest) {
-    // Refusal teaches: the medium never overwrites what it did not write.
-    eprint_string("mentl new {name}: {dest} is already here\n\n")
-    eprint_string("the medium never overwrites what it did not write.\n")
+    // `mentl new` never overwrites a file, and says what to do instead.
+    eprint_string("mentl new {name}: {dest} is already here, and mentl new never overwrites a file.\n")
     eprint_string("  read it:      mentl edit {name}\n")
     eprint_string("  or name another:  mentl new {name}2\n")
     1
   } else {
-    fs_write_file(dest, new_seed())
+    fs_write_file(dest, new_seed(name))
     project_directory()
     0
   }
 }
 
-// The seed the medium carries — the smallest program that RUNS and whose
-// own comments are the Reason edges it talks about. Not the curriculum
-// (the course, examples/pulse/course, is the curriculum, and it is not on
-// a user's disk).
-// The `\{who\}` escapes emit literal braces, so the FILE gets a live
-// interpolation the user's own compile reads.
-fn new_seed() =
-  "// this file is the whole project — the imports are the manifest.\n//\n// the comment you are reading is not a remark the lexer discards: it is\n// a Reason edge in the graph. ask the medium about this file:\n//   mentl audit   — what it is allowed to do\n//   mentl edit    — the cursor, and what it proposes\n\nimport io\n\n// `|>` is the sequential verb — the string flows into print_string.\n// the topology is on the page; there is no hidden control flow.\nfn greet(who) = \"hello, \{who\} — the medium is reading you back\\n\" |> print_string\n\nfn main() = \{\n  greet(\"world\")\n  0\n\}\n"
+// The file `mentl new` writes: the smallest program that runs, whose
+// comment names two commands that ask the compiler about it. The course in
+// examples/pulse/course teaches the language; this file only starts a
+// project. The `\{who\}` escapes write literal braces, so the file holds an
+// interpolation its own compile reads.
+fn new_seed(name: String) =
+  "// A one-file Mentl project: its imports are its manifest.\n// `mentl check {name}` prints nothing when every check passes, and\n// `mentl why {name} greet WASI` says how greet reaches the host.\nimport io\n\nfn greet(who) = \"hello, \{who\}\\n\" |> print_string\n\nfn main() = \{\n  greet(\"world\")\n  0\n\}\n"
 
 // ─── help + error surface ─────────────────────────────────────────
 fn print_error_and_help(msg) = {

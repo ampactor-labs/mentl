@@ -2398,7 +2398,16 @@ type VerbFrame = VerbFrame(Int, VerbRole)
 // for a function value, its evaluation and its body when it is called — two
 // facts, because minting a closure costs what calling it never shows; at a
 // hole, whatever the position permits, which no row states.
-type RowFacet = Evaluates(EffRow) | WhenCalled(EffRow, EffRow) | HoleRow
+type RowFacet = Evaluates(SaidRow) | WhenCalled(SaidRow, SaidRow) | HoleRow
+
+// A row at a position as the caret says it. A closed row is said as the row
+// algebra writes it. An open row is said by the effects it names and, for
+// each free row cell it is still open on, what that cell waits on.
+type SaidRow = SaidClosed(EffRow) | SaidOpen([EffName], [RowWait])
+
+// One free row cell of an open row: the cell, the values whose rows it is,
+// and the effects an install between them and the position answers.
+type RowWait = {cell: Int, mask: [EffName], values: [Int]}
 
 // CursorView — what cursor_default projects at the cursor's handle.
 // Each field is one of the eight kernel primitives, read off the
