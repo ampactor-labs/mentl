@@ -1,0 +1,7 @@
+// check: refuse E_EffectMismatch
+// A module value is computed before main runs, inside the program main's
+// clause speaks for: main says the program never allocates, and table's
+// initializer allocates a list.
+let table = make_list(4)
+
+fn main() with !Alloc = len(table)

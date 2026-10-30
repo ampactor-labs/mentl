@@ -6568,6 +6568,12 @@ fn effect_breach(declared, inferred, why) = {
         let used = used_instance(inferred, eff)
         "{name} is declared {clause}, which does not allow {used}, and {name} uses {used}: {enters_path(name, next)}"
       },
+      // A path from a module value's initializer is held to main's clause,
+      // the one clause an initializer runs under.
+      NStmt(LetStmt(_, _, _)) => {
+        let used = used_instance(inferred, eff)
+        "main is declared {clause}, which does not allow {used}, and a module value, computed before main runs, uses {used}: {enters_path("its initializer", next)}"
+      },
       NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
       | NRow(_) | NParam(_) => "the declaration says {clause}, which does not allow {eff}: {show_reason(EffectEnters(eff, site, next))}",
     },

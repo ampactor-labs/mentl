@@ -3440,9 +3440,11 @@ A `.mn` file with no `main` function is a library module: other modules import i
 
 A `.mn` file with `fn main()` is an executable: `_start` invokes `main`.
 Its module value lets run first, so what an initializer performs belongs to
-the executable, and an effect that no handler serves is refused at the let,
-as it would be in `main`. `main`'s declared row judges `main` alone
-(`Hβ.effects.executable-row-includes-inits`).
+the executable: an effect that no handler serves is refused at the let, as
+it would be in `main`, and `main`'s clause holds each initializer to what
+it says. `fn main() with !Alloc = len(table)` over `let table =
+make_list(4)` is refused at the let, because the initializer allocates
+before `main` runs (tests/micros/mn-main-clause-judges-inits.mn).
 
 A module value let binds every binder its pattern writes, and a discard
 runs its value for its effects. Today the initializer stores only what a

@@ -1,0 +1,6 @@
+// expect: 0
+// The sound twin: main says the program never allocates, and its one module
+// value is a number, which its initializer computes without allocating.
+let width = 4
+
+fn main() with !Alloc = width - 4

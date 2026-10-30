@@ -1457,10 +1457,13 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
 fn root_settle(stmts) = {
   match env_resolve("main") {
     Some(dh) => match graph_node_body(dh) {
-      NStmt(FnStmt(_, _, _, _, body)) => match chase_ty(TVar(dh)) {
-        TFun(_, _, row) => root_row_check(row, dh, body, graph_span_of(dh)),
-        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
+      NStmt(FnStmt(_, _, _, effs, body)) => {
+        match chase_ty(TVar(dh)) {
+          TFun(_, _, row) => root_row_check(row, dh, body, graph_span_of(dh)),
+          TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+          | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
+        }
+        root_inits_judged(effs, stmts)
       },
       NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
       | NRow(_) | NParam(_) => (),
@@ -1469,6 +1472,47 @@ fn root_settle(stmts) = {
   }
   each(root_init_check, stmts)
 }
+
+// A module value runs before main, inside the program main's clause speaks
+// for, so an initializer is held to the clause as main's body is: `fn main()
+// with !Alloc = len(table)` over `let table = make_list(4)` checked and ran,
+// its initializer allocating before main began. The clause is read as
+// `declared_holds` reads a declaration's, from what its author wrote.
+fn root_inits_judged(effs, stmts) = if len(effs) == 0 {
+  ()
+} else {
+  let declared = build_declared_row(resolve_declared_instances(effs))
+  stmts |> each(root_init_judged(declared, has_pure_declared(effs), ??))
+}
+
+fn root_init_judged(declared, has_pure, h) = match graph_node_body(h) {
+  NStmt(LetStmt(_, value, _)) => match row_of_subtree(h) {
+    Some(row) => {
+      let init_row = resolve_row(row)
+      if row_subsumes(init_row, declared) {
+        ()
+      } else if has_pure {
+        report(EPurityViolated(init_row, graph_span_of(h)))
+      } else {
+        report(EEffectMismatch(declared, init_row, init_breach(declared, init_row, h, value), graph_span_of(h)))
+      }
+    },
+    None => (),
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => (),
+}
+
+// The path to the first effect of an initializer's row that main's clause
+// does not allow, from the initializer to where the effect is performed.
+fn init_breach(declared, init_row, h, value) = match init_row {
+  EfRow(present, _, _) => match find(clause_refuses(declared, ??), present) {
+    Some(eff) => EffectEnters(eff_name_str(eff), h, body_entry(eff, value, [h])),
+    None => Inferred("a module value, computed before main runs"),
+  },
+}
+
+fn clause_refuses(declared, eff) = !row_subsumes(mk_ef_closed([eff]), declared)
 
 fn root_row_check(row, dh, body, span) = match row_through_instances(row) {
   EfRow(present, _, _) => each(root_refuse(dh, body, span, ??), filter(root_unanswered, present)),

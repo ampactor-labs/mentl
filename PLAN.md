@@ -1026,12 +1026,20 @@ as unknown, never as passing.
   line `// waits L:C: <values>` states what a fixture's open row waits on
   (tests/micros/mn-waits-*.mn). The walk is the caret's own read of the row
   notes beside the Why walk's, which the reach (§11.1(c)) replaces.
-- **An effect a module value's initializer performs with no handler is
-  refused** like one that reaches `main`: `let seed = ping()` above `fn
-  main() = seed + 1` is E_EffectUnhandled, "a module value, computed before
-  main runs, uses Ping: its initializer calls `ping`". The footprint asks
-  the initializers' rows whether anything allocates after the start. A
-  claim on `main` does not yet judge them (§11.1).
+- **An executable's row is the row of `main` and of its initializers**
+  (2026-10-30). An effect a module value's initializer performs with no
+  handler is refused like one that reaches `main`: `let seed = ping()`
+  above `fn main() = seed + 1` is E_EffectUnhandled, "a module value,
+  computed before main runs, uses Ping: its initializer calls `ping`". The
+  footprint asks the initializers' rows whether anything allocates after
+  the start. And `main`'s clause judges each initializer as it judges
+  `main`'s body: `fn main() with !Alloc = len(table)` over `let table =
+  make_list(4)` is refused, "main is declared `with !Alloc`, which does
+  not allow Alloc, and a module value, computed before main runs, uses
+  Alloc: its initializer calls `make_list` …", where the boot before
+  checked it and the run answered 4
+  (tests/micros/mn-main-clause-judges-inits.mn, and its twin
+  mn-main-clause-inits-hold.mn, a number computed without allocating).
 - **A hole's fan names what the arms beside it use first** (2026-10-30).
   The binders in scope and the module's values are offered beside the
   literal seeds and judged by the hole's refinement like any candidate. A
@@ -1351,12 +1359,8 @@ the last three.
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`). An executable's
-   row is the row of `main` and of its initializers
-   (`Hβ.effects.executable-row-includes-inits`): an initializer's unhandled
-   effect is refused and the footprint reads the initializers' rows (§7),
-   but `main`'s clause still judges `main` alone, so `fn main() with !Alloc
-   = len(table)` over `let table = make_list(4)` checks and runs, exit 4
-   (measured 2026-10-30). Each op belongs to the
+   row is the row of `main` and of its initializers (built 2026-10-30,
+   §7). Each op belongs to the
    effect that matches what it does
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`); the ops of a `*Read` effect write
