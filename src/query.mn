@@ -2917,11 +2917,6 @@ fn fanout_sites(h, tees) with !Mutate = {
     NExpr(PipeExpr(PTee, l, r)) => fanout_sites(l, push(tees, tee_arms(r))),
     NExpr(FanoutExpr(_)) => [where_site(h, fan_site_shape(h), tees)] ++ child_sites(body, tees),
     NExpr(PipeExpr(PFanout(fan), _, _)) => [where_site(h, Branches(fan, boundary_width(h)), tees)] ++ child_sites(body, tees),
-    NExpr(CallExpr(f, _)) => if callee_is_fanout(f) {
-      [where_site(h, PerElement, tees)] ++ child_sites(body, tees)
-    } else {
-      child_sites(body, tees)
-    },
     NExpr(LambdaExpr(_, lb)) => fanout_sites(lb, []),
     NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(fb, []),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)

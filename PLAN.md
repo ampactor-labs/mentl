@@ -844,8 +844,10 @@ as unknown, never as passing.
   `fanout(f, xs)`, and the schedule demand, the census, the caret and Mentl
   Space read the same cell. `|>` binds tighter than `><`, so a fanout piped
   onward is parenthesized. Lesson 10 renders the same WAV byte for byte with
-  `notes() >< render_voice(sr, frames)`. The prelude's `fanout` stays only
-  for the compiler's own two uses until the pinned boot reads the new form.
+  `notes() >< render_voice(sr, frames)`. The prelude's `fanout` is gone,
+  with every place the compiler recognized the name, and the compiler's own
+  two fanouts use the form (`mentl query src/main.mn "refs of fanout"` finds
+  none).
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1681,7 +1683,7 @@ the last three.
    and asks the shared frontier to extend its instance's run; when another
    instance holds the next chunk, the extension fails and the exit keeps
    its region (measured 2026-10-30: tests/frontier/arena/
-   spawning-module-runs-the-body.mn keeps once in 20 runs of one module,
+   spawning-module-runs-the-body.mn keeps in 3 of 40 runs of one module,
    `kept 1, freed 0` in both branches, the answer unchanged). A private
    memory per instance with one shared image removes the shared frontier
    and this keep with it. A store keeps its barrier wherever the store-age walk

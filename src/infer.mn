@@ -2348,7 +2348,7 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 handler speculate {
   choose(options) => {
     let seed = fork_seed()
-    options |> fanout({
+    (options >< {
       o => {
         match forked(seed, () => resume(o)) {
           (a, _, _) => a,

@@ -112,7 +112,7 @@ handler sequential_compose with results = [] {
   current_id() => resume(0),
 }
 
-// THE SEQUENCE FANOUT UNDER A THREAD-CLASS SCHEDULE. `fanout(f, xs)` is
+// THE SEQUENCE FANOUT UNDER A THREAD-CLASS SCHEDULE. `xs >< f` is
 // `><` over a runtime sequence (SYNTAX §`><`): each application an
 // independent branch, the results collected in order. Under a `Thread`
 // install it runs as this fn — every element's branch spawned through the

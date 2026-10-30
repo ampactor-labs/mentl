@@ -256,7 +256,7 @@ type BoundaryInvariant
   // `tangent_of` lowered outside a derivative reading — already refused
   // at the call (E_DerivativeUnreachable); the terminal keeps the node total.
   | TangentOutsideReading
-  // A sequence fanout (`fanout(f, xs)`) at a site whose frame installs a
+  // A sequence fanout (`xs >< f`) at a site whose frame installs a
   // spawning schedule whose library implementation the program never links
   // — a Thread-class handler declared beside no `fanout_threaded`. The
   // name is the implementation the schedule's vocabulary owes.
@@ -923,21 +923,6 @@ fn lower_named_call(handle, fh, name: String, r_args, lo_args) = if name == "to_
     graph_span_of(handle)
   ))
   LInvariantFailure(handle, TangentOutsideReading)
-} else if name == "fanout" && len(r_args) == 2 {
-  // THE SEQUENCE FANOUT — `><` over a runtime sequence: `fanout(f, xs)`
-  // applies f to each element as an INDEPENDENT branch and collects the
-  // results in order, under whatever schedule governs the site (its own
-  // frame's install, or a caller's reaching it through a direct call). The
-  // prelude declares it as the sequential reading (`map`, which is what a
-  // compiler without this arm runs); here it is a fanout node like the
-  // syntactic ones, its branches the function argument's applications,
-  // each form a call into the library that owns the schedule's vocabulary
-  // — `map` sequentially, `fanout_threaded` under Thread,
-  // `fanout_persisted` under Persist. `map` itself stays a sequential loop
-  // by construction (SYNTAX §Vocabulary): only a fanout declares its
-  // applications independent. A pipe reaches the same node with the datum
-  // as its second field (`completed_call`).
-  lower_fanout_seq(handle, fh, list_index(r_args, 0), lo_args)
 } else if is_substrate_mem_op(name) {
   // Memory / Alloc ops ARE the instruction set — "the WASM runtime
   // IS the handler" (lib/memory.mn). They project to raw
@@ -1800,7 +1785,7 @@ type ScheduledBoundary
   | InvalidScheduledBoundary(Int, BoundaryInvariant)
 
 // What a fanout site fans: the branches of `><` / `<|`, each its own
-// executable boundary, or — the sequence fanout `fanout(f, xs)` — the
+// executable boundary, or — the sequence fanout `xs >< f` — the
 // function it applies, by the handle its row is read at.
 type FanBranches = FanBranches([ScheduledBoundary]) | FanSeq(Int)
 
@@ -2771,11 +2756,11 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
   // addresses and answered false (boot e23392f6).
   match lo_r {
     LDirectCall(_, dfh, dn, dt, dargs) => if hole_at >= 0 && len(lo_ls) == 1 {
-      completed_call(handle, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
+      LDirectCall(handle, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
     }
     // drift-audit: ignore — one completion per pipe node, not a loop accumulator
     else if is_partial {
-      completed_call(handle, dfh, dn, dt, dargs ++ lo_ls)
+      LDirectCall(handle, dfh, dn, dt, dargs ++ lo_ls)
     } else {
       LCall(handle, lo_r, lo_ls)
     },
@@ -3032,17 +3017,6 @@ fn callee_arity_of(f) = match lookup_ty(f) {
 //
 // drift-audit: ignore — one three-way splice per completed hole, not a loop accumulator
 fn splice_at(xs, i, v) = slice(xs, 0, i) ++ [v] ++ slice(xs, i + 1, len(xs))
-
-// A stage call the pipe has completed. A call of the prelude's `fanout`
-// with both fields supplied is the sequence fanout's node — the pipe's
-// twin of the arm `lower_global_call` holds for a direct call, since the
-// stage was dispatched with its hole open and only the completion sees
-// both fields; every other completed call is the call itself.
-fn completed_call(dh, dfh, c, dt, args) = if callee_is_vocabulary(c, "fanout") && len(args) == 2 {
-  lower_fanout_seq(dh, dfh, lexpr_handle(list_index(args, 0)), args)
-} else {
-  LDirectCall(dh, dfh, c, dt, args)
-}
 
 // Whether a callee is the declaration a vocabulary name resolves to at the
 // link's scope — the callee's identity compared, never its spelling.

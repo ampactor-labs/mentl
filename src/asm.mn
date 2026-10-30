@@ -24,8 +24,8 @@
 // answers every read after that. The index walk records where each field
 // stands and what each name resolves to; each section is then its own
 // projection of that index, the `<|` branches it is, every one reading the
-// tokens through a cursor of its own; and the code section is a `fanout`
-// over the functions, each body encoded inside an arena, so the scratch a
+// tokens through a cursor of its own; and the code section is a sequence
+// fanout over the functions, each body encoded inside an arena, so the scratch a
 // body costs dies with the body and its bytes cross.
 import memory
 
@@ -2455,8 +2455,7 @@ fn asm_data_strings(t) = {
 // two Strings it publishes cross: its bytes, and its local-names entry,
 // which the name section reads.
 fn asm_code_and_names(m) = {
-  let bodies =
-    if len(m.ix.funcs) == 0 { [] } else { enumerate(m.ix.funcs) |> fanout(asm_body_of(m, ??)) }
+  let bodies = if len(m.ix.funcs) == 0 { [] } else { enumerate(m.ix.funcs) >< asm_body_of(m, ??) }
   let code = if len(m.ix.funcs) == 0 { None } else { Some(asm_code_bytes(bodies)) }
   (code, asm_names_section(m, map(asm_body_names, bodies)))
 }

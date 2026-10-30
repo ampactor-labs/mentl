@@ -1521,7 +1521,7 @@ fn address_node(found, target: String, line, col) = match address_locate(found, 
 // obligation, then every tightening, then every gradient position, each
 // under its own address. The argmax is the field's head; the field is the
 // argmax UNCOLLAPSED, the multi-cursor read (sequential: the per-position
-// fanout is `fanout(…) ~> parallel_compose`, run or refused by the race
+// fanout is `notes() >< render_voice(sr, frames) ~> parallel_compose`, run or refused by the race
 // rule). Every position, obligation and tightening is the module's own,
 // read by module identity, never by line range — every module numbers its
 // lines from 1.

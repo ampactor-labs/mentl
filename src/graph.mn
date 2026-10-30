@@ -1742,7 +1742,7 @@ fn option_nodes(rest) = match rest {
 // ── THE FANOUT REACH — one rule, asked one name at a time ────────────
 //
 // Whether a function reaches a fanout through DIRECT calls: its own body
-// holds a `><`, a `<|` or a `fanout(f, xs)` call, or it directly calls a fn
+// holds a `><` (`xs >< f` among them) or a `<|`, or it directly calls a fn
 // that does — never through a fn declared `!Thread` or `!Alloc`, which keeps
 // its own frame's schedule and hands no demand on: a spawn performs `Thread`
 // and builds its thunks, while the in-frame form builds nothing. A schedule an install demands
@@ -1852,10 +1852,10 @@ fn fact_own(acc) = match acc {
   (_, callees) => (true, callees),
 }
 
-// A call of the prelude's `fanout` is a fanout of the body's own.
+// A call adds its callee to the frame's reach where the callee is direct.
 fn fact_call(acc, f) = match graph_node_body(f) {
   NExpr(VarRef(_)) => match acc {
-    (has_own, callees) => (has_own || callee_is_fanout(f), direct_callee(callees, f)),
+    (has_own, callees) => (has_own, direct_callee(callees, f)),
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => acc,
@@ -1868,12 +1868,6 @@ fn fact_call(acc, f) = match graph_node_body(f) {
 fn direct_callee(callees, f) = match graph_ref_decl(f) {
   Some(d) => if at_module_level(d) { push(callees, d) } else { callees },
   None => callees,
-}
-
-fn callee_is_fanout(f) = match graph_node_body(f) {
-  NExpr(VarRef(name)) => str_eq(name, "fanout"),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
 }
 
 // ── A PRODUCT BUILT AT A SITE, AND WHAT TAKES IT APART THERE ──────────
