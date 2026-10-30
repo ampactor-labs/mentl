@@ -744,10 +744,18 @@ as unknown, never as passing.
 - **A module's init can only store what one binder names** (§11.2): a
   module-scope let whose pattern is a discard, a literal or a destructure is
   refused when the program is emitted (`E_InternalInvariant`).
-- **Regions exist at runtime**: every extent runs in an arena (each module's
-  parse, binding groups, declaration lowerings and the reach walk, emitted
-  units, session answers, speculations, and the runs of spawned instances),
-  and ownership's regions stay compile-time facts.
+- **Regions exist at runtime**: every extent runs in an arena (each
+  top-level statement's parse, binding groups, declaration lowerings and the
+  reach walk, emitted units, session answers, speculations, and the runs of
+  spawned instances), and ownership's regions stay compile-time facts. The
+  compiler reads a module one top-level statement at a time, each in an
+  arena of its own (2026-10-30): the lexer stops at the newline that ends a
+  statement outside every brace when a declaration follows, so the
+  statement's tokens die at its arena's exit. One arena per module
+  journaled every cell the module's parse wrote, and the compiler's largest
+  module overflowed the 262,144-entry journal, so that arena kept its whole
+  region. The self-compile now keeps no region (1 before), and its heap
+  line peaks at 268,761 KB where it peaked at 286,626 KB on the same wheel.
 - **A module's memory starts where its data ends, and its first pages are
   what its start needs** (2026-10-29). The heap line, and in a spawning
   module the shared frontier cell, begin at the static data's end aligned to

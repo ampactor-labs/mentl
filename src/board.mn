@@ -225,8 +225,11 @@ fn board_bounds() = [
   // record's function-typed field, the read PLAN §11.3 owes
   // (`Hβ.verify.higher-order-refinement`). Falls as the claim machinery
   // reads through what it cannot name today; the landing that makes an
-  // install root-free names it.
-  Bound({ceiling: 29, question: QCensus(CsArenaUnknown)}),
+  // install root-free names it. 29 -> 28 (2026-10-30): a module's first
+  // parse and an edit's re-read were two installs, and both now read a
+  // text one statement at a time through the one install that reads a
+  // statement.
+  Bound({ceiling: 28, question: QCensus(CsArenaUnknown)}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, eleven lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned

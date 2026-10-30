@@ -230,8 +230,21 @@ fn lex_lines(source, line) = {
   // this construction and the lex_from arg edge reads the proof.
   let n: ValidOffset = byte_len(source)
   let buf = make_list(if n < 16 { 16 } else { n })
-  match lex_from(source, n, 0, line, 1, buf, 0, 0, 0) {
+  match lex_from(source, n, 0, line, 1, buf, 0, AtTextEnd, 0) {
     (_final_pos, _final_line, _final_col, final_buf, final_count) => slice(final_buf, 0, final_count),
+  }
+}
+
+// The tokens of one top-level statement of `source`, with the blank lines
+// and comments before it, read from byte `pos` on line `line`: the result
+// says the line and the byte where the next statement's lines begin, so
+// the judgment can read a module one statement at a time. The buffer
+// starts small and doubles, because the statement's size is not known
+// before it is read.
+fn lex_statement(source, pos: ValidOffset, line) = {
+  let n: ValidOffset = byte_len(source)
+  match lex_from(source, n, pos, line, 1, make_list(64), 0, AtStatementEnd, 0) {
+    (next, next_line, _col, buf, count) => {line: next_line, pos: next, tokens: slice(buf, 0, count)},
   }
 }
 
@@ -246,29 +259,45 @@ fn push_tok(buf, count, t) = {
   (written, count + 1)
 }
 
+// Where a lex stops: at the end of the text; at the `}` that closes a
+// string's splice, where the string scanner resumes; at the end of one
+// top-level statement (`lex_statement`); or before the first token that is
+// neither a line break nor a comment, which is how the end of a statement
+// is read ahead (`declaration_follows`).
+type LexEnd = AtTextEnd | AtSpliceEnd | AtStatementEnd | AtCode
+
 // mk_tok() — see src/types.mn (canonical Token constructor; Tok ADT
 // is declared there).
 //
-// Core lexer loop. `term_byte = 0` (no terminator) or `125`
-// (terminate on first `TRBrace` at depth 0 — used by splice scanning).
-// `depth` tracks open brace nesting for splice termination.
+// The core lexer loop, which stops where `stop` says. `depth` counts the
+// braces open since the loop began: a splice ends at a `}` with none open,
+// and a top-level statement ends only at a newline outside every brace.
 // The ONE string surface (SYNTAX.md Strings): `"..."` and the
 // multi-line `"""..."""`, both with always-live `{expr}` interpolation —
 // `scan_string` emits `TStringPart`/`TStringSplice` directly, threading
 // `buf`/`count`. There is no single-quote form (dissolved: a splice-free
 // `"abc"` and `'abc'` produced an identical byte-sequence graph).
-fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count, term_byte, depth) = if pos >= n {
+fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count, stop, depth) = if pos >= n {
   match push_tok(buf, count, mk_tok(TEof, line, col, line, col)) {
     (b1, c1) => (pos, line, col, b1, c1),
   }
 } else {
   let b = byte_at(source, pos)
   if is_whitespace(b) {
-    lex_from(source, n, pos + 1, line, col + 1, buf, count, term_byte, depth)
+    lex_from(source, n, pos + 1, line, col + 1, buf, count, stop, depth)
   } else if b == 10 {
-    // newline (\n)
+    // A newline separates statements. Where the lex reads one statement
+    // and this newline ends it, the tokens end here.
+    let ends =
+      ends_statement(stop, depth, buf, count) && declaration_follows(source, n, pos + 1, line + 1)
     match push_tok(buf, count, mk_tok(TNewline, line, col, line + 1, 1)) {
-      (b1, c1) => lex_from(source, n, pos + 1, line + 1, 1, b1, c1, term_byte, depth),
+      (b1, c1) => if ends {
+        match push_tok(b1, c1, mk_tok(TEof, line + 1, 1, line + 1, 1)) {
+          (b2, c2) => (pos + 1, line + 1, 1, b2, c2),
+        }
+      } else {
+        lex_from(source, n, pos + 1, line + 1, 1, b1, c1, stop, depth)
+      },
     }
   } else if b == 47 && pos + 1 < n && byte_at(source, pos + 1) == 47 {
     // One comment form // — graph content, never dropped (SYNTAX.md Comments).
@@ -279,8 +308,11 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     let comment_text = str_slice(source, pos + 2, after)
     let end_col = col + (after - pos)
     match push_tok(buf, count, mk_tok(TComment(comment_text), line, col, line, end_col)) {
-      (b1, c1) => lex_from(source, n, after, line, end_col, b1, c1, term_byte, depth),
+      (b1, c1) => lex_from(source, n, after, line, end_col, b1, c1, stop, depth),
     }
+  } else if stops_at_code(stop) {
+    // A read ahead ends at the first byte of code, before it is lexed.
+    (pos, line, col, buf, count)
   } else if b == 34 && pos + 2 < n && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
     // triple-quoted multi-line string `"""..."""` — the multi-line
     // variant of the ONE string form (SYNTAX.md Strings). Interpolation
@@ -289,7 +321,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     // `"""` terminates. scan_triple_string materializes the de-indented
     // body once, then scans it through the same splice machinery.
     match scan_triple_string(source, n, pos + 3, line, col + 3, line, col, buf, count) {
-      (new_pos, new_line, new_col, b1, c1) => lex_from(source, n, new_pos, new_line, new_col, b1, c1, term_byte, depth),
+      (new_pos, new_line, new_col, b1, c1) => lex_from(source, n, new_pos, new_line, new_col, b1, c1, stop, depth),
     }
   } else if b == 34 {
     // double-quoted string — the ONE string form with always-live
@@ -300,7 +332,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     // Per Hβ.lex.scan-string-on-to-on-restructure: scan-to-break +
     // single str_slice per chunk, replacing per-byte acc-concat.
     match scan_string(source, n, pos + 1, line, col + 1, line, col, buf, count) {
-      (new_pos, new_line, new_col, b1, c1) => lex_from(source, n, new_pos, new_line, new_col, b1, c1, term_byte, depth),
+      (new_pos, new_line, new_col, b1, c1) => lex_from(source, n, new_pos, new_line, new_col, b1, c1, stop, depth),
     }
   } else if is_digit(b) {
     // The scanner returns its verdict; this site reads it and reports.
@@ -323,13 +355,13 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
         // way and the rest of the file lexes true (scan_string's own
         // precedent). The refusal is what stops the executable.
         match push_tok(buf, count, mk_tok(TIntLit(value), line, col, line, new_col)) {
-          (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, term_byte, depth),
+          (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, stop, depth),
         }
       },
       NumFloat(new_pos, new_col) => {
         let kind = TFloatLit(parse_float(strip_underscores(str_slice(source, pos, new_pos))))
         match push_tok(buf, count, mk_tok(kind, line, col, line, new_col)) {
-          (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, term_byte, depth),
+          (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, stop, depth),
         }
       },
       NumNoDigits(new_pos, new_col, base) => {
@@ -339,7 +371,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
           Span(line, col, line, new_col)
         ))
         match push_tok(buf, count, mk_tok(TIntLit(0), line, col, line, new_col)) {
-          (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, term_byte, depth),
+          (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, stop, depth),
         }
       },
     }
@@ -357,7 +389,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
             None => TIdent(word),
           }
           match push_tok(buf, count, mk_tok(kind, line, col, line, new_col)) {
-            (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, term_byte, depth),
+            (b1, c1) => lex_from(source, n, new_pos, line, new_col, b1, c1, stop, depth),
           }
         },
       },
@@ -366,13 +398,13 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     let b2 = if pos + 1 < n { byte_at(source, pos + 1) } else { 0 }
     match two_char_kind(b, b2) {
       Some(kind) => match push_tok(buf, count, mk_tok(kind, line, col, line, col + 2)) {
-        (b1, c1) => lex_from(source, n, pos + 2, line, col + 2, b1, c1, term_byte, depth),
+        (b1, c1) => lex_from(source, n, pos + 2, line, col + 2, b1, c1, stop, depth),
       },
       None => match single_char_kind(b) {
         Some(kind) => {
           // TLBrace increments depth; TRBrace may terminate splice.
           let new_depth = if b == 123 { depth + 1 } else { depth }
-          if b == 125 && term_byte == 125 && depth == 0 {
+          if b == 125 && ends_splice(stop) && depth == 0 {
             // Splice termination — emit TRBrace and return to
             // scan_string_after_splice with position info so the
             // outer scan_string can resume past the splice. The LIVE
@@ -389,14 +421,73 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
           } else {
             let new_d = if b == 125 && depth > 0 { depth - 1 } else { new_depth }
             match push_tok(buf, count, mk_tok(kind, line, col, line, col + 1)) {
-              (b1, c1) => lex_from(source, n, pos + 1, line, col + 1, b1, c1, term_byte, new_d),
+              (b1, c1) => lex_from(source, n, pos + 1, line, col + 1, b1, c1, stop, new_d),
             }
           }
         },
-        None => lex_from(source, n, pos + 1, line, col + 1, buf, count, term_byte, depth),
+        None => lex_from(source, n, pos + 1, line, col + 1, buf, count, stop, depth),
       },
     }
   }
+}
+
+fn ends_splice(stop) = match stop {
+  AtSpliceEnd => true,
+  AtTextEnd | AtStatementEnd | AtCode => false,
+}
+
+fn stops_at_code(stop) = match stop {
+  AtCode => true,
+  AtTextEnd | AtSpliceEnd | AtStatementEnd => false,
+}
+
+// A newline ends a top-level statement when the lex reads one statement, no
+// brace is open, and the line before it holds code: a line that is blank
+// or ends in a comment belongs to the declaration below it, with the
+// comments that run up to that declaration.
+fn ends_statement(stop, depth, buf, count) = match stop {
+  AtStatementEnd => depth == 0 && count > 0 && count <= len(buf) && ends_in_code(token_kind(list_index(buf, count - 1))),
+  AtTextEnd | AtSpliceEnd | AtCode => false,
+}
+
+fn ends_in_code(kind) = match kind {
+  TNewline | TComment(_) => false,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => true,
+}
+
+// Whether the next token that is not a line break or a comment opens a
+// declaration (`opens_declaration`). The loop itself reads ahead from byte
+// `pos` on line `line` and stops before that token (`AtCode`), so a comment
+// ahead is read as the lex reads it, and the word found there is asked
+// what it is.
+fn declaration_follows(source, n: ValidOffset, pos: ValidOffset, line) = match lex_from(source, n, pos, line, 1, make_list(8), 0, AtCode, 0) {
+  (at, _, _, _, _) => at >= 0 && at < n && is_alpha(byte_at(source, at)) && word_opens_declaration(source, n, at),
+}
+
+fn word_opens_declaration(source, n: ValidOffset, pos: ValidOffset) = match scan_ident(source, n, pos, 1) {
+  (end, _) => match intern_span(source, pos, end) {
+    (_, _, kw) => match kw {
+      Some(k) => opens_declaration(k),
+      None => false,
+    },
+  },
+}
+
+// The keywords that open a top-level declaration: each is the first token
+// of a statement form the parser reads.
+fn opens_declaration(kind) = match kind {
+  TFn | TLet | TType | TEffect | THandler | TImport => true,
+  TIf | TElse | TMatch | TWith | TResume | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_)
+  | TIntLit(_) | TFloatLit(_) | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq
+  | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd
+  | TOrOr | TLParen | TRParen | TLBrace | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon
+  | TSemicolon | TPlus | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe
+  | TAt | THole | TNewline | TEof => false,
 }
 
 // Lexer helpers
@@ -415,9 +506,9 @@ fn scan_to_eol(ref source, n: ValidOffset, pos: ValidOffset) = if pos >= n {
 // The `"..."` / `"""..."""` string scanner. Emits
 // `TStringPart(the literal chunk)` for contiguous literal content. On `{`
 // followed by an expression-start byte, emits `TStringPart(acc)` +
-// `TStringSplice` then delegates to `scan_string_after_splice`, which
-// calls `lex_from` with `term_byte=125` to tokenize the expression until
-// the matching `}`. Literal braces are `\{`/`\}` (a backslash escape, NOT
+// `TStringSplice` then delegates to `scan_string_after_splice`, which has
+// `lex_from` tokenize the expression up to the matching `}`
+// (`AtSpliceEnd`). Literal braces are `\{`/`\}` (a backslash escape, NOT
 // a chunk break) — there is no brace-doubling. Closing `"` terminates.
 // Returns `(new_pos, new_line, new_col, buf, count)` — buffer threaded
 // directly, the live line riding every return.
@@ -538,11 +629,11 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
 }
 
 // After emitting `TStringPart` + `TStringSplice`, lex the expression
-// inside the splice using `lex_from` with `term_byte=125` (terminates
-// on first `TRBrace` at depth 0). Then resume `scan_string` with empty acc.
-// Nested splices (depth > 0) handled by `lex_from`'s depth tracking;
-// peer sub-handle B.12.5.2 extends this to multiple nesting levels.
-fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, 125, 0) {
+// inside the splice with `lex_from`, which stops at the first `}` with no
+// brace of the splice still open (`AtSpliceEnd`). Then resume
+// `scan_string` with an empty chunk. A brace the splice opens is counted
+// by `lex_from`'s depth, so a nested splice closes where it should.
+fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, AtSpliceEnd, 0) {
   (new_pos, new_line, new_col, b1, c1) => scan_string(source, n, new_pos, new_line, new_col, new_line, new_col, b1, c1),
 }
 
@@ -675,9 +766,9 @@ fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
   }
 }
 
-// scan_triple_after_splice — lex the splice expression (term_byte=125),
-// then resume the triple-quoted chunk scan past the closing `}`.
-fn scan_triple_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, strip, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, 125, 0) {
+// scan_triple_after_splice — lex the splice expression to its closing `}`
+// (`AtSpliceEnd`), then resume the triple-quoted chunk scan past it.
+fn scan_triple_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, strip, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, AtSpliceEnd, 0) {
   (new_pos, new_line, new_col, b1, c1) => scan_triple_chunk(source, n, new_pos, new_pos, new_line, new_col, new_line, new_col, strip, b1, c1),
 }
 

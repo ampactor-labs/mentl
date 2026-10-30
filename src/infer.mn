@@ -1738,24 +1738,43 @@ fn module_imports_draw(mh, imports) = graph_register_node(mh, NModule({...module
 // weave to cut.
 fn parse_one_module(mh) = {
   let m = module_of(mh)
-  graph_module_enter(mh)
-  // The parse is an ARENA (lib/arena.mn): it publishes the module's
-  // statements and the nodes it wrote into the graph, and the tokens and
-  // everything built on the way to them die at its exit.
-  let stmts = lex(m.text) |> parse_program |> import_set ~> arena
+  let stmts = parse_lines(mh, m.text, 1)
   graph_register_node(mh, NModule({...m, decls: stmts}))
   stmts
 }
 
-// A run of a module's lines read again, its text starting at line `line`:
-// parsed inside the module's node, its tokens carrying the module's own
-// coordinates, so the statements it answers are the ones the whole text's
-// parse would have minted there. The module's node takes them when the edit
-// is committed.
+// A run of a module's lines, its text starting at line `line`, parsed
+// inside the module's node: its tokens carry the module's own coordinates,
+// so the statements it answers are the ones the whole text's parse would
+// have minted there. A module's first parse reads all of its lines; an edit
+// reads the lines it changed, and the module's node takes the statements
+// when the edit is committed.
 fn parse_lines(mh, run, line) = {
   graph_module_enter(mh)
-  lex_lines(run, line) |> parse_program |> import_set ~> arena
+  statements_from(run, 0, line, []) |> list_to_flat |> import_set
 }
+
+// A text's statements, read one top-level statement at a time, each inside
+// an ARENA of its own (lib/arena.mn): the arena publishes the statement's
+// nodes into the graph, and its tokens and everything built on the way to
+// them die at its exit. One arena around a whole module journaled every
+// cell the module's parse wrote, and the compiler's largest module
+// overflowed the journal, so that arena kept its whole region (measured
+// 2026-10-30). A position outside the text has no statement to read.
+fn statements_from(text, pos, line, read) = if pos < 0 || pos >= byte_len(text) {
+  read
+} else {
+  match read_statement(text, pos, line) {
+    run => statements_from(text, run.pos, run.line, read ++ run.stmts),
+  }
+}
+
+fn read_statement(text, pos: ValidOffset, line) =
+  lex_statement(text, pos, line) |> parse_lexed ~> arena
+
+// A statement's tokens parsed; the tokens stay behind in the arena.
+fn parse_lexed(lexed) =
+  {line: lexed.line, pos: lexed.pos, stmts: lexed.tokens |> parse_program |> list_to_flat}
 
 // What a replaced or a judged handler serves, op by op: its name, the
 // discipline each arm adds to the op it answers (an arm whose grade is the
