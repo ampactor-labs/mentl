@@ -410,11 +410,10 @@ projection's (see §«What a comment TRENDS TO»). Three rulings follow:
   its `~>` handler (`>< [Thread ×4]` is a derived badge, §`><`), so
   `parallel_map` is vocabulary drift over `map ~> Schedule`. The schedule
   reaches a helper's fanout by demand, through a direct call (§`><`). A
-  `~> parallel_compose` over `render(voices)` runs every `><` and `fanout` in
-  `render`'s direct-call reach threaded. `map` stays sequential by
-  construction (one loop), and `fanout(f, xs)` is the sequence fanout that
-  declares its applications independent. The parallel map is spelled
-  `fanout(f, xs) ~> parallel_compose`.
+  `~> parallel_compose` over `render(voices)` runs every `><` in `render`'s
+  direct-call reach threaded. `map` stays sequential by construction (one
+  loop), and `xs >< f` is the sequence fanout that declares its applications
+  independent. The parallel map is spelled `xs >< f ~> parallel_compose`.
 - **A name must describe the representation correctly.**
   `list_head`/`list_tail` read and remove the last element (the snoc end,
   O(1) by construction). The cons vocabulary they borrowed implies the
@@ -797,20 +796,31 @@ callback parameter's row is read at the instantiating site. For example,
 (f())` called with a callback that bumps a stateful counter is refused, where
 the lexical rule found a free row.
 
-**`fanout(f, xs)` is the sequence fanout**, `><` over a runtime sequence: `f`
-is applied to each element as an independent branch, and the results are
-collected in order, under whatever schedule governs the site. It is typed
-exactly as `map` is, and with no schedule installed it is `map`. Under a
-Thread-class install every element's branch is spawned and joined in source
-order (`fanout_threaded`, lib/threading); under a Persist-class install each is
-checkpointed and joined (`fanout_persisted`, lib/persist). `map` itself stays a
-sequential loop by construction (§Vocabulary). Only a fanout declares its
-applications independent, and that is the whole difference between them. Simd
-and Gpu pack a fixed lane count and run a sequence fanout sequentially. The
-race rule reads the function a sequence fanout applies as every branch's
-function, so a `~> parallel_compose` over a fanout whose function writes
-through a stateful handler is refused. This check enforces the deterministic
-partition (`PLAN.md` §11, forks on every core)
+**`xs >< f` is the sequence fanout.** When the right side of `><` is a stage, as
+the right side of `|>` is (a function literal, a declared function's name, or a
+call that leaves its last arguments open), the left side is a list and the stage
+is applied to each element as an independent branch, with the results collected
+in order under whatever schedule governs the site. It is the mirror of
+`x <| (f, g)`, which sends one input to several stages: here many inputs meet one
+stage. The judgment decides the form at the `><` node from the right side's shape
+and, for a name, its declaration, before either side is judged, and records it in
+the node's boundary cell, which the lowering, the schedule demand, the census and
+the caret read. `fn main() = ([1, 2, 3] >< { x => x * 2 }) |> sum` answers 12
+(tests/micros/mn-fanout-seq-literal.mn), and the caret at its `><` says "the ><
+applies one stage to every element of the list on its left, each element a branch
+of its own". `|>` binds tighter than `><`, so a fanout piped onward is
+parenthesized. A function held in a parameter is not a declared function, so it
+is written as a literal: `xs >< { x => f(x) }`. It is typed exactly as `map` is,
+and with no schedule installed it is `map`. Under a Thread-class install every
+element's branch is spawned and joined in source order (`fanout_threaded`,
+lib/threading); under a Persist-class install each is checkpointed and joined
+(`fanout_persisted`, lib/persist). `map` itself stays a sequential loop by
+construction (§Vocabulary). Only a fanout declares its applications independent,
+and that is the whole difference between them. Simd and Gpu pack a fixed lane
+count and run a sequence fanout sequentially. The race rule reads the stage a
+sequence fanout applies as every branch's function, so a `~> parallel_compose`
+over a fanout whose stage writes through a stateful handler is refused. This
+check enforces the deterministic partition (`PLAN.md` §11, forks on every core)
 (tests/micros/mn-race-sequence-fanout-store.mn,
 mn-race-sequence-fanout-stateful.mn).
 
@@ -1117,7 +1127,7 @@ This section is written from the ultimate form PLAN §0 and §5 describe, and to
 |---|---|---|---|---|
 | stages in sequence | `x \|> f \|> g` | the chain's row; a stage is applied in place, never minted, so a chain allocates nothing; a chain over a sequence yields its results outward in one pass, and deforestation is a rewrite the rows license (PLAN §11.7) | every lesson; `frame` in lesson 2 | the stage's result only; the chain itself owns no record |
 | one value to several places | `dry <\| (rig.echo, rig.room)` | the input is borrowed by every branch, so the fanout cannot race; the result is the branches' product; a join aligns branches of known latency or refuses the misaligned merge (PLAN §11.7) | lesson 3, line 49 | one record, the input, read by every branch; a branch's result is its own |
-| independent flows side by side | `(echoed) >< (dry)`, `fanout(render, notes)` | each branch owns its input; the schedule comes from the handler at the foot, never from the verb, and runs on every core deterministically (PLAN §11.8) | lesson 3, line 50; lesson 10, line 65 | the branches allocate in the extent that encloses the fanout; a spawned instance allocates in a run of its own |
+| independent flows side by side | `(echoed) >< (dry)`, `notes() >< render_voice(sr, frames)` | each branch owns its input; the schedule comes from the handler at the foot, never from the verb, and runs on every core deterministically (PLAN §11.8) | lesson 3, line 50; lesson 10, line 65 | the branches allocate in the extent that encloses the fanout; a spawned instance allocates in a run of its own |
 | the branches rejoin | `((a) >< (b)) \|> mix(0.35)` | the product fills the stage's open slots; no tuple is built | lesson 3, lines 50 and 51 | the stage's slots; no tuple record |
 | a flow that needs its own past | `{ prev => … } <~ delay(N)` | a line of depth N owned by the stage's record, allocated once, so `!Alloc` holds across the cycle; the cycle's clock is inferred, the depth may be a value read at run time, and the line is read at any tap (PLAN §11.7) | lesson 2, line 44; the controller's five recurrences in `decide` | the line's N slots, allocated once with the stage's record |
 | what the effects do | `body ~> inner ~> outer` | the row loses what each handler absorbs and gains what its arms perform; the install edge carries the schedule, the derivative reading or persistence; a negation holds through every handler a caller installs (PLAN §11.1) | lesson 4, `rack`; lesson 9, `~> grad`; lesson 10, `~> parallel_compose`; lesson 11, `~> arena`; the controller's `~> station` and `~> arena` | the handler's state record, which outlives every resume; an arena's body is an extent, reclaimed at its exit except what its result reaches, and the caret says whether anything can root it (PLAN §4⑨) |

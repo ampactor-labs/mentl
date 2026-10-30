@@ -2642,7 +2642,10 @@ fn lower_expr_body(e, handle, span) = match e {
   // the receiver's live type under the bracket.
   FieldExpr(rec, field) => LFieldLoad(handle, lower_expr(rec), FByName(field)),
   PipeExpr(kind, left, right) => lower_pipe(kind, left, right, handle),
-  FanoutExpr(branches) => lower_fanout_nary_to(handle, branches, FdValue),
+  FanoutExpr(branches) => match graph_boundary_at(handle) {
+    SequenceFanout(fh) => lower_seq_fanout(handle, fh, branches),
+    FanoutBoundary(_) | NoBoundary | InterpBoundary(_) => lower_fanout_nary_to(handle, branches, FdValue),
+  },
   // infer already reported ERestOutsideDestructure at this node;
   // productive-under-error, same as the hole.
   RestExpr(_) => LConst(handle, LInt(0)),
@@ -3212,7 +3215,7 @@ fn fanout_thunk_walk(handle, branch_nodes, share, boundaries, i, n) = if i >= n 
 // edge: a compiler error, surfaced before the productive-under-error fallback.
 fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
   FanoutBoundary(edges) => Ok(edges),
-  InterpBoundary(_) => {
+  InterpBoundary(_) | SequenceFanout(_) => {
     report_at(handle, EUnresolvedType(handle, graph_epoch(), graph_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
@@ -3603,6 +3606,14 @@ fn persist_join_at(handle, indexed) = match indexed {
 // library fn that owns the schedule. The callee-reference handle is the
 // site's own, so the call's twin key is read off `fanout`'s instantiation
 // there — the same shape `map` and its threaded twin declare.
+// `xs >< f`: the stage and the list lowered as `map(f, xs)`'s arguments, and
+// the node lowered through the schedule's form, at the callee node the
+// judgment bound to `map`'s instance (`SequenceFanout`).
+fn lower_seq_fanout(handle, fh, branches) = match branches {
+  [xs, stage] => lower_fanout_seq(handle, fh, stage, [lower_expr(stage), lower_expr(xs)]),
+  [] | [_] | [_, _, _, ..._] => LInvariantFailure(handle, MissingFanoutBoundary),
+}
+
 fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
   // Every element's branch applies the one function: the race rule reads
   // that function's row, as it reads a syntactic branch's.
@@ -6142,7 +6153,7 @@ fn lower_string_interpolation(handle, lowered_fragments) = {
     // node's handle: the expression's type and span reads key on it.
     let cells = match graph_boundary_at(handle) {
       InterpBoundary(cs) => cs,
-      NoBoundary | FanoutBoundary(_) => [],
+      NoBoundary | FanoutBoundary(_) | SequenceFanout(_) => [],
     }
     // A count mismatch would let zip TRUNCATE — fragments silently
     // dropped from the string. The judge's elision mirror and this

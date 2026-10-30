@@ -22,4 +22,4 @@ fn branch(k) = churn(k, 1000000)
 
 fn add_int(a, b) = a + b
 
-fn main() = fanout(branch, [1, 2, 3, 4]) |> fold(0, add_int) ~> parallel_compose
+fn main() = ([1, 2, 3, 4] >< branch) |> fold(0, add_int) ~> parallel_compose

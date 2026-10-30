@@ -1890,10 +1890,14 @@ fn callee_is_fanout(f) = match graph_node_body(f) {
 // cannot disagree about what a fanout costs.
 //
 // How many parts the product at `h` has, and −1 for a value that is not one
-// built here: a tuple literal's elements, a fanout's branches.
+// built here: a tuple literal's elements, a fanout's branches. A sequence
+// fanout builds a list, so it is not a product.
 fn product_arity_at(h) = match graph_node_body(h) {
   NExpr(MakeTupleExpr(elems)) => len(elems),
-  NExpr(FanoutExpr(branches)) => len(branches),
+  NExpr(FanoutExpr(branches)) => match graph_boundary_at(h) {
+    SequenceFanout(_) => -1,
+    FanoutBoundary(_) | NoBoundary | InterpBoundary(_) => len(branches),
+  },
   NExpr(PipeExpr(PFanout(fan_own), _, right)) => match fan_own {
     FanDistribute => 2,
     FanShare => len(share_stages(right)),

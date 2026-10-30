@@ -12,6 +12,6 @@ let count = 3
 fn scaled(x: Int) -> Int = float_to_int(float_of_int(x * count) * level)
 
 fn main() = {
-  let ys = fanout(scaled, [2, 4]) ~> parallel_compose
+  let ys = [2, 4] >< scaled ~> parallel_compose
   if ys[0] == 9 && ys[1] == 18 { 0 } else { 1 }
 }

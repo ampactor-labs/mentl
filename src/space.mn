@@ -303,7 +303,7 @@ fn frames_at(h) = match graph_node_body(h) {
   NExpr(PipeExpr(PTee, l, r)) => [Frame(h, CvTee, [graph_span_of(l), graph_span_of(r)])],
   NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [graph_span_of(l), graph_span_of(r)])],
   NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [graph_span_of(l)] ++ map(graph_span_of, share_stages(r)))],
-  NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(graph_span_of, branches))],
+  NExpr(FanoutExpr(branches)) => [Frame(h, fan_verb(h), map(graph_span_of, branches))],
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => [],
 }
@@ -318,10 +318,16 @@ fn is_chain_prefix(h) = match graph_parent_of(h) {
   None => false,
 }
 
+// A `><` as the judgment decided it (its boundary cell).
+fn fan_verb(h) = match graph_boundary_at(h) {
+  SequenceFanout(_) => CvSeqFan,
+  FanoutBoundary(_) | NoBoundary | InterpBoundary(_) => CvFan,
+}
+
 fn canvas_verb_word(verb) = match verb {
   CvPipe => "|>",
   CvShare => "<|",
-  CvFan => "><",
+  CvFan | CvSeqFan => "><",
   CvTee => "~>",
   CvLoop => "<~",
 }
@@ -332,6 +338,7 @@ fn frame_role(verb, k, n) = match verb {
   CvPipe => if k == 0 { ChainSource } else { ChainStage(k, n - 1) },
   CvShare => if k == 0 { FanInput } else { ShareBranch(k - 1, n - 1) },
   CvFan => FanBranch(k, n),
+  CvSeqFan => if k == 0 { SeqList } else { SeqStage },
   CvTee => if k == 0 { InstallBody } else { InstallHandler },
   CvLoop => if k == 0 { Recurrence } else { FeedbackDelay },
 }

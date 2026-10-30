@@ -1664,6 +1664,11 @@ type ExecutableBoundary
   = NoBoundary
   // ordered BoundaryEdge values, one per branch
   | FanoutBoundary([BoundaryEdge])
+  // `xs >< f`, the sequence fanout: the callee node the judgment bound to
+  // map's instance at this site, through which the lowering emits map, or
+  // the threaded or persisted form a spawning schedule needs, at the types
+  // the site uses
+  | SequenceFanout(Int)
   // The interpolation's N−1 interior-concat cells, minted ONCE at the
   // judge (the concat-key dossier's settled design): a lower-time
   // fresh mint made lowering non-reproducible, and every
@@ -2316,13 +2321,16 @@ type Teaching
 
 // Where a node stands in one verb that holds it, each role naming its verb:
 // a `|>` chain's source or its i-th of n stages; the i-th of n branches of a
-// `><`; the i-th of n branches of a `<|` or the input it shares; a `~>`'s
-// body or its handler; a `<~`'s recurrence or its declared delay; or the
-// verb at the node itself, with the shape it carries.
+// `><`, or for `xs >< f` the list or the stage; the i-th of n branches of a
+// `<|` or the input it shares; a `~>`'s body or its handler; a `<~`'s
+// recurrence or its declared delay; or the verb at the node itself, with the
+// shape it carries.
 type VerbRole
   = ChainSource
   | ChainStage(Int, Int)
   | FanBranch(Int, Int)
+  | SeqList
+  | SeqStage
   | ShareBranch(Int, Int)
   | FanInput
   | InstallBody
@@ -2344,6 +2352,9 @@ type VerbRole
 type VerbShape
   = ShareShape(Option(String), Int)
   | FanShape(Int, Schedule)
+  // `xs >< f`: one stage over every element of a list, and the schedule the
+  // installs over it carry
+  | SeqFanShape(Schedule)
   | ChainShape(Int, Int, Bool)
   | InstallShape(String, [String], Option(String))
   | LoopShape(Option(Int), String)
@@ -2521,8 +2532,9 @@ type TokenClass
 
 type CanvasToken = CanvasToken(Span, TokenClass)
 
-// The five verbs, as a frame draws them.
-type CanvasVerb = CvPipe | CvShare | CvFan | CvTee | CvLoop
+// The five verbs, as a frame draws them; `><` drawn as branches, or as one
+// stage over a list's elements.
+type CanvasVerb = CvPipe | CvShare | CvFan | CvSeqFan | CvTee | CvLoop
 
 // A verb site with the spans of what it composes, in order: a `|>` chain's
 // source and stages, a fanout's input and branches, a `~>`'s body and

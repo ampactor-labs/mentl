@@ -8,6 +8,6 @@ import threading
 fn main() = {
   let buf = make_list(1)
   let n =
-    fanout({ x => list_set(buf, 0, list_index(buf, 0) + x) }, [1, 2, 3]) |> len ~> parallel_compose
+    ([1, 2, 3] >< { x => list_set(buf, 0, list_index(buf, 0) + x) }) |> len ~> parallel_compose
   n + list_index(buf, 0)
 }

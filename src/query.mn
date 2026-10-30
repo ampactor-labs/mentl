@@ -2915,7 +2915,7 @@ fn fanout_sites(h, tees) with !Mutate = {
   let body = graph_node_body(h)
   match body {
     NExpr(PipeExpr(PTee, l, r)) => fanout_sites(l, push(tees, tee_arms(r))),
-    NExpr(FanoutExpr(_)) => [where_site(h, Branches(FanDistribute, boundary_width(h)), tees)] ++ child_sites(body, tees),
+    NExpr(FanoutExpr(_)) => [where_site(h, fan_site_shape(h), tees)] ++ child_sites(body, tees),
     NExpr(PipeExpr(PFanout(fan), _, _)) => [where_site(h, Branches(fan, boundary_width(h)), tees)] ++ child_sites(body, tees),
     NExpr(CallExpr(f, _)) => if callee_is_fanout(f) {
       [where_site(h, PerElement, tees)] ++ child_sites(body, tees)
@@ -2942,6 +2942,14 @@ fn boundary_width(h) with !Mutate = match graph_boundary_at(h) {
   FanoutBoundary(edges) => len(edges),
   NoBoundary => 0,
   InterpBoundary(_) => 0,
+  SequenceFanout(_) => 0,
+}
+
+// A `><` site's shape as the judgment decided it: one stage over every
+// element of a list, or a branch per operand.
+fn fan_site_shape(h) with !Mutate = match graph_boundary_at(h) {
+  SequenceFanout(_) => PerElement,
+  FanoutBoundary(_) | NoBoundary | InterpBoundary(_) => Branches(FanDistribute, boundary_width(h)),
 }
 
 // THE CALLERS THAT DEMAND A FN THREADED, by the rule the emit demands its

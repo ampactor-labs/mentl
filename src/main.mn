@@ -1946,8 +1946,8 @@ fn shape_want_of(frames) = fold("none", shape_want_step, frames)
 fn shape_want_step(acc, frame) = match frame {
   VerbFrame(_, role) => match role {
     VerbSite(shape) => show_shape_want(shape),
-    ChainSource | ChainStage(_, _) | FanBranch(_, _) | ShareBranch(_, _) | FanInput | InstallBody
-    | InstallHandler | Recurrence | FeedbackDelay => acc,
+    ChainSource | ChainStage(_, _) | FanBranch(_, _) | SeqList | SeqStage | ShareBranch(_, _)
+    | FanInput | InstallBody | InstallHandler | Recurrence | FeedbackDelay => acc,
   },
 }
 
@@ -1961,6 +1961,7 @@ fn show_shape_want(shape) = match shape {
     "<| {what} {int_to_str(n)}"
   },
   FanShape(n, s) => ">< {int_to_str(n)} {schedule_word(s)}",
+  SeqFanShape(s) => ">< each {schedule_word(s)}",
   ChainShape(k, n, merges) => "|> {int_to_str(k)} {int_to_str(n)}{if merges { " product" } else { "" }}",
   InstallShape(name, effs, _) => if len(effs) == 0 { "~> {name}" } else { "~> {name} {join(" ", effs)}" },
   LoopShape(depth, owner) => match depth {

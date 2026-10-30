@@ -521,7 +521,7 @@ fn verb_shape_of(h, path) with !Mutate = if len(path) == 0 {
     },
     NExpr(PipeExpr(PFanout(FanShare), l, r)) => Some(ShareShape(plain_name(l), len(share_stages(r)))),
     NExpr(PipeExpr(PFanout(FanDistribute), _, _)) => Some(FanShape(2, schedule_of(installs_on(path)))),
-    NExpr(FanoutExpr(branches)) => Some(FanShape(len(branches), schedule_of(installs_on(path)))),
+    NExpr(FanoutExpr(branches)) => Some(fan_shape(h, branches, schedule_of(installs_on(path)))),
     NExpr(PipeExpr(PTee, _, r)) => Some(InstallShape(
       tee_handler_name(r),
       match tee_arms(r) {
@@ -547,6 +547,13 @@ fn verb_shape_of(h, path) with !Mutate = if len(path) == 0 {
 // pipe above holds this one as its left child.
 fn chain_head(path, i) with !Mutate =
   if chain_continues_above(path, i) { chain_head(path, i - 1) } else { list_index(path, i) }
+
+// A `><`'s shape as the judgment decided it (its boundary cell): one stage
+// over every element of a list, or a branch per operand.
+fn fan_shape(h, branches, s) with !Mutate = match graph_boundary_at(h) {
+  SequenceFanout(_) => SeqFanShape(s),
+  FanoutBoundary(_) | NoBoundary | InterpBoundary(_) => FanShape(len(branches), s),
+}
 
 fn is_fanout(h) with !Mutate = match graph_node_body(h) {
   NExpr(FanoutExpr(_)) => true,
@@ -627,6 +634,13 @@ fn verb_frame_at(path, frames, i) with !Mutate = {
   }
 }
 
+// The k-th operand of a `><` as the judgment decided the node: the list or
+// the stage of a sequence fanout, or the k-th of n branches.
+fn fan_role(site, k, n) with !Mutate = match graph_boundary_at(site) {
+  SequenceFanout(_) => if k == 0 { SeqList } else { SeqStage },
+  FanoutBoundary(_) | NoBoundary | InterpBoundary(_) => FanBranch(k, n),
+}
+
 fn verb_role(site, path, i) with !Mutate = {
   let next = list_index(path, i + 1)
   match graph_node_body(site) {
@@ -635,7 +649,7 @@ fn verb_role(site, path, i) with !Mutate = {
     NExpr(PipeExpr(PFeedback, l, _)) => Some(if l == next { Recurrence } else { FeedbackDelay }),
     NExpr(PipeExpr(PFanout(_), l, r)) => if l == next { Some(FanInput) } else { shared_branch_role(r, path, i + 2) },
     NExpr(FanoutExpr(branches)) => match position_in(next, branches) {
-      Some(k) => Some(FanBranch(k, len(branches))),
+      Some(k) => Some(fan_role(site, k, len(branches))),
       None => None,
     },
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
@@ -764,8 +778,8 @@ fn show_verb_path(frames, place) with !Mutate =
 fn show_verb_frame(place, frame) with !Mutate = match frame {
   VerbFrame(site, role) => match role {
     VerbSite(shape) => shape_text(shape),
-    ChainSource | ChainStage(_, _) | FanBranch(_, _) | ShareBranch(_, _) | FanInput | InstallBody
-    | InstallHandler | Recurrence | FeedbackDelay => "{verb_role_text(role)} at {place(graph_span_of(site))}",
+    ChainSource | ChainStage(_, _) | FanBranch(_, _) | SeqList | SeqStage | ShareBranch(_, _)
+    | FanInput | InstallBody | InstallHandler | Recurrence | FeedbackDelay => "{verb_role_text(role)} at {place(graph_span_of(site))}",
   },
 }
 
@@ -773,6 +787,8 @@ fn verb_role_text(role) = match role {
   ChainSource => "the source of the |>",
   ChainStage(i, n) => "stage {int_to_str(i)} of {int_to_str(n)} of the |>",
   FanBranch(i, n) => "branch {int_to_str(i + 1)} of {int_to_str(n)} of the ><",
+  SeqList => "the list the >< applies its stage to",
+  SeqStage => "the stage the >< applies to every element",
   ShareBranch(i, n) => "branch {int_to_str(i + 1)} of {int_to_str(n)} of the <|",
   FanInput => "the input the <| shares",
   InstallBody => "the body the ~> governs",
@@ -780,6 +796,13 @@ fn verb_role_text(role) = match role {
   Recurrence => "the recurrence the <~ feeds back",
   FeedbackDelay => "the delay the <~ declares",
   VerbSite(shape) => shape_text(shape),
+}
+
+// How a fanout's branches run, said once for both of its shapes.
+fn schedule_clause(s) = if schedule_is_threaded(s) {
+  "on threads under the schedule installed over it"
+} else {
+  "in sequence, since no schedule is installed over it"
 }
 
 // The verb's own sentence at its node, one a newcomer can say back, naming
@@ -792,11 +815,8 @@ fn shape_text(shape) = match shape {
     }
     "the <| shares {what} with {shape_count(n, "branch", "branches")}, borrowed, so they cannot race"
   },
-  FanShape(n, s) => if schedule_is_threaded(s) {
-    "the >< runs {shape_count(n, "branch", "branches")}, each owning its input, on threads under the schedule installed over it"
-  } else {
-    "the >< runs {shape_count(n, "branch", "branches")}, each owning its input, in sequence, since no schedule is installed over it"
-  },
+  FanShape(n, s) => "the >< runs {shape_count(n, "branch", "branches")}, each owning its input, {schedule_clause(s)}",
+  SeqFanShape(s) => "the >< applies one stage to every element of the list on its left, each element a branch of its own, {schedule_clause(s)}",
   ChainShape(k, n, merges) => {
     let tail = if merges { ", and the fanout's product fills the first stage's open slots" } else { "" }
     if k == n {

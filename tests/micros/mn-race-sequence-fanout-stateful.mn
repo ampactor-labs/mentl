@@ -15,4 +15,4 @@ handler counter with n = 0 {
 
 fn work(x) = x + tick()
 
-fn main() = fanout(work, [1, 2, 3]) |> len ~> parallel_compose ~> counter
+fn main() = ([1, 2, 3] >< work) |> len ~> parallel_compose ~> counter

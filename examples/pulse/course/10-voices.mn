@@ -62,7 +62,7 @@ fn render_voice(sr, frames, hz) = {
   range(0, frames) |> map(sample)
 }
 
-fn render(sr, frames) = fanout(render_voice(sr, frames), notes()) ~> parallel_compose
+fn render(sr, frames) = notes() >< render_voice(sr, frames) ~> parallel_compose
 
 // The mix: each voice at its place, as a stereo pair per frame.
 fn placed(v, samples) =

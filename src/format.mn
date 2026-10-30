@@ -127,6 +127,52 @@ let fanout_distribute_kind = PFanout(FanDistribute)
 // (SYNTAX §`><`, the render rule): the parentheses are the branch's visual
 // boundary. Wrapped only where precedence demanded it, `((1 + 1) >< (2 + 2))`
 // rendered as `(1 + 1 >< 2 + 2)` — the same tree, read as one sum.
+// A `><` whose right side is written as a stage, by the judgment's rule read
+// at the text the formatter parses: a function literal, a call with a hole,
+// or a name or a call of a function this module declares, given fewer
+// arguments than it takes. The parse alone cannot say what an imported name
+// declares, so a stage the module only imports keeps the branch layout.
+fn fanned_stage(branches) = match branches {
+  [xs, stage] => if renders_as_stage(stage) { Some((xs, stage)) } else { None },
+  [] | [_] | [_, _, _, ..._] => None,
+}
+
+fn renders_as_stage(h) = match graph_node_body(h) {
+  NExpr(LambdaExpr(_, _)) => true,
+  NExpr(VarRef(name)) => module_fn_arity(h, name) >= 0,
+  NExpr(CallExpr(f, args)) => any(hole_arg, args) || called_short(h, f, len(args)),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
+fn hole_arg(a) = match graph_node_body(a) {
+  NHole(id) => id != 0,
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
+}
+
+fn called_short(h, f, nargs) = match graph_node_body(f) {
+  NExpr(VarRef(name)) => nargs < module_fn_arity(h, name),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
+// How many parameters a function this node's module declares by the name
+// takes, or −1 where the module declares none.
+fn module_fn_arity(h, name: String) = match find(declares_fn(name, ??), module_of(graph_module_of(h)).decls) {
+  Some(d) => match graph_node_body(d) {
+    NStmt(FnStmt(_, params, _, _, _)) => len(params),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => -1,
+  },
+  None => -1,
+}
+
+fn declares_fn(name: String, d) = match graph_node_body(d) {
+  NStmt(FnStmt(n, _, _, _, _)) => n == name,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
 fn render_fanout_inline(branches) = match branches {
   [] => "",
   [one] => parenthesize(render_tokens_for(one)),
@@ -332,10 +378,15 @@ fn render_expr_tokens(node, e) with !Mutate = match e {
       "{render_operand(l, pipe_prec(verb), false)} {show_pipe_kind(verb)}\n{render_operand(r, pipe_prec(verb), true)}"
     }
   },
-  // Inline when it fits; past the width, SYNTAX §`><`'s vertical layout.
-  FanoutExpr(branches) => {
-    let inline = render_fanout_inline(branches)
-    if fits_inline(inline) { inline } else { render_fanout_vertical(branches) }
+  // `xs >< f`, the sequence fanout, is written as its list and its stage with
+  // no branch parentheses. Every other `><` is its branches: inline when it
+  // fits, past the width SYNTAX §`><`'s vertical layout.
+  FanoutExpr(branches) => match fanned_stage(branches) {
+    Some((xs, stage)) => "{render_operand(xs, pipe_prec(fanout_distribute_kind), false)} >< {render_tokens_for(stage)}",
+    None => {
+      let inline = render_fanout_inline(branches)
+      if fits_inline(inline) { inline } else { render_fanout_vertical(branches) }
+    },
   },
   RestExpr(nm) => "...{nm}",
   IfExpr(c, t, el) => {

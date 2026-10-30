@@ -641,7 +641,7 @@ caret:
 9. `09-learn`: `~> grad(a)`, a one-pole filter whose coefficient learns from
    the slope of its error, with the derivative program drawn beside the chain
    and the heap not moving;
-10. `10-voices`: `fanout(render_voice(sr), notes) ~> parallel_compose`, where
+10. `10-voices`: `notes() >< render_voice(sr, frames) ~> parallel_compose`, where
     every voice is created in its own branch and rendered on its own core, and
     the race rule is the proof;
 11. `11-footprint`: `~> arena` around each section, where the section's

@@ -1,0 +1,9 @@
+// expect: 18
+// A declared function is a stage, and so is a call that leaves its last
+// argument open, as on the right of `|>`: doubling 1, 2 and 3 sums to 12,
+// and scaling 1 and 2 by 2 sums to 6.
+fn scale(k, x) = k * x
+
+fn double(x) = x * 2
+
+fn main() = (([1, 2, 3] >< double) |> sum) + (([1, 2] >< scale(2)) |> sum)

@@ -48,4 +48,4 @@ fn three(a, b, c) = a >< b >< c ~> parallel_compose
 
 fn spread(x) = x <| ((v) => v + 1, (v) => v * 2)
 
-fn doubled_each(xs) = fanout((x) => x * 2, xs)
+fn doubled_each(xs) = xs >< { x => x * 2 }

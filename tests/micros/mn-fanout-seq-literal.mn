@@ -1,0 +1,6 @@
+// expect: 12
+// `xs >< f` applies one stage to every element of a list, each element a
+// branch of its own, and collects the results in order: the mirror of
+// `x <| (f, g)`, which sends one input to several stages. Doubling 1, 2 and
+// 3 gives 2, 4 and 6, which sum to 12.
+fn main() = ([1, 2, 3] >< { x => x * 2 }) |> sum

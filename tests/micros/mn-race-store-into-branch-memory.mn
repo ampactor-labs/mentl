@@ -20,4 +20,4 @@ fn voice(n: Int) = {
   fold(0, add, map(sample, [n, n]))
 }
 
-fn main() = fanout(voice, [1, 4]) |> fold(0, add) ~> parallel_compose
+fn main() = ([1, 4] >< voice) |> fold(0, add) ~> parallel_compose

@@ -834,6 +834,18 @@ as unknown, never as passing.
   are, a name and a type with no node, so the claim's own declaration adds
   no cell to the compiler's graph: the self-compile's line peak fell 10 KB
   below the boot's on the same wheel (284,130 KB against 284,140 KB).
+- **`xs >< f` is the sequence fanout** (2026-10-30). When the right side
+  of `><` is a stage (a function literal, a declared function's name, or a
+  call that leaves its last arguments open), the judgment types the node as
+  `map(f, xs)` is, through the call judgment over a callee node bound to
+  map's instance, and records the decision in the node's boundary cell
+  (`SequenceFanout`). The lowering emits map, or the threaded or persisted
+  form a spawning schedule needs, from that cell as it did for the call
+  `fanout(f, xs)`, and the schedule demand, the census, the caret and Mentl
+  Space read the same cell. `|>` binds tighter than `><`, so a fanout piped
+  onward is parenthesized. Lesson 10 renders the same WAV byte for byte with
+  `notes() >< render_voice(sr, frames)`. The prelude's `fanout` stays only
+  for the compiler's own two uses until the pinned boot reads the new form.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1529,7 +1541,12 @@ the last three.
    above the declaration, and the chain is laid out with the `|>` ending a
    line and the next stage at column 0 (found 2026-10-29 while writing
    examples/hello/five.mn, on both the pinned boot and main's); the render
-   keeps each comment at the stage it precedes, one stage per line.
+   keeps each comment at the stage it precedes, one stage per line. fmt
+   writes the sequence fanout `xs >< f` without branch parentheses where
+   its own module declares `f`, since it reads the parse and no judgment;
+   a stage the module only imports (`xs >< int_to_str`) keeps the branch
+   layout `(xs) >< (int_to_str)` until fmt reads the judged graph's
+   boundary cell, which decides the form.
 
 6. **Edits cost what they change, and the page plays the course.** The
    edit's cone gets a cutoff (`Hβ.session.edit-cone-cutoff`): a declaration
@@ -1659,8 +1676,15 @@ the last three.
    when it is built; today a run that outgrows its claim stops saying
    memory is exhausted. Without a claim the journal (2 MB), the grow step
    (256 pages, 16 MB) and the ceiling (4 GB) are the wheel's constants
-   (`src/backends/wasm.mn`), sized for a compile of the compiler. A store
-   keeps its barrier wherever the store-age walk
+   (`src/backends/wasm.mn`), sized for a compile of the compiler. In a
+   module that spawns, an arena's exit copies its survivors past its region
+   and asks the shared frontier to extend its instance's run; when another
+   instance holds the next chunk, the extension fails and the exit keeps
+   its region (measured 2026-10-30: tests/frontier/arena/
+   spawning-module-runs-the-body.mn keeps once in 20 runs of one module,
+   `kept 1, freed 0` in both branches, the answer unchanged). A private
+   memory per instance with one shared image removes the shared frontier
+   and this keep with it. A store keeps its barrier wherever the store-age walk
    cannot prove its target is its own extent's, which today includes every
    store in a module that yields: the judgment does not yet know which
    frames can suspend between an allocation and a store, so the compiler,
