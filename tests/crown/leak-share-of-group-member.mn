@@ -1,0 +1,20 @@
+// CROWN: a `<|` branch that is a function of the caller's own recursive
+// group carries that function's effects. r shares its argument with plain
+// and with e, and e, which calls r back, asks for a name. quiet says it
+// never uses Name and calls r. Expect E_EffectMismatch at quiet.
+effect Name {
+  name_of(Int) -> Int
+}
+
+fn plain(n) = n + 1
+
+fn r(x) = {
+  let (a, b) = x <| (plain, e)
+  a + b
+}
+
+fn e(n) = if n <= 0 { name_of(n) } else { r(n - 1) }
+
+fn quiet() with !Name = r(5)
+
+fn main() = quiet()

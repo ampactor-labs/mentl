@@ -918,6 +918,30 @@ as unknown, never as passing.
   declaration it reaches performs the arm's op. Eight crucibles state it
   (tests/crown/leak-answer-net*.mn and sound-answer-*.mn): the boot
   before accepted all four leaks.
+- **A function of the caller's own recursive group keeps its effects
+  wherever it is handed** (2026-10-30). Inside a group, a use of a member
+  reads the member's row cell, which the member's own judgment fills
+  later. When two free row cells met, the unify bound the first side's,
+  so a use that handed the member on, as a partial application's
+  argument (`x |> apply_to(e)`, `xs |> map(e)`) or a `<|` branch, bound
+  the member's cell to its own fresh copy; the copy, still free at the
+  caller's exit, was pruned as unconstrained, and the caller published
+  none of the member's effects. `fn quiet() with !Name = r(5)` checked,
+  and the run stopped with "a perform found no handler". A row cell
+  minted before the judgment's mint ceiling is kept by the exit prune and
+  one minted during the judgment is dropped while free, so the unify now
+  binds the minted side when a pre-registered cell that carries no gate
+  meets one, and a declaration's judgment links its pre-registered row to
+  the row it finalizes before it unifies the two types. A gated
+  pre-registered cell (an annotation's `!E`) keeps the old direction,
+  which carries its gate onto the row it meets. Three crucibles state it
+  (tests/crown/leak-partial-of-group-member.mn,
+  leak-share-of-group-member.mn, sound-partial-of-group-member.mn) and
+  one micro the library stage (mn-partial-map-of-group-member.mn): the
+  boot before accepted all three leaks. The compiler compiling itself got
+  cheaper: line peak 272,486 KB against the boot's 274,928 KB on the same
+  wheel. A closed row that meets a member's row before it is judged is
+  still lost (§11.1(a)).
 - **`xs >< f` is the sequence fanout** (2026-10-30). When the right side
   of `><` is a stage (a function literal, a declared function's name, or a
   call that leaves its last arguments open), the judgment types the node as
@@ -1301,7 +1325,19 @@ the last three.
    (`Hβ.effects.sound-neg-under-poly`). A negation binds the handlers that
    answer the function's own operations while it runs (built 2026-10-30,
    §7); the install finds the negating declarations by a climb of its own,
-   which the reach (c) replaces.
+   which the reach (c) replaces. A function of the caller's own recursive
+   group keeps its effects where a use hands it on (built 2026-10-30, §7),
+   but not where a use first meets its row with a closed one: in `fn r(x) =
+   { let g = if x > 100 { plain } else { e }; g(x) }`, with `plain` Pure
+   and e, which calls r back, asking for a name, the `if` binds e's
+   pre-registered row to `plain`'s and e's judgment replaces it unchecked,
+   so `fn quiet() with !Name = r(5)` checks, where the same `if` is
+   refused when e is not in a group with r (a list `[plain, e]` likewise).
+   The bind must become a cap the member's exit judges, and it must tell a
+   use's bind from a Mycroft round's own: a cap taken from an earlier
+   round's row refused the compiler's own flow walk in verify.mn
+   (`handed_of`, `slot_flow`, `escape_hand`, `reached_of`, `escape_apply`
+   among them, measured 2026-10-30).
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`). An executable's

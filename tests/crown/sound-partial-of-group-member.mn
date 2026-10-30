@@ -1,0 +1,20 @@
+// CROWN, the sound twin: the same group, and quiet installs names around
+// its call of r, so every name e asks for is answered inside quiet and
+// nothing uses Name past it. Accepted.
+effect Name {
+  name_of(Int) -> Int
+}
+
+handler names {
+  name_of(n) => resume(n + 1),
+}
+
+fn apply_to(f, x) = f(x)
+
+fn r(x) = x |> apply_to(e)
+
+fn e(n) = if n <= 0 { name_of(n) } else { r(n - 1) }
+
+fn quiet() with !Name = r(5) ~> names
+
+fn main() = quiet()

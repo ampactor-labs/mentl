@@ -1,0 +1,16 @@
+// check: refuse E_EffectMismatch
+// A pipe stage `map(e)` carries the effects of e, a function of the caller's
+// own recursive group. r maps e over its list and e, which calls r back,
+// asks for a name, so r asks for one whenever it runs; quiet says it never
+// uses Name and calls r.
+effect Name {
+  name_of(Int) -> String
+}
+
+fn r(xs) = xs |> map(e)
+
+fn e(n) = if n <= 0 { name_of(n) } else { join("", r([n - 1])) }
+
+fn quiet() with !Name = len(r([5]))
+
+fn main() = quiet()

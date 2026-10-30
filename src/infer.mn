@@ -3340,6 +3340,33 @@ fn rechecked(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, q,
 // The Mycroft rounds, in the order `first_held` judges them.
 type Round = MonoRound | PolyRound | ReportRound
 
+// The pre-registered row cell reads the judgment cell, so every charge that
+// chained it before this body was judged reads what the exit finalizes. The
+// link is written before the unify of the two types because that unify
+// never binds a pre-registered cell to a cell the judgment minted, and the
+// judgment cell, minted now, is the one the exit replaces. A cell an earlier
+// round of this declaration already linked is left to that unify.
+fn prereg_row_link(prereg_ty, judged, span: ValidSpan) = match prereg_ty {
+  TFun(_, _, row) => match row {
+    EfRow(_, _, EtOpen(edges)) => each(prereg_edge_link(judged, span, ??), edges),
+    EfRow(_, _, EtClosed) | EfRow(_, _, EtAll) => (),
+  },
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
+}
+
+fn prereg_edge_link(judged, span: ValidSpan, e) = {
+  let pre = graph_chase_handle(edge_cell(e))
+  match graph_chase(pre) {
+    GNode(NRowFree(_), _) => graph_bind_row(
+      pre,
+      mk_ef_open([], judged),
+      Located(span, Inferred("the body's row, which the pre-registered row reads"))
+    ),
+    GNode(_, _) => (),
+  }
+}
+
 // One declaration judged: its parameters and body inferred under a frame,
 // its row published, its scheme generalized and bound. Its tail reports what
 // the graph's write guard refused while it ran. The guard cannot report where
@@ -3411,7 +3438,10 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // Bind the name BEFORE body so recursive calls resolve.
   let existing = graph_chase(handle)
   match existing {
-    GNode(NBound(existing_ty), _) => unify_types(existing_ty, fn_ty, span, Declared(name)),
+    GNode(NBound(existing_ty), _) => {
+      prereg_row_link(existing_ty, row_handle, span)
+      unify_types(existing_ty, fn_ty, span, Declared(name))
+    },
     GNode(_, _) => {
       // A FULLY-signature'd decl keeps the prereg's QUANTIFIED scheme in
       // scope — self-calls instantiate it fresh per use, so signature'd
@@ -8487,7 +8517,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
           // pairing that the graph already knows how to do.
           pair_fn_params(pa, pb, span, reason)
           unify_types(ra, rb, span, FnReturn("fn", reason))
-          unify_row(ea, eb, span, reason)
+          unify_row(ea, eb, inf_mint_ceiling(), span, reason)
         },
         TVar(_) => unify_types(b, a, span, reason),
         TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TName(_, _) | TRecord(_)
@@ -8569,7 +8599,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
           unify_types(ria, rib, span, reason)
           unify_types(saa, sab, span, reason)
           if disciplines_compatible(da, db) { () } else { report(EResumeWorldMismatch(da, db, span)) }
-          unify_row(wa, wb, span, reason)
+          unify_row(wa, wb, inf_mint_ceiling(), span, reason)
         },
         TVar(_) => unify_types(b, a, span, reason),
         TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
