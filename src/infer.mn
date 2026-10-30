@@ -1026,25 +1026,6 @@ fn primitive_face(p) = match p {
   I32Clz => TFun([mk_param("a", TInt)], TInt, mk_ef_pure()),
 }
 
-// Whether an op declares exactly a primitive's parameters and result, so it
-// computes what the primitive computes and differs only in its row.
-fn op_face_is_primitive(p, params, ret_type) = match primitive_face(p) {
-  TFun(pparams, pret, _) => len(params) == len(pparams) && ret_type == pret && all(params_alike, zip(params, pparams)),
-  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
-}
-
-fn params_alike(pair) = match pair {
-  (a, b) => param_ty(a) == param_ty(b),
-}
-
-// The seven operations on a word's bits, which lib/memory.mn still declares
-// as ops of Memory.
-fn word_primitive(p) with Pure = match p {
-  I32Xor | I32Or | I32And | I32Shl | I32ShrU | I32ShrS | I32Clz => true,
-  FloatOfInt | FloatToInt | FloatFloor | FloatSqrt => false,
-}
-
 // A parameter whose type is a declared refinement, resolved where an
 // authored annotation is, guarding what its precondition protects.
 fn refined_param(name, refinement, guards) = match quantify_ctor_ty(TName(refinement, []), [], Declared(name)) {
@@ -16981,17 +16962,8 @@ fn register_one_op(effect_name, eff_name, op) = match op {
           // the prior claim on a top-level op registration.
           ParamScheme(_) => (),
           // A primitive is the judgment's own declaration, with no line of
-          // its own to name, so the refusal stands at the op. An op that
-          // takes and answers exactly what the primitive does is the word
-          // arithmetic lib/memory.mn still declares while the compiler that
-          // pins this learns the primitives (PLAN §11.1(b), the first of two
-          // pins); it replaces the primitive as it did before, and the next
-          // pin deletes both the ops and this case.
-          PrimitiveKind(p) => if word_primitive(p) && op_face_is_primitive(p, params, ret_type) {
-            ()
-          } else {
-            report(EOpShadowsPrimitive(op_name, effect_name, graph_span_of(op_node)))
-          },
+          // its own to name, so the refusal stands at the op.
+          PrimitiveKind(_) => report(EOpShadowsPrimitive(op_name, effect_name, graph_span_of(op_node))),
         },
       },
       None => (),

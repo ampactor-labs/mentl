@@ -9,7 +9,9 @@
 //   2. The developer can read what operations exist.
 //   3. They participate in the graph like every other effect.
 //   4. Effect rows are honest — `with Memory` means "this function
-//      performs store/load/xor operations on linear memory."
+//      stores into or loads from linear memory." Arithmetic on a word's
+//      bits (`i32_xor` and its six siblings) is a primitive and performs
+//      nothing.
 //
 // This is the single source of truth for substrate operations.
 // If an operation isn't declared here, it doesn't exist.
@@ -125,17 +127,6 @@ effect Memory {
   // choreography (no allocation may interleave; the caller's heap values
   // die under it — read everything you need into locals first).
   image_restore(Addr) -> Addr
-  // The word's bit operations, one instruction each — the substrate's, not
-  // operators of the language. A shift reads its count mod 32: shr_u moves
-  // zeros in at the top, shr_s the sign. clz counts the zero bits above the
-  // highest one, 32 for zero.
-  i32_xor(a: Int, b: Int) -> Int
-  i32_or(a: Int, b: Int) -> Int
-  i32_and(a: Int, b: Int) -> Int
-  i32_shl(a: Int, n: Int) -> Int
-  i32_shr_u(a: Int, n: Int) -> Int
-  i32_shr_s(a: Int, n: Int) -> Int
-  i32_clz(a: Int) -> Int
 }
 
 // The arenas' census: how many exits ran, how many kept their region, the

@@ -1,0 +1,8 @@
+// expect: 99
+// Arithmetic on a word's bits performs nothing: `i32_xor` and `i32_shl` are
+// primitives, so `mix` keeps `with Pure`. The boot before refused it
+// ("expected Pure but found effects: Memory"), because the library declared
+// the word operations as ops of Memory.
+fn mix(x) with Pure = i32_xor(x, i32_shl(x, 5))
+
+fn main() = mix(3)

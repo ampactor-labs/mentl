@@ -2117,7 +2117,7 @@ fn substrate_projected(op: String) =
 // meets the instruction set (the wasi-import list's sibling; the op names
 // ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "i32_shr_u" || name == "i32_shr_s" || name == "i32_clz" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat" || name == "memory_pages"
+  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat" || name == "memory_pages"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).

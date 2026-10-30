@@ -8497,20 +8497,6 @@ fn emit_expr(expr) = match expr {
         // An address is a word: the pun is the type's, and the instruction
         // stream carries the operand through unchanged.
         ()
-      } else if import_name == "i32_xor" {
-        wat_emit("    (i32.xor)\n")
-      } else if import_name == "i32_or" {
-        wat_emit("    (i32.or)\n")
-      } else if import_name == "i32_and" {
-        wat_emit("    (i32.and)\n")
-      } else if import_name == "i32_shl" {
-        wat_emit("    (i32.shl)\n")
-      } else if import_name == "i32_shr_u" {
-        wat_emit("    (i32.shr_u)\n")
-      } else if import_name == "i32_shr_s" {
-        wat_emit("    (i32.shr_s)\n")
-      } else if import_name == "i32_clz" {
-        wat_emit("    (i32.clz)\n")
       } else if import_name == "alloc" {
         emit_alloc_top()
       } else if import_name == "heap_mark" {

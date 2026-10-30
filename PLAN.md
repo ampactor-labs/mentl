@@ -739,8 +739,15 @@ as unknown, never as passing.
   bounds charges `Trap` (lesson 7, Pulse). A frequency computed from a sine or
   a product is a claim the interval fragment cannot decide yet (Pulse,
   Wasatch). The page cannot play a lesson yet (§11.6).
-- **`Memory` holds pure word arithmetic** (§11.1), so a function that only
-  does arithmetic on words is not `Pure`. The ops of an effect whose name
+- **Arithmetic on a word's bits is `Pure`** (2026-10-30). The seven bit
+  operations (`i32_xor`, `i32_or`, `i32_and`, `i32_shl`, `i32_shr_u`,
+  `i32_shr_s`, `i32_clz`) are primitives, each one instruction, where
+  lib/memory.mn declared them as ops of `Memory`: `fn mix(x) with Pure =
+  i32_xor(x, i32_shl(x, 5))` checks and answers 99 for 3, where the boot
+  before refused it ("expected Pure but found effects: Memory";
+  tests/micros/mn-word-arithmetic-pure.mn). It took two pins, the
+  primitives first while the library's ops still answered, because the
+  boot compiles the wheel. The ops of an effect whose name
   says it reads write nothing (2026-10-30): the census `read-op-writes`,
   held at zero on the board, counts the resumes that write a handler's
   state in such an op's arm. It found four. The comment-reference edge,
@@ -1290,11 +1297,8 @@ the last three.
    effect that matches what it does
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`); the ops of a `*Read` effect write
-   nothing, held at zero by a census (built 2026-10-30, §7). Word
-   arithmetic leaves `Memory` in two pins at the bootstrap seam: first it is
-   registered as primitives that the library shadows, then the library's
-   declarations are deleted. After that, a function doing only arithmetic on
-   words is `Pure`. Memory's stores become an effect of their own, so the
+   nothing, held at zero by a census, and word arithmetic is `Pure` (both
+   built 2026-10-30, §7). Memory's stores become an effect of their own, so the
    store-age judgment reads a raw store off the op's edge, where today it
    reads the op's spelling (`raw_store_target`). (c) The reach is one walk
    (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
