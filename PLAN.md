@@ -66,8 +66,12 @@ Closing the gap means reaching five properties:
    every use, label and comment mention through the same edges.
 4. **Computation is durable**: a running computation is a value. It is a
    multi-shot continuation, and it is saved by copying the memory image. A
-   person sees it as the frontier gate's arena leg: a program saves its own
-   image from one process, and a second process resumes it and finishes the
+   person sees it in the course's twelfth lesson: `mentl run
+   examples/pulse/course/12-resume.mn` renders two seconds of a piece and
+   saves its image, and the same command with `resume` reads the image back
+   in a second process, whose clock stands where the first one stopped, and
+   prints a file byte for byte equal to lesson 11's one-process render. The
+   frontier gate's arena leg saves from inside an open arena and resumes the
    arithmetic it was in the middle of
    (tests/frontier/arena/persist-resumes-outside.mn).
 5. **Systems explain themselves**: at any point in the code, the cursor shows
@@ -924,7 +928,10 @@ as unknown, never as passing.
   declaration, the next stage at column 0) cannot arise.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
-  the image. Host resources (descriptors, sockets) are not restored. Resuming
+  the image. The image carries the handler chain installed where it was
+  saved, each handler's state with it, so the course's twelfth lesson
+  renders across two processes and its file equals lesson 11's byte for
+  byte (2026-10-30). Host resources (descriptors, sockets) are not restored. Resuming
   on another machine, and a session that outlives its process, are still
   open (§11.6).
 - **A continuation answers to the world it is resumed in, and a row names
@@ -1636,7 +1643,7 @@ the last three.
    reading reflects the machine's load as much as the compiler.
    The page plays the course (`Hβ.space.the-canvas`,
    `Hβ.emit.the-medium-assembles-its-output`, `Hβ.viz.severance-map`). The
-   course is written: `examples/pulse/course` holds eleven lessons on one
+   course is written: `examples/pulse/course` holds twelve lessons on one
    growing chain that a developer hears, each a program that `mentl run`
    renders. The page opens the folder as a project, and `mentl verify` counts
    the lessons the medium cannot yet judge clean (the `QOwed` bounds,

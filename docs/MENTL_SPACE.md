@@ -603,12 +603,12 @@ and handlers, and the projections follow from them. This is the research half
 of the production bar (PLAN §11): the cross-frequency-coupling pipeline, run
 on a real recording and viewed inside the medium.
 
-## 5.5 · The course is a program — Pulse, eleven lessons on one chain
+## 5.5 · The course is a program — Pulse, twelve lessons on one chain
 
 *(the whole ring, read by a developer who has never seen an effect row)*
 
 The course is a project the page opens (§3.8), not a separate app beside the
-editor. It is `examples/pulse/course`: eleven programs on one growing chain, plus
+editor. It is `examples/pulse/course`: twelve programs on one growing chain, plus
 the module they share (rate.mn, which holds the three readers of the clock and
 the render loop that carries the course's `!Alloc` declaration). It sits
 beside Pulse's renderer and Wasatch's score, and the page's select menu lists
@@ -648,18 +648,21 @@ caret:
     instrument lives in the extent and is reclaimed when the section ends,
     the per-sample path keeps lesson 5's `!Alloc`, and the program says on
     standard error what it held: its pages and the arenas' census, read from
-    the counters the emitted module keeps.
+    the counters the emitted module keeps;
+12. `12-resume`: lesson 11's piece rendered by two processes. The first
+    plays two sections into the file's buffer and saves its image; the
+    second resumes the image, its clock standing where the first one
+    stopped, and prints a file byte for byte equal to lesson 11's.
 
 The lessons the compiler cannot yet check cleanly are a count on the board,
 never a sentence here. `mentl verify` checks `QOwed("examples/pulse/course")`,
 judging each program under the folder on a chain of its own, and holds the
-limit at the measured number, which may only fall. Today the count is six
-lessons (the verifier's higher-order refinement claim through a rig's
-function-typed field, and the race rule's frame-relative read of a line's store
-in lesson 10). The frontier gate renders every lesson the compiler builds,
-checks its notes with an oracle that shares nothing with the medium, accepts
-lesson 8's survivor first, and checks that the course's twins are still
-refused (`run_course`, tools/frontier-gate.sh).
+limit at the measured number, which may only fall. The frontier gate
+renders every lesson the compiler builds, checks its notes with an oracle
+that shares nothing with the medium, accepts lesson 8's survivor first,
+runs lesson 12's two processes and compares its file with lesson 11's, and
+checks that the course's twins are still refused (`run_course`,
+tools/frontier-gate.sh).
 
 Running a lesson in the page (the worker instantiating the bytes that `mentl
 asm` writes, and the samples reaching the page's audio output) is PLAN §11's

@@ -1,0 +1,127 @@
+// 12 · resume: a render saved halfway and finished by a second process
+//
+// Lesson 11's piece, four sections of one second, rendered by two
+// processes. The first plays sections 0 and 1 into the file's buffer,
+// parks the buffer where the image keeps it, saves the program's memory to
+// 12-resume.img in the current directory, and exits. The second reads that
+// memory back, plays sections 2 and 3 into the same buffer, and prints the
+// file:
+//
+//   mentl run examples/pulse/course/12-resume.mn
+//   mentl run examples/pulse/course/12-resume.mn resume > 12.wav
+//
+// Saving is copying the image: the heap from address 0 to the heap line,
+// and the module's mutable globals, behind a header that names the build
+// (lib/persist.mn). Nothing is serialized and no pointer is rewritten, so
+// the second process re-enters the same addresses: the buffer with two
+// seconds already in it, and the chain of handlers that was installed where
+// the image was saved. The clock is one of those handlers, so the second
+// process's clock stands at the sample the first one stopped at, and
+// section 2 begins at second 2. Measured on the pinned compiler
+// (2026-10-30): the image is 2,934,776 bytes, and the file the second
+// process prints is byte for byte the one lesson 11 prints in one process
+// (cmp 11.wav 12.wav prints nothing). An image another build wrote is refused, and the refusal
+// names both builds' keys ("persist: image key … is not this build (…)").
+//
+// The limits: what lives outside the program's memory does not travel. An
+// open descriptor or a position in an input stream is the host's, so the
+// second process prints through its own standard output. And the program
+// is saved between two of its own statements, never in the middle of a
+// call, because a running call's frames live in the engine, outside the
+// image, until a computation can be captured at any position (PLAN §11,
+// the keystone).
+import audio/wav
+
+import arena
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import persist
+
+import rate
+
+fn seconds() with Pure = 4
+
+// The score, lesson 5's: a lead that rises, a bass under every second note.
+fn note_hz(k) -> Hz = match k {
+  0 => 220.0,
+  1 => 261.63,
+  2 => 329.63,
+  _ => 440.0,
+}
+
+fn bass_hz(k) -> Hz = if k < 2 { 55.0 } else { 65.41 }
+
+// One frame of section k: the time within the section comes from the clock
+// and the section's index, and the hi-hat falls on every eighth.
+fn frame(buf, rig, k, n) with !Alloc = {
+  let t = time()
+  let tn = t - float_of_int(k)
+  let eighth = n * 4 / rate()
+  let te = t - float_of_int(eighth) / 4.0
+  let lead = rig.lead(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(1200.0)
+  let bass = rig.bass(bass_hz(k)) * adsr(0.005, 0.25, 0.5, 0.1, 1.0, tn)
+  let hat = rig.hiss() * fade(0.035, te) |> rig.hat_tone(7000.0)
+  let s = 0.5 * lead + 0.4 * bass + 0.15 * hat |> soft_clip
+  wav_frame(buf, n, s, s)
+}
+
+// Every stateful stage of one section's instrument, built inside the
+// section's extent.
+fn build_rig(sr) = {
+  bass: square_voice(sr),
+  hat_tone: highpass_filter(sr),
+  hiss: noise_source(),
+  lead: saw_voice(sr),
+  tone: lowpass_filter(sr),
+}
+
+// A section: its instrument lives in the extent `~> arena` opens, plays one
+// second into the file, and is reclaimed when the extent ends.
+fn section(buf, k) = play(frames_of(k + 1), frame(buf, build_rig(rate()), k)) ~> arena
+
+fn image() = "12-resume.img"
+
+// The file's buffer, held where the image keeps it: a module value is one
+// of the globals the image restores.
+let parked = [null_addr()]
+
+// The first half: two sections into the file, then the buffer parked and
+// the image saved.
+fn begin() = {
+  let frames = frames_of(seconds())
+  let buf = wav_header(wav_alloc(frames), frames, rate())
+  [0, 1] |> each(section(buf))
+  list_set(parked, 0, buf)
+  persist(image_header(addr(buf)), image())
+}
+
+// The second half: the image back, then the last two sections played into
+// the buffer it holds and the file printed.
+fn resume_piece() = {
+  let k = image_resume(image())
+  let buf = list_index(parked, 0)
+  if addr(buf) == k {
+    [2, 3] |> each(section(buf))
+    print(wav_bytes(buf))
+  } else {
+    ()
+  }
+}
+
+// Both processes install the same handlers, so the chain the second one
+// reads back from the image is the chain the judgment checked here.
+fn main(argv) = {
+  if len(argv) > 1 { resume_piece() } else { begin() }
+  0
+} ~> stdout_console ~> sample_at(48000) ~> persist_to_disk ~> wasi_filesystem ~> fail_exit

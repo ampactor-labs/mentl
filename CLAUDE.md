@@ -165,7 +165,7 @@ use the plain words.
 - "Systems explain themselves": the compiler can say why any fact about the
   program holds.
 
-The real program is a course lesson (`examples/pulse/course`, eleven programs on
+The real program is a course lesson (`examples/pulse/course`, twelve programs on
 one audio chain) or one of the two scores (`examples/pulse/render`,
 `examples/wasatch`), whichever can show the benefit. `mentl verify` counts
 the lessons the compiler cannot yet check cleanly (the `QOwed` bounds in

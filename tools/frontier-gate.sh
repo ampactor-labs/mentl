@@ -658,14 +658,14 @@ run_pulse_render() {
 }
 
 # The course (examples/pulse/course): every lesson the compiler builds is
-# rendered as its own project — the folder's modules beside it, the lesson
-# the entry (run_module) — and its WAV judged by the oracle Pulse's render
-# is judged by, with the lesson's own length and notes. Lesson 8 is accepted
-# first: `accept` at its hole writes the one survivor into the copy, and a
-# tie or a miss fails. A lesson the compiler refuses is the board's
-# (`mentl verify`, the owed bounds), never this gate's expected red, so it
-# is not rendered here. Then the twins, each the course with ONE line
-# changed, so a twin can never drift from the lesson:
+# rendered as its own project (the folder's modules beside it, the lesson
+# the entry: run_module), its WAV judged by the oracle Pulse's render is
+# judged by, with the lesson's own length and notes. Lesson 8 is accepted
+# first (`accept` at its hole writes the one survivor; a tie or a miss
+# fails), and lesson 12 runs twice, its second process resuming the first's
+# image, its file equal to lesson 11's. A lesson the compiler refuses is
+# the board's (the owed bounds), not rendered here. Then the twins, each the
+# course with ONE line changed, so a twin can never drift from the lesson:
 #   alloc  an allocation on lesson 5's per-sample path    → E_EffectMismatch
 #   rate   rate.mn's `now` pinned at 44.1 kHz under play's `!Sample(44100)`
 #                                                         → E_EffectMismatch
@@ -675,17 +675,17 @@ run_course() {
   local compiler="$1" dir="$2" src="$ROOT/examples/pulse/course" spec lesson secs notes pdir rc
   for spec in "01-tone 3 220" "02-line 3 220" "03-bus 4 220,329.63" "04-rack 4 220,261.63,329.63,440" \
               "05-silence 4 220,261.63,329.63,440" "06-rate 3 220,277.18,329.63" \
-              "07-bounds 4 220,261.63,329.63,440" "08-hole 3 220,329.63" "09-learn 3 220" "10-voices 4 220,261.63,329.63,440 chord" "11-footprint 4 220,261.63,329.63,440"; do
+              "07-bounds 4 220,261.63,329.63,440" "08-hole 3 220,329.63" "09-learn 3 220" "10-voices 4 220,261.63,329.63,440 chord" "11-footprint 4 220,261.63,329.63,440" "12-resume 4 220,261.63,329.63,440 resume"; do
     set -- $spec; lesson=$1; secs=$2; notes=$3; mode=${4:-}
     pdir="$dir/course-$lesson.proj"
     rm -rf "$pdir"; mkdir -p "$pdir"; cp "$src"/*.mn "$pdir"/
     if [ "$lesson" = 08-hole ] && ! wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 08-hole.mn:50:76 > "$dir/course-08.accept" 2>&1; then
       fail "course 08-hole: accept at the stage hole (see $dir/course-08.accept)"; continue
     fi
-    run_module "$compiler" "$pdir" "$lesson" "$dir/course-$lesson.wav" "$dir/course-$lesson.err"; rc=$?
+    if [ "$mode" = resume ]; then run_module "$compiler" "$pdir" "$lesson" "$dir/course-$lesson.saved" "$dir/course-$lesson.err" && wt_run --dir "$pdir::." "$pdir/$lesson.wasm" resume > "$dir/course-$lesson.wav" 2>> "$dir/course-$lesson.err"; else run_module "$compiler" "$pdir" "$lesson" "$dir/course-$lesson.wav" "$dir/course-$lesson.err"; fi; rc=$?
     if [ "$rc" -ne 0 ] || [ ! -s "$dir/course-$lesson.wav" ]; then
       fail "course $lesson render (exit=$rc; see $dir/course-$lesson.err)"
-    elif python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/course-$lesson.wav" --seconds "$secs" --notes "$notes" ${mode:+--chord} > "$dir/course-$lesson.oracle" 2>&1; then
+    elif { [ "$mode" != resume ] || cmp -s "$dir/course-$lesson.wav" "$dir/course-11-footprint.wav" || { echo "FAIL the second process's file differs from lesson 11's" > "$dir/course-$lesson.oracle"; false; }; } && python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/course-$lesson.wav" --seconds "$secs" --notes "$notes" $([ "$mode" = chord ] && echo --chord) > "$dir/course-$lesson.oracle" 2>&1; then
       pass "course $lesson: $secs s rendered, the oracle holds ($(grep -c '^PASS' "$dir/course-$lesson.oracle") checks)"
     else
       fail "course $lesson oracle ($(grep '^FAIL' "$dir/course-$lesson.oracle" | head -1); see $dir/course-$lesson.oracle)"
