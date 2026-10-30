@@ -934,7 +934,12 @@ as unknown, never as passing.
   meets one, and a declaration's judgment links its pre-registered row to
   the row it finalizes before it unifies the two types. A gated
   pre-registered cell (an annotation's `!E`) keeps the old direction,
-  which carries its gate onto the row it meets. Three crucibles state it
+  which carries its gate onto the row it meets. With the member judged
+  first, the use meets its whole row, whose tail is the user's own open
+  frame: there the unify binds the use's cell to that row, effects
+  included, wherever binding the frame's cell would drop effects only the
+  member's side names (`fn e(n) = … r([n - 1])` above `fn r(xs) = xs |>
+  map(e)`, tests/crown/leak-partial-of-judged-group-member.mn). Three crucibles state it
   (tests/crown/leak-partial-of-group-member.mn,
   leak-share-of-group-member.mn, sound-partial-of-group-member.mn) and
   one micro the library stage (mn-partial-map-of-group-member.mn): the
@@ -1337,7 +1342,12 @@ the last three.
    use's bind from a Mycroft round's own: a cap taken from an earlier
    round's row refused the compiler's own flow walk in verify.mn
    (`handed_of`, `slot_flow`, `escape_hand`, `reached_of`, `escape_apply`
-   among them, measured 2026-10-30).
+   among them, measured 2026-10-30). The compiler's own `render_row`,
+   written as `vs |> map(render_row_edge) |> unique |> join(" + ")`, is
+   still published as `Memory + Alloc + Trap` where `render_row_edge`
+   performs `GraphRead`, `TypeRender` and `Intern` (measured 2026-10-30
+   on the group of `show_reason` and `enters_tail`), so it stays written
+   as a call of `show_list`.
    (b) The row is complete: every way a computation can stop or reach outside
    itself is a row fact the crown can negate. Non-termination is a row fact
    beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`). An executable's

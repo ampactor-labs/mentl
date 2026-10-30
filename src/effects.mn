@@ -162,24 +162,18 @@ fn edges_same_cells(es: [RowEdge], fs: [RowEdge]) = match es {
   },
 }
 
-// Whether every cell the edges chase to is a declaration's live row: minted
-// before the judgment's mint ceiling, and carrying no gate. A cell an
-// annotation's negation gates (a return type written `() -> Int with !E`)
-// is pre-registered too, and binding it forward is what carries its gate
-// onto the row it meets. Ceiling 0, a judgment that never set one, has none.
-fn edges_pre_registered(es: [RowEdge], ceiling) = match es {
+// Whether every cell the edges chase to is one the judgment keeps from a
+// use's bind (`keeps`, its own test: a declaration's live row, or the row of
+// a frame still open).
+fn edges_kept(es: [RowEdge], keeps) = match es {
   [] => true,
-  [e, ...rest] => {
-    let c = graph_chase_handle(edge_cell(e))
-    c < ceiling && len(gates_at(c)) == 0 && edges_pre_registered(rest, ceiling)
-  },
+  [e, ...rest] => keeps(graph_chase_handle(edge_cell(e))) && edges_kept(rest, keeps),
 }
 
-// Whether every cell the edges chase to was minted during the judgment, at or
-// above its mint ceiling.
-fn edges_judged(es: [RowEdge], ceiling) = match es {
+// Whether no cell the edges chase to is one the judgment keeps.
+fn edges_bindable(es: [RowEdge], keeps) = match es {
   [] => true,
-  [e, ...rest] => graph_chase_handle(edge_cell(e)) >= ceiling && edges_judged(rest, ceiling),
+  [e, ...rest] => !keeps(graph_chase_handle(edge_cell(e))) && edges_bindable(rest, keeps),
 }
 
 // No path subtracts anything — every edge reads its cell whole.
@@ -1145,11 +1139,11 @@ fn row_subsumes(ref body_row, ref gate_row) with !GraphWrite + !RowWrite = {
 // the RESIDUAL TRIPLE (the crown's carry-the-algebra-forward move:
 // binding a tail to ([], B, All) is exactly bind_open_to_neg; binding to
 // a masked triple carries the pending subtraction). All allocation is
-// per unify EVENT; reads stay identity. The judgment's mint ceiling says
-// which cells are pre-registered, which the open-open arm reads to keep a
-// declaration's live row from reading through a cell its caller drops.
-fn unify_row(ref a, ref b, ceiling, ref span, ref reason) with !Mutate =
-  unify_row_canonical(resolve_row_compress(a), resolve_row_compress(b), ceiling, span, reason)
+// per unify EVENT; reads stay identity. `keeps` and `replaced` are the
+// judgment's tests of a cell a use must not bind, which the open-open arm
+// reads: a declaration's live row, and the row of a frame still open.
+fn unify_row(ref a, ref b, keeps, replaced, ref span, ref reason) with !Mutate =
+  unify_row_canonical(resolve_row_compress(a), resolve_row_compress(b), keeps, replaced, span, reason)
 
 // ─── the gate — a declared negation, carried by the cell ─────────────
 //
@@ -1427,7 +1421,7 @@ fn edges_admit_name(ws: [RowEdge], n) = match ws {
   [w, ...rest] => forbidden_names_disjoint([n], edge_mask(w)) || edges_admit_name(rest, n),
 }
 
-fn unify_row_canonical(ref a, ref b, ceiling, ref span, ref reason) = match a {
+fn unify_row_canonical(ref a, ref b, keeps, replaced, ref span, ref reason) = match a {
   EfRow(pa, aa, ta) => match b {
     EfRow(pb, ab, tb) => match ta {
       EtClosed => match tb {
@@ -1477,20 +1471,22 @@ fn unify_row_canonical(ref a, ref b, ceiling, ref span, ref reason) = match a {
         // one-way teach — D5's decl→site direction — as today). The
         // residual keeps each of b's edges WITH its mask: what b's paths
         // subtract, the a-private cells inherit as b's reading. When a's
-        // private cells are all pre-registered (declarations' live rows,
-        // which the completion prune keeps) and b's were all minted during
-        // the judgment (which it drops while free), b's bind instead, to
-        // a's row: the two binds are equal solutions, and a kept cell must
-        // never read through a dropped one. `x |> apply_to(e)` met e's
-        // pre-registered cell with apply_to's fresh copy and bound e's
-        // cell to the copy; the copy, free, was pruned at the caller's
-        // exit, and the caller published none of e's effects.
+        // private cells are all ones the judgment keeps from a use (a
+        // declaration's live row, or the row of a frame still open) and
+        // none of b's is, b's bind instead, to a's row, a's knowns
+        // included: the two binds are equal solutions, and a kept cell
+        // bound to a use's copy loses what it held when the copy is pruned
+        // at the user's exit or the frame's exit replaces the cell.
+        // `x |> apply_to(e)` met e's pre-registered cell with apply_to's
+        // fresh copy and bound e's cell to the copy, and the caller
+        // published none of e's effects; with e judged first, it met e's
+        // row, whose tail is the caller's own frame, and bound that.
         EtOpen(wbs) => if edges_same_cells(was, wbs) {
           if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) }
         } else {
           let only_a = tail_set_diff(was, wbs)
           let only_b = tail_set_diff(wbs, was)
-          if len(only_a) > 0 && len(only_b) > 0 && edges_pre_registered(only_a, ceiling) && edges_judged(only_b, ceiling) {
+          if len(only_a) > 0 && len(only_b) > 0 && (edges_kept(only_a, keeps) || len(name_set_diff(pa, pb)) > 0 && edges_kept(only_a, replaced)) && edges_bindable(only_b, keeps) && edges_bindable(only_b, replaced) {
             bind_edges_to(only_b, ef_make(name_set_diff(pa, pb), [], EtOpen(was)), span, reason)
           } else if len(only_a) == 0 {
             if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) }

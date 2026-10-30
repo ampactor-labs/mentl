@@ -1,0 +1,16 @@
+// check: refuse E_EffectMismatch
+// The library stage `map(e)` carries the effects of e, a function of the
+// caller's own recursive group that was judged first: e is declared before
+// r and asks for a name, so r asks for one whenever it runs; quiet says it
+// never uses Name and calls r.
+effect Name {
+  name_of(Int) -> String
+}
+
+fn e(n) = if n <= 0 { name_of(n) } else { r([n - 1]) }
+
+fn r(xs) = xs |> map(e) |> unique |> join(" + ")
+
+fn quiet() with !Name = r([5])
+
+fn main() = byte_len(quiet())

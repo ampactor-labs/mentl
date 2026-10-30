@@ -77,6 +77,9 @@ type FrameExit = {
 
 effect InferCtx {
   inf_enter_fn(Int, Span, [(RowTerm, Bool, EConn)])
+  // Whether a cell is the row of a frame still open: the row its exit
+  // replaces with the frame's verdict, which a use must never bind.
+  inf_frame_row(Int) -> Bool
   // The frame's exit hands back the facts the CALLER publishes from — never
   // a row it computed itself: an arm of this handler reads no graph, since
   // an arm's perform resolves OUTER of its own install, so a chase made
@@ -367,6 +370,7 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
   inf_arm_tys() => if len(arm_stack) == 0 { resume(None) } else { resume(Some(last(arm_stack))) },
   set_mint_ceiling(n) => resume() with mint_ceiling = n,
   inf_mint_ceiling() => resume(mint_ceiling),
+  inf_frame_row(c) => resume(any({ fr => fr.row_handle == c }, stack)),
   inf_open_decl(n) => if len(stack) == 0 { resume() with decl_entry = n } else { resume() },
   inf_decl_entry() => resume(decl_entry),
 }
@@ -3340,6 +3344,22 @@ fn rechecked(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, q,
 // The Mycroft rounds, in the order `first_held` judges them.
 type Round = MonoRound | PolyRound | ReportRound
 
+// Whether a row cell must not be bound by a use, the test `unify_row` asks
+// when two open rows each bring cells of their own: a declaration's
+// pre-registered row, which the exit prune keeps and its own judgment fills,
+// and the row of a frame still open, which its exit replaces. Bound to a
+// use's fresh cell, either one loses what it held: the copy is pruned at
+// the user's exit, or the replace drops the link. A pre-registered cell
+// that carries a gate is bound forward as before: an annotation's negation
+// (a return type written `() -> Int with !E`) rides that bind onto the row
+// it meets, and with the flip its refusal was reported twice.
+fn row_kept_by_exit(c) = c < inf_mint_ceiling() && len(gates_at(c)) == 0
+
+// Whether a row cell is the row of a frame still open, which its exit
+// replaces: the unify binds a use's cell to it, rather than it to the use's,
+// where the bind would drop effects the frame's side names.
+fn row_replaced_by_exit(c) = inf_frame_row(c)
+
 // The pre-registered row cell reads the judgment cell, so every charge that
 // chained it before this body was judged reads what the exit finalizes. The
 // link is written before the unify of the two types because that unify
@@ -5726,7 +5746,7 @@ fn call_hole_index(args, i) = if i >= len(args) {
 // (the gradient's food at the absence) — unifies with its declaration-
 // position param; the call's type is the fn of the params left unfilled.
 fn infer_call_partial(args, params, pret, prow, handle, span: ValidSpan, cname) = {
-  unify_args_positionally(args, params, 0, span, handle)
+  args |> enumerate |> each(fill_partial_slot(params, span, handle, ??))
   let remaining = unfilled_params(args, params)
   graph_bind(
     handle,
@@ -5759,26 +5779,28 @@ fn open_slot_cell(span: ValidSpan, p) = {
   c
 }
 
-fn unify_args_positionally(args, params, i, span: ValidSpan, call_h) = if i < len(args) && i < len(params) {
-  let ah = list_index(args, i)
+// One argument of a partial against its declaration-order param: unified,
+// then raised as a claim of the call. A SUPPLIED slot is a refinement
+// construction site like any call arg. A hole holds no value yet, so it
+// raises nothing — its obligation lands when the suspension is filled — but
+// the slot's contract is noted on it, so what the medium proposes there
+// satisfies what the parameter demands: `choose(??)` over `n: Positive`
+// proposed `0` before, the hole's claims being empty.
+fn fill_partial_slot(params, span: ValidSpan, call_h, entry) = match entry {
+  (i, ah) => if i < len(params) {
+    let p = list_index(params, i)
+    unify_slot(ah, p, span)
+    match graph_node_body(ah) {
+      NHole(_) => note_contract(param_ty(p), ah),
+      NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => discharge_arg(p, ah, span, call_h),
+    }
+  },
+}
+
+fn unify_slot(ah, p, span: ValidSpan) = {
   let pty_h = mint(Inferred("declared param at partial call"))
-  graph_bind(
-    pty_h,
-    param_ty(list_index(params, i)),
-    Located(span, Inferred("declaration-order param"))
-  )
+  graph_bind(pty_h, param_ty(p), Located(span, Inferred("declaration-order param")))
   unify(ah, pty_h, span, Inferred("argument fills its declaration-order param"))
-  // A SUPPLIED slot is a refinement construction site like any call arg.
-  // A hole holds no value yet, so it raises nothing — its obligation
-  // lands when the suspension is filled — but the slot's contract is
-  // noted on it, so what the medium proposes there satisfies what the
-  // parameter demands: `choose(??)` over `n: Positive` proposed `0`
-  // before, the hole's claims being empty.
-  match graph_node_body(ah) {
-    NHole(_) => note_contract(param_ty(list_index(params, i)), ah),
-    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => discharge_arg(list_index(params, i), ah, span, call_h),
-  }
-  unify_args_positionally(args, params, i + 1, span, call_h)
 }
 
 // The unfilled params: the authored `??` slots among the given prefix, then
@@ -8517,7 +8539,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
           // pairing that the graph already knows how to do.
           pair_fn_params(pa, pb, span, reason)
           unify_types(ra, rb, span, FnReturn("fn", reason))
-          unify_row(ea, eb, inf_mint_ceiling(), span, reason)
+          unify_row(ea, eb, row_kept_by_exit, row_replaced_by_exit, span, reason)
         },
         TVar(_) => unify_types(b, a, span, reason),
         TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TName(_, _) | TRecord(_)
@@ -8599,7 +8621,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
           unify_types(ria, rib, span, reason)
           unify_types(saa, sab, span, reason)
           if disciplines_compatible(da, db) { () } else { report(EResumeWorldMismatch(da, db, span)) }
-          unify_row(wa, wb, inf_mint_ceiling(), span, reason)
+          unify_row(wa, wb, row_kept_by_exit, row_replaced_by_exit, span, reason)
         },
         TVar(_) => unify_types(b, a, span, reason),
         TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)

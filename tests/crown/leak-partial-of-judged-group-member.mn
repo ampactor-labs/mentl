@@ -1,0 +1,18 @@
+// CROWN: a partial application handed a function of its own recursive
+// group carries that function's effects when the function was judged
+// first. e is declared before r, so r meets e's whole row, its name
+// included, at apply_to(e). quiet says it never uses Name and calls r.
+// Expect E_EffectMismatch at quiet.
+effect Name {
+  name_of(Int) -> Int
+}
+
+fn apply_to(f, x) = f(x)
+
+fn e(n) = if n <= 0 { name_of(n) } else { r(n - 1) }
+
+fn r(x) = x |> apply_to(e)
+
+fn quiet() with !Name = r(5)
+
+fn main() = quiet()
