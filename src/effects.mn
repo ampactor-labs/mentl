@@ -1565,6 +1565,9 @@ fn eff_name_str(name: EffName) -> String = match name {
 // performs where it stands.
 fn names_mutate(e) = eff_name_str(e) == "Mutate"
 
+// Whether an effect is Diverge, what a recursion no measure bounds performs.
+fn names_diverge(e) = eff_name_str(e) == "Diverge"
+
 fn row_names_mutate(row) = match row {
   EfRow(present, _, _) => any(names_mutate, present),
 }

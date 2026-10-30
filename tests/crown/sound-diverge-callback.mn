@@ -1,0 +1,10 @@
+// CROWN, the sound twin: the function handed to apply counts down to a
+// floor, so every call of it ends, and settle, which says it always
+// finishes, is accepted.
+fn down(n) = if n > 0 { down(n - 1) } else { n }
+
+fn apply(f, x) = f(x)
+
+fn settle(x) with !Diverge = apply(down, x)
+
+fn main() = settle(3)

@@ -99,15 +99,26 @@ handler intern_view(table) {
 
 // The names the compiler itself interns from a literal: the effects the
 // judgment charges by name (a construction's `Alloc`, an arena's
-// `Memory + Arena`, a partial primitive's `Trap`, a store's `Mutate`) and
-// the ones the teaching surface classifies (`IO`, `Network`). Every table
-// starts holding them, inserted in this order, so each has the same handle
-// in every table (1 through 7) and a fork's view always finds them: a
-// program with no literal and no library (the frontier's stage-ring demo,
-// whose link is two files) asks for `Alloc` from inside a proposal once a
-// closure mint is charged, and for `Mutate` once a store is. A literal
-// intern anywhere in the compiler names one of these.
-fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena", "Mutate"]
+// `Memory + Arena`, a partial primitive's `Trap`, a store's `Mutate`, a
+// recursion's `Diverge`) and the ones the teaching surface classifies
+// (`IO`, `Network`). Every table starts holding them, inserted in this
+// order, so each has the same handle in every table (1 through 8) and a
+// fork's view always finds them: a program with no literal and no library
+// (the frontier's stage-ring demo, whose link is two files) asks for
+// `Alloc` from inside a proposal once a closure mint is charged, and for
+// `Mutate` once a store is. A literal intern anywhere in the compiler names
+// one of these.
+fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena", "Mutate", "Diverge"]
+
+// A vocabulary word's handle, the same in every table: its place in the
+// vocabulary, counted from one as the seed inserts it. A row naming the
+// word can then be built once, before any table exists. A word outside the
+// vocabulary has no such handle, and asking for one is a defect the
+// deliberate trap names.
+fn vocab_handle(w: String) = match medium_vocabulary() |> enumerate |> find({ (_, v) => v == w }) {
+  Some((i, _)) => i + 1,
+  None => trap(),
+}
 
 // A table born holding the vocabulary: fresh buckets and entries with the
 // words inserted in order — the same insertion the `intern_str` arm makes on

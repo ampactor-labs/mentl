@@ -70,10 +70,17 @@ type FrameExit = {
   enclosing: [Int],
   fn_span: Span,
   raw: EffRow,
+  reentries: [Reentry],
   row_handle: Int,
   sig_cells: [Int],
   spills: [(Int, Int)],
 }
+
+// A reference, made inside a frame, to a declaration whose binding group is
+// still being judged: the referring node, the declaration it names, and how
+// it is used. A recursion is such a reference, and the frame decides each one
+// where it ends (`reentries_decided`).
+type Reentry = {decl: Int, site: Int, use: RefUse}
 
 effect InferCtx {
   inf_enter_fn(Int, Span, [(RowTerm, Bool, EConn)])
@@ -100,6 +107,9 @@ effect InferCtx {
   // operand, decided where the frame's judgment ends (`spills_decided`).
   // False where no frame is open.
   inf_note_spill(Int, Int) -> Bool
+  // A reference back into a binding group still being judged, decided where
+  // the frame's judgment ends (`reentries_decided`).
+  inf_note_reentry(Reentry)
   // A frame that owns no record of its own: a fanout branch's thunk, and a
   // literal a verb applies in place. A feedback line's tick charges the
   // nearest frame that does (`inf_add_row_owner`), since the line is the
@@ -166,7 +176,7 @@ type CtxSeed = {
   kept: [[Int]],
   mint_ceiling: Int,
   reach: [[(Int, [Int])]],
-  stack: [{accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int, spills: [(Int, Int)]}],
+  stack: [{accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], reentries: [Reentry], row_handle: Int, spills: [(Int, Int)]}],
 }
 
 // The root's seed: no frame, no mark, no ceiling, no declaration open, the
@@ -202,6 +212,7 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
       fn_span,
       owner: true,
       params: [],
+      reentries: [],
       row_handle: h,
       spills: [],
     }
@@ -228,6 +239,7 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
       enclosing: [],
       fn_span: span_zero(),
       raw: mk_ef_pure(),
+      reentries: [],
       row_handle: -1,
       sig_cells: [],
       spills: [],
@@ -292,6 +304,7 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
       enclosing,
       fn_span: frame.fn_span,
       raw: frame.accumulated_row,
+      reentries: frame.reentries,
       row_handle: frame.row_handle,
       sig_cells,
       spills: frame.spills,
@@ -352,6 +365,12 @@ handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_s
     let frame = last(stack)
     resume(true) with stack = push(drop_last(stack), {...frame, spills: push(frame.spills, (site, operand))})
   },
+  inf_note_reentry(r) => if len(stack) == 0 {
+    resume()
+  } else {
+    let frame = last(stack)
+    resume() with stack = push(drop_last(stack), {...frame, reentries: push(frame.reentries, r)})
+  },
   inf_current_row() => if len(stack) == 0 {
     resume(mk_ef_pure())
   } else {
@@ -392,17 +411,21 @@ fn owner_frame_at(stack, i) = if i < 0 {
 // through the live graph and the enclosing frames' row cells) — and
 // finalized here, where the graph is the judgment's own instance and a
 // refusal reaches every bracket the judgment installed. Returns the frame's
-// authored declaration for the enforcement site.
-fn exit_frame() = {
+// authored declaration for the enforcement site. A frame that is no
+// declaration's own (a lambda, an install's body, a branch) decides its
+// recursions as open.
+fn exit_frame() = exit_frame_of(None)
+
+fn exit_frame_of(decl) = {
   let x = inf_exit_fn()
   if x.row_handle < 0 {
     ()
   } else {
-    // The frame's undecided folds are decided first, and a row a signature
-    // variable's spill waits in escapes with the variable, which every
-    // instantiation copies with it, so the prune keeps it — unless the
-    // frame already pays all the row can come to hold.
-    let raw = spills_decided(x.raw, x.spills, x.fn_span)
+    // The frame's undecided folds and recursions are decided first, and a
+    // row a signature variable's spill waits in escapes with the variable,
+    // which every instantiation copies with it, so the prune keeps it —
+    // unless the frame already pays all the row can come to hold.
+    let raw = reentries_decided(spills_decided(x.raw, x.spills, x.fn_span), x.reentries, decl)
     let roots = signature_free_roots(x.sig_cells)
     let held = if pays_construction(raw) { [] } else { spill_rows_held(roots) }
     let keep = roots ++ held ++ x.enclosing
@@ -507,9 +530,19 @@ fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_
 // one assumption a row fact may stand on, and its callers discharge it).
 fn lean_guards(h, row) = leaves_params(value_leaves(h, NoSelf)) |> each(carry_guard(row, ??))
 
-fn trap_row() = mk_ef_closed([ENamed(intern_str("Trap"))])
+// The one-effect rows the judgment charges by name, each built once and
+// shared by every site that charges it (`vocab_handle`).
+let alloc_only_row = mk_ef_closed([ENamed(vocab_handle("Alloc"))])
 
-fn mutate_row() = mk_ef_closed([ENamed(intern_str("Mutate"))])
+let trap_only_row = mk_ef_closed([ENamed(vocab_handle("Trap"))])
+
+let mutate_only_row = mk_ef_closed([ENamed(vocab_handle("Mutate"))])
+
+let diverge_only_row = mk_ef_closed([ENamed(vocab_handle("Diverge"))])
+
+fn trap_row() = trap_only_row
+
+fn mutate_row() = mutate_only_row
 
 // Mutate subtracted from a row, its tail edges masked with it, as an install
 // subtracts what it absorbs: the Mutate a callback's row carries into the
@@ -3576,7 +3609,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   claim_authored_return(ret_ann, body_node, name, span)
   settle_own_guards(params, row_handle)
   report_unconsumed(consume_exit_fn())
-  let declared_effs = exit_frame()
+  let declared_effs = exit_frame_of(Some(handle))
   // Unify body's type with the declared return.
   // The `-> RetTy` annotation is PINNED BEFORE the body (the assumed-
   // signature slot value above), so this unify runs the body against the
@@ -4099,6 +4132,15 @@ fn entry_at(eff, h, seen) = match graph_node_body(h) {
   NExpr(CallExpr(f, args)) => enters(eff, h, callee_entry(eff, f, args, seen)),
   NExpr(PipeExpr(PForward, l, stage)) => enters(eff, h, stage_entry(eff, stage, [l], seen)),
   NExpr(PipeExpr(PTee, _, hnd)) => enters(eff, h, install_entry(eff, hnd, seen)),
+  NExpr(VarRef(name)) => if names_diverge(eff) {
+    Some(EffectEnters(
+      eff_name_str(eff),
+      h,
+      Inferred("`{name}` handed on as a value inside its own cycle of calls, where a call of it may never return")
+    ))
+  } else {
+    Some(EffectEnters(eff_name_str(eff), h, Inferred(charge_word_at(h, NExpr(VarRef(name))))))
+  },
   body @ (
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_)
@@ -4191,10 +4233,11 @@ fn foreign_op_charge(opname: String, en: String) = match effect_store(en) {
 // Into a declaration: its body where the body carries the effect; else the
 // effect came in through a function value handed to it — a literal whose
 // body carries it, or a named function whose row does. A declaration already
-// on the path is no site: the walk answers None and the caller tries its
-// next carrier.
+// on the path is no site for any effect but Diverge: the walk answers None
+// and the caller tries its next carrier. For Diverge the call back is the
+// site, a recursion the measure did not bound.
 fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, seen) {
-  None
+  if names_diverge(eff) { Some(Inferred(recursion_words(name, dh, seen))) } else { None }
 } else {
   match graph_node_body(dh) {
     NStmt(FnStmt(_, _, _, _, body)) => if carries(eff, body) {
@@ -4202,13 +4245,29 @@ fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, se
     } else {
       match find(value_carries(eff, ??), arg_hs) {
         Some(vh) => value_entry(eff, vh, seen),
-        None => Some(Inferred("a value handed to `{name}`")),
+        // A call that charges Diverge into a function whose own body does
+        // not carry it yet, and hands it nothing that does, re-enters a
+        // cycle whose members are still being judged.
+        None => Some(Inferred(if names_diverge(eff) {
+          "`{name}`, which calls back into this cycle of calls, and no measure is read across a cycle of two or more functions"
+        } else {
+          "a value handed to `{name}`"
+        })),
       }
     },
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => Some(Inferred("the value `{name}`")),
   }
 }
+
+fn recursion_words(name: String, dh, seen) = if self_call_on_path(dh, seen) {
+  "`{name}` again, and no argument shrinks toward a bound at every such call"
+} else {
+  "`{name}` again, closing a cycle of calls, and no measure is read across a cycle of two or more functions"
+}
+
+// Whether the declaration called back is the one whose body the walk is in.
+fn self_call_on_path(dh, seen) = seen |> drop(len(seen) - 1) |> any(handle_is(dh, ??))
 
 fn value_carries(eff, vh) = match graph_node_body(vh) {
   NExpr(LambdaExpr(_, body)) => carries(eff, body),
@@ -5178,10 +5237,24 @@ fn infer_var_ref(name, handle, span: ValidSpan, use) = match ref_resolve(name, h
       ()
     }
     match graph_published(decl) {
-      Some((scheme, reason, kind)) => judge_reference(name, handle, span, use, scheme, reason, kind),
+      Some((scheme, reason, kind)) => {
+        note_reentry(decl, handle, use, kind)
+        judge_reference(name, handle, span, use, scheme, reason, kind)
+      },
       None => graph_bind_hole(handle, Located(span, MissingVar(name))),
     }
   },
+}
+
+// A reference to a function or a handler whose binding group is still being
+// judged re-enters that judgment, which is how a recursion is seen; the
+// frame decides it where it ends (`reentries_decided`). A module value is
+// computed once, so reading one never recurs, and a parameter, a local, a
+// constructor or an operation is no group's member.
+fn note_reentry(decl, site, use, kind) = match kind {
+  FnScheme | HandlerKind(_, _, _, _, _) | HandlerChainKind(_) => if ages_in_open_group(decl) { inf_note_reentry(Reentry{decl, site, use}) } else { () },
+  ValueScheme | ParamScheme(_) | ConstructorScheme(_, _) | EffectOpScheme(_, _, _)
+  | PrimitiveKind(_) | RecordSchemeKind(_) | EffectDeclKind(_, _) | RowAliasKind(_) | TypeVariants(_) => (),
 }
 
 // THE REFERENCE LINK (M1): the one place a name resolves, so the one place a
@@ -7502,7 +7575,7 @@ fn mark_depth(mark) = match mark {
 // shape — the Intent Boundary an INTERIOR field read needs: an element of the
 // frame stack arrives at emit with its row unresolved, and an unprovable
 // offset is a refusal (E_FieldOffsetUnprovable), never a read.
-fn frame_owns(frame: {accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int, spills: [(Int, Int)]}) =
+fn frame_owns(frame: {accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], reentries: [Reentry], row_handle: Int, spills: [(Int, Int)]}) =
   frame.owner
 
 // The effect an op name performs; None for a name that is not an op (a
@@ -9687,6 +9760,53 @@ fn spills_decided(raw, spills, span) = {
   }
 }
 
+// The frame's references back into binding groups still being judged,
+// decided where its judgment ends. A declaration's own calls of itself are
+// bounded when one parameter shrinks toward a bound at every such call
+// (`recursion_bounded`), and then they charge nothing; every other reference
+// may never return, so it charges Diverge where it stands and into the
+// frame's row.
+fn reentries_decided(raw, reentries, decl) = match reentries {
+  [] => raw,
+  [_, ..._] => {
+    let bounded = match decl {
+      Some(d) => reentries |> filter(is_self_call(decl, ??)) |> map(reentry_node) |> recursion_bounded(d),
+      None => false,
+    }
+    match filter(reentry_open(decl, bounded, ??), reentries) {
+      [] => raw,
+      open @ [_, ..._] => {
+        each(diverge_noted, open)
+        union_row(raw, diverge_only_row)
+      },
+    }
+  },
+}
+
+// A declaration's own call of itself, written as a plain call whose
+// arguments a measure can read (`plain_self_call`).
+fn is_self_call(decl, r: Reentry) = match decl {
+  Some(d) => r.decl == d && match r.use {
+    RefCalled => plain_self_call(d, reentry_node(r)),
+    RefStaged | RefValued => false,
+  },
+  None => false,
+}
+
+fn reentry_open(decl, bounded, r: Reentry) = !(bounded && is_self_call(decl, r))
+
+// Where a reference's charge is noted: the call it is the callee of, or the
+// reference itself where it is handed on as a value or a stage.
+fn reentry_node(r: Reentry) = match r.use {
+  RefCalled => match graph_parent_of(r.site) {
+    Some(call) => call,
+    None => r.site,
+  },
+  RefStaged | RefValued => r.site,
+}
+
+fn diverge_noted(r: Reentry) = graph_row_note(reentry_node(r), diverge_only_row)
+
 fn pays_construction(row) = match (row, construction_row()) {
   (EfRow(names, _, _), EfRow(cap, _, _)) => all({ n => any({ m => m == n }, names) }, cap),
 }
@@ -10073,6 +10193,10 @@ effect StoreAges {
   // Whether the declaration is a member of a cycle being judged: a group of
   // two or more, whose members' views stay monomorphic until it closes.
   ages_in_cycle(Int) -> Bool
+  // Whether the declaration is a member of any group still being judged,
+  // the innermost or one around it: a reference to it from inside re-enters
+  // a judgment in progress, which is how a recursion is seen.
+  ages_in_open_group(Int) -> Bool
   ages_defer(Int, [(Int, Int, [(Bool, [Int])])])
   // A closure's deferred calls into the group, handed to the scope around
   // it as it closes: the function declaring the closure settles them as its
@@ -10146,6 +10270,7 @@ handler store_ages(seed: AgesSeed) with scopes = seed.scopes, groups = seed.grou
       (members, _) => len(members) > 1 && any(handle_is(decl, ??), members),
     }
   }),
+  ages_in_open_group(decl) => resume(any(group_has_member(decl, ??), groups)),
   ages_defer_up(calls) => if len(scopes) < 2 {
     resume()
   } else {
@@ -10344,6 +10469,10 @@ fn pair_at_handle(b, pair) = match pair {
 }
 
 fn handle_is(a, b) = a == b
+
+fn group_has_member(decl, group) = match group {
+  (members, _) => any(handle_is(decl, ??), members),
+}
 
 // A let's value, bound at the depth of the arenas the scope has opened around
 // it.
@@ -16714,7 +16843,7 @@ fn qmap_find(qmap, name: String) = if len(qmap) == 0 {
 // making it: no memory that existed before is written, so the build is
 // neither `MemoryWrite` nor `Memory`. A nullary constructor and a constant
 // tuple's read are words the code already holds, and charge nothing.
-fn construction_row() = mk_ef_closed([ENamed(intern_str("Alloc"))])
+fn construction_row() = alloc_only_row
 
 // A PRODUCT'S CHARGE: the record it builds, where it builds one. A tuple
 // literal and a fanout each answer a product, and a consumer that takes the

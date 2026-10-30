@@ -34,24 +34,25 @@ fn infinity() -> Float with Pure = 1.0 / 0.0
 // the exponent stops there and the answer is what IEEE gives, infinity or
 // zero; a NaN exponent answers NaN.
 fn pow2(k: Float) -> Float with Pure = if k > 1100.0 {
-  pow2(1100.0)
+  power_by_squaring(2.0, 1100.0, 12)
 } else if k < -1100.0 {
-  pow2(-1100.0)
+  power_by_squaring(0.5, 1100.0, 12)
 } else if k < 0.0 {
-  power_by_squaring(0.5, 0.0 - k)
+  power_by_squaring(0.5, 0.0 - k, 12)
 } else if k >= 0.0 {
-  power_by_squaring(2.0, k)
+  power_by_squaring(2.0, k, 12)
 } else {
   k
 }
 
 // b^n for an integral n in [0, 1100] by squaring, b^n = (b^⌊n/2⌋)² · b^(n mod 2),
-// so the depth is n's bit count.
-fn power_by_squaring(b: Float, n: Float) -> Float with Pure = if n < 1.0 {
+// so the depth is n's bit count, at most 11. `depth` counts the halvings
+// left, and the 12 pow2 hands in covers every n it passes.
+fn power_by_squaring(b: Float, n: Float, depth) -> Float with Pure = if n < 1.0 || depth <= 0 {
   1.0
 } else {
   let half = floor(n / 2.0)
-  let h = power_by_squaring(b, half)
+  let h = power_by_squaring(b, half, depth - 1)
   if n - 2.0 * half < 0.5 { h * h } else { b * h * h }
 }
 
@@ -84,17 +85,20 @@ fn exp_series(r: Float, n: Int, term: Float, acc: Float) -> Float with Pure = if
 // edges it answers what IEEE does: −∞ at zero, NaN below zero and for a
 // NaN, ∞ at ∞.
 fn log(x: Float) -> Float with Pure = if x > 0.0 {
-  if x < infinity() { log_normalized(x, 0) } else { x }
+  if x < infinity() { log_normalized(x, 0, 1100) } else { x }
 } else if x == 0.0 {
   0.0 - infinity()
 } else {
   0.0 / 0.0
 }
 
-fn log_normalized(m: Float, k: Int) -> Float with Pure = if m >= 2.0 {
-  log_normalized(m / 2.0, k + 1)
-} else if m < 1.0 {
-  log_normalized(m * 2.0, k - 1)
+// m brought into [1, 2) one halving or doubling at a time, k counting them.
+// A finite positive m is at most 1075 doublings or 1024 halvings away, so
+// the budget of 1100 steps log hands in is never spent.
+fn log_normalized(m: Float, k: Int, steps) -> Float with Pure = if steps > 0 && m >= 2.0 {
+  log_normalized(m / 2.0, k + 1, steps - 1)
+} else if steps > 0 && m < 1.0 {
+  log_normalized(m * 2.0, k - 1, steps - 1)
 } else {
   let t = (m - 1.0) / (m + 1.0)
   float_of_int(k) * ln2() + 2.0 * atanh_series(t * t, 1, t, t)
@@ -114,10 +118,14 @@ fn atanh_series(t2: Float, n: Int, term: Float, acc: Float) -> Float with Pure =
 // 2π·⌊x/2π⌋ rounds whole turns away, so the step repeats, each shrinking the
 // remainder by the grid's own factor. An infinity or a NaN has no angle and
 // answers NaN.
-fn turn_of(x: Float) -> Float with Pure = if x >= 0.0 && x < two_pi() {
+fn turn_of(x: Float) -> Float with Pure = turn_within(x, 64)
+
+// `steps` counts the reductions left: a finite x reaches [0, 2π) within a
+// few dozen, so the 64 turn_of hands in is never spent.
+fn turn_within(x: Float, steps) -> Float with Pure = if x >= 0.0 && x < two_pi() {
   x
-} else if x - x == 0.0 {
-  turn_of(x - two_pi() * floor(x / two_pi()))
+} else if x - x == 0.0 && steps > 0 {
+  turn_within(x - two_pi() * floor(x / two_pi()), steps - 1)
 } else {
   x - x
 }
@@ -163,11 +171,13 @@ fn cos(x: Float) -> Float with Pure = sin(x + pi() / 2.0)
 // atan(x) = 2·atan(x / (1 + √(1+x²))) shrinks the argument below 0.42 —
 // the plain series crawls near x = 1 (π/4 needs thousands of terms), so
 // the reduction is what makes twelve odd terms reach f64 epsilon.
-fn atan(x: Float) -> Float with Pure = if x < 0.0 {
-  0.0 - atan(0.0 - x)
-} else if x > 1.0 {
-  pi() / 2.0 - atan(1.0 / x)
-} else {
+fn atan(x: Float) -> Float with Pure =
+  if x < 0.0 { 0.0 - atan_positive(0.0 - x) } else { atan_positive(x) }
+
+fn atan_positive(x: Float) -> Float with Pure =
+  if x > 1.0 { pi() / 2.0 - atan_unit(1.0 / x) } else { atan_unit(x) }
+
+fn atan_unit(x: Float) -> Float with Pure = {
   let r = x / (1.0 + sqrt(1.0 + x * x))
   2.0 * atan_series(r * r, 1, r, r)
 }

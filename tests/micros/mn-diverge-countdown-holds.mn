@@ -1,0 +1,6 @@
+// expect: 6
+// A counter that falls toward a floor ends: falling_product hands on `n - 1`
+// only where `n > 1`, so it holds to `!Diverge`.
+fn falling_product(n, acc) with !Diverge = if n > 1 { falling_product(n - 1, acc * n) } else { acc }
+
+fn main() = falling_product(3, 1)

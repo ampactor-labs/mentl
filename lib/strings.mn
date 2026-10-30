@@ -580,20 +580,22 @@ fn float_render_shortest(f: Float, scaled: Float, exp, nd) = {
   }
 }
 
-// float_floor_log10: floor(log10(f)) for positive f.
-// Iterative: multiply or divide by 10 until 1 <= f < 10.
-// Accurate for the full f64 range (subnormals may take many steps
-// but the loop terminates because f is finite and positive).
-fn float_floor_log10(f) with Pure = if f >= 1.0 && f < 10.0 {
+// float_floor_log10: floor(log10(f)) for a finite positive f, found by
+// multiplying or dividing by 10 until 1 <= f < 10:
+// floor_log10(f) = floor_log10(f·10) − 1 below 1, and 1 + floor_log10(f/10)
+// from 10 up. Each step is paid from a budget of 400. A finite f64 lies
+// within 324 decades of 1, so a finite f never spends it; a value that is
+// not finite never reaches a decade, and the budget ends the walk there.
+fn float_floor_log10(f) with Pure = floor_log10_within(f, 400)
+
+fn floor_log10_within(f, steps) with Pure = if steps <= 0 {
   0
-}
-// The recurrence is floor_log10(f) = floor_log10(f·10) − 1; the prior
-// `−1 − recurse` negated the recursion (wrong below 0.1: log10(0.05)
-// computed 0 instead of −2).
-else if f < 1.0 {
-  float_floor_log10(f * 10.0) - 1
+} else if f >= 1.0 && f < 10.0 {
+  0
+} else if f < 1.0 {
+  floor_log10_within(f * 10.0, steps - 1) - 1
 } else {
-  1 + float_floor_log10(f / 10.0)
+  1 + floor_log10_within(f / 10.0, steps - 1)
 }
 
 // Up to max_digits decimal digits, most significant first, of a value whose
@@ -712,13 +714,10 @@ fn float_fill_digit_bytes(buf, digits, start, end, i) = if i >= end {
   float_fill_digit_bytes(buf, digits, start, end, i + 1)
 }
 
-fn float_pow10(exp) with Pure = if exp == 0 {
-  1.0
-} else if exp > 0 {
-  10.0 * float_pow10(exp - 1)
-} else {
-  1.0 / float_pow10(0 - exp)
-}
+fn float_pow10(exp) with Pure = if exp >= 0 { pow10_up(exp) } else { 1.0 / pow10_up(0 - exp) }
+
+// Ten to a power that is not negative, one factor at a time.
+fn pow10_up(n) with Pure = if n > 0 { 10.0 * pow10_up(n - 1) } else { 1.0 }
 
 // The NaN idiom is Float-only by meaning: at i32, ne(f, f) is
 // constantly false and detects nothing. The pin states the domain.
@@ -775,13 +774,16 @@ fn count_mantissa_digits(s, slen, i) = if i >= slen {
 // multiply or divide inside that range is one correctly-rounded step;
 // a wider exponent splits at the boundary and pays one extra rounding
 // only past every authored spelling
-fn float_scale10(m: Float, k) -> Float with Pure = if k == 0 {
-  m
-} else if k > 0 {
-  if k > 22 { float_scale10(m * float_pow10(22), k - 22) } else { m * float_pow10(k) }
-} else {
-  if k < -22 { float_scale10(m / float_pow10(22), k + 22) } else { m / float_pow10(0 - k) }
-}
+fn float_scale10(m: Float, k) -> Float with Pure =
+  if k >= 0 { scale10_up(m, k) } else { scale10_down(m, 0 - k) }
+
+// m times ten to the k, for k not negative.
+fn scale10_up(m: Float, k) -> Float with Pure =
+  if k > 22 { scale10_up(m * float_pow10(22), k - 22) } else { m * float_pow10(k) }
+
+// m divided by ten to the k, for k not negative.
+fn scale10_down(m: Float, k) -> Float with Pure =
+  if k > 22 { scale10_down(m / float_pow10(22), k - 22) } else { m / float_pow10(k) }
 
 fn parse_int_sign(s, slen, i) = if i >= slen {
   0

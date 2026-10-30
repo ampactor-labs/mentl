@@ -1,0 +1,8 @@
+// check: refuse E_EffectMismatch
+// Each call shrinks a counter, but each resets the other's: from (0, 0) the
+// calls run (1, 0), (2, 0), (3, 0), (0, 1) and back to (1, 0) without end.
+// No one parameter shrinks at every call, so tangle is refused.
+fn tangle(x, y) with !Diverge =
+  if x < 3 { tangle(x + 1, 0) } else if y < 3 { tangle(0, y + 1) } else { 0 }
+
+fn main() = 0

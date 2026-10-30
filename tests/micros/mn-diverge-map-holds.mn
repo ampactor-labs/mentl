@@ -1,0 +1,6 @@
+// expect: 3
+// The library's walk over a list climbs to its length, so a stage that maps
+// a list holds to `!Diverge` through `map`.
+fn doubled(xs: [Int]) with !Diverge = map({ x => x * 2 }, xs) |> len
+
+fn main() = doubled([1, 2, 3])

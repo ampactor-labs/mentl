@@ -1,0 +1,9 @@
+// CROWN: a function handed on as a value inside its own body recurses
+// through whatever it is handed to, where no argument of it can be read for
+// a measure. again says it always finishes and hands itself to apply.
+// Expect E_EffectMismatch at again.
+fn apply(f, x) = f(x)
+
+fn again(x) with !Diverge = apply(again, x + 1)
+
+fn main() = 0

@@ -1,0 +1,11 @@
+// CROWN: a function that may never return, handed to one that calls it,
+// makes the caller's call one that may never return. spin counts up with
+// nothing to stop it; settle says it always finishes and calls apply with
+// spin. Expect E_EffectMismatch at settle, naming the recursion.
+fn spin(n) = spin(n + 1)
+
+fn apply(f, x) = f(x)
+
+fn settle(x) with !Diverge = apply(spin, x)
+
+fn main() = 0

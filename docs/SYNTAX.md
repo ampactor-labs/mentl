@@ -1185,7 +1185,7 @@ Effects: Pure
 $ mentl examples/pulse/course/03-bus.mn:63:5
 Query: { : ()
 Topology: the ~> installs `stdout_console` over everything to its left, answering Console, inside the body the ~> governs at examples/pulse/course/03-bus:58:3
-Effects: Alloc + Sample(48000) + MemoryWrite + Memory + Trap + Mutate + WASI
+Effects: Alloc + Sample(48000) + MemoryWrite + Memory + Trap + Diverge + Mutate + WASI
 
 $ mentl examples/pulse/course/02-line.mn:44
 Query: { prev => a * x + (1.0 - a) * prev } <~ delay(1) : Float
@@ -3308,8 +3308,30 @@ The fragment cannot yet read a bound that a parameter takes from every call,
 such as `0 <= i` where each call passes `0` or `i + 1`
 (`Hβ.verify.parameter-is-what-its-calls-hand`). A destructuring
 pattern follows the same rule in another form: the shape it asserts is its
-precondition, decided by the same walk (§«Exhaustiveness»). Non-termination
-is not a trap and is not in the row (`Hβ.effects.divergence-is-a-row-fact`).
+precondition, decided by the same walk (§«Exhaustiveness»).
+
+**Non-termination is a row fact too.** A computation that may never finish
+performs `Diverge` (lib/memory.mn), so `!Diverge` claims a function always
+finishes, and the judgment checks the claim through every function it calls.
+A function's calls of itself end when every call shrinks one of its
+parameters while it hands each earlier shrinking parameter back unchanged: a
+counter that climbs by a constant toward a bound the calls keep, one that
+falls by a constant toward a floor, one divided toward zero, a constructor's
+field or a list pattern's rest, or a link the runtime's list node holds. A
+bound the calls keep is a literal, a parameter every call hands back, a
+value bound outside the function, or the length of one, and the guard that
+holds the counter below it is read off the `if` and `&&` on the path to the
+call. `fn sum_to(i, n, acc) with !Diverge = if i < n { sum_to(i + 1, n, acc
++ i) } else { acc }` checks and answers 10 for `sum_to(0, 5, 0)`, and `fn
+spin(n) with !Diverge = spin(n + 1)` is refused: "spin uses Diverge: at
+…:5:28, `spin` again, and no argument shrinks toward a bound at every such
+call" (tests/micros/mn-diverge-*.mn, tests/crown/*diverge*.mn). A list's
+element is no measure, since a list is written in place and can come to hold
+the value it was taken from. A cycle of two or more functions, a function
+handed on as a value inside its own cycle, and a loop that ends only when an
+effect's state reaches a bound (the course's `play`, which runs until the
+clock reaches its frame count) still perform `Diverge` (`PLAN.md` §11, the
+soundness core).
 
 **Recursion depth costs memory; it must never be a hidden trap.** A row
 lists every way a computation can stop, so running out of stack must not be

@@ -324,13 +324,17 @@ fn partition(pred, xs) = (filter(pred, xs), filter((x) => !pred(x), xs))
 
 fn range_inclusive(start, end) = range(start, end + 1)
 
-fn intersperse(sep, xs) = if len(xs) <= 1 { xs } else { [xs[0], sep] ++ intersperse(sep, rest(xs)) }
+fn intersperse(sep, xs) = match xs {
+  [x, ...more] => if len(more) == 0 { xs } else { [x, sep] ++ intersperse(sep, more) },
+  [] => xs,
+}
 
-fn scanl(xs, init, f) = if len(xs) == 0 {
-  [init]
-} else {
-  let next = f(init, xs[0])
-  [init] ++ scanl(rest(xs), next, f)
+fn scanl(xs, init, f) = match xs {
+  [x, ...more] => {
+    let next = f(init, x)
+    [init] ++ scanl(more, next, f)
+  },
+  [] => [init],
 }
 
 fn repeat(n, x) = if n <= 0 { [] } else { [x] ++ repeat(n - 1, x) }

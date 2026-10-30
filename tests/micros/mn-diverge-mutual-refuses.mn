@@ -1,0 +1,8 @@
+// check: refuse E_EffectMismatch
+// Two functions that call each other may never return: no measure is read
+// across a cycle of two, so even, which says it always finishes, is refused.
+fn even(n) with !Diverge = if n == 0 { true } else { odd(n - 1) }
+
+fn odd(n) = if n == 0 { false } else { even(n - 1) }
+
+fn main() = 0

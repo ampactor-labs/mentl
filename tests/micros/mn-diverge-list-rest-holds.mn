@@ -1,0 +1,9 @@
+// expect: 3
+// A list handed on as the rest of a pattern that took an element off it is
+// strictly shorter at every call, so count_items holds to `!Diverge`.
+fn count_items(xs: [Int]) with !Diverge = match xs {
+  [_, ...rest] => 1 + count_items(rest),
+  [] => 0,
+}
+
+fn main() = count_items([7, 8, 9])

@@ -203,15 +203,27 @@ effect Footprint(bytes: Int) {}
 // performed: the root answers it (no handler is written in Mentl, as for
 // Memory) with the stop's said line, `trap: a precondition failed at` the
 // perform's own address, it never returns, and nothing intercepts it — its
-// absence is the point. Termination is not in this row: a function that
-// never returns is `!Trap` too (`Hβ.effects.divergence-is-a-row-fact`). The
-// op never returns, and says so: `!` is quantified per perform, so a
-// deliberate trap stands where a value of any type is owed — the complement
-// arm of a match over a word the representation bounds, `_ => trap()`, with
-// no value fabricated after it.
+// absence is the point. A function that never returns is not a trap: that
+// is `Diverge`, below. The op never returns, and says so: `!` is quantified
+// per perform, so a deliberate trap stands where a value of any type is
+// owed — the complement arm of a match over a word the representation
+// bounds, `_ => trap()`, with no value fabricated after it.
 effect Trap {
   trap() -> !
 }
+
+// Diverge — a computation that may never finish. A function that calls
+// itself performs it unless every such call shrinks one of its parameters,
+// handing each earlier shrinking parameter back unchanged: a counter that
+// climbs by a constant toward a bound the calls keep, one that falls by a
+// constant toward a floor, one divided toward zero, a part of the value the
+// parameter matched (a constructor's field or a list pattern's rest), or a
+// link the parameter's list node holds. A call into a cycle of two or more
+// functions, and a function handed on as a value inside its own cycle,
+// perform it too. So `!Diverge` claims a function always finishes, and the
+// judgment checks the claim through every function it calls. No
+// operations: the judgment charges it where a recursion has no measure.
+effect Diverge {}
 
 // The live world's identity: the install chain from world_top() down, hashed
 // over each node's effect key and its handler's slot-0 arm word — a table

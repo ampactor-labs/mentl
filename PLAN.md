@@ -1060,6 +1060,31 @@ as unknown, never as passing.
   matched the callee's spelling, so `fn put(store_i8, xs) = store_i8(xs,
   1)` no longer charges Mutate for a parameter that only shares an op's
   name (tests/micros/mn-store-named-parameter-is-a-value.mn).
+- **A recursion no measure bounds performs Diverge** (2026-10-30).
+  `!Diverge` claims a function always finishes. A reference to a function
+  or handler whose binding group is still being judged is noted in the
+  frame it is made in and decided where that frame ends: a function's own
+  plain calls of itself are bounded when every call shrinks one parameter
+  (a counter climbing toward a bound the calls keep, one falling toward a
+  floor, one divided toward zero, a constructor's field, a list pattern's
+  rest, or a link a list node holds), handing each earlier shrinking
+  parameter back unchanged; every other reference charges Diverge at its
+  site. `fn spin(n) with !Diverge = spin(n + 1)` is refused, "`spin` again,
+  and no argument shrinks toward a bound at every such call", and counters,
+  countdowns, list rests and `map` hold (tests/micros/mn-diverge-*.mn;
+  crown 191 with three new crucibles). `mentl why examples/grid/station.mn
+  decide Diverge` answers that decide never uses Diverge. The judgment
+  found three library functions declared `with Pure` that could recurse
+  forever (`float_floor_log10` and `log_normalized` on a value that is not
+  finite, `power_by_squaring` on a NaN exponent), which now count their
+  steps, and recursions it could not read (`turn_of`, `float_pow10`,
+  `float_scale10`, `pow2`, `atan`, `intersperse`, `scanl`), which are
+  written so it can. The list flattening is one walk
+  down the node's links that fills a concat's smaller part first, so its
+  stack holds at most log2(n) frames without the explicit stack it kept.
+  The compiler's own rows share one built row per vocabulary word
+  (`vocab_handle`), and its self-compile's line peak fell 4,746 KB below
+  the boot's on the same source.
 - **A hole's fan names what the arms beside it use first** (2026-10-30).
   The binders in scope and the module's values are offered beside the
   literal seeds and judged by the hole's refinement like any candidate. A
@@ -1377,16 +1402,19 @@ the last three.
    `show_reason` and `enters_tail`), so it stays written as a call of
    `show_list`.
    (b) The row is complete: every way a computation can stop or reach outside
-   itself is a row fact the crown can negate. Non-termination is a row fact
-   beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`). An executable's
-   row is the row of `main` and of its initializers (built 2026-10-30,
-   §7). Each op belongs to the
-   effect that matches what it does
-   (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
-   `Hβ.memory.word-arithmetic-is-memory`); the ops of a `*Read` effect write
-   nothing, held at zero by a census, word arithmetic is `Pure`, and
-   memory's writes are an effect of their own, `MemoryWrite`, read off the
-   op's edge (all built 2026-10-30, §7). (c) The reach is one walk
+   itself is a row fact the crown can negate. An executable's row is the row
+   of `main` and of its initializers; each op belongs to the effect that
+   matches what it does, the ops of a `*Read` effect write nothing (held at
+   zero by a census), word arithmetic is `Pure`, memory's writes are an
+   effect of their own, `MemoryWrite`, and a recursion no measure bounds
+   performs `Diverge` (all built 2026-10-30, §7). The measure reads one
+   function's calls of itself. It does not yet read a cycle of two or more
+   functions, a loop that ends when an effect's state reaches a bound (the
+   course's `play`, which runs until the clock reaches its frame count), a
+   list halved by slices (the prelude's `sort`), an interval narrowed by a
+   search (the sorted-set helpers in lib/strings.mn), or a counter that
+   climbs by a parameter its callers keep positive (`split_walk`), so each
+   of those still performs `Diverge`. (c) The reach is one walk
    (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
    columns, answers absence, the effect-enters chain, the race rule, the
    schedule's demand, the edit cone, `refs of`, `unreachable` and the

@@ -1,0 +1,7 @@
+// expect: 10
+// A counter that climbs toward a bound every call keeps ends: sum_to hands
+// on `i + 1` only where `i < n`, and hands `n` back unchanged, so it holds
+// to `!Diverge`.
+fn sum_to(i, n, acc) with !Diverge = if i < n { sum_to(i + 1, n, acc + i) } else { acc }
+
+fn main() = sum_to(0, 5, 0)

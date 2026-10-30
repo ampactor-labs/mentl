@@ -1,0 +1,8 @@
+// expect: 24
+// The length of a list every call hands back unchanged is a bound the calls
+// keep: total climbs past each element and stops at the end, so it holds to
+// `!Diverge`.
+fn total(xs: [Int], i, acc) with !Diverge =
+  if i >= len(xs) { acc } else { total(xs, i + 1, acc + xs[i]) }
+
+fn main() = total([7, 8, 9], 0, 0)

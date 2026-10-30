@@ -507,86 +507,50 @@ fn flat_raw(list) = match addr_at(list, 4) |> load_i32 |> seq_shape {
 }
 
 // fill_range — node[src .. src + n) into flat[dest ..], each element read
-// once off the node's own structure. The stride is uniform through a fill:
+// once off the node's own structure, every call stepping down a link the
+// node holds, so the walk ends. The stride is uniform through a fill:
 // flat_raw allocates the destination with the tree's own sc, and every
 // sub-node carries its parent's, so a flat node is one mem_copy for word,
 // byte and wide elements alike, and a slice composes its offset.
+//
+// A snoc node is [count][tag=1][left][last]: the last element sits at the
+// count less one, so past the range it is skipped, inside it it is the
+// range's last, and the left link holds the rest. A concat's destinations
+// are absolute, so its parts fill in either order: the smaller part first,
+// and the larger as the tail call, so the call stack holds at most log2(n)
+// frames whichever way a rope leans.
 fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
   ()
 } else {
   match addr_at(node, 4) |> load_i32 |> seq_shape {
     SeqFlat => mem_copy(addr_at(flat, 8 + dest * st), addr_at(node, 8 + src * st), n * st),
-    SeqSnoc => fill_snoc(flat, node, dest, src, n, st),
-    SeqConcat => if n == load_i32(node) {
-      ff_concat_drain(flat, ff_push(ff_push(make_list(16), 0, null_addr(), 0), 1, node, dest), 2, st)
-    } else {
-      fill_concat_part(flat, node, dest, src, n, st)
+    SeqSnoc => {
+      let left = load_addr(addr_at(node, 8))
+      if load_i32(node) - 1 >= src + n {
+        fill_range(flat, left, dest, src, n, st)
+      } else {
+        if st == 4 {
+          store_i32(addr_at(flat, 8 + (dest + n - 1) * 4), load_i32(addr_at(node, 12)))
+        } else {
+          store_strided(addr_at(flat, 8), dest + n - 1, st, load_strided(addr_at(node, 12), 0, st))
+        }
+        fill_range(flat, left, dest, src, n - 1, st)
+      }
     },
-    SeqSlice => fill_range(flat, load_addr(addr_at(node, 8)), dest, load_i32(addr_at(node, 12)) + src, n, st),
-  }
-}
-
-// A snoc node is [count][tag=1][left][last]: the last element sits at the
-// count less one, so past the range it is skipped, inside it it is the
-// range's last, and the left link holds the rest. A suffix of a chain costs
-// its own length; indexing each element instead descended the chain from its
-// end once per element, and a module's span-index suffix cost the whole
-// graph per node.
-fn fill_snoc(flat, node, dest, src, n, st) = {
-  let left = load_addr(addr_at(node, 8))
-  if load_i32(node) - 1 >= src + n {
-    fill_range(flat, left, dest, src, n, st)
-  } else {
-    if st == 4 {
-      store_i32(addr_at(flat, 8 + (dest + n - 1) * 4), load_i32(addr_at(node, 12)))
-    } else {
-      store_strided(addr_at(flat, 8), dest + n - 1, st, load_strided(addr_at(node, 12), 0, st))
-    }
-    fill_range(flat, left, dest, src, n - 1, st)
-  }
-}
-
-// A range covering part of a concat: the part in its right half first, then
-// the part in its left half as the tail call, so a ++-folded rope, which
-// leans left, is walked down its spine without the call stack growing.
-fn fill_concat_part(flat, node, dest, src, n, st) = {
-  let left = load_addr(addr_at(node, 8))
-  let left_len = load_i32(left)
-  let in_left = if src >= left_len { 0 } else if src + n <= left_len { n } else { left_len - src }
-  let right_src = if src >= left_len { src - left_len } else { 0 }
-  fill_range(flat, load_addr(addr_at(node, 12)), dest + in_left, right_src, n - in_left, st)
-  fill_range(flat, left, dest, src, in_left, st)
-}
-
-// A whole concat drains an EXPLICIT heap stack of (node, offset) pairs:
-// destinations are absolute, so sibling order is irrelevant and the walk
-// needs no call stack. Native recursion died at rope depth — a ++-folded
-// chain leans left one node per append, thousands deep. A concat reached
-// through a snoc or a slice re-enters as a fresh drain, so call depth is the
-// representation's alternation depth, never the concat depth. Two words an
-// entry, [2k] the node as its address punned (addr_word in, word_addr out,
-// the runtime's word protocol) and [2k+1] its offset, since the stack of the
-// emitted module's rope holds a pair for every node of its spine; entry 0 is
-// a permanent floor, so sp == 1 means empty.
-fn ff_push(stack, k, node, off) = {
-  let grown = list_extend_to(stack, k * 2 + 2)
-  list_set(list_set(grown, k * 2, addr_word(node)), k * 2 + 1, off)
-}
-
-fn ff_concat_drain(flat, stack, sp, st) = if sp <= 1 {
-  ()
-} else {
-  let node = word_addr(stack[(sp - 1) * 2])
-  let off = stack[(sp - 1) * 2 + 1]
-  match addr_at(node, 4) |> load_i32 |> seq_shape {
     SeqConcat => {
       let left = load_addr(addr_at(node, 8))
-      let right_entry = ff_push(stack, sp - 1, load_addr(addr_at(node, 12)), off + load_i32(left))
-      ff_concat_drain(flat, ff_push(right_entry, sp, left, off), sp + 1, st)
+      let right = load_addr(addr_at(node, 12))
+      let left_len = load_i32(left)
+      let in_left = if src >= left_len { 0 } else if src + n <= left_len { n } else { left_len - src }
+      let right_src = if src >= left_len { src - left_len } else { 0 }
+      if in_left * 2 >= n {
+        fill_range(flat, right, dest + in_left, right_src, n - in_left, st)
+        fill_range(flat, left, dest, src, in_left, st)
+      } else {
+        fill_range(flat, left, dest, src, in_left, st)
+        fill_range(flat, right, dest + in_left, right_src, n - in_left, st)
+      }
     },
-    SeqFlat | SeqSnoc | SeqSlice => {
-      fill_range(flat, node, off, 0, load_i32(node), st)
-      ff_concat_drain(flat, stack, sp - 1, st)
-    },
+    SeqSlice => fill_range(flat, load_addr(addr_at(node, 8)), dest, load_i32(addr_at(node, 12)) + src, n, st),
   }
 }

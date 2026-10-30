@@ -1,0 +1,7 @@
+// check: refuse E_EffectMismatch
+// A call back into its own function that no argument shrinks may never
+// return, which is `Diverge`: spin says it always finishes, and it counts
+// up with nothing to stop it.
+fn spin(n) with !Diverge = spin(n + 1)
+
+fn main() = 0
