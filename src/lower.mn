@@ -7840,6 +7840,43 @@ fn program_opens_arenas() = match env_lookup("main") {
 
 fn names_arena(e) = eff_name_str(e) == "Arena"
 
+// What `main` claims the program fits in, in bytes, and where `main` stands:
+// its clause's `Footprint(bytes)` (lib/memory.mn), the one decision the
+// author makes about the program's size. It is read off the declaration's
+// own clause, since nothing performs the claim and so no inferred row
+// carries it. None where `main` claims nothing.
+fn program_footprint() = match env_resolve("main") {
+  Some(d) => match graph_node_body(d) {
+    NStmt(FnStmt(_, _, _, effs, _)) => match resolve_declared_instances(effs) |> find_map(footprint_bytes(intern_str("Footprint"), ??)) {
+      Some(bytes) => Some({at: d, bytes}),
+      None => None,
+    },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
+  },
+  None => None,
+}
+
+fn footprint_bytes(h, term) = match term {
+  (t, negated, _) => if negated { None } else { claim_bytes(h, t) },
+}
+
+fn claim_bytes(h, t) = match t {
+  RtEff(name, _) => match name {
+    EParameterized(n, args) => if n == h { sole_int(args) } else { None },
+    ENamed(_) | EPure => None,
+  },
+  RtGroup(_) => None,
+}
+
+fn sole_int(args) = match args {
+  [a] => match a {
+    EAInt(bytes) => Some(bytes),
+    EAVar(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => None,
+  },
+  [] | [_, _, ..._] => None,
+}
+
 // What carrying a value of a type out of an arena's region needs — the one
 // classification the twin key, the barriers and the exit's leaves all read:
 // nothing for a word (a sentinel included), nothing for a float unless it is

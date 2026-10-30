@@ -1,0 +1,5 @@
+// expect: 134 trap: memory is exhausted
+// The claim caps the memory at the two pages that cover 128 KB, so a list of
+// 100,000 words, 400 KB, cannot be allocated: the allocator stops the program
+// saying memory is exhausted, where a program with no claim grows.
+fn main() with Footprint(131072) = len(make_list(100000)) / 10000

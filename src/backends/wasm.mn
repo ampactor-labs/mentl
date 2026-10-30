@@ -2460,6 +2460,19 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       // does single-threaded. Where an arena lives in a module that yields,
       // its re-entry is a k too, resident beside the composer.
       let arena_on = arena_demanded()
+      // The module values and the memory its start needs, settled once: the
+      // footprint `main` claims is checked here, before the gate, so a claim
+      // the start already exceeds withholds the module.
+      let value_lets = collect_top_value_lets(lowered)
+      let start = start_memory(
+        arena_on,
+        fold_families_spill(fold_families),
+        wasi_ops,
+        yield_seen,
+        yield_arity,
+        len(value_lets),
+        data_end
+      )
       let table_fn_names = all_fn_names ++ k_helper_names(yield_seen > 0, arena_on)
       set_string_entries(string_entries)
       // The per-fn `<~` line lists, seeded for the install emit (a handler
@@ -2481,7 +2494,6 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         adjoint_registers: derived.adjoint_registers,
         alloc_units,
         arena_on,
-        data_end,
         env_roster: roster,
         fn_records,
         fold_closures,
@@ -2489,20 +2501,17 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         jvp_faces: jvp_face_map(derived.faces),
         jvp_names,
         jvp_recs,
-        line_owners: static_line_owners(
-          top_fn_names,
-          fn_lines,
-          spec_recs,
-          init_lets_lines(collect_top_value_lets(lowered))
-        ),
+        line_owners: static_line_owners(top_fn_names, fn_lines, spec_recs, init_lets_lines(value_lets)),
         lowered,
         redrives,
         spec_names,
         spec_recs,
+        start,
         string_entries,
         table_fn_names,
         tangent_rings: derived.rings,
         top_fn_names,
+        value_lets,
         vectors,
         wasi_ops,
         yield_arity,
@@ -2522,9 +2531,8 @@ fn k_helper_names(yields, arena_on) =
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, arena_on, data_end, env_roster, fn_records, fold_closures, fold_families, jvp_faces, jvp_names, jvp_recs, line_owners, lowered, redrives, spec_names, spec_recs, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, yield_arity, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, fold_families, jvp_faces, jvp_names, jvp_recs, line_owners, lowered, redrives, spec_names, spec_recs, start, string_entries, table_fn_names, tangent_rings, top_fn_names, value_lets, vectors, wasi_ops, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
-    let fold_stack = fold_families_spill(fold_families)
     // Each step of the module's head is an extent of its own (lib/arena.mn),
     // as each function's emission is: the text it streams dies at its exit,
     // so the module's text never stands on the heap.
@@ -2539,28 +2547,17 @@ fn emit_planned(plan) = match plan {
     // allocates through the shared cell; a thread-free module owns a
     // self-contained defined memory, plain bump, no thread-spawn import.
     // The `<|`/`><` ownership discrimination at the module-image altitude.
-    let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
-    // The per-instance area a perform's arguments cross in, sized by the
-    // widest perform; a module that never yields has none (Law 7).
-    let yield_slots = if yield_seen > 0 { yield_area_slots(yield_arity) } else { 0 }
-    // Module VALUE bindings: ONE projection feeds the declaration half, the
-    // init half, and — in a spawning module — the module-values record a
-    // spawned instance takes from the root (never two walks of one tree).
-    let value_lets = collect_top_value_lets(lowered)
-    // The heap starts where the static data ends, and the first pages cover
-    // what `_start` allocates before main: both numbers are read once here,
-    // from the collector's end and the start's own sizes.
-    let heap_base = heap_base_of(data_end)
-    let pages =
-      pages_covering(heap_base + start_bytes(fold_stack, arena_on, yield_slots, if spawns { len(value_lets) } else { 0 }))
+    // Whether the module spawns, the area a perform's arguments cross in
+    // (none in a module that never yields, Law 7), where the heap starts and
+    // the pages the memory begins with and may grow to were settled with the
+    // plan (`start_memory`); the module values feed the declaration half, the
+    // init half and, in a spawning module, the record a spawned instance
+    // takes from the root.
     emit_memory_decl(
-      spawns,
-      spawns || any(is_shared_memory_op, wasi_ops),
+      start,
+      start.spawns || any(is_shared_memory_op, wasi_ops),
       ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0,
-      yield_slots,
-      len(value_lets) > 0,
-      heap_base,
-      pages
+      len(value_lets) > 0
     ) ~> arena
     // A live arena's leaves are settled here, before any function is
     // written, because every barrier and every claim writes a leaf's index.
@@ -2572,8 +2569,8 @@ fn emit_planned(plan) = match plan {
       arena_on && yield_seen > 0,
       if arena_on { journaling_effects() ~> arena } else { [] }
     )
-    if arena_on { emit_arena_runtime(spawns) ~> arena } else { () }
-    if fold_stack { emit_fold_stack_runtime(spawns) ~> arena }
+    if arena_on { emit_arena_runtime(start) ~> arena } else { () }
+    if start.fold_stack { emit_fold_stack_runtime(start.spawns) ~> arena }
     emit_line_globals(line_owners) ~> arena
     emit_tangent_ring_globals(tangent_rings) ~> arena
     // The register a twin hands its result's tangent back through: one f64
@@ -2610,7 +2607,7 @@ fn emit_planned(plan) = match plan {
       line_globals ++ tangent_ring_slots(tangent_rings),
       value_lets,
       yield_seen,
-      fold_stack,
+      start.fold_stack,
       table_all,
       string_entries
     ) ~> arena
@@ -2672,11 +2669,8 @@ fn emit_planned(plan) = match plan {
       len(line_owners) > 0,
       main_param_count(),
       yield_seen,
-      yield_slots,
-      heap_base,
-      spawns,
+      start,
       arena_on,
-      fold_stack,
       env_roster
     )
     emit_footer()
@@ -5035,25 +5029,111 @@ fn heap_base_of(data_end) with Pure = (data_end + 15) / 16 * 16
 // The 64 KiB pages that cover a byte count.
 fn pages_covering(bytes) with Pure = (bytes + 65535) / 65536
 
-// What `_start` allocates before main runs, each size the one `emit_start`
+// What `_start` allocates before main runs, each part the size `emit_start`
 // writes: the dispatch memo, the fold stack's home when a fold spills, the
 // arenas' journal when an arena is open, the area a perform's arguments
 // cross in, and the module values a spawned instance reads from the root.
-fn start_bytes(fold_stack, arena_on, yield_slots, mvals) =
-  memo_bytes() + if fold_stack { fold_home_bytes() } else { 0 } + if arena_on { journal_bytes() } else { 0 } + yield_area_bytes(yield_slots) + 8 * mvals
+fn start_parts(fold_stack, arena_on, yield_slots, mvals, journal) =
+  [(DispatchMemo, memo_bytes())] ++ if fold_stack { [(FoldStackHome, fold_home_bytes())] } else { [] } ++ if arena_on { [(journal_part(journal), journal_bytes(journal))] } else { [] } ++ if yield_slots > 0 { [(PerformArgs, yield_area_bytes(yield_slots))] } else { [] } ++ if mvals > 0 { [(SpawnedValues, 8 * mvals)] } else { [] }
+
+// A journal at the floor is said as the least an arena can keep, so a
+// refusal names why a small claim cannot hold an arena.
+fn journal_part(journal) = if journal == journal_floor() { ArenaJournalFloor } else { ArenaJournal }
+
+fn part_bytes(acc, part) = match part {
+  (_, bytes) => acc + bytes,
+}
 
 fn memo_bytes() with Pure = 1536
 
-// The journal holds this many entries of 8 bytes (`emit_arena_runtime`).
-fn journal_entries() with Pure = 262144
+// The journal holds this many entries of 8 bytes (`emit_arena_runtime`):
+// 262,144 (2 MB), or a quarter of the footprint `main` claims where that is
+// less, and never fewer than the floor. A smaller journal costs reclaim,
+// never meaning: an exit whose journal overflowed keeps its region.
+fn journal_for(footprint) with Pure = match footprint {
+  Some(c) => c.bytes / 32 |> min(262144) |> max(journal_floor()),
+  None => 262144,
+}
 
-fn journal_bytes() with Pure = 8 * journal_entries()
+// The least an arena can keep: 1,024 entries (8 KB).
+fn journal_floor() with Pure = 1024
+
+fn journal_bytes(entries) with Pure = 8 * entries
+
+// The pages the memory may grow to: those that cover `main`'s claim, else
+// 65,536 (4 GB, the wasm32 ceiling).
+fn max_pages_for(footprint) with Pure = match footprint {
+  Some(c) => pages_covering(c.bytes),
+  None => 65536,
+}
+
+// The module's memory at its start, settled once where the module is planned
+// and read where it is written: the footprint `main` claims, whether it
+// spawns, whether a fold spills, the slots a perform's arguments cross in,
+// where the heap starts, the journal's entries, the parts `_start` allocates
+// and the bytes they need, the pages the memory begins with and the pages it
+// may grow to.
+type StartMemory = {
+  claim: Option({at: Int, bytes: Int}),
+  fold_stack: Bool,
+  heap_base: Int,
+  journal: Int,
+  max_pages: Int,
+  need: Int,
+  pages: Int,
+  parts: [(StartPart, Int)],
+  spawns: Bool,
+  yield_slots: Int,
+}
+
+// The parts the start allocates, summed above the heap's start into what the
+// start needs, kept in one record, and held to main's claim.
+fn start_memory(arena_on, fold_stack, wasi_ops, yield_seen, yield_arity, nlets, data_end) = {
+  let claim = program_footprint()
+  let journal = journal_for(claim)
+  let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
+  let yield_slots = if yield_seen > 0 { yield_area_slots(yield_arity) } else { 0 }
+  start_parts(fold_stack, arena_on, yield_slots, if spawns { nlets } else { 0 }, journal) |> start_above(heap_base_of(data_end)) |> start_record(claim, fold_stack, journal, spawns, yield_slots) |> held_to_claim
+}
+
+// What the start needs: the heap's start and every part above it.
+fn start_above(heap_base, parts) = {heap_base, need: parts |> fold(heap_base, part_bytes), parts}
+
+fn start_record(claim, fold_stack, journal, spawns, yield_slots, above) = StartMemory{
+  claim,
+  fold_stack,
+  heap_base: above.heap_base,
+  journal,
+  max_pages: max_pages_for(claim),
+  need: above.need,
+  pages: pages_covering(above.need),
+  parts: above.parts,
+  spawns,
+  yield_slots,
+}
+
+// A claim the start already exceeds is refused where `main` stands, so the
+// module is withheld and the refusal says what the start needs. The start
+// answers as it is either way.
+fn held_to_claim(start) = {
+  match start.claim {
+    Some(c) => if start.need > c.bytes {
+      report_at(
+        c.at,
+        EFootprintExceeded(c.bytes, start.need, start.heap_base, start.parts, graph_span_of(c.at))
+      )
+    },
+    None => (),
+  }
+  start
+}
 
 fn fold_home_bytes() = 16 * fold_stack_home_entries()
 
 fn yield_area_bytes(slots) with Pure = 8 * slots
 
-fn emit_memory_decl(spawns, shares, wants_rmw, yield_slots, carries_lets, heap_base, pages) = {
+fn emit_memory_decl(start, shares, wants_rmw, carries_lets) = {
+  let {heap_base, max_pages, pages, spawns, yield_slots, ..._} = start
   // Two facts of the module decide its memory. Whether it spawns decides who
   // owns the memory, below. Whether anything else may run on the memory
   // decides whether it is declared shared: it is when the module spawns or
@@ -5070,25 +5150,27 @@ fn emit_memory_decl(spawns, shares, wants_rmw, yield_slots, carries_lets, heap_b
   // among them, since the judgment spawns nothing.
   //
   // The first pages are what the start needs: the static data, the heap's
-  // start above it and what `_start` allocates before main (`start_bytes`),
+  // start above it and what `_start` allocates before main (`start_parts`),
   // so a program with no arena begins in two pages and one with an arena in
   // the pages its journal takes, where every module began in 32. The max is
-  // 65536 (4 GB, the wasm32 ceiling) until a program states its budget
-  // (PLAN §11, forks on every core). THE ALLOCATOR GROWS THE MEMORY ON
-  // DEMAND ($memory_reach, beside $alloc): the bump line crossing the
-  // current size grows by at least 256 pages, and a grow the host refuses is
-  // `unreachable` — a loud OOM, never a silent wrap. Shared requires a max;
-  // the line moves under every instance through the ONE grow path, which
-  // every instance sees.
+  // the pages that cover the footprint `main` claims, else 65536 (4 GB, the
+  // wasm32 ceiling). THE ALLOCATOR GROWS THE MEMORY ON DEMAND
+  // ($memory_reach, beside $alloc): the bump line crossing the current size
+  // grows by at least 256 pages and never past the max, and a grow the host
+  // refuses, or one the max leaves no room for, stops the run saying memory
+  // is exhausted, never a silent wrap. Shared requires a max; the line moves
+  // under every instance through the ONE grow path, which every instance
+  // sees.
   let count = int_to_str(pages)
+  let max = int_to_str(max_pages)
   if spawns {
     wat_emit("  (import \"wasi\" \"thread-spawn\" (func $wasi_thread_spawn (param i32) (result i32)))\n")
-    wat_emit("  (import \"env\" \"memory\" (memory {count} 65536 shared))\n")
+    wat_emit("  (import \"env\" \"memory\" (memory {count} {max} shared))\n")
     wat_emit("  (export \"memory\" (memory 0))\n")
   } else if shares {
-    wat_emit("  (memory (export \"memory\") {count} 65536 shared)\n")
+    wat_emit("  (memory (export \"memory\") {count} {max} shared)\n")
   } else {
-    wat_emit("  (memory (export \"memory\") {count} 65536)\n")
+    wat_emit("  (memory (export \"memory\") {count} {max})\n")
   }
   if spawns {
     // The task-invocation fn type — the 0-arg closure protocol (record as
@@ -5178,11 +5260,11 @@ fn emit_memory_decl(spawns, shares, wants_rmw, yield_slots, carries_lets, heap_b
   // saying memory is exhausted. The needed page count is `((end - 1) >> 16) +
   // 1` (exact at the 4GB edge, where `(end + 65535) >> 16` wraps); a
   // shortfall grows by at least 256 pages (16MB — a wheel-scale compile grows
-  // ~64 times, a micro never), never past the 4GB max, and a refused grow or
-  // a need past the max is the stop. The loop re-reads memory.size each pass,
+  // ~64 times, a micro never), never past the module's max, and a refused
+  // grow or a need past the max is the stop. The loop re-reads memory.size each pass,
   // so two instances growing at once both land: the saturating select makes a
   // sibling's grow read as "nothing left to do", never as a wrapped delta.
-  wat_emit("  (func $memory_reach (param $end i32)(local $need i32)(local $delta i32)(local.set $need (i32.add (i32.shr_u (i32.sub (local.get $end)(i32.const 1))(i32.const 16))(i32.const 1)))(block $done (loop $again (br_if $done (i32.le_u (local.get $need)(memory.size)))(local.set $delta (select (i32.sub (local.get $need)(memory.size))(i32.const 0)(i32.gt_u (local.get $need)(memory.size))))(if (i32.eqz (local.get $delta))(then (br $again)))(if (i32.lt_u (local.get $delta)(i32.const 256))(then (local.set $delta (i32.const 256))))(if (i32.gt_u (local.get $delta)(i32.sub (i32.const 65536)(memory.size)))(then (local.set $delta (i32.sub (i32.const 65536)(memory.size)))))(if (i32.eqz (local.get $delta))(then {stop_here(StopExhausted)}))(if (i32.eq (memory.grow (local.get $delta))(i32.const -1))(then {stop_here(StopExhausted)}))(br $again))))\n")
+  wat_emit("  (func $memory_reach (param $end i32)(local $need i32)(local $delta i32)(local.set $need (i32.add (i32.shr_u (i32.sub (local.get $end)(i32.const 1))(i32.const 16))(i32.const 1)))(block $done (loop $again (br_if $done (i32.le_u (local.get $need)(memory.size)))(local.set $delta (select (i32.sub (local.get $need)(memory.size))(i32.const 0)(i32.gt_u (local.get $need)(memory.size))))(if (i32.eqz (local.get $delta))(then (br $again)))(if (i32.lt_u (local.get $delta)(i32.const 256))(then (local.set $delta (i32.const 256))))(if (i32.gt_u (local.get $delta)(i32.sub (i32.const {max})(memory.size)))(then (local.set $delta (i32.sub (i32.const {max})(memory.size)))))(if (i32.eqz (local.get $delta))(then {stop_here(StopExhausted)}))(if (i32.eq (memory.grow (local.get $delta))(i32.const -1))(then {stop_here(StopExhausted)}))(br $again))))\n")
   if spawns {
     // INSTANCE SEGMENTS — the arena's SPACE face. Every instance bumps
     // privately in a RUN of its own, [$seg_base, $seg_end), and touches the
@@ -5390,14 +5472,15 @@ fn task_mvals_offset(yield_slots) = if yield_slots > 0 { 24 } else { 16 }
 //
 // The census rides five counters `arena_stat` reads: exits, kept exits, the
 // KB reclaimed and moved, and the highest line an exit reached.
-fn emit_arena_runtime(spawns) = {
+fn emit_arena_runtime(start) = {
+  let {journal, spawns, ..._} = start
   // The line this instance's arenas open at and reset.
   let line = if spawns { "(global.get $heap_ptr)" } else { "(call $heap_mark_impl)" }
   wat_emit("  (global $ar_depth (mut i32) (i32.const 0))\n  (global $ar_mark (mut i32) (i32.const 0))\n  (global $ar_jb (mut i32) (i32.const 0))\n  (global $ar_jn (mut i32) (i32.const 0))\n  (global $ar_jover (mut i32) (i32.const 0))\n")
   wat_emit("  (global $ar_m (mut i32) (i32.const 0))\n  (global $ar_t (mut i32) (i32.const 0))\n  (global $ar_bm (mut i32) (i32.const 0))\n  (global $ar_bmsz (mut i32) (i32.const 0))\n  (global $ar_rl (mut i32) (i32.const 0))\n  (global $ar_rn (mut i32) (i32.const 0))\n  (global $ar_ll (mut i32) (i32.const 0))\n  (global $ar_ln (mut i32) (i32.const 0))\n  (global $ar_lscan (mut i32) (i32.const 0))\n  (global $ar_c0 (mut i32) (i32.const 0))\n  (global $ar_cp (mut i32) (i32.const 0))\n  (global $ar_cend (mut i32) (i32.const 0))\n  (global $ar_dst (mut i32) (i32.const 0))\n  (global $ar_delta (mut i32) (i32.const 0))\n  (global $ar_abort (mut i32) (i32.const 0))\n")
   wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n  (global $ar_susp (mut i32) (i32.const 0))\n")
-  // The block — 262144 journal entries of 8 bytes — is the instance's FIRST
-  // allocation (`emit_start`), below every mark any code can take, so no
+  // The block, the journal's entries of 8 bytes each (`journal_for`), is the
+  // instance's FIRST allocation (`emit_start`), below every mark any code can take, so no
   // region, commit, keep or reset ever moves or frees it, and a persisted
   // image holds it at the same address its resuming instance does. (It was
   // allocated per outermost arena and reclaimed by compacting the survivors
@@ -5406,12 +5489,12 @@ fn emit_arena_runtime(spawns) = {
   // out — 2026-10-03, the first run in which the compiler's own judgment
   // kept regions.)
   let journal_first = if spawns {
-    " (if (i32.eqz (global.get $ar_jb)) (then (global.set $ar_jb (call $alloc (i32.const {int_to_str(journal_bytes())})))))"
+    " (if (i32.eqz (global.get $ar_jb)) (then (global.set $ar_jb (call $alloc (i32.const {int_to_str(journal_bytes(journal))})))))"
   } else {
     ""
   }
   wat_emit("  (func $arena_enter{journal_first} (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0)) (global.set $ar_jover (i32.const 0)))) (global.set $ar_depth (i32.add (global.get $ar_depth) (i32.const 1))) (global.set $ar_mark {line}))\n")
-  wat_emit("  (func $ar_journal (param $a i32) (param $b i32) (local $e i32) (if (i32.ge_u (global.get $ar_jn) (i32.const 262144)) (then (global.set $ar_jover (i32.const 1)) (return))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3)))) (i32.store (local.get $e) (local.get $a)) (i32.store offset=4 (local.get $e) (local.get $b)) (global.set $ar_jn (i32.add (global.get $ar_jn) (i32.const 1))))\n")
+  wat_emit("  (func $ar_journal (param $a i32) (param $b i32) (local $e i32) (if (i32.ge_u (global.get $ar_jn) (i32.const {int_to_str(journal)})) (then (global.set $ar_jover (i32.const 1)) (return))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3)))) (i32.store (local.get $e) (local.get $a)) (i32.store offset=4 (local.get $e) (local.get $b)) (global.set $ar_jn (i32.add (global.get $ar_jn) (i32.const 1))))\n")
   let in_region = if spawns {
     "(i32.and (i32.ge_u (local.get $s) (global.get $ar_mark)) (i32.lt_u (local.get $s) (global.get $heap_ptr)))"
   } else {
@@ -6944,7 +7027,8 @@ fn lexpr_leaves_value(e) = match e {
 // where every perform is argless, so the area is a record of its own.
 fn yield_area_slots(arity) = if arity > 1 { arity } else { 1 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, heap_base, threaded, arena_on, fold_stack, env_roster: String) = {
+fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, start, arena_on, env_roster: String) = {
+  let {fold_stack, heap_base, journal, spawns: threaded, yield_slots, ..._} = start
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -6963,7 +7047,7 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
     // rewind the shared frontier mid-run).
     wat_emit("    (i32.atomic.store (i32.const 64) (i32.const {int_to_str(heap_base)}))\n    (call $seg_refill (i32.const 0))\n")
   }
-  // What follows is counted into the module's first pages (`start_bytes`).
+  // What follows is counted into the module's first pages (`start_parts`).
   // The dispatch memo's table, before anything performs (`emit_memory_decl`).
   wat_emit("    (global.set $ev_cache_g (call $alloc (i32.const {int_to_str(memo_bytes())})))\n")
   // The spill stack's home, before any fold can run (`emit_fold_stack_runtime`).
@@ -6971,7 +7055,7 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // The arenas' journal, before anything else is allocated
   // (`emit_arena_runtime`).
   if arena_on {
-    wat_emit("    (global.set $ar_jb (call $alloc (i32.const {int_to_str(journal_bytes())})))\n")
+    wat_emit("    (global.set $ar_jb (call $alloc (i32.const {int_to_str(journal_bytes(journal))})))\n")
   }
   // The area a perform's arguments cross in, per instance, before anything
   // that could perform (`emit_yield_arg_stores`).

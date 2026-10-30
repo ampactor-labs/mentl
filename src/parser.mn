@@ -1521,10 +1521,11 @@ fn parse_effect_decl(ref tokens, pos) = {
   let name = ident_at(tokens, pos)
   let p_after_name = skip_ws(tokens, pos + 1)
   // Optional `(params)` — the parameterized effect's instance signature
-  // (SYNTAX §«Parameterized effect»: `effect Sample(rate: Int)`), the
-  // same [TParam] carrier fn params and handler config ride.
+  // (SYNTAX §«Parameterized effect»: `effect Sample(rate: Int)`), parsed
+  // as an op's params are: a name and a type each, with no node, since an
+  // effect has no body that could bind the name.
   match if at(tokens, p_after_name, TLParen) {
-    parse_config_params(tokens, skip_ws(tokens, p_after_name + 1), name)
+    parse_op_params(tokens, skip_ws(tokens, p_after_name + 1))
   } else {
     ([], p_after_name)
   } {

@@ -1559,7 +1559,7 @@ fn stmt_child_handles(s) = match s {
   // parse minted, its parent the declaration that holds it, so an op reaches
   // its effect and a variant its type by the edge, never by a name.
   TypeDefStmt(_, variants) => map(variant_node, variants),
-  EffectDeclStmt(_, params, ops) => params ++ map(op_node, ops),
+  EffectDeclStmt(_, _, ops) => map(op_node, ops),
   ImportStmt(_) => [],
   // A refinement's predicate is an expression over `self`, its child.
   RefineStmt(_, _, pred) => [pred],

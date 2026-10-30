@@ -2611,7 +2611,7 @@ fn infer_stmt(ref node) = {
       // Every name an op's signature writes resolves, judged HERE — after
       // every declaration of the link is registered — so an op naming an
       // effect declared below it in source is not refused for the order.
-      link_params_written(params)
+      each(link_param_written, params)
       each(link_op_written, ops)
       declaration_noted(node, name)
     },
@@ -2742,15 +2742,15 @@ fn held_has_poly(held, name: String) = any(
       | ECatchAllOverSum(_, _, _) | EPatternAlternationBindingMismatch(_, _) | EIfMissingElse(_)
       | TOverDeclared(_, _, _, _) | TRowInventory(_, _, _, _) | TWordSlotBox(_, _, _)
       | TOwnUnconsumed(_, _) | TOwnAcrossReplay(_, _) | EUseAfterMove(_, _) | EEffectMismatch(_, _, _, _)
-      | EPurityViolated(_, _) | ERefinementRejected(_, _, _) | EVerifyUnencodable(_) | VPending(_, _)
-      | EOwnershipViolation(_, _) | ERegionEscape(_, _) | EMissingModule(_, _, _)
-      | EHandlerStateShadowsOp(_, _, _) | EFnShadowsOp(_, _, _) | EOpShadowsPrimitive(_, _, _)
-      | EOpShadowsOp(_, _, _, _) | EDuplicateFnName(_, _) | EDuplicateTypeName(_, _)
-      | EDuplicateBinder(_, _, _) | EEmittedNameCollision(_, _) | EUnresolvedType(_, _, _)
-      | EEffectUnhandled(_, _, _, _) | EThreadedBranchEffect(_, _, _) | EDerivativeUnreachable(_, _)
-      | EEnvNameUngrounded(_) | EUnresolvedHole(_, _) | EFieldOffsetUnprovable(_, _)
-      | EShapeUnprovable(_, _) | EInstantiationDepth(_, _) | EArithOnAggregate(_, _)
-      | EHandlerChainShape(_, _) => false,
+      | EPurityViolated(_, _) | EFootprintExceeded(_, _, _, _, _) | ERefinementRejected(_, _, _)
+      | EVerifyUnencodable(_) | VPending(_, _) | EOwnershipViolation(_, _) | ERegionEscape(_, _)
+      | EMissingModule(_, _, _) | EHandlerStateShadowsOp(_, _, _) | EFnShadowsOp(_, _, _)
+      | EOpShadowsPrimitive(_, _, _) | EOpShadowsOp(_, _, _, _) | EDuplicateFnName(_, _)
+      | EDuplicateTypeName(_, _) | EDuplicateBinder(_, _, _) | EEmittedNameCollision(_, _)
+      | EUnresolvedType(_, _, _) | EEffectUnhandled(_, _, _, _) | EThreadedBranchEffect(_, _, _)
+      | EDerivativeUnreachable(_, _) | EEnvNameUngrounded(_) | EUnresolvedHole(_, _)
+      | EFieldOffsetUnprovable(_, _) | EShapeUnprovable(_, _) | EInstantiationDepth(_, _)
+      | EArithOnAggregate(_, _) | EHandlerChainShape(_, _) => false,
     },
   },
   held
@@ -4363,9 +4363,13 @@ fn check_effect_name(ename, at, span: ValidSpan) = if row_var_spelled(ename) || 
 fn link_op_written(op) = match op {
   (_, op_params, _, op_node) => {
     link_written(op_node)
-    each({ p => each(link_written, written_cells(param_ty(p))) }, op_params)
+    each(link_param_written, op_params)
   },
 }
+
+// A parameter's written type, each name in it linked where the link is
+// whole: an op's parameter, or an effect's instance parameter.
+fn link_param_written(p) = each(link_written, written_cells(param_ty(p)))
 
 // A parameter list's written annotations, each name linked where the link is
 // whole.
@@ -16261,12 +16265,11 @@ fn register_effect_ops(effect_name, params, ops, decl) = {
   // instance judges its args against; a bare effect publishes the
   // empty tuple. The formerly-empty tuple here was a placeholder.
   let op_names = map({ (n, _, _, _) => n }, ops)
-  let tps = build_param_types(params)
   env_extend(
     effect_name,
-    Frozen([], TTuple(map(param_ty, tps))),
+    Frozen([], TTuple(instance_param_types(params))),
     Declared(effect_name),
-    EffectDeclKind(op_names, map(param_name, tps)),
+    EffectDeclKind(op_names, map(param_name, params)),
     decl
   )
   // THE EFFECT'S COMPLETE TYPE-VAR STRUCTURE: the free type vars across ALL
@@ -16310,6 +16313,19 @@ fn register_effect_ops(effect_name, params, ops, decl) = {
     EParameterized(enh, value_dims ++ map((v) => EAType(TVar(v)), eff_vars))
   }
   each((op) => register_one_op(effect_name, eff_name, op), qops)
+}
+
+// An effect's instance parameters' types, each written type read as a
+// function parameter's is (`quantify_ctor_ty`), in one scope for all of
+// them, so a lowercase name is one variable across the parameters.
+fn instance_param_types(params) = match fold(([], []), instance_param_type, params) {
+  (tys, _) => tys,
+}
+
+fn instance_param_type(acc, p) = match acc {
+  (tys, qmap) => match quantify_ctor_ty(param_ty(p), qmap, Declared(param_name(p))) {
+    (ty, q) => (push(tys, ty), q),
+  },
 }
 
 // The free type vars across all an effect's ops' signatures — the effect's

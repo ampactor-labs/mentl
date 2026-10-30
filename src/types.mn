@@ -3180,8 +3180,9 @@ type Stmt
   // value — effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
   // name, then per variant its name + field types
-  | EffectDeclStmt(String, [Node], [(String, [TParam], Ty, Node)])
-  // effect name, instance params, ops (each op is (op_name, params,
+  | EffectDeclStmt(String, [TParam], [(String, [TParam], Ty, Node)])
+  // effect name, instance params (a name and a type each, as an op's
+  // params are: an effect has no body to bind a name into), ops (each op is (op_name, params,
   // ret_ty, comment-carrier); ResumeDiscipline is inferred at
   // handler-decl time from each arm body, not declared on the effect
   // op). An op's params are the op's signature, a function type's slots:
@@ -4221,6 +4222,10 @@ type DiagKind
   // the offending row
   // ─── verify / own / graph / driver ───────────────────────────────
   | EPurityViolated(EffRow, Span)
+  // `main`'s footprint claim in bytes, what the program's start needs, the
+  // byte the heap starts at above the static data, and what `_start`
+  // allocates before `main`, each part a label and its bytes
+  | EFootprintExceeded(Int, Int, Int, [(StartPart, Int)], Span)
   | ERefinementRejected(Predicate, Span, Reason)
   // a predicate operand the SMT renderer
   // cannot encode — accrues as undischarged
@@ -4573,6 +4578,7 @@ fn diag_span(d) with Pure = match d {
   EUseAfterMove(_, s) => s,
   EEffectMismatch(_, _, _, s) => s,
   EPurityViolated(_, s) => s,
+  EFootprintExceeded(_, _, _, _, s) => s,
   ERefinementRejected(_, s, _) => s,
   EVerifyUnencodable(s) => s,
   VPending(_, s) => s,
@@ -4654,6 +4660,7 @@ fn diag_source(d) with Pure = match d {
   EUseAfterMove(_, _) => "ownership",
   EEffectMismatch(_, _, _, _) => "effects",
   EPurityViolated(_, _) => "effects",
+  EFootprintExceeded(_, _, _, _, _) => "emit",
   ERefinementRejected(_, _, _) => "verify",
   EVerifyUnencodable(_) => "verify",
   VPending(_, _) => "verify",
@@ -4736,6 +4743,7 @@ fn diag_arm(d) with Pure = match d {
   EUseAfterMove(_, _) => OnOwnership,
   EEffectMismatch(_, _, _, _) => OnEffects,
   EPurityViolated(_, _) => OnEffects,
+  EFootprintExceeded(_, _, _, _, _) => OnEffects,
   ERefinementRejected(_, _, _) => OnVerify,
   EVerifyUnencodable(_) => OnVerify,
   VPending(_, _) => OnVerify,
@@ -4817,6 +4825,7 @@ fn diag_code(d) with Pure = match d {
   EUseAfterMove(_, _) => "E_UseAfterMove",
   EEffectMismatch(_, _, _, _) => "E_EffectMismatch",
   EPurityViolated(_, _) => "E_PurityViolated",
+  EFootprintExceeded(_, _, _, _, _) => "E_FootprintExceeded",
   ERefinementRejected(_, _, _) => "E_RefinementRejected",
   EVerifyUnencodable(_) => "E_VerifyUnencodable",
   VPending(_, _) => "V_Pending",
@@ -4882,14 +4891,14 @@ fn diag_severity(d) with Pure = match d {
   | EMalformedNumericLiteral(_, _, _) | ERowAliasNegation(_, _) | ERecordFieldExtra(_, _, _)
   | ERecordFieldMissing(_, _, _) | EPatternInexhaustive(_, _) | ECatchAllOverSum(_, _, _)
   | EPatternAlternationBindingMismatch(_, _) | EIfMissingElse(_) | EEffectMismatch(_, _, _, _)
-  | EPurityViolated(_, _) | ERefinementRejected(_, _, _) | EOwnershipViolation(_, _)
-  | ERegionEscape(_, _) | EMissingModule(_, _, _) | EHandlerStateShadowsOp(_, _, _)
-  | EFnShadowsOp(_, _, _) | EOpShadowsPrimitive(_, _, _) | EOpShadowsOp(_, _, _, _)
-  | EDuplicateFnName(_, _) | EDuplicateTypeName(_, _) | EDuplicateBinder(_, _, _)
-  | EEmittedNameCollision(_, _) | EUnresolvedType(_, _, _) | EEffectUnhandled(_, _, _, _)
-  | EThreadedBranchEffect(_, _, _) | EEnvNameUngrounded(_) | EUnresolvedHole(_, _)
-  | EFieldOffsetUnprovable(_, _) | EShapeUnprovable(_, _) | EInstantiationDepth(_, _)
-  | EHandlerChainShape(_, _) => SError,
+  | EPurityViolated(_, _) | EFootprintExceeded(_, _, _, _, _) | ERefinementRejected(_, _, _)
+  | EOwnershipViolation(_, _) | ERegionEscape(_, _) | EMissingModule(_, _, _)
+  | EHandlerStateShadowsOp(_, _, _) | EFnShadowsOp(_, _, _) | EOpShadowsPrimitive(_, _, _)
+  | EOpShadowsOp(_, _, _, _) | EDuplicateFnName(_, _) | EDuplicateTypeName(_, _)
+  | EDuplicateBinder(_, _, _) | EEmittedNameCollision(_, _) | EUnresolvedType(_, _, _)
+  | EEffectUnhandled(_, _, _, _) | EThreadedBranchEffect(_, _, _) | EEnvNameUngrounded(_)
+  | EUnresolvedHole(_, _) | EFieldOffsetUnprovable(_, _) | EShapeUnprovable(_, _)
+  | EInstantiationDepth(_, _) | EHandlerChainShape(_, _) => SError,
 }
 
 // The word a report's line prints for its severity.
@@ -4953,11 +4962,11 @@ fn diag_applicability(d) with Pure = match d {
   | ERestOutsideDestructure(_) | ERowAliasCycle(_, _) | EDeclaredRowContradiction(_, _)
   | EMalformedNumericLiteral(_, _, _) | ERowAliasNegation(_, _) | ERecordFieldExtra(_, _, _)
   | ERecordFieldMissing(_, _, _) | EPatternAlternationBindingMismatch(_, _) | EIfMissingElse(_)
-  | EEffectMismatch(_, _, _, _) | EPurityViolated(_, _) | VPending(_, _) | ERegionEscape(_, _)
-  | EMissingModule(_, _, _) | EHandlerStateShadowsOp(_, _, _) | EFnShadowsOp(_, _, _)
-  | EOpShadowsPrimitive(_, _, _) | EOpShadowsOp(_, _, _, _) | EDuplicateFnName(_, _)
-  | EDuplicateTypeName(_, _) | EDuplicateBinder(_, _, _) | EUnresolvedType(_, _, _)
-  | EHandlerChainShape(_, _) => MaybeIncorrect,
+  | EEffectMismatch(_, _, _, _) | EPurityViolated(_, _) | EFootprintExceeded(_, _, _, _, _)
+  | VPending(_, _) | ERegionEscape(_, _) | EMissingModule(_, _, _) | EHandlerStateShadowsOp(_, _, _)
+  | EFnShadowsOp(_, _, _) | EOpShadowsPrimitive(_, _, _) | EOpShadowsOp(_, _, _, _)
+  | EDuplicateFnName(_, _) | EDuplicateTypeName(_, _) | EDuplicateBinder(_, _, _)
+  | EUnresolvedType(_, _, _) | EHandlerChainShape(_, _) => MaybeIncorrect,
 }
 
 // Whether the step a report names is one the medium takes by itself: the one
@@ -5025,6 +5034,7 @@ fn diag_message(d) with !Mutate = match d {
   EUseAfterMove(msg, _) => msg,
   EEffectMismatch(declared, inferred, why, _) => effect_breach(declared, inferred, why) ~> var_names,
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
+  EFootprintExceeded(claimed, need, heap_base, parts, _) => "main claims a footprint of {int_to_str(claimed)} bytes, but its start already needs {int_to_str(need)} bytes: the heap starts at byte {int_to_str(heap_base)}, above the static data, and `_start` allocates {int_to_str(need - heap_base)} bytes more before main runs ({join("; ", map(start_part_text, parts))}). Raise the claim to {int_to_str(need)} bytes or more{if any(holds_journal, parts) { ", or open no arena" } else { "" }}.",
   ERefinementRejected(pred, _, why) => "refinement predicate proven false at compile time: {show_predicate(pred)}{label_entry(why)}",
   // drift-audit: ignore — diagnostic message string
   EVerifyUnencodable(_) => "refinement predicate operand cannot be encoded for the solver — obligation accrued as pending",
@@ -6492,6 +6502,32 @@ fn effect_breach(declared, inferred, why) = {
     | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
     | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => "the declaration says {clause}, and the code here uses {row_breach(declared, inferred)}, which that clause does not allow: {show_reason(why)}",
   }
+}
+
+// What the module's start function allocates before main runs, one case per
+// part, each carried beside its bytes; the footprint refusal says them in
+// words.
+type StartPart = DispatchMemo | FoldStackHome | ArenaJournal | ArenaJournalFloor | PerformArgs | SpawnedValues
+
+// One part of what a program's start allocates, as the refusal says it.
+fn start_part_text(part) = match part {
+  (kind, bytes) => "{start_part_words(kind)}, {int_to_str(bytes)} bytes",
+}
+
+// Whether a part is the arenas' journal, which a program that opens no arena
+// does not allocate.
+fn holds_journal(part) = match part {
+  (ArenaJournal, _) | (ArenaJournalFloor, _) => true,
+  (DispatchMemo, _) | (FoldStackHome, _) | (PerformArgs, _) | (SpawnedValues, _) => false,
+}
+
+fn start_part_words(kind) = match kind {
+  DispatchMemo => "the dispatch memo",
+  FoldStackHome => "the fold stack's home",
+  ArenaJournal => "the arenas' journal",
+  ArenaJournalFloor => "the arenas' journal at the least an arena can keep",
+  PerformArgs => "the area a perform's arguments cross in",
+  SpawnedValues => "the module values a spawned instance reads",
 }
 
 // The bare names a clause wrote, the ones that decide nothing: its present

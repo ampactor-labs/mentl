@@ -175,6 +175,19 @@ effect Alloc {
 // it. No operations: the judgment charges it wherever a store's target is older.
 effect Mutate {}
 
+// Footprint — the memory a program claims it fits in, in bytes, written on
+// main: `fn main() with Footprint(2359296) = …`. The author writes the
+// number and the compiler sizes the module by it. The module declares its
+// memory's maximum as the 64 KB pages that cover the claim, so the
+// allocator stops the program rather than grow past it, and an arena's
+// journal takes a quarter of the claim, at most 2 MB and at least the 8 KB
+// an arena needs to keep anything. A claim smaller than what the program's
+// start already needs (its static data and what the module's start
+// function allocates before main runs) is refused when the program is
+// compiled or checked, and the refusal says what the start needs. No
+// operations: nothing performs it.
+effect Footprint(bytes: Int) {}
+
 // PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
 // precondition fails — an integer division by zero, INT_MIN / -1, an index
 // past its sequence — and a site whose precondition the judgment cannot

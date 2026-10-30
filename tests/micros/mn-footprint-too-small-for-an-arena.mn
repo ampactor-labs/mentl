@@ -1,0 +1,8 @@
+// expect: refuse E_FootprintExceeded
+// A claim of 16 KB cannot hold an arena: a quarter of it is less than the
+// least journal an arena can keep, 1,024 entries of 8 bytes, so the journal
+// stays at that floor and the start needs more than the claim. The refusal
+// says the floor and offers to open no arena.
+import arena
+
+fn main() with Footprint(16384) = memory_pages() ~> arena

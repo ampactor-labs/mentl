@@ -1,0 +1,8 @@
+// expect: 18
+// A claim of 4 MB on `main` sizes the arenas' journal to a quarter of it,
+// 1 MB, so the module starts in the 18 pages its data, its dispatch memo and
+// that journal take, where a module with an arena and no claim starts in 34.
+// `memory_pages` reads the pages the program holds.
+import arena
+
+fn main() with Footprint(4194304) = memory_pages() ~> arena

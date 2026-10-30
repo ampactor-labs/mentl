@@ -163,9 +163,11 @@ handler emit_context = string_table ~> line_registry ~> lower_scope ~> lower_han
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
 // re-derived at every lowering route: a chain whose members are the two
-// chains. Analysis-only routes (check, query, the single-source check) keep
+// chains. Analysis-only routes (query, the single-source check) keep
 // infer_context alone; they have nothing to lower and installing an emit
-// stack over them would be inert ceremony.
+// stack over them would be inert ceremony. Check plans a whole executable
+// as compile does (`planned_as_compiled`), so it installs the emit stack
+// for that plan.
 handler compile_context = emit_context ~> infer_context
 
 // `driver_compile_entry` judges the link ONCE, and compile lowers the program
@@ -214,8 +216,9 @@ wasi_filesystem ~> compile_context
 //   a shape or a specialization it cannot prove where the body is emitted,
 //   a boundary lowering could not build — so a floor refuses here too,
 //   before the byte that would have carried it.
-// `check` never routes here — the productive surfaces admit holes and
-// errors; only an EXECUTABLE refuses to exist around one.
+// `check` never routes here: it admits holes and errors, so it plans only a
+// whole program (`planned_as_compiled`) and says what that plan refuses;
+// only an EXECUTABLE refuses to exist around a hole.
 // gate_reads — the gate LAW's judge half, one home for its three policies:
 // the CLI compile (refuse + proc_exit, one process one verdict),
 // battery_compile (batch: count and continue), and the mcp judge (serve:
@@ -340,6 +343,7 @@ fn compile_remainder() = {
   match gated {
     Planned(plan) => {
       heap_line("when the module is planned")
+      footprint_line(plan.start)
       emit_planned(plan)
       heap_line("when the module is written")
       arena_line()
@@ -349,6 +353,22 @@ fn compile_remainder() = {
       refuse_to_emit(refused)
     },
   }
+}
+
+// The module's footprint, said in the census scope beside the heap and arena
+// lines: what main claims, graded, and what the start needs, or that main
+// claims nothing and the memory may grow to the wasm32 ceiling. A claim is
+// pending: nothing yet proves the run fits it, and the program stops rather
+// than grow past it.
+fn footprint_line(start) = match diag_scope_of() {
+  ScopeAll => said(footprint_text(start)),
+  ScopeNone => (),
+  ScopeProject(_) => (),
+}
+
+fn footprint_text(start) = match start.claim {
+  Some(c) => "footprint: claimed {c.bytes} bytes ({start.max_pages} pages), pending, since nothing yet proves the run fits it; the start needs {start.need} bytes ({start.pages} pages); the memory may grow to the claim and no further\n",
+  None => "footprint: no claim on main; the memory may grow to 4 GB in steps of 256 pages\n",
 }
 
 fn heap_line(at: String) = match diag_scope_of() {
@@ -423,8 +443,26 @@ fn pipeline_check(entry_module) = {
   // It is not an error: the program still builds, as compile's own report
   // says.
   report_verify_debt(verify_debt())
+  // Check refuses what compiling the executable refuses: a judgment that
+  // left no error is lowered and planned as compile plans it, so a refusal
+  // the plan makes, such as a footprint claim the start exceeds, is said
+  // here too. Nothing is written.
+  match env_resolve("main") {
+    Some(_) => if diag_errors() == 0 { planned_as_compiled() },
+    None => (),
+  }
   diag_errors()
 } ~> wasi_filesystem ~> mentl_default ~> infer_context
+
+fn planned_as_compiled() =
+  link_program() |> saturate_pass |> lower_program |> reachable_from_main |> plan_whole ~> emit_context
+
+// Check admits a hole, and a program with one is not yet an executable, so
+// only a whole program is planned.
+fn plan_whole(lowered) = if len(graph_holes_at()) == 0 {
+  emit_plan(lowered)
+  ()
+}
 
 fn query(entry_module, question) = match query_judged(entry_module, query_render(question, ??)) {
   None => {

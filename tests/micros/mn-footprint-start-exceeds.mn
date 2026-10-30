@@ -1,0 +1,7 @@
+// expect: refuse E_FootprintExceeded
+// A claim of 64 KB cannot hold this program's start: its static data alone
+// ends past 64 KB, so the compiler refuses the claim and says what the start
+// needs.
+import arena
+
+fn main() with Footprint(65536) = memory_pages() ~> arena

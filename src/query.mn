@@ -2604,7 +2604,7 @@ fn op_badge(op) with !Mutate = match op {
 }
 
 fn effect_params_text(params) with !Mutate =
-  if len(params) == 0 { "" } else { "({join(", ", map(render_one_param, params))})" ~> var_names }
+  if len(params) == 0 { "" } else { "({join(", ", map(render_tparam, params))})" ~> var_names }
 
 fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name) {
   None => binder_badges(name, scope),
@@ -2643,8 +2643,20 @@ fn decl_badges(name: String, params, ret, row) with !Mutate = {
   // developer would write, read off the render context (`var_names`), never
   // bound in the graph.
   let lines =
-    [render_head(name, params, ret, row) ++ decl_address(decl)] ++ map(param_badge, params) ++ ret_badge(ret) ++ flat_map(tee_lines, body) ~> var_names
+    [render_head(name, params, ret, row) ++ decl_address(decl)] ++ clause_badge(decl) ++ map(param_badge, params) ++ ret_badge(ret) ++ flat_map(tee_lines, body) ~> var_names
   QRWhere(lines, body |> flat_map(fanout_sites(??, [])) |> demand_onto(decl))
+}
+
+// The decisions the declaration's clause states, as its author wrote them:
+// the head shows the row the body infers, and this line shows what the
+// compiler holds that row to (a negation, an instance pin, a claim or Pure).
+fn clause_badge(decl) with !Mutate = match decl {
+  Some(h) => match graph_node_body(h) {
+    NStmt(FnStmt(_, _, _, effs, _)) => if len(effs) == 0 { [] } else { ["with {render_authored_row(effs)} (declared)"] },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
+  },
+  None => [],
 }
 
 // The result's badge; a unit result has none, as its head writes no arrow.

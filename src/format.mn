@@ -437,8 +437,8 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   // renders closed on the head's line, never as a brace pair around an
   // indented empty line (the trailing-space line the block form wrote).
   EffectDeclStmt(name, params, ops) => match ops {
-    [] => "effect {name}{render_config_params(params)} \{\}",
-    _ => "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
+    [] => "effect {name}{render_instance_params(params)} \{\}",
+    _ => "effect {name}{render_instance_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
   },
   HandlerDeclStmt(hname, _ename, config, states, arms, effs) => "handler {hname}{render_config_params(config)}{render_handler_clause(effs, states)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
   // A chain declaration is one line, its members joined by ` ~> ` — the
@@ -1148,6 +1148,10 @@ fn pred_prec(pred) with Pure = match pred {
 fn render_pred_node(h) with !Mutate = render_body_tokens(h, graph_node_body(h))
 
 fn render_ty_list(tys) with !Mutate = join(", ", map(render_type_tokens, tys))
+
+// An effect's instance params, written as an op's params are.
+fn render_instance_params(params) with !Mutate =
+  if len(params) == 0 { "" } else { "({join(", ", map(render_op_param, params))})" }
 
 fn render_effect_ops(ref ops: [(String, [TParam], Ty, Node)], i) with !Mutate = if i >= len(ops) {
   ""

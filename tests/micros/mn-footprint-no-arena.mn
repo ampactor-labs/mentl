@@ -1,0 +1,5 @@
+// expect: 2
+// A program that opens no arena and claims 128 KB starts in the two pages its
+// data and dispatch memo take, and its memory may never grow past the two
+// pages the claim covers.
+fn main() with Footprint(131072) = memory_pages()

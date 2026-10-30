@@ -754,8 +754,9 @@ as unknown, never as passing.
   spills, the arenas' journal (262,144 entries of 8 bytes, 2 MB) where an
   arena is open, the area a perform's arguments cross in, and a spawned
   instance's module values. A lesson with no arena declares two 64 KiB
-  pages and the grid controller 34. The journal's size, the 256-page grow
-  step and the 4 GB ceiling are still the wheel's constants (§11.8). The
+  pages and the grid controller 34. Without a footprint claim on main, the
+  journal's size, the 256-page grow step and the 4 GB ceiling are the
+  wheel's constants (§11.8). The
   runtime counts exits, kept regions, bytes reclaimed and moved, the line
   peak and suspended arenas (`arena_stat`), and the march prints them for
   the self-compile; none is on the board yet. A program reads its own
@@ -804,6 +805,35 @@ as unknown, never as passing.
   The positive cap is gone, with the four fixtures that tested it; a
   negation holds a higher-order function's callbacks, and the handlers that
   answer a function's own operations are §11.1(a)'s.
+- **A program's memory budget is a claim on main** (2026-10-30).
+  `fn main() with Footprint(bytes)` claims the memory the program fits in.
+  `Footprint` (lib/memory.mn) is an effect with no operations, so nothing
+  performs it and its instance is the claim. The module's memory may grow
+  to the 64 KB pages that cover the claim and no further, the arenas'
+  journal takes a quarter of the claim, at most 2 MB and at least 1,024
+  entries (8 KB, the least an arena can keep), and the grow step stays 256
+  pages, cut to that maximum. A claim smaller than what the start needs
+  is refused with `E_FootprintExceeded`, which names the claim, the need,
+  where the heap starts and each part the start allocates, and offers to
+  open no arena where the start holds a journal. It is judged where the
+  module is planned, and `mentl check` now plans every whole executable as
+  compile does, so check refuses what compile refuses. The census scope
+  prints the footprint beside the heap and arena lines, graded (`footprint:
+  claimed 4194304 bytes (64 pages), pending, since nothing yet proves the
+  run fits it; the start needs 1116416 bytes (18 pages); the memory may
+  grow to the claim and no further`, or `footprint: no claim on main; the
+  memory may grow to 4 GB in steps of 256 pages`), and
+  `mentl where` shows every declaration's clause beside its inferred row
+  (`with Footprint(4194304) (declared)`; at the grid controller's
+  `decide`, its five negations). Five micros state it:
+  mn-footprint-arena-fits answers 18 and its module declares `(memory
+  (export "memory") 18 64)`, mn-footprint-no-arena answers 2 under `2 2`,
+  mn-footprint-start-exceeds and mn-footprint-too-small-for-an-arena are
+  refused, and mn-footprint-cap-stops stops saying memory is exhausted. The claim bounds the run; that the run fits
+  it is not proven (§11.8). An effect's parameters are parsed as an op's
+  are, a name and a type with no node, so the claim's own declaration adds
+  no cell to the compiler's graph: the self-compile's line peak fell 10 KB
+  below the boot's on the same wheel (284,130 KB against 284,140 KB).
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` checks the build key, and `mentl resume <image>` re-enters
   the image. Host resources (descriptors, sockets) are not restored. Resuming
@@ -1620,13 +1650,17 @@ the last three.
    fused oracle still needs. The module's memory is sized by the program.
    The heap base sits where the static data ends and the first pages are
    what the start needs (built 2026-10-29: a lesson with no arena begins in
-   two 64 KiB pages, the grid controller in 34). Still open: the arena
-   journal is sized to the program's arenas or to a budget the program
-   declares and the compiler checks, and the grow step is the budget's, so
-   `mentl compile` says the number and a program that cannot prove it fits
-   its budget is refused. Today the two are the wheel's constants (a 2 MB
-   journal, a 16 MB grow step, `src/backends/wasm.mn`), sized for a compile
-   of the compiler. A store keeps its barrier wherever the store-age walk
+   two 64 KiB pages, the grid controller in 34). A program's memory budget
+   is a claim on main (built 2026-10-30: `with Footprint(bytes)` caps the
+   memory at the pages that cover the claim, gives the arenas' journal a
+   quarter of it up to 2 MB, and refuses a claim the start already
+   exceeds). Still open: the journal is sized to the program's own arenas,
+   and a program that cannot prove its whole run fits its claim is refused
+   when it is built; today a run that outgrows its claim stops saying
+   memory is exhausted. Without a claim the journal (2 MB), the grow step
+   (256 pages, 16 MB) and the ceiling (4 GB) are the wheel's constants
+   (`src/backends/wasm.mn`), sized for a compile of the compiler. A store
+   keeps its barrier wherever the store-age walk
    cannot prove its target is its own extent's, which today includes every
    store in a module that yields: the judgment does not yet know which
    frames can suspend between an allocation and a store, so the compiler,
