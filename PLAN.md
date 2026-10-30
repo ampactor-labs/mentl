@@ -989,9 +989,10 @@ as unknown, never as passing.
   proposal sent to `mentl mcp` resolves the library the project runs with
   and not a sibling module of the project, because its text stands in
   `.build/mcp/` while it is judged, not beside `main.mn`. The gate's JSON
-  reader refuses a `\uXXXX` escape ("unrecognized escape sequence",
-  lib/json.mn), so a client that escapes non-ASCII is refused; a client
-  that sends UTF-8 raw, as Claude Code does, is read (measured 2026-10-29).
+  reader decodes a `\uXXXX` escape, a surrogate pair included, into the
+  UTF-8 bytes of its character, and refuses a surrogate half alone
+  (2026-10-30, tests/micros/mn-json-unicode-escape.mn), so a client that
+  escapes non-ASCII is read as one that sends UTF-8 raw.
 - **The judgment is one pass; schemes are still values** (§11.3): a candidate
   is judged against a version of the one live graph, and a declaration's type
   is frozen when its judgment exits.

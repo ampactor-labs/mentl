@@ -1,0 +1,21 @@
+// expect: 55
+// A JSON string's `\uXXXX` escape is the UTF-8 bytes of the character it
+// names: `caf\u00e9` reads as the five bytes of "café", and the surrogate
+// pair `\ud83d\ude00` as the four bytes of one character. A surrogate half
+// alone names no character and is refused. The library before this rule
+// refused every `\u` escape ("unrecognized escape sequence"), and this
+// program answered 1.
+import json
+
+fn read_len(text) = match json_parse(text) {
+  JOk(JStr(s), _) => byte_len(s),
+  JOk(_, _) | JErr(_, _) => 0,
+}
+
+fn refused(text) = match json_parse(text) {
+  JErr(_, _) => 1,
+  JOk(_, _) => 0,
+}
+
+fn main() =
+  read_len("\"caf\\u00e9\"") * 10 + read_len("\"\\ud83d\\ude00\"") + refused("\"\\ud83d\"")

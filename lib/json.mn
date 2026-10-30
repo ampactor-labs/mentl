@@ -14,9 +14,9 @@
 //
 // A number is the Int an integer token spells (JInt), or the Float the
 // medium's own reader makes of any other number (JNum), so an integer field
-// (a line, a column, an id) is read as the Int it was written as.
-// \uXXXX Unicode escapes deferred to JSON.unicode peer
-// sub-handle (rare in LSP traffic; ASCII covers the common path).
+// (a line, a column, an id) is read as the Int it was written as. A
+// `\uXXXX` escape in a string is read as the UTF-8 bytes of the character
+// it names (`unicode_escape`).
 import strings
 
 // JsonValue — the canonical typed JSON representation. Six variants
@@ -255,23 +255,97 @@ fn handle_escape(src, pos, buf, written, cap) = if pos >= byte_len(src) {
   JErr("escape sequence cut off", pos)
 } else {
   let e = byte_at(src, pos)
-  match decode_escape(e) {
-    (b_out, ok) => if ok {
-      match grow_buf_if_needed(buf, written, cap) {
-        (buf2, cap2) => {
-          store_i8(addr_at(buf2, 8 + written), b_out)
-          scan_string_loop(src, pos + 1, buf2, written + 1, cap2)
-        },
-      }
-    } else {
-      JErr("unrecognized escape sequence", pos)
-    },
+  if e == 117 {
+    unicode_escape(src, pos + 1, buf, written, cap)
+  } else {
+    match decode_escape(e) {
+      (b_out, ok) => if ok {
+        match grow_buf_if_needed(buf, written, cap) {
+          (buf2, cap2) => {
+            store_i8(addr_at(buf2, 8 + written), b_out)
+            scan_string_loop(src, pos + 1, buf2, written + 1, cap2)
+          },
+        }
+      } else {
+        JErr("unrecognized escape sequence", pos)
+      },
+    }
   }
 }
 
+// `\uXXXX` — one UTF-16 code unit in four hex digits, written into the
+// string as the UTF-8 bytes of the character it names. A high surrogate is
+// read with the low one that must follow it (`😀` is one
+// character); either half alone names no character and is refused.
+fn unicode_escape(src, pos, buf, written, cap) = match hex4_at(src, pos) {
+  None => JErr("a \\u escape needs four hex digits", pos),
+  Some(unit) => if unit >= 55296 && unit <= 56319 {
+    match low_surrogate_at(src, pos + 4) {
+      Some(low) => write_code_point(src, pos + 10, 65536 + (unit - 55296) * 1024 + (low - 56320), buf, written, cap),
+      None => JErr("a high surrogate escape is not followed by its low half", pos),
+    }
+  } else if unit >= 56320 && unit <= 57343 {
+    JErr("a low surrogate escape has no high half before it", pos)
+  } else {
+    write_code_point(src, pos + 4, unit, buf, written, cap)
+  },
+}
+
+// The value of the four hex digits at `pos`, or None where one is missing.
+fn hex4_at(src, pos) = if pos + 4 > byte_len(src) {
+  None
+} else {
+  let a = byte_at(src, pos)
+  let b = byte_at(src, pos + 1)
+  let c = byte_at(src, pos + 2)
+  let d = byte_at(src, pos + 3)
+  if is_hex_byte(a) && is_hex_byte(b) && is_hex_byte(c) && is_hex_byte(d) {
+    Some(((hex_val(a) * 16 + hex_val(b)) * 16 + hex_val(c)) * 16 + hex_val(d))
+  } else {
+    None
+  }
+}
+
+// The low half of a surrogate pair, written as the `\uXXXX` at `pos`.
+fn low_surrogate_at(src, pos) = if pos + 6 <= byte_len(src) && byte_at(src, pos) == 92 && byte_at(src, pos + 1) == 117 {
+  match hex4_at(src, pos + 2) {
+    Some(low) => if low >= 56320 && low <= 57343 { Some(low) } else { None },
+    None => None,
+  }
+} else {
+  None
+}
+
+// A character's UTF-8 bytes appended to the string being read; the scan
+// resumes after the escape.
+fn write_code_point(src, next, cp, buf, written, cap) = match utf8_bytes(cp) |> fold((buf, written, cap), append_byte) {
+  (buf2, written2, cap2) => scan_string_loop(src, next, buf2, written2, cap2),
+}
+
+fn append_byte(acc, b) = match acc {
+  (buf, written, cap) => match grow_buf_if_needed(buf, written, cap) {
+    (buf2, cap2) => {
+      store_i8(addr_at(buf2, 8 + written), b)
+      (buf2, written + 1, cap2)
+    },
+  },
+}
+
+// The UTF-8 bytes of a code point: one byte below 128, then two, three or
+// four, each byte after the first carrying six of its bits.
+fn utf8_bytes(cp) = if cp < 128 {
+  [cp]
+} else if cp < 2048 {
+  [192 + cp / 64, 128 + cp % 64]
+} else if cp < 65536 {
+  [224 + cp / 4096, 128 + cp / 64 % 64, 128 + cp % 64]
+} else {
+  [240 + cp / 262144, 128 + cp / 4096 % 64, 128 + cp / 64 % 64, 128 + cp % 64]
+}
+
 // decode_escape — map escape character to its byte. Returns
-// (byte, ok). H6 over the 8 recognized escape codes; \u defers to
-// JSON.unicode peer.
+// (byte, ok), over the eight one-byte escape codes; `\u` names a
+// character and is read before this (`unicode_escape`).
 //
 // \"
 fn decode_escape(e) = if e == 34 {

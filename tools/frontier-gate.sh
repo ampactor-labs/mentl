@@ -3237,7 +3237,7 @@ for i in "${!compilers[@]}"; do
   # mount, every other leg's mount) — the engine meets the surface.
   # main declares `with Pure` since T2 (2026-10-13), so its clause is what
   # stands on `double` and the teach read answers `→ add` for it; a lock
-  # nothing stands on is no longer taught.
+  # nothing stands on is no longer taught. All three proposals prove, the third sent with a `é`.
   printf 'fn double(x) = x * 2\n\nfn main() with Pure = double(21)\n' > "$ses_dir/main.mn"
   "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ses_dir::." --dir "$ROOT::/mentl-home" "$compiler" mcp \
     < "$ROOT/tests/frontier/mcp-resident-session.jsonl" >"$ses_dir/out.jsonl" 2>"$ses_dir/err.log"
@@ -3258,7 +3258,7 @@ for i in "${!compilers[@]}"; do
      && grep -q 'Nothing in this module uses Alloc' "$ses_dir/out.jsonl" \
      && grep -qE 'annotation density|→ add' "$ses_dir/out.jsonl" \
      && ! grep -qE 'iterate (uses|performs) ' "$ses_dir/out.jsonl" \
-     && [ "$(grep -c 'PROVEN — every claim in the program is proven' "$ses_dir/out.jsonl")" = "2" ]; then
+     && [ "$(grep -c 'PROVEN — every claim in the program is proven' "$ses_dir/out.jsonl")" = "3" ]; then
     pass "resident session: one derivation, live query + at + audit + teach reads, propose coexists and resolves the library"
   else
     fail "resident session (resident-lines=$(grep -c 'session: graph resident' "$ses_dir/err.log"); see $ses_dir/out.jsonl)"
