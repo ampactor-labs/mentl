@@ -121,8 +121,8 @@ def main():
     for p in sorted(paths - head_paths):
         if SCRIPT.search(p) and not p.startswith("ide/"):
             refusals.append(f"{p}: a new script — grow the medium (a verb in src/), not a sidecar")
-        if p.endswith(".md"):
-            refusals.append(f"{p}: a new document — the three documents are the read-path")
+        if p.endswith(".md") and p != "MENTL_MEMORY.md":
+            refusals.append(f"{p}: a new document — the read path is MENTL_MEMORY.md, CLAUDE.md, PLAN.md and docs/SYNTAX.md")
 
     if refusals:
         print("✗ OBEY GATE — a red gate is obeyed by fixing what it measures:")

@@ -3825,6 +3825,8 @@ are listed here by name instead of being left there silently.)*
 
 ## Authority
 
+MENTL_MEMORY.md, the memory north star, takes precedence over this document.
+
 This document is the authority on syntax. It overrides any claim about syntax in `CLAUDE.md`/`PLAN.md` (the three live documents) and in the archived `docs/**` files (kept only in git history: DESIGN.md, SUBSTRATE.md, the per-module specs). Where any of them conflicts with SYNTAX.md, SYNTAX.md is correct.
 
 Mentl's discipline applies to syntax. Every form in this document was decided by asking the eight interrogations, one per kernel primitive (`PLAN.md §2`; the table lives in `CLAUDE.md`) and one per Mentl tentacle: graph (what AST does it produce?), handler and inferred resume cardinality (what installed handler reads it, and what cardinality does the arm body prove?), verb (which topology?), row (what `+ - & !` constraint do the body's op-call sites prove?), ownership (what `own`/`ref` does the use count infer?), refinement (what predicate does the path narrow?), gradient (what annotation input or body structure unlocks the cursor's projection here?), and Reason (what edge does it leave for the Why Engine?). Forms that failed any of the eight were rejected. **Annotations declare inputs to the cursor, never the emergent property itself.**

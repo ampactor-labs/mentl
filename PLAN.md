@@ -1,5 +1,7 @@
 # Mentl — PLAN.md
 
+MENTL_MEMORY.md, the memory north star, takes precedence over this document.
+
 > **The three documents.** `CLAUDE.md` says how to work on Mentl. This file
 > holds the design: the thesis, the kernel, the decisions already made, where
 > the code still falls short of the design and, in §11, the one list of open

@@ -1,9 +1,10 @@
 // sections.mn — the read path, by section (`mentl map`)
 //
-// A session reads CLAUDE.md whole and reaches PLAN.md and docs/SYNTAX.md
-// through their parts: the map is a line per heading and per numbered
-// paragraph its bold words lead (PLAN §11's steps, §9's laws), each with
-// the line it starts at and its size, and a part is served by its id, its
+// A session reads MENTL_MEMORY.md, the north star, first and whole: it takes
+// precedence over every other document and is never edited. It reads
+// CLAUDE.md whole, and PLAN.md and docs/SYNTAX.md through their parts. The map
+// is a line per heading and per numbered paragraph its bold words lead, each
+// with the line it starts at and its size, and a part is served by its id, its
 // title or a word it holds. The map is read off the documents' own lines
 // each time it is asked, so it never falls out of step with them.
 import fs
@@ -13,7 +14,7 @@ import lists
 import strings
 
 // The documents the map holds, in the order it lists them.
-fn read_path_docs() = ["PLAN.md", "docs/SYNTAX.md"]
+fn read_path_docs() = ["MENTL_MEMORY.md", "PLAN.md", "docs/SYNTAX.md"]
 
 // Where the documents stand: the home the install shim mounts, so a project
 // anywhere reads the medium's own documents, else the working directory,

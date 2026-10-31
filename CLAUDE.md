@@ -108,15 +108,17 @@ distance from it.
 
 ## What to read
 
-Three documents guide the work. Read this one in full every session. Read the
+Four documents guide the work. Read this one in full every session. Read the
 other two in parts.
 
+- `MENTL_MEMORY.md`, the north star, read whole at the start of every session. It takes precedence over every other document, this one included, and is never edited: the pre-commit hook refuses a commit that changes it.
 - `PLAN.md` holds the design: the thesis, the kernel, the decisions, the
   current state (§7) and the only list of open work (§11).
 - `docs/SYNTAX.md` is the authority on how Mentl code is written.
 
-A session starts with `mentl map`, which lists every heading of both
-documents and every §11 step with its line number and size. `mentl map <id,
+A session starts with `mentl map`, which lists MENTL_MEMORY.md, the north
+star, first, then every heading of the other documents and every §11 step
+with its line number and size. `mentl map <id,
 title or word>` prints one part, such as `mentl map §11.1` or `mentl map
 "Resume discipline"`, and `mentl mcp` serves the same reads. Before acting, a
 landing reads PLAN §0, its own §11 step, and every part it touches. Brief an
@@ -195,6 +197,7 @@ the way past it. No flag skips any of them.
 At commit time `.githooks/pre-commit` runs. Install it with
 `tools/setup-git-hooks.sh`, and never commit with `--no-verify`.
 
+- A commit that changes, renames or deletes MENTL_MEMORY.md is refused.
 - The obey gate (`tools/obey-gate.py`) refuses a commit that raises a limit,
   deletes a bound, adds an expected failure or a silencer, records a partly
   finished landing, adds a script or a `.md` file, or adds lines under

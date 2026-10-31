@@ -37,6 +37,12 @@ mapfile -t staged_src < <(
       | grep -E '\.mn$' || true
 )
 
+# MENTL_MEMORY.md is the north star: once HEAD holds it, no commit may
+# change, rename or delete it.
+if git cat-file -e HEAD:MENTL_MEMORY.md 2>/dev/null && ! git diff --cached --quiet HEAD -- MENTL_MEMORY.md; then
+    echo "MENTL_MEMORY.md is the north star and is never edited. Change the work to match it."; exit 1
+fi
+
 # ─── Gate −1: the obey gate — a red gate is obeyed, never satisfied ──
 # A ceiling raised, a bound dropped, a red leg declared expected, a
 # silencer added, an OPEN peer parked: each turns a gate green without
