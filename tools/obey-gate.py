@@ -60,7 +60,7 @@ def tracked(rev):
 
 
 def board_bounds(text):
-    return {m.group(2).strip(): int(m.group(1)) for m in re.finditer(r"Bound\(\{ceiling: (\d+), question: (.+?)\}\)", text)}
+    return {m.group(2).strip(): int(m.group(1)) for m in re.finditer(r"Bound\(\{ceiling: (\d+), (?:question|counter): (.+?)\}\)", text)}
 
 
 def baseline_maxes(text):

@@ -289,8 +289,8 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
 5. **Pin once, with `mentl land`, when every gate passes.** The march reports
    CLEAN (m2 equals m3, pin m2), TRANSITION (m3 equals m4, pin m3) or BROKEN.
    It also requires the candidate's peak arena memory, the "line peak" its
-   self-compile prints, and its wall-clock time to stay within the boot's on
-   the same wheel. On a trap, diff the two emitted modules first (PLAN §8,
+   self-compile prints, the most entries its journal held, and its
+   wall-clock time to stay within the boot's on the same wheel. On a trap, diff the two emitted modules first (PLAN §8,
    forensics). It then stops for you to replace its placeholder line in
    `boot/PROVENANCE.md` with one sentence describing the change. Running
    `mentl land` again reads the results back on the new boot.
@@ -325,9 +325,12 @@ Measure before you claim a cause. `bash tools/profile-self.sh` samples the
 compiler compiling itself, and `tools/guest-profile.py` names the callers.
 Eight read-throughs once missed a cost that one profile found in a minute. A
 change justified by a number but by no rule is the wrong change. The board's
-cost limits only go down. The line peak is compared with the boot compiling
-the same wheel, so it measures the compiler rather than the size of its
-source, and nothing a commit writes can move it.
+cost limits only go down. The line peak and the journal's high-water are
+compared with the boot compiling the same wheel, so they measure the
+compiler rather than the size of its source, and nothing a commit writes
+can move them. A count of residue events, such as the regions the
+self-compile kept at exits, does not grow with the source, so it is a board
+bound at its measured value.
 
 ## Mentl builds Mentl
 

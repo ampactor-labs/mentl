@@ -42,17 +42,12 @@ trap_lines() { grep -nE 'out of bounds|wasm trap|undefined element|unreachable|o
 # ~300 wheel-lines/min, ~19MB/min; the profile is Hβ.m2.compile-alloc-profile,
 # instantiate tree-clones the prime suspect). The old 480s cap predates the
 # union_row-divergence fix, when every long run meant the infinite loop.
-# Every leg runs MEASURED (§5.O cost-on-the-board; the arena's build step 0):
-# GNU time writes `<wall-s> <peak-rss-KB>` beside the wat, the march prints
-# it, the pin's mechanical block carries it, and selfcompile_peak_kb_max in
-# tools/verify-baseline.txt ratchets the peak — raising the ceiling is an
-# explicit in-commit act with a fixed-input justification. Beside it the
-# IMAGE's own high-water — the guest's `arena:` line, the bump line's peak —
-# is a pure function of the computation, the same on every machine the board
-# runs on, and read_line holds it against the boot (2026-10-13: the CI
-# runner read a boot's peak RSS at 471,568 KB where this machine read 460,108,
-# the engine's and the host allocator's share differing by machine; the line
-# peak cannot).
+# Every leg is measured. GNU time writes `<wall-s> <peak-rss-KB>` beside the
+# wat; the march prints both, the pin's mechanical block carries them, and
+# selfcompile_peak_kb_max in tools/verify-baseline.txt holds the RSS peak.
+# The image's own readings (the guest's `arena:` line: the bump line's peak
+# and the journal's high-water) depend on the computation alone, so read_line
+# holds each against the boot compiling the same wheel; RSS varies by machine.
 # The wheel is src/main.mn's import DAG, judged cold in a hermetic root
 # (wt_wheel_root): the march's input is the module tree, never an assembled
 # text. A generation leg runs the compiler's own `march` verb — the fixed
@@ -372,23 +367,28 @@ read_cost() {  # read_cost <leg> <compiler> — sets MARCH_COST from $OUT/<leg>.
   fi
 }
 read_cost m3 "$OUT/m2.wasm"
-# ── the IMAGE's own high-water: the guest prints its bump line's peak on the
-# leg's stderr (`arena: … line peak N KB`), a reading no machine moves, held
+# ── the IMAGE's own readings: the guest prints its bump line's peak and the
+# most entries its journal held on the leg's stderr (`arena: … line peak N KB,
+# journal high M entries`). Each depends on the computation alone and is held
 # against the PINNED BOOT compiling the same wheel (run once a march), so the
-# wheel growing never reads as the compiler growing and nothing a commit
-# writes moves either number (Morgan, 2026-10-21).
-read_line() {  # read_line <leg> <compiler> — ratchets the image's line peak from $OUT/<leg>.err
-  local leg="$1" line_kb allow
+# wheel growing never reads as the compiler growing (Morgan, 2026-10-21).
+read_line() {  # read_line <leg> <compiler> — ratchets the image's line peak and journal high-water from $OUT/<leg>.err
+  local leg="$1" line_kb journal allow
   line_kb=$(grep -oE 'line peak [0-9]+ KB' "$OUT/$leg.err" 2>/dev/null | head -1 | grep -oE '[0-9]+')
-  cmp -s "$2" "$BOOT" && BOOT_LINE_KB="${BOOT_LINE_KB:-$line_kb}"  # the boot's own bytes: its peak, by identity
-  [ -n "${BOOT_LINE_KB:-}" ] || { gen_once "$BOOT" "$OUT/m1.wat" "$OUT/m1.err"; BOOT_LINE_KB=$(grep -oE 'line peak [0-9]+ KB' "$OUT/m1.err" | head -1 | grep -oE '[0-9]+'); }
+  journal=$(grep -oE 'journal high [0-9]+ entries' "$OUT/$leg.err" 2>/dev/null | head -1 | grep -oE '[0-9]+')
+  cmp -s "$2" "$BOOT" && { BOOT_LINE_KB="${BOOT_LINE_KB:-$line_kb}"; BOOT_JOURNAL="${BOOT_JOURNAL:-$journal}"; }  # the boot's own bytes: its readings, by identity
+  [ -n "${BOOT_LINE_KB:-}" ] || { gen_once "$BOOT" "$OUT/m1.wat" "$OUT/m1.err"; BOOT_LINE_KB=$(grep -oE 'line peak [0-9]+ KB' "$OUT/m1.err" | head -1 | grep -oE '[0-9]+'); BOOT_JOURNAL=$(grep -oE 'journal high [0-9]+ entries' "$OUT/m1.err" | head -1 | grep -oE '[0-9]+'); }
   allow=$(grep -E '^selfcompile_line_peak_kb_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
-  MARCH_COST="${MARCH_COST:+$MARCH_COST · }line peak ${line_kb:-?} KB (boot ${BOOT_LINE_KB:-?} KB)"
-  echo "· image: line peak ${line_kb:-?} KB; the pinned boot on the same wheel ${BOOT_LINE_KB:-?} KB"
-  [ -n "${line_kb:-}" ] && [ -n "${BOOT_LINE_KB:-}" ] && [ "$line_kb" -le $(( BOOT_LINE_KB + ${allow:-0} )) ] && return 0
-  echo "✗ LINE RATCHET: line peak ${line_kb:-?}KB against the boot's ${BOOT_LINE_KB:-?}KB on the same wheel plus ${allow:-0}KB"
-  echo "  (selfcompile_line_peak_kb_max in $BASELINE) — a deterministic reading; the landing pays it down; repin refused."
-  costok=0
+  MARCH_COST="${MARCH_COST:+$MARCH_COST · }line peak ${line_kb:-?} KB (boot ${BOOT_LINE_KB:-?} KB) · journal high ${journal:-?} entries (boot ${BOOT_JOURNAL:-?})"
+  echo "· image: line peak ${line_kb:-?} KB, journal high ${journal:-?} entries; the pinned boot on the same wheel ${BOOT_LINE_KB:-?} KB, ${BOOT_JOURNAL:-?} entries"
+  if [ -z "${line_kb:-}" ] || [ -z "${BOOT_LINE_KB:-}" ] || [ "$line_kb" -gt $(( BOOT_LINE_KB + ${allow:-0} )) ]; then
+    echo "✗ LINE RATCHET: line peak ${line_kb:-?}KB against the boot's ${BOOT_LINE_KB:-?}KB on the same wheel plus ${allow:-0}KB (selfcompile_line_peak_kb_max in $BASELINE) — a deterministic reading; the landing pays it down; repin refused."
+    costok=0
+  fi
+  if [ -z "${journal:-}" ] || [ -z "${BOOT_JOURNAL:-}" ] || [ "$journal" -gt "$BOOT_JOURNAL" ]; then
+    echo "✗ JOURNAL RATCHET: the journal held ${journal:-?} entries at most against the boot's ${BOOT_JOURNAL:-?} on the same wheel — a deterministic reading; the landing pays it down; repin refused."
+    costok=0
+  fi
 }
 read_line m3 "$OUT/m2.wasm"
 # ── the compiler's own WALL, as a share of the pinned boot's on the same wheel

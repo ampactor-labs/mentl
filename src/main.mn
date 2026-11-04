@@ -282,7 +282,14 @@ fn march_run() = match march_entry() {
         } else {
           fs_rename(new_path, wat_path)
           print_string("march: {int_to_str(len(names))} modules · census 0 · the generation is {wat_path}\n")
-          0
+          match self_compile_breaches() {
+            [] => 0,
+            breaches => {
+              let lines = (breaches) >< (self_compile_refusal)
+              print_string(join("", lines))
+              1
+            },
+          }
         }
       },
     }
@@ -2430,6 +2437,8 @@ fn verify_board(entry_module: String) = {
   let narrated = diag_narrations()
   print_string("verify: the medium's verdict on {entry_module}\n")
   each(print_board_line, board)
+  let listed = ((self_compile_bounds()) >< (self_compile_listing)) |> join("", ??)
+  print_string(listed)
   let narration_breach = if narrated > 0 {
     print_string("  ✗ {int_to_str(narrated)} narration(s) over every module of the link — ROSE past 0 (they print above, each at its module)\n")
     1

@@ -789,8 +789,15 @@ as unknown, never as passing.
   journal's size, the 256-page grow step and the 4 GB ceiling are the
   wheel's constants (§11.8). The
   runtime counts exits, kept regions, bytes reclaimed and moved, the line
-  peak and suspended arenas (`arena_stat`), and the march prints them for
-  the self-compile; none is on the board yet. A program reads its own
+  peak, suspended arenas and the journal's high-water (`arena_stat`), and
+  the march prints them for the self-compile. The regions kept at exits are
+  on the board at 0 (2026-11-04, `src/board.mn`): the march verb refuses a
+  generation whose compile kept one, and `mentl verify` lists the bound.
+  The journal's high-water is a size that grows with the wheel, as the line
+  peak does, so the march holds it against the boot compiling the same
+  wheel (`read_line` in tools/march.sh), and the pin's cost line carries
+  both readings: on this wheel both compilers held 136,548 entries of 8
+  bytes at most. A program reads its own
   footprint through `memory_pages`, which lowers to `memory.size`; it took
   two pins, the emitter's roster first and the library's declaration second,
   because the boot judges the library's effects by its own roster (§6), and

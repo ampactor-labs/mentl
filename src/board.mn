@@ -47,6 +47,37 @@ import query
 // refuses as a bound rather than counting nothing (`located_answer`).
 type Bound = {ceiling: Int, question: Question}
 
+// A count the compiler holds its own self-compile to: the arena counter, the
+// most it may read, and what it counts, in words. Only a compile of the
+// compiler can measure it, so the march verb (src/main.mn) reads its own run
+// against each bound after it writes the generation. A bound here counts
+// events of the residue, which do not grow with the wheel. A size the
+// self-compile reaches (the line peak, the journal's high-water) grows with
+// the wheel, so the march holds it against the boot compiling the same wheel.
+type SelfCompileBound = {ceiling: Int, counter: ArenaStat, label: String}
+
+// The regions the self-compile keeps at exits, which MENTL_MEMORY.md asks the
+// board to hold at its measured value. 2026-11-04: 0, since the parse reads
+// each top-level statement in an arena of its own.
+fn self_compile_bounds() =
+  [SelfCompileBound({ceiling: 0, counter: ArKept, label: "regions its arenas kept at exits"})]
+
+// The self-compile bounds this run of the compiler has passed.
+fn self_compile_breaches() = self_compile_bounds() |> filter(self_compile_breached)
+
+// Whether this run's count passed a bound's ceiling.
+fn self_compile_breached(b: SelfCompileBound) -> Bool = arena_stat(b.counter) > b.ceiling
+
+// The refusal for one bound this run passed, in plain words.
+fn self_compile_refusal(b: SelfCompileBound) -> String =
+  "march: while it compiled itself the compiler counted {int_to_str(arena_stat(b.counter))} {b.label}, and src/board.mn allows {int_to_str(b.ceiling)}, so the generation is refused\n"
+
+// The board's line for one self-compile bound, as mentl verify prints it: the
+// count the march holds the self-compile to. Only a compile of the compiler
+// measures it, so mentl verify names the ceiling and counts nothing for it.
+fn self_compile_listing(b: SelfCompileBound) -> String =
+  "  · the march holds the self-compile to {int_to_str(b.ceiling)} {b.label}\n"
+
 // What the medium found when it looked: the SITES, not a count of them.
 //
 // This arm carried an `Int` for one day and the Int was a COPY — `census_sites`
