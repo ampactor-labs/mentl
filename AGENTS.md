@@ -1,10 +1,13 @@
 # Mentl — agent entry point
 
 This file points to the documents that hold the rules and adds no rules of its
-own. Before you propose any edit, read CLAUDE.md in full and the other two
-documents in parts. `mentl map` lists their parts, and `mentl map <id>` prints
-one of them.
+own. Before you propose any edit, read MENTL_MEMORY.md and CLAUDE.md in full
+and the other two documents in parts. `mentl map` lists their parts, and
+`mentl map <id>` prints one of them.
 
+- `MENTL_MEMORY.md` is the north star for memory and the order of the work. It
+  takes precedence over every other document, this one included, and it is
+  never edited.
 - `CLAUDE.md` holds the method: the main design rule, the thesis used as the
   acceptance test for every landing, consulting the medium before any edit,
   and the working loop.
@@ -12,8 +15,8 @@ one of them.
   decisions, what the artifact does not do yet (§7), and the only list of open
   work (§11), ordered by how the five mechanisms (§4⑧) depend on each other.
 - `docs/SYNTAX.md` holds the surface syntax and is the authority on how the
-  language is written. It overrides any claim about syntax made anywhere else,
-  including in this file.
+  language is written. It overrides any claim about syntax made anywhere else
+  but MENTL_MEMORY.md, including in this file.
 
 Nothing else is required reading. History is in `git log`, and the chain of
 pins is in `boot/PROVENANCE.md`. When a document and the artifact disagree,

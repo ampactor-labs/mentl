@@ -13,8 +13,14 @@ import lists
 
 import strings
 
-// The documents the map holds, in the order it lists them.
-fn read_path_docs() = ["MENTL_MEMORY.md", "PLAN.md", "docs/SYNTAX.md"]
+// The documents the map holds, in the order it lists them, each with the
+// prefix its top parts' ids take, so no two documents share an id: the north
+// star's N1, PLAN's § and SYNTAX's S1. A PLAN heading writes its own § number.
+fn read_path_docs() = [
+  {path: "MENTL_MEMORY.md", prefix: "N"},
+  {path: "PLAN.md", prefix: "§"},
+  {path: "docs/SYNTAX.md", prefix: "S"}
+]
 
 // Where the documents stand: the home the install shim mounts, so a project
 // anywhere reads the medium's own documents, else the working directory,
@@ -22,8 +28,8 @@ fn read_path_docs() = ["MENTL_MEMORY.md", "PLAN.md", "docs/SYNTAX.md"]
 fn read_path_root() = if fs_exists("/mentl-home/PLAN.md") { "/mentl-home/" } else { "" }
 
 // A part of a document the map lists: the document, its id (a PLAN heading's
-// own `§` number, else its place among its siblings under its parent's id,
-// `S3.2`, PLAN §11's step N `§11.N`), its title, its
+// own `§` number, else its place among its siblings under its parent's id:
+// SYNTAX's `S3.2`, the north star's `N3.2`, PLAN §11's step N `§11.N`), its title, its
 // depth (the document 1, a `##` 2, a `###` or a paragraph under a `##` 3),
 // the line it starts at, counted from 1, and its lines, its parts included.
 type DocSection = {depth: Int, doc: String, id: String, line: Int, text: [String], title: String}
@@ -40,7 +46,7 @@ type DocMark
 fn read_path_map(name) = {
   let root = read_path_root()
   if fs_exists("{root}PLAN.md") {
-    let parts = read_path_docs() |> flat_map({ doc => doc_sections(doc, fs_read_file("{root}{doc}")) })
+    let parts = read_path_docs() |> flat_map(doc_parts(root, ??))
     match name {
       None => ("{read_path_lede()}{parts |> map(index_line) |> join("\n")}\n", 0),
       Some(words) => serve_named(words, parts),
@@ -56,14 +62,20 @@ fn read_path_map(name) = {
 fn read_path_lede() =
   "The read path by part — each line its id, its title, the line it starts at and its size. `mentl map <id, title or word>` serves one; a document's name serves it whole. CLAUDE.md, the method, is read whole.\n"
 
+// The parts of one document of the read path, read from where the documents stand.
+fn doc_parts(root: String, entry) = doc_sections(entry, fs_read_file("{root}{entry.path}"))
+
 // A document's parts, in the order they stand: each heading with every line
 // up to the next heading as high as it, and each numbered paragraph with the
-// lines its body is indented under it.
-fn doc_sections(doc: String, body: String) = {
+// lines its body is indented under it. Its top parts take the entry's prefix.
+fn doc_sections(entry, body: String) = {
   let ls = lines(body)
   let marks = doc_marks(ls)
-  let placed =
-    fold({out: [], parents: [{count: 0, id: doc, level: 1}]}, place_mark(doc, ls, marks, ??, ??), marks)
+  let placed = fold(
+    {out: [], parents: [{count: 0, id: entry.prefix, level: 1}]},
+    place_mark(entry, ls, marks, ??, ??),
+    marks
+  )
   placed.out
 }
 
@@ -136,23 +148,23 @@ fn is_digit_byte(b) with Pure = b >= 48 && b <= 57
 // A mark placed among the parts: a heading closes every part as deep as it
 // and opens one, a numbered paragraph is a part of the heading it stands
 // under.
-fn place_mark(doc: String, ls, marks, placed, mark) = match mark {
+fn place_mark(entry, ls, marks, placed, mark) = match mark {
   HeadingAt(at, level, words) => {
     let up = filter({ p => p.level < level }, placed.parents)
-    let (id, title, parents) = heading_place(doc, up, level, words)
+    let (id, title, parents) = heading_place(entry.path, up, level, words)
     {
       out: push(
         placed.out,
         {
           depth: level,
-          doc,
+          doc: entry.path,
           id,
           line: at + 1,
           text: slice(ls, at, heading_end(marks, at, level, len(ls))),
           title,
         }
       ),
-      parents: push(parents, {count: 0, id, level}),
+      parents: push(parents, {count: 0, id: if level == 1 { entry.prefix } else { id }, level}),
     }
   },
   ItemAt(at, end_at) => {
@@ -161,7 +173,7 @@ fn place_mark(doc: String, ls, marks, placed, mark) = match mark {
     {
       out: push(
         placed.out,
-        {depth: last(parents).level + 1, doc, id, line: at + 1, text, title: bold_words(text)}
+        {depth: last(parents).level + 1, doc: entry.path, id, line: at + 1, text, title: bold_words(text)}
       ),
       parents,
     }
@@ -184,12 +196,12 @@ fn heading_place(doc: String, up, level, words: String) = {
 }
 
 // The id of the next part under the innermost open heading — its place among
-// its siblings, so PLAN §11's step N is §11.N — and the headings with that
-// place taken.
+// its siblings, so PLAN §11's step N is §11.N and a document's top parts take
+// its prefix (S3, N3) — and the headings with that place taken.
 fn next_child(parents) = {
   let parent = last(parents)
   let k = parent.count + 1
-  let id = if parent.level == 1 { "S{k}" } else { "{parent.id}.{k}" }
+  let id = if parent.level == 1 { "{parent.id}{k}" } else { "{parent.id}.{k}" }
   (id, push(drop_last(parents), {...parent, count: k}))
 }
 
