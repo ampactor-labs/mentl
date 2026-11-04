@@ -5587,15 +5587,17 @@ fn task_mvals_offset(yield_slots) = if yield_slots > 0 { 24 } else { 16 }
 // and the journal is allocated by an instance's first arena, below its mark,
 // rather than at `_start`, which a spawned instance never runs.
 //
-// The census rides five counters `arena_stat` reads: exits, kept exits, the
-// KB reclaimed and moved, and the highest line an exit reached.
+// The census rides seven counters `arena_stat` reads: exits, kept exits, the
+// KB reclaimed and moved, the highest line an exit reached, the arenas a
+// suspended computation left open, and the most entries the journal held when
+// an extent ended.
 fn emit_arena_runtime(start) = {
   let {journal, spawns, ..._} = start
   // The line this instance's arenas open at and reset.
   let line = if spawns { "(global.get $heap_ptr)" } else { "(call $heap_mark_impl)" }
   wat_emit("  (global $ar_depth (mut i32) (i32.const 0))\n  (global $ar_mark (mut i32) (i32.const 0))\n  (global $ar_jb (mut i32) (i32.const 0))\n  (global $ar_jn (mut i32) (i32.const 0))\n  (global $ar_jover (mut i32) (i32.const 0))\n")
   wat_emit("  (global $ar_m (mut i32) (i32.const 0))\n  (global $ar_t (mut i32) (i32.const 0))\n  (global $ar_bm (mut i32) (i32.const 0))\n  (global $ar_bmsz (mut i32) (i32.const 0))\n  (global $ar_rl (mut i32) (i32.const 0))\n  (global $ar_rn (mut i32) (i32.const 0))\n  (global $ar_ll (mut i32) (i32.const 0))\n  (global $ar_ln (mut i32) (i32.const 0))\n  (global $ar_lscan (mut i32) (i32.const 0))\n  (global $ar_c0 (mut i32) (i32.const 0))\n  (global $ar_cp (mut i32) (i32.const 0))\n  (global $ar_cend (mut i32) (i32.const 0))\n  (global $ar_dst (mut i32) (i32.const 0))\n  (global $ar_delta (mut i32) (i32.const 0))\n  (global $ar_abort (mut i32) (i32.const 0))\n")
-  wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n  (global $ar_susp (mut i32) (i32.const 0))\n")
+  wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n  (global $ar_susp (mut i32) (i32.const 0))\n  (global $ar_journal_high (mut i32) (i32.const 0))\n")
   // The block, the journal's entries of 8 bytes each (`journal_for`), is the
   // instance's FIRST allocation (`emit_start`), below every mark any code can take, so no
   // region, commit, keep or reset ever moves or frees it, and a persisted
@@ -5694,13 +5696,13 @@ fn emit_arena_runtime(start) = {
   // Leaving an instance, whether it exited or suspended: one level shallower,
   // and the journal holds only what the extent around it still needs — the
   // stores into memory older than ITS mark, or nothing at the outermost.
-  wat_emit("  (func $ar_pop (param $j0 i32) (param $o i32) (global.set $ar_depth (i32.sub (global.get $ar_depth) (i32.const 1))) (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0))) (else (call $ar_compact (local.get $j0) (local.get $o)))) (global.set $ar_mark (local.get $o)))\n")
+  wat_emit("  (func $ar_pop (param $j0 i32) (param $o i32) (if (i32.gt_u (global.get $ar_jn) (global.get $ar_journal_high)) (then (global.set $ar_journal_high (global.get $ar_jn)))) (global.set $ar_depth (i32.sub (global.get $ar_depth) (i32.const 1))) (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0))) (else (call $ar_compact (local.get $j0) (local.get $o)))) (global.set $ar_mark (local.get $o)))\n")
   // A SUSPENDED instance: a yield is unwinding through the exit, so nothing
   // the extent allocated may die — its region joins the extent around it, no
   // byte read or moved — and the census counts it.
   wat_emit("  (func $arena_suspend (param $j0 i32) (param $o i32) (global.set $ar_susp (i32.add (global.get $ar_susp) (i32.const 1))) (call $ar_pop (local.get $j0) (local.get $o)))\n")
   // The census read: a nullary ArenaStat IS its tag word, in declaration order.
-  wat_emit("  (func $arena_stat_impl (param $s i32) (result i32) (block $b5 (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 $b5 (local.get $s))) (return (global.get $ar_exits))) (return (global.get $ar_kept))) (return (global.get $ar_freed))) (return (global.get $ar_moved))) (return (global.get $ar_high))) (global.get $ar_susp))\n")
+  wat_emit("  (func $arena_stat_impl (param $s i32) (result i32) (block $b6 (block $b5 (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 $b5 $b6 (local.get $s))) (return (global.get $ar_exits))) (return (global.get $ar_kept))) (return (global.get $ar_freed))) (return (global.get $ar_moved))) (return (global.get $ar_high))) (return (global.get $ar_susp))) (global.get $ar_journal_high))\n")
 }
 
 // THE ARENA'S RE-ENTRY — the continuation segment a suspended arena wraps
