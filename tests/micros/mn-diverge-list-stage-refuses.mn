@@ -1,0 +1,9 @@
+// check: refuse E_EffectMismatch
+// Every list stage walks its list by an index today, and an index is no part
+// of the list, so a fold cannot yet claim it finishes. The claim holds once
+// the walk descends the list itself and allocates nothing.
+fn add(a, b) = a + b
+
+fn total(xs: [Int]) with !Diverge = fold(0, add, xs)
+
+fn main() = total([1, 2, 3])

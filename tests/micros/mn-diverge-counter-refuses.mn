@@ -1,0 +1,6 @@
+// check: refuse E_EffectMismatch
+// A counter that climbs toward a bound is a number at run time, not an edge
+// the graph carries, so climb cannot claim it always finishes.
+fn climb(i, n) with !Diverge = if i < n { climb(i + 1, n) } else { i }
+
+fn main() = climb(0, 3)

@@ -3313,25 +3313,23 @@ precondition, decided by the same walk (§«Exhaustiveness»).
 **Non-termination is a row fact too.** A computation that may never finish
 performs `Diverge` (lib/memory.mn), so `!Diverge` claims a function always
 finishes, and the judgment checks the claim through every function it calls.
-A function's calls of itself end when every call shrinks one of its
-parameters while it hands each earlier shrinking parameter back unchanged: a
-counter that climbs by a constant toward a bound the calls keep, one that
-falls by a constant toward a floor, one divided toward zero, a constructor's
-field or a list pattern's rest, or a link the runtime's list node holds. A
-bound the calls keep is a literal, a parameter every call hands back, a
-value bound outside the function, or the length of one, and the guard that
-holds the counter below it is read off the `if` and `&&` on the path to the
-call. `fn sum_to(i, n, acc) with !Diverge = if i < n { sum_to(i + 1, n, acc
-+ i) } else { acc }` checks and answers 10 for `sum_to(0, 5, 0)`, and `fn
-spin(n) with !Diverge = spin(n + 1)` is refused: "spin uses Diverge: at
-…:5:28, `spin` again, and no argument shrinks toward a bound at every such
-call" (tests/micros/mn-diverge-*.mn, tests/crown/*diverge*.mn). A list's
-element is no measure, since a list is written in place and can come to hold
-the value it was taken from. A cycle of two or more functions, a function
-handed on as a value inside its own cycle, and a loop that ends only when an
-effect's state reaches a bound (the course's `play`, which runs until the
-clock reaches its frame count) still perform `Diverge` (`PLAN.md` §11, the
-soundness core).
+A function's calls of itself end when every call hands one of its
+parameters a part of the value that parameter matched, a constructor's
+field or a list pattern's rest, while it hands each earlier such parameter
+back unchanged: a part was built before the value that holds it, so a walk
+down parts ends. Nothing else is read. `fn climb(i, n) with !Diverge = if i
+< n { climb(i + 1, n) } else { i }` is refused: "climb uses Diverge: at
+…:4:43, `climb` again, and no call hands one of its parameters a part of
+the value it matched" (tests/micros/mn-diverge-counter-refuses.mn), and a
+function handed to another that descends its list holds
+(tests/crown/sound-diverge-callback.mn). A list's element is no part, since
+a list is written in place and can come to hold the value it was taken
+from. A cycle of two or more functions, a function handed on as a value
+inside its own cycle, a loop that ends only when an effect's state reaches a
+bound (the course's `play`, which runs until the clock reaches its frame
+count), and every list stage's walk by an index
+(tests/micros/mn-diverge-list-stage-refuses.mn) still perform `Diverge`
+(`PLAN.md` §11, the soundness core).
 
 **Recursion depth costs memory; it must never be a hidden trap.** A row
 lists every way a computation can stop, so running out of stack must not be

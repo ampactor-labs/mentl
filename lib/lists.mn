@@ -516,9 +516,9 @@ fn flat_raw(list) = match addr_at(list, 4) |> load_i32 |> seq_shape {
 // A snoc node is [count][tag=1][left][last]: the last element sits at the
 // count less one, so past the range it is skipped, inside it it is the
 // range's last, and the left link holds the rest. A concat's destinations
-// are absolute, so its parts fill in either order: the smaller part first,
-// and the larger as the tail call, so the call stack holds at most log2(n)
-// frames whichever way a rope leans.
+// are absolute, so its parts fill in either order. The copy exists because a
+// list built by appends is a tree of snoc and concat nodes; a list one
+// binding owns, appended in place, has no tree to copy.
 fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
   ()
 } else {

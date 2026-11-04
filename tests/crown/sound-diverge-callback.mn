@@ -1,10 +1,13 @@
-// CROWN, the sound twin: the function handed to apply counts down to a
-// floor, so every call of it ends, and settle, which says it always
-// finishes, is accepted.
-fn down(n) = if n > 0 { down(n - 1) } else { n }
+// CROWN, the sound twin: the function handed to apply descends its list to
+// the end, each call handing on the rest of the list it matched, so every call
+// of it ends, and settle, which says it always finishes, is accepted.
+fn down(xs: [Int]) = match xs {
+  [_, ...rest] => down(rest),
+  [] => 0,
+}
 
 fn apply(f, x) = f(x)
 
-fn settle(x) with !Diverge = apply(down, x)
+fn settle(xs: [Int]) with !Diverge = apply(down, xs)
 
-fn main() = settle(3)
+fn main() = settle([3, 2, 1])

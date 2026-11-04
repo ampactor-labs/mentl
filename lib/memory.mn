@@ -213,16 +213,14 @@ effect Trap {
 }
 
 // Diverge — a computation that may never finish. A function that calls
-// itself performs it unless every such call shrinks one of its parameters,
-// handing each earlier shrinking parameter back unchanged: a counter that
-// climbs by a constant toward a bound the calls keep, one that falls by a
-// constant toward a floor, one divided toward zero, a part of the value the
-// parameter matched (a constructor's field or a list pattern's rest), or a
-// link the parameter's list node holds. A call into a cycle of two or more
-// functions, and a function handed on as a value inside its own cycle,
-// perform it too. So `!Diverge` claims a function always finishes, and the
-// judgment checks the claim through every function it calls. No
-// operations: the judgment charges it where a recursion has no measure.
+// itself performs it unless every such call hands one of its parameters a
+// part of the value that parameter matched (a constructor's field or a list
+// pattern's rest), handing each earlier such parameter back unchanged. A
+// call into a cycle of two or more functions, and a function handed on as a
+// value inside its own cycle, perform it too. So `!Diverge` claims a function
+// always finishes, and the judgment checks the claim through every function
+// it calls. No operations: the judgment charges it where a recursion is no
+// descent.
 effect Diverge {}
 
 // The live world's identity: the install chain from world_top() down, hashed

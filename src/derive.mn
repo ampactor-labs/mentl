@@ -2193,7 +2193,10 @@ fn rv_stmt(s, before, roots) = match s {
   SQuery(h, qh, v, l) => rv_query(h, qh, v, l, before, roots),
   SOut(_, _) => [],
   STwinCall(h, v, fh, name, _sym, _key, vals, _lins, _rt) => [LLet(h, v, LDirectCall(h, fh, name, false, vals))],
-  STail(h, fh, name, _sym, _key, vals, _lins) => [LLet(h, temp(h, 12), LDirectCall(h, fh, name, false, vals))],
+  // A tail call's result is a residual the backward sweep reads, and it
+  // stays the statement's value, so a branch whose value is the call still
+  // ends in that value.
+  STail(h, fh, name, _sym, _key, vals, _lins) => [LLet(h, temp(h, 12), LDirectCall(h, fh, name, false, vals)), LLocal(h, temp(h, 12))],
   SArena(h, v, stmts) => bound_choice(h, v, LArena(h, LBlock(h, rv_stmts(stmts, before, roots)))),
 }
 

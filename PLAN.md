@@ -1062,31 +1062,35 @@ as unknown, never as passing.
   matched the callee's spelling, so `fn put(store_i8, xs) = store_i8(xs,
   1)` no longer charges Mutate for a parameter that only shares an op's
   name (tests/micros/mn-store-named-parameter-is-a-value.mn).
-- **A recursion no measure bounds performs Diverge** (2026-10-30).
-  `!Diverge` claims a function always finishes. A reference to a function
-  or handler whose binding group is still being judged is noted in the
-  frame it is made in and decided where that frame ends: a function's own
-  plain calls of itself are bounded when every call shrinks one parameter
-  (a counter climbing toward a bound the calls keep, one falling toward a
-  floor, one divided toward zero, a constructor's field, a list pattern's
-  rest, or a link a list node holds), handing each earlier shrinking
-  parameter back unchanged; every other reference charges Diverge at its
-  site. `fn spin(n) with !Diverge = spin(n + 1)` is refused, "`spin` again,
-  and no argument shrinks toward a bound at every such call", and counters,
-  countdowns, list rests and `map` hold (tests/micros/mn-diverge-*.mn;
-  crown 191 with three new crucibles). `mentl why examples/grid/station.mn
-  decide Diverge` answers that decide never uses Diverge. The judgment
-  found three library functions declared `with Pure` that could recurse
-  forever (`float_floor_log10` and `log_normalized` on a value that is not
-  finite, `power_by_squaring` on a NaN exponent), which now count their
-  steps, and recursions it could not read (`turn_of`, `float_pow10`,
-  `float_scale10`, `pow2`, `atan`, `intersperse`, `scanl`), which are
-  written so it can. The list flattening is one walk
-  down the node's links that fills a concat's smaller part first, so its
-  stack holds at most log2(n) frames without the explicit stack it kept.
-  The compiler's own rows share one built row per vocabulary word
-  (`vocab_handle`), and its self-compile's line peak fell 4,746 KB below
-  the boot's on the same source.
+- **A recursion that is no descent performs Diverge** (2026-10-30, the
+  measure reduced to part edges 2026-11-04). `!Diverge` claims a function
+  always finishes. A reference to a function or handler whose binding
+  group is still being judged is noted in the frame it is made in and
+  decided where that frame ends: a function's own plain calls of itself
+  are bounded when every call hands one of its parameters a part of the
+  value that parameter matched (a constructor's field or a list pattern's
+  rest), handing each earlier such parameter back unchanged; every other
+  reference charges Diverge at its site. A counter is no part of anything,
+  so `fn climb(i, n) with !Diverge = if i < n { climb(i + 1, n) } else { i
+  }` is refused, "`climb` again, and no call hands one of its parameters a
+  part of the value it matched" (tests/micros/mn-diverge-counter-refuses.mn),
+  and a list's rest holds (tests/crown/sound-diverge-callback.mn). Every
+  list stage performs Diverge until the list walk descends the list itself
+  and allocates nothing (tests/micros/mn-diverge-list-stage-refuses.mn).
+  `mentl why examples/grid/station.mn decide Diverge` answers that decide
+  never uses Diverge. exp, log, sin, cos, atan and pow2 are fixed sequences
+  of `|>` stages with no recursion, and turn_of, sin and cos take a
+  `ReducibleAngle`, an angle below 2^53 in magnitude, which the judgment
+  checks at every call (`sin(1e23)` is refused at compile time; the course's
+  phases prove in range). With no recursion in the series, the reverse
+  projection carries them: a product seed over the course's adaptive
+  shaper is answered in one sweep and agrees with central differences to
+  1e-6 (tests/frontier/derive-crucible/grad-series.mn answers 42), and the
+  reverse twin's forward half keeps a tail call's value where the call is a
+  branch's own, which the recursion refusal had hidden. The float printer's
+  walk by decades and its power countdowns still perform Diverge, and their
+  claims say so. The compiler's own rows share one built row per vocabulary
+  word (`vocab_handle`).
 - **A hole's fan names what the arms beside it use first** (2026-10-30).
   The binders in scope and the module's values are offered beside the
   literal seeds and judged by the hole's refinement like any candidate. A
@@ -1408,15 +1412,17 @@ the last three.
    of `main` and of its initializers; each op belongs to the effect that
    matches what it does, the ops of a `*Read` effect write nothing (held at
    zero by a census), word arithmetic is `Pure`, memory's writes are an
-   effect of their own, `MemoryWrite`, and a recursion no measure bounds
-   performs `Diverge` (all built 2026-10-30, §7). The measure reads one
-   function's calls of itself. It does not yet read a cycle of two or more
-   functions, a loop that ends when an effect's state reaches a bound (the
-   course's `play`, which runs until the clock reaches its frame count), a
-   list halved by slices (the prelude's `sort`), an interval narrowed by a
-   search (the sorted-set helpers in lib/strings.mn), or a counter that
-   climbs by a parameter its callers keep positive (`split_walk`), so each
-   of those still performs `Diverge`. (c) The reach is one walk
+   effect of their own, `MemoryWrite`, and a recursion that is no descent
+   performs `Diverge` (all built 2026-10-30, §7). The measure reads part
+   edges alone. A cycle of two or more functions, a loop that ends when an
+   effect's state reaches a bound (the course's `play`, which runs until the
+   clock reaches its frame count), a list halved by slices (the prelude's
+   `sort`), an interval narrowed by a search (the sorted-set helpers in
+   lib/strings.mn), a counter (`split_walk`, the float printer's walk by
+   decades and its power countdowns), and every list stage's walk by an
+   index still perform `Diverge`. The list walk's index goes when a stage
+   reuses the owned list it consumes, and the float printer's when it reads
+   digits off a float's bits. (c) The reach is one walk
    (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
    columns, answers absence, the effect-enters chain, the race rule, the
    schedule's demand, the edit cone, `refs of`, `unreachable` and the
@@ -1821,7 +1827,11 @@ the last three.
    as well as at its oldest slot. A decaying line flushes a denormal in its
    tick, since wasm has no flush-to-zero mode. A stage's coefficient is
    computed when its input changes, never once per sample (today
-   `compute_alpha`'s `exp` runs per tick in every filter). A `<|` or `><`
+   `compute_alpha`'s `exp` runs per tick in every filter). `sin` and `cos`
+   reach f64 precision on their reduced range: today eight terms on [-π, π)
+   leave `sin(3.0)` 9.4e-9 from its value (measured 2026-11-04, 337 million
+   units in the last place), so the reduction narrows to a quarter turn
+   before the series, which moves every render by that error. A `<|` or `><`
    join aligns branches of known latency, with latency part of each stage's
    face, or refuses the misaligned merge (measured 2026-10-21, after a survey
    of Sonido). The prelude takes the datum last in every stage-shaped

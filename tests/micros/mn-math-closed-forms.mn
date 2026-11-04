@@ -1,0 +1,12 @@
+// expect: 0
+// exp, log, sin, cos, atan and pow2 are fixed sequences of stages. Each answer
+// is checked against the value the rewritten function gave when it landed,
+// within a relative 1e-15, and pow2 by an exact identity between three powers
+// of two; main answers how many differ.
+import math
+
+fn mismatch(got: Float, want: Float) -> Int =
+  if (if got >= want { got - want } else { want - got }) <= 0.000000000000001 * (if want >= 0.0 { want } else { 0.0 - want }) { 0 } else { 1 }
+
+fn main() =
+  mismatch(exp(1.0), 2.7182818284590455) + mismatch(log(2.0), 0.6931471805599453) + mismatch(sin(1.0), 0.8414709848078965) + mismatch(cos(1.0), 0.5403023063686264) + mismatch(atan(0.5), 0.4636476090008061) + (if pow2(-1074.0) * pow2(1023.0) == pow2(-51.0) { 0 } else { 1 })

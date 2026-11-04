@@ -3970,15 +3970,15 @@ fn effect_store(en: String) = match en {
   _ => RsNone,
 }
 
-// The measure: when a declaration's calls of itself end. They end when every
-// call shrinks a parameter while it hands each earlier shrinking parameter
-// back unchanged, so the parameters, read in the order the declaration
-// writes them, can only descend (`recursion_bounded`). A parameter shrinks
-// as a counter that climbs by a constant toward a bound the calls keep, one
-// that falls by a constant toward a floor, one divided toward zero, a part
-// of the value the parameter matched, or a link its list node holds; the
-// guards that bound a counter are read off the conditions on the path to
-// the call.
+// The measure: when a declaration's calls of itself end. A call descends at
+// a parameter when it hands that parameter a part of the value it matched: a
+// constructor's, tuple's or record's field, or a list pattern's rest after an
+// element. A field was built before the value that holds it, so a walk down
+// parts ends. The calls end when every call descends at some parameter while
+// it hands each earlier such parameter back unchanged, so the parameters, read
+// in the order the declaration writes them, can only descend
+// (`recursion_bounded`). Nothing else is read, so a recursion on a counter, a
+// division or a link performs Diverge.
 //
 // A declaration's call of itself that a measure can read: it hands every
 // parameter an argument of its own, none of them a hole or a label.
@@ -4000,22 +4000,13 @@ fn fn_params_of(d) = match graph_node_body(d) {
   | NRow(_) | NParam(_) => [],
 }
 
-// How a parameter shrinks at a call: a counter climbing toward a bound, a
-// counter falling toward a floor, a counter divided toward zero, a strictly
-// smaller part of its value, or a link its own node holds.
-type Descent = Climbs | Falls | Halves | Smaller | Linked
-
-// Whether the calls end. The parameters some call shrinks are ordered as the
-// declaration writes them, and every call shrinks one of them while it hands
-// each earlier one back unchanged, each parameter shrinking the same way at
-// every call that shrinks it. That order cannot descend forever.
+// Whether the calls end: every call descends in the declaration's order.
 fn recursion_bounded(d, calls) = match calls {
   [] => false,
   [_, ..._] => {
-    let measured =
-      fn_params_of(d) |> enumerate |> map(binder_entry) |> filter(shrinks_somewhere(d, calls, ??))
-    let steps = map(descent_of(d, calls, measured, ??), calls)
-    all(is_some, steps) && all(agrees_with(steps, ??), steps)
+    let entries = fn_params_of(d) |> enumerate >< binder_entry
+    let measured = entries |> filter(descends_somewhere(calls, ??))
+    calls |> all(descends_in_order(measured, ??))
   },
 }
 
@@ -4023,98 +4014,28 @@ fn binder_entry(entry) = match entry {
   (k, param) => (k, param_pat(param)),
 }
 
-fn shrinks_somewhere(d, calls, pos) = any(shrinks_at(d, calls, pos, ??), calls)
+// Whether some call descends at the parameter at `pos`.
+fn descends_somewhere(calls, pos) = calls |> any(descends_at(pos, ??))
 
-fn shrinks_at(d, calls, pos, call) = is_some(shrink_mode(d, calls, pos, call))
-
-// The position a call descends at: the first measured parameter it shrinks,
-// with every measured parameter before it handed back unchanged.
-fn descent_of(d, calls, measured, call) = match find(descends_at(d, calls, measured, call, ??), measured) {
-  Some(pos) => match pos {
-    (k, _) => match shrink_mode(d, calls, pos, call) {
-      Some(mode) => Some((k, mode)),
-      None => None,
-    },
+// Whether a call hands the parameter at `pos` a part of the value it matched.
+fn descends_at(pos, call) = match pos {
+  (k, binder) => match arg_at(call, k) {
+    Some(a) => strictly_inside(a, binder),
+    None => false,
   },
-  None => None,
 }
 
-fn descends_at(d, calls, measured, call, pos) = match pos {
-  (k, _) => shrinks_at(d, calls, pos, call) && all(kept_before(call, k, ??), measured),
+// Whether a call descends in the declaration's order: at some measured
+// parameter, with every measured parameter before that one handed back
+// unchanged.
+fn descends_in_order(measured, call) = measured |> any(descends_in_order_at(call, measured, ??))
+
+fn descends_in_order_at(call, measured, pos) = match pos {
+  (k, _) => descends_at(pos, call) && (measured |> all(kept_before(call, k, ??))),
 }
 
 fn kept_before(call, k, pos) = match pos {
   (j, b) => j >= k || hands_back(j, b, call),
-}
-
-// A parameter shrinks the same way at every call that descends at it.
-fn agrees_with(steps, step) = all(same_way(step, ??), steps)
-
-fn same_way(a, b) = match a {
-  Some((ka, ma)) => match b {
-    Some((kb, mb)) => ka != kb || ma == mb,
-    None => true,
-  },
-  None => true,
-}
-
-fn shrink_mode(d, calls, pos, call) = match pos {
-  (k, binder) => match arg_at(call, k) {
-    Some(a) => if strictly_inside(a, binder) {
-      Some(Smaller)
-    } else if climbs_from(a, binder) && any(holds_below(d, calls, binder, ??), path_facts(call, d)) {
-      Some(Climbs)
-    } else if falls_from(a, binder) && any(holds_above(d, calls, binder, ??), path_facts(call, d)) {
-      Some(Falls)
-    } else if halves_from(a, binder) && any(away_from_zero(binder, ??), path_facts(call, d)) {
-      Some(Halves)
-    } else if node_link(a, binder) {
-      Some(Linked)
-    } else {
-      None
-    },
-    None => None,
-  },
-}
-
-// An address the parameter's own node holds at a fixed offset, read where it
-// is handed on or through a let: the runtime's list walks step this way. A
-// list node is built from nodes that existed before it, and the library
-// writes a node's links only when it builds the node, so a walk down links
-// ends. A program that rewrites a node's links through `MemoryWrite` steps
-// outside that.
-fn node_link(a, binder) = match graph_node_body(a) {
-  NExpr(CallExpr(f, [at])) => memory_op_named(f, "load_addr") && own_slot(at, binder),
-  NExpr(VarRef(_)) => match binder_read_by(a) {
-    Some(v) => v != a && node_link(v, binder),
-    None => false,
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-fn own_slot(at, binder) = match graph_node_body(at) {
-  NExpr(CallExpr(f, [base, off])) => memory_op_named(f, "addr_at") && reads_binder(base, binder) && int_literal(off),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-fn memory_op_named(f, op: String) = match graph_node_body(f) {
-  NExpr(VarRef(n)) => n == op && match graph_ref_decl(f) {
-    Some(od) => match graph_published(od) {
-      Some((_, _, EffectOpScheme(en, _, _))) => en == "Memory",
-      None | Some(_) => false,
-    },
-    None => false,
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-fn int_literal(n) = match graph_node_body(n) {
-  NExpr(LitInt(_)) => true,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
 }
 
 fn arg_at(call, k) = match graph_node_body(call) {
@@ -4154,192 +4075,15 @@ fn inside_steps(pat, binder, below) = match graph_parent_of(pat) {
   None => false,
 }
 
-fn climbs_from(a, binder) = match graph_node_body(a) {
-  NExpr(BinOpExpr(BAdd, l, r)) => reads_binder(l, binder) && positive_int(r) || reads_binder(r, binder) && positive_int(l),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-fn falls_from(a, binder) = match graph_node_body(a) {
-  NExpr(BinOpExpr(BSub, l, r)) => reads_binder(l, binder) && positive_int(r),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
 fn reads_binder(n, binder) = match graph_node_body(n) {
   NExpr(VarRef(_)) => graph_ref_decl(n) == Some(binder),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => false,
 }
 
-fn positive_int(n) = match graph_node_body(n) {
-  NExpr(LitInt(c)) => c > 0,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-// The parameter divided by a constant of at least two. Integer division
-// truncates toward zero, so the result is nearer zero than any value it
-// divides but zero itself.
-fn halves_from(a, binder) = match graph_node_body(a) {
-  NExpr(BinOpExpr(BDiv, l, r)) => reads_binder(l, binder) && match graph_node_body(r) {
-    NExpr(LitInt(c)) => c >= 2,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => false,
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-// A guard that keeps the parameter away from zero.
-fn away_from_zero(binder, fact) = match fact {
-  (op, l, r) => match op {
-    BNe => reads_binder(l, binder) && literal_is(r, 0) || reads_binder(r, binder) && literal_is(l, 0),
-    BGt => reads_binder(l, binder) && literal_at_least(r, 0) || reads_binder(r, binder) && literal_at_most(l, 0),
-    BGe => reads_binder(l, binder) && literal_at_least(r, 1) || reads_binder(r, binder) && literal_at_most(l, -1),
-    BLt => reads_binder(l, binder) && literal_at_most(r, 0) || reads_binder(r, binder) && literal_at_least(l, 0),
-    BLe => reads_binder(l, binder) && literal_at_most(r, -1) || reads_binder(r, binder) && literal_at_least(l, 1),
-    BEq | BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => false,
-  },
-}
-
-fn literal_is(n, v) = literal_at_least(n, v) && literal_at_most(n, v)
-
-fn literal_at_least(n, v) = match graph_node_body(n) {
-  NExpr(LitInt(c)) => c >= v,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-fn literal_at_most(n, v) = match graph_node_body(n) {
-  NExpr(LitInt(c)) => c <= v,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-// A guard that holds the parameter below a bound the calls keep: the
-// parameter, or the parameter plus an amount never negative, stays below it.
-fn holds_below(d, calls, binder, fact) = match fact {
-  (op, l, r) => match op {
-    BLt | BLe => below_side(l, binder) && kept_bound(d, calls, r),
-    BGt | BGe => below_side(r, binder) && kept_bound(d, calls, l),
-    BEq | BNe | BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => false,
-  },
-}
-
-fn below_side(n, binder) = reads_binder(n, binder) || match graph_node_body(n) {
-  NExpr(BinOpExpr(BAdd, a, b)) => reads_binder(a, binder) && never_negative(b) || reads_binder(b, binder) && never_negative(a),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-// An amount never negative: a literal at or above zero, a length, or a let
-// bound to one.
-fn never_negative(n) = match graph_node_body(n) {
-  NExpr(LitInt(c)) => c >= 0,
-  NExpr(CallExpr(f, [_])) => reads_length(f),
-  NExpr(VarRef(_)) => match binder_read_by(n) {
-    Some(v) => v != n && never_negative(v),
-    None => false,
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-// A guard that holds the parameter above a bound the calls keep.
-fn holds_above(d, calls, binder, fact) = match fact {
-  (op, l, r) => match op {
-    BGt | BGe => reads_binder(l, binder) && kept_bound(d, calls, r),
-    BLt | BLe => reads_binder(r, binder) && kept_bound(d, calls, l),
-    BEq | BNe | BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => false,
-  },
-}
-
-// A bound the calls keep: a literal; a parameter every call hands back at
-// its own position; a value bound outside the declaration, which no call of
-// it can change; a let bound to a kept bound; or the length of one.
-fn kept_bound(d, calls, n) = match graph_node_body(n) {
-  NExpr(LitInt(_)) => true,
-  NExpr(VarRef(_)) => handed_back(d, calls, n) || bound_outside(d, n) || match binder_read_by(n) {
-    Some(v) => v != n && kept_bound(d, calls, v),
-    None => false,
-  },
-  NExpr(CallExpr(f, [x])) => reads_length(f) && kept_bound(d, calls, x),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
-}
-
-fn bound_outside(d, n) = match graph_ref_decl(n) {
-  Some(b) => !within(b, d),
-  None => false,
-}
-
-fn reads_length(f) = reaches_substrate(f) && match graph_ref_decl(f) {
-  Some(fd) => match graph_node_body(fd) {
-    NStmt(FnStmt(name, _, _, _, _)) => name == "len" || name == "byte_len",
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => false,
-  },
-  None => false,
-}
-
-fn handed_back(d, calls, n) = match graph_ref_decl(n) {
-  Some(b) => match fn_params_of(d) |> enumerate |> find(writes_binder(b, ??)) {
-    Some((j, _)) => all(hands_back(j, b, ??), calls),
-    None => false,
-  },
-  None => false,
-}
-
-fn writes_binder(b, entry) = match entry {
-  (_, param) => param_pat(param) == b,
-}
-
 fn hands_back(j, b, call) = match arg_at(call, j) {
   Some(a) => reads_binder(a, b),
   None => false,
-}
-
-// What the conditions on the path from the declaration to a node say of
-// their operands there: each `if` the node stands in a branch of, and the
-// left side of each `&&` or `||` whose right side holds it.
-fn path_facts(n, d) = match graph_parent_of(n) {
-  Some(p) => if p == d { [] } else { step_facts(n, p) ++ path_facts(p, d) },
-  None => [],
-}
-
-fn step_facts(child, p) = match graph_node_body(p) {
-  NExpr(IfExpr(c, yes, no)) => if child == yes {
-    condition_facts(c, true)
-  } else if child == no {
-    condition_facts(c, false)
-  } else {
-    []
-  },
-  NExpr(BinOpExpr(BAnd, l, r)) => if child == r { condition_facts(l, true) } else { [] },
-  NExpr(BinOpExpr(BOr, l, r)) => if child == r { condition_facts(l, false) } else { [] },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => [],
-}
-
-// The comparisons a condition makes true where it held (`held`) or failed.
-fn condition_facts(c, held) = match graph_node_body(c) {
-  NExpr(BinOpExpr(op, l, r)) => compared(op, l, r, held),
-  NExpr(UnaryOpExpr(UNot, x)) => condition_facts(x, !held),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => [],
-}
-
-fn compared(op, l, r, held) = match op {
-  BAnd => if held { condition_facts(l, true) ++ condition_facts(r, true) } else { [] },
-  BOr => if held { [] } else { condition_facts(l, false) ++ condition_facts(r, false) },
-  BLt => [if held { (BLt, l, r) } else { (BGe, l, r) }],
-  BLe => [if held { (BLe, l, r) } else { (BGt, l, r) }],
-  BGt => [if held { (BGt, l, r) } else { (BLe, l, r) }],
-  BGe => [if held { (BGe, l, r) } else { (BLt, l, r) }],
-  BEq => [if held { (BEq, l, r) } else { (BNe, l, r) }],
-  BNe => [if held { (BNe, l, r) } else { (BEq, l, r) }],
-  BAdd | BSub | BMul | BDiv | BMod | BConcat => [],
 }
 
 // The memory a value may be: a binder it names and what that binder was

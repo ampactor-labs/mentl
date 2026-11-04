@@ -1,20 +1,45 @@
-// grad-series.mn: a product seed over scene 1's distortion is refused, and
-// the refusal names what the reverse reading cannot carry.
+// grad-series.mn — a product seed over scene 1's distortion, whose reach runs
+// through tanh, exp and sin in lib/math.mn, against the central differences
+// of the same function.
 //
-// `adaptive_shape` (lib/dsp/spectral.mn) reaches tanh, exp and sin, each a
-// range-reduced series written as a recursion in lib/math.mn. A scalar seed
-// is answered forward through that recursion (derive-shape, beside this
-// leg); a product seed would be answered in reverse, and the reverse
-// projection does not carry a recursion, since the residuals of every step
-// would have to be kept. So the reading refuses and says to seed one Float
-// at a time, which derive-shape shows the forward reading answers, and it
-// never answers with a slope of zero.
+// `adaptive_shape` (lib/dsp/spectral.mn) crossfades a warm, an asymmetric
+// and a folded shape by flux, each a tanh of the driven sample, so its reach
+// runs through lib/math.mn's series. Each series is a fixed sequence of
+// stages, so the reverse projection carries them, and a branch whose value
+// is a call ends in that value. The product seed {drive, flux} is answered
+// in one reverse sweep, and each partial is held against the central
+// difference of the SAME function, h = 1e-5, at six points: two samples of
+// either sign, and a flux in each band of the crossfade.
 //
-// The frontier expects E_DerivativeUnreachable, exit nonzero, zero WAT bytes.
-fn main() -> Int = {
-  let ws = {drive: 0.7, flux: 0.1}
-  let r = match d(adaptive_shape(0.25, ws.drive, ws.flux)) {
-    {drive: gd, flux: gf} => gd + gf,
+// EXIT 42 iff every one of the 12 partials agrees with its difference to
+// 1e-6 relative; otherwise 10 plus the number that missed.
+
+fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.000001 * (1.0 + abs(b))
+
+fn diff_drive(x: Float, drive: Float, flux: Float) -> Float =
+  (adaptive_shape(x, drive + 0.00001, flux) - adaptive_shape(x, drive - 0.00001, flux)) / 0.00002
+
+fn diff_flux(x: Float, drive: Float, flux: Float) -> Float =
+  (adaptive_shape(x, drive, flux + 0.00001) - adaptive_shape(x, drive, flux - 0.00001)) / 0.00002
+
+fn misses_at(x: Float, drive: Float, flux: Float) -> Int = {
+  let ws = {drive: drive, flux: flux}
+  let dd = diff_drive(x, drive, flux)
+  let df = diff_flux(x, drive, flux)
+  {
+    let {drive: gd, flux: gf} = d(adaptive_shape(x, ws.drive, ws.flux))
+    (if close(gd, dd) { 0 } else { 1 }) + (if close(gf, df) { 0 } else { 1 })
   } ~> grad(ws)
-  float_to_int(r * 1000.0)
+}
+
+// The grid: a sample of each sign, and a flux inside each band of the crossfade.
+fn misses_over(i: Int) -> Int = {
+  let x = if i % 2 == 0 { 0.25 } else { 0.0 - 0.6 }
+  let flux = if i / 2 == 0 { 0.1 } else if i / 2 == 1 { 0.5 } else { 0.9 }
+  misses_at(x, 0.7, flux)
+}
+
+fn main() -> Int = {
+  let missed = range(0, 6) |> fold(0, (acc, i) => acc + misses_over(i))
+  if missed == 0 { 42 } else { 10 + missed }
 }

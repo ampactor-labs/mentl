@@ -1805,14 +1805,14 @@ for i in "${!compilers[@]}"; do
   # differences of the same function at 18 points; 42 iff all 36 partials
   # agree to 1e-6. RED on boot 8ee3d09a (refused: a seed had to be a Float
   # variable). derive-grad-series: the same product seed over scene 1's
-  # distortion, whose reach recurs through lib/math.mn's series — the
-  # reverse projection does not carry a recursion, so the reading refuses
-  # and says to seed one Float at a time, never answering with a slope of
-  # zero.
+  # distortion, whose reach runs through lib/math.mn's series, each a fixed
+  # sequence of stages since 2026-11-04, so the reverse sweep carries them
+  # and a branch whose value is a call ends in that value; 42 iff all 12
+  # partials agree to 1e-6. RED on boot 627072cd (refused: a recursion).
   run_program "$compiler" derive-grad \
     "$ROOT/tests/frontier/derive-crucible/grad.mn" 42 derive "$dir"
-  run_refusal_linked "$compiler" derive-grad-series \
-    "$ROOT/tests/frontier/derive-crucible/grad-series.mn" E_DerivativeUnreachable "$dir" derive
+  run_program "$compiler" derive-grad-series \
+    "$ROOT/tests/frontier/derive-crucible/grad-series.mn" 42 derive "$dir"
   # ── THE ARENA (2026-10-03): `(body) ~> arena` ──
   # What the body allocated and did not publish is reclaimed at the exit;
   # the value, and what the body stored into older memory, moves out of the

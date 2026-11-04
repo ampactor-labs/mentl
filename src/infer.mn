@@ -4261,7 +4261,7 @@ fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, se
 }
 
 fn recursion_words(name: String, dh, seen) = if self_call_on_path(dh, seen) {
-  "`{name}` again, and no argument shrinks toward a bound at every such call"
+  "`{name}` again, and no call hands one of its parameters a part of the value it matched"
 } else {
   "`{name}` again, closing a cycle of calls, and no measure is read across a cycle of two or more functions"
 }
@@ -9762,8 +9762,9 @@ fn spills_decided(raw, spills, span) = {
 
 // The frame's references back into binding groups still being judged,
 // decided where its judgment ends. A declaration's own calls of itself are
-// bounded when one parameter shrinks toward a bound at every such call
-// (`recursion_bounded`), and then they charge nothing; every other reference
+// bounded when every such call hands one of its parameters a part of the
+// value it matched (`recursion_bounded`), and then they charge nothing; every
+// other reference
 // may never return, so it charges Diverge where it stands and into the
 // frame's row.
 fn reentries_decided(raw, reentries, decl) = match reentries {
@@ -9775,8 +9776,8 @@ fn reentries_decided(raw, reentries, decl) = match reentries {
     }
     match filter(reentry_open(decl, bounded, ??), reentries) {
       [] => raw,
-      open @ [_, ..._] => {
-        each(diverge_noted, open)
+      [first, ..._] => {
+        diverge_noted(first)
         union_row(raw, diverge_only_row)
       },
     }
@@ -9805,7 +9806,19 @@ fn reentry_node(r: Reentry) = match r.use {
   RefStaged | RefValued => r.site,
 }
 
-fn diverge_noted(r: Reentry) = graph_row_note(reentry_node(r), diverge_only_row)
+// The site where the frame's Diverge enters, which the Why walk names: the
+// first open reference, noted once. The frame's row carries the charge, so
+// one site per frame is the whole fact, and a group judged in more than one
+// round reaches the site each round, so a note already there is left as it
+// is.
+fn diverge_noted(r: Reentry) = {
+  let node = reentry_node(r)
+  if graph_rows_at(node) |> any(row_names_diverge) {
+    ()
+  } else {
+    graph_row_note(node, diverge_only_row)
+  }
+}
 
 fn pays_construction(row) = match (row, construction_row()) {
   (EfRow(names, _, _), EfRow(cap, _, _)) => all({ n => any({ m => m == n }, names) }, cap),

@@ -1572,6 +1572,10 @@ fn row_names_mutate(row) = match row {
   EfRow(present, _, _) => any(names_mutate, present),
 }
 
+fn row_names_diverge(row) = match row {
+  EfRow(present, _, _) => any(names_diverge, present),
+}
+
 // Whether a row names Trap, what a partial primitive performs where its
 // precondition fails.
 fn names_trap(e) = eff_name_str(e) == "Trap"
