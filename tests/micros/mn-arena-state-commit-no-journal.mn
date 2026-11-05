@@ -1,0 +1,31 @@
+// expect: 0
+// A handler installed outside an arena commits a pair the body built into
+// its state on every resume. The arena's exit reads the handler's state as a
+// root, through the install chain, so no barrier journals the commits and
+// the journal's high-water stays at zero; the pair read back after the exit
+// is whole.
+import arena
+
+effect Keep {
+  keep(p: (Int, Int))
+  kept() -> (Int, Int)
+}
+
+handler keeper with last = (0, 0) {
+  keep(p) => resume() with last = p,
+  kept() => resume(last),
+}
+
+fn body(n) = {
+  keep((n, n + 1))
+  keep((n + 2, n + 3))
+  keep((n + 4, n + 5))
+  n
+}
+
+fn main() = {
+  let n = body(10) ~> arena
+  match kept() {
+    (a, b) => a + b - 29 + n - 10 + arena_stat(ArJournalHigh),
+  }
+} ~> keeper

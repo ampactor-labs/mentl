@@ -115,11 +115,12 @@ fn handler_state_count(hd) = match handler_shape_at(hd) {
 // Every handler declaration with the effects its arms answer, as interned
 // names, and the state cells its arms commit into. A handler installed above
 // an extent commits into a record older than the extent while the body runs,
-// so an arena whose body performs one of its effects is rooted by each
-// committed value a barrier journals (the emitter reads the cells' classes
-// once per module, where it settles the arenas' leaves). Read once the whole
-// program is judged, over every declaration the decls column holds, so a
-// handler declared in a module judged after an arena's is seen.
+// so an arena whose body performs one of its effects reads that record's
+// state at its exit, off the install chain (the emitter reads the cells'
+// classes once per module, where it settles the arenas' leaves, to decide
+// which exits scan the chain). Read once the whole program is judged, over
+// every declaration the decls column holds, so a handler declared in a module
+// judged after an arena's is seen.
 fn handlers_state_cells() = flat_map(handler_state_cells_of, graph_decls_at())
 
 fn handler_state_cells_of(d) = match graph_node_body(d) {
@@ -128,25 +129,11 @@ fn handler_state_cells_of(d) = match graph_node_body(d) {
   | NRow(_) | NParam(_) => [],
 }
 
-// The effects an arena's body passes to the handlers above it, as interned
-// names, read off the install's own row notes once every judgment has ended:
-// an arena's note is its body's row whole, since an arena absorbs nothing
-// (`absorbs_arms`), and `row_of_subtree` reads it so. None while a row's
-// tail may still grow, which the emitter reads as roots it cannot know.
-fn arena_body_effects(h) = graph_rows_at(h) |> fold(Some([]), join_known_effects)
-
 // Whether an arena's install allocates: its row notes say `Alloc`, which
 // they do exactly when its body allocates, or carry a tail that may.
 fn arena_allocates(h) = graph_rows_at(h) |> any(note_allocates)
 
 fn note_allocates(r) = row_allocates(resolve_row(r))
-
-fn join_known_effects(acc, r) = match acc {
-  Some(names) => match resolve_row(r) {
-    EfRow(present, _, tail) => if tail_may_grow(tail) { None } else { Some(names ++ map(eff_name_handle, present)) },
-  },
-  None => None,
-}
 
 // Per-effect arm-name groups for a handler, projected live from its decl.
 fn handler_arm_groups(hd) = match handler_shape_at(hd) {

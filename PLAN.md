@@ -824,7 +824,7 @@ as unknown, never as passing.
   product the judgment wrote there, where every install used to carry a
   copy of both, so the self-compile's line peak fell 74 KB (282,316 KB to
   282,242 KB on the same wheel). An extent with no root that journals,
-  whose body passes up no effect whose handler commits a journaled value,
+  whose list-slot and raw stores never target memory older than it,
   carries a witness at its exit: with the yield flag clear, a journal that
   moved since the extent opened stops the program and names the install.
   The census shapes `arena-unknown` (on the board at 29) and
@@ -834,6 +834,24 @@ as unknown, never as passing.
   and none of its 63 arena exits is proven root-free (§11.8 owns both).
   Most of the wheel's unknown installs, and lesson 11's section, apply a
   function through a record's function-typed field, the read §11.3 owes.
+  A handler's state is read at an arena's exit, so a commit journals
+  nothing (2026-11-05). Every install live at an ordinary exit was opened
+  before the arena, so its state record is older memory and its pointer
+  fields are the cells its arms commit into. The exit walks the live
+  install chain and reads those fields as roots, each through its handler's
+  leaves, where the body's row passes up an effect a stateful handler
+  answers (`arena_scans_chain`, src/backends/wasm.mn); the commit's barrier
+  is gone, and an extent whose exit scans the chain stays unproven
+  root-free, since the arms it reaches may store into older buffers. A chain
+  node now holds its group's record and arm base beside its key, in the
+  24 bytes the node and its separate entry view took before, so the
+  self-compile allocates the same per install. Measured on the compiler
+  compiling itself: the journal's high-water fell from 136,766 to 12,912
+  entries of 8 bytes on the same wheel, the bytes moved stayed at 286,098
+  KB, no region was kept, and the line peak was 24 KB under the boot's
+  (tests/micros/mn-arena-state-commit-no-journal.mn answers 0 where the
+  boot answered 3, and mn-arena-state-commit-moves.mn reads the moved pair
+  whole). The journal now holds list-slot and raw stores alone.
 - **A `with` clause states decisions and never lists the row**
   (2026-10-30). A declaration's clause leaves every effect it does not
   mention to the body: `fn rate() with Sample(48000) = { print(…);
@@ -1901,13 +1919,14 @@ the last three.
    cannot prove its target is its own extent's, which today includes every
    store in a module that yields: the judgment does not yet know which
    frames can suspend between an allocation and a store, so the compiler,
-   which yields, keeps all of its list-store barriers. An extent is proven
-   root-free only when no handler answering an effect its body passes up
-   keeps a pointer in its state, asked per handler and not per operation,
-   so no arena in the compiler is root-free yet: each passes up a read of
-   the graph, the environment or the WAT output, whose handlers keep
-   pointers (and one graph read, the emitted-function lookup, does store
-   its index). A handle becomes an
+   which yields, keeps all of its list-store barriers. A handler's state
+   above an extent is read at the exit off the install chain, so it never
+   roots an extent through the journal (built 2026-11-05, §7); an extent is
+   root-free through the journal when no list-slot or raw store it makes
+   targets older memory, and no arena in the compiler is yet, since each
+   stores nodes into the graph's columns. The next fall is the placement
+   that allocates a published value where it will live (MENTL_MEMORY's
+   M8), after which the journal holds the unknown-edge residue alone. A handle becomes an
    `{arena, offset}` product
    (one word, by a repr pin) that is deterministic under any order. The
    demand walk that twins a direct callee by the install's schedule follows a

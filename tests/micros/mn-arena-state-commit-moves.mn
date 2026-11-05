@@ -1,0 +1,28 @@
+// expect: 42
+// The pair a handler's state holds at an arena's exit was built inside the
+// arena, so the exit moves it out before the region is reclaimed. Read after
+// the exit, the pair is whole: 20 + 21 + 1.
+import arena
+
+effect Keep {
+  keep(p: (Int, Int))
+  kept() -> (Int, Int)
+}
+
+handler keeper with last = (0, 0) {
+  keep(p) => resume() with last = p,
+  kept() => resume(last),
+}
+
+fn body(n) = {
+  keep((n, n + 1))
+  keep((n + 10, n + 11))
+  n
+}
+
+fn main() = {
+  let n = body(10) ~> arena
+  match kept() {
+    (a, b) => a + b + n - 9,
+  }
+} ~> keeper

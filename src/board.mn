@@ -132,8 +132,10 @@ fn board_bounds() = [
   // variable the perform, the declaration and the install bind. 128 -> 127
   // (2026-10-22): the count read 127 at the pin before. 127 -> 126
   // (2026-10-30): the start's call of main writes each empty list through a
-  // named function, where a lambda wrote it.
-  Bound({ceiling: 126, question: QCensus(CsEffectfulLambda)}),
+  // named function, where a lambda wrote it. 126 -> 123 (2026-11-05): the
+  // install's effect groups are laid out and pushed onto the world chain by
+  // named stages, where three lambdas did it.
+  Bound({ceiling: 123, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — a wildcard answering zero. A catch-all over a sum
   // refuses (E_CatchAllOverSum), so a zero answers by meaning: a roster for
   // an honest total, a demand where a name is required, an invariant's
