@@ -880,6 +880,27 @@ as unknown, never as passing.
   under ten). The column that would hold each node's roots waits for the
   face, since a cell at every value node is about 20 MB on the
   self-compile's line peak, which the march refuses to let rise.
+- **The address of a value names the value's memory, and a declaration
+  held as a value is its own allocation** (2026-11-05). The judgment read
+  `addr(x)` as memory nothing names, so a function that wrote through an
+  address claimed to write beyond its parameters, and the `!Mutate` clause
+  of the caller that owns the value was refused as "a store into memory
+  older than the frame it runs in" (tests/micros/mn-addr-names-the-value.mn,
+  red on the pinned boot). `addr` now names its base's memory, as `addr_at`
+  did, and the clause holds; the candidate compiles the wheel to the boot's
+  bytes, so no decision on the wheel changed. The verifier reads a function
+  or a constructor held as a value as the allocation it is, since neither
+  has memory a store can reach, and a module value, like a let, as what its
+  initializer may be (`decl_roots`, src/verify.mn): `census unplaced` on
+  the wheel fell from 54,366 to 48,122. Measured and set aside: reading a
+  constructor's record as fresh and holding its arguments places 326 more
+  values and lets a `!Mutate` function store into the list a constructor
+  wraps, but it makes every claim of a function that returns a constructor
+  keep the list of arguments it hands back, 4 KB on the self-compile's line
+  peak, which the march refuses; it waits for the claim's returned
+  arguments to be an edge (§11.3). A fact for every precision fixture: a
+  write into a parameter is `Mutate` in the writer's own row, and the
+  caller that owns the memory masks it, so the clause goes on the caller.
 - **A `with` clause states decisions and never lists the row**
   (2026-10-30). A declaration's clause leaves every effect it does not
   mention to the body: `fn rate() with Sample(48000) = { print(…);
@@ -1592,6 +1613,13 @@ the last three.
    install's arms, as the value walk already reads them
    (`Hβ.effects.tee-answer-is-the-arms`). Today a function threading a table
    through a fold's result owes `Mutate` it could prove.
+   A claim's returned arguments (`StoreClaim.returns`) are a list kept on
+   the claim; when they are an edge, the one walk (step 1(c)) reads a
+   constructor's record as fresh and holding its arguments, where it reads
+   it as older memory today. Measured 2026-11-05 on the wheel: 326 more
+   values placed, and a `!Mutate` function that stores into the list a
+   constructor wraps builds, at 4 KB on the self-compile's line peak as a
+   kept list, which the march refuses.
    **Verification reads the face.** The verifier decides a predicate's
    expression directly. The `Predicate` projection, `node_to_predicate` and
    the copy frozen into `TRefined` are deleted, and the value walk reads the

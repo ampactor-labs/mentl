@@ -4047,11 +4047,12 @@ fn hands_back(j, b, call) = match arg_at(call, j) {
 }
 
 // Which allocation a value may be: the stops `stops_of` finds (src/graph.mn),
-// each read as the verifier's question asks. A let is its value and itself; a
-// parameter or a state field is itself; a part of another value, a
-// declaration held as a value, a part read off a value and a node the walk
-// cannot follow are any memory, beyond that node. A product, a string built
-// here, a mint and a literal are the allocation they are. A call is read by
+// each read as the verifier's question asks. A let is what its value may be,
+// which every read and every store of it resolves to alike; a parameter or a
+// state field is itself; a part of another value, a part read off a value and
+// a node the walk cannot follow are any memory, beyond that node; a
+// declaration held as a value is read by `decl_roots`. A product, a string
+// built here, a mint and a literal are the allocation they are. A call is read by
 // `call_roots`. The verifier reads the walk at every let, part and store slot
 // and remembers nothing between asks (its memo is the empty list); the census
 // of values it cannot place (`mentl query … census unplaced`) reads it at
@@ -4082,14 +4083,14 @@ fn roots_walk(memo, h) = stops_of(h) |> map(root_of_stop(memo, ??)) |> fold(Root
 // One stop, the walk continuing where the verifier's question continues it:
 // through a let to its value, and into a call's base or returned arguments.
 fn root_of_stop(memo, stop) = match stop {
-  StopLet(b) => roots_join(RootsAt([b]), roots_read(memo, b)),
+  StopLet(b) => roots_read(memo, b),
   StopParam(b) | StopState(b) => RootsAt([b]),
   StopConfig(b) => match graph_node_body(b) {
     NParam(_) => RootsAt([b]),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => RootsBeyond(b),
   },
   StopPart(b, _) => RootsBeyond(b),
-  StopDecl(r, _) => RootsBeyond(r),
+  StopDecl(r, d) => decl_roots(memo, r, d),
   StopCall(call, callee, args) => call_roots(memo, call, callee, args),
   StopProduct(n, _) | StopAlloc(n) | StopStatic(n) => RootsAt([n]),
   StopWord(_) => RootsAt([]),
@@ -4138,6 +4139,22 @@ fn call_roots(memo, call, callee, args) = if ref_is_constructor(callee) {
 fn slot_roots(memo, call, args, i) = match nth_handle(args, i) {
   Some([a]) => roots_read(memo, a),
   None | Some(_) => RootsBeyond(call),
+}
+
+// A declaration held as a value, read at the reference `r`: a function or a
+// constructor has no memory a store can reach, so it is the allocation it is;
+// a module value is what its initializer may be, which every read and every
+// store of it resolves to alike; an op, a handler or anything else held as a
+// value is beyond the reference.
+fn decl_roots(memo, r, d) = if ref_is_constructor(r) {
+  RootsAt([d])
+} else {
+  match graph_node_body(d) {
+    NStmt(FnStmt(_, _, _, _, _)) => RootsAt([d]),
+    NStmt(LetStmt(_, value, _)) => roots_read(memo, value),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => RootsBeyond(r),
+  }
 }
 
 fn roots_meet(store, read) = match store {

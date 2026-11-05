@@ -11680,16 +11680,21 @@ fn let_at(b, entry) = match entry {
   (h, _) => h == b,
 }
 
-// A call's result: `alloc`'s is fresh by what the op is, an address `addr_at`
-// moves stays in the allocation its base names, a declared function's is what
-// its claim says of the arguments it returns, and any other's is older than
-// the call.
+// A call's result: `alloc`'s is fresh by what the op is; an address (`addr`,
+// and `addr_at` moved along it) names the allocation its base names; a
+// declared function's is what its claim says of the arguments it returns;
+// and any other's, a constructor's among them, is older than the call. A
+// constructor's record is fresh and holds its arguments, as a product built
+// here is its parts', but reading it so makes every claim of a function
+// returning one say what it hands back, a kept list the self-compile pays 4
+// KB for; it waits for the claim's returned arguments to be an edge (PLAN
+// §11.3).
 fn call_targets(callee, args, scope, view) = match graph_node_body(callee) {
   NExpr(VarRef(cname)) => match binder_read_by(callee) {
     Some(_) => [TgOlder(0)],
     None => if cname == "alloc" {
       []
-    } else if cname == "addr_at" {
+    } else if cname == "addr_at" || cname == "addr" {
       arg_targets(args, scope, view, 0)
     } else {
       match callee_summary(callee) {

@@ -1,0 +1,16 @@
+// expect: 7
+// The address of a value names the value's memory. `set_first` writes through
+// `addr(cell)`, so its claim says it writes its parameter, and `main`, which
+// built the pair, places that write in its own memory: `!Mutate` holds on
+// main. The pinned boot read `addr` as memory nothing names, so the claim
+// said `set_first` writes beyond its parameters and main's clause was
+// refused ("a store into memory older than the frame it runs in").
+fn set_first(cell) = store_i32(addr(cell), 7)
+
+fn main() with !Mutate = {
+  let p = (1, 2)
+  set_first(p)
+  match p {
+    (a, _) => a,
+  }
+}
