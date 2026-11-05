@@ -149,10 +149,10 @@ effect ImageSwap {
 }
 
 // The arenas' census: how many exits ran, how many kept their region, the
-// KB reclaimed and moved, the highest line an exit reached (KB), how many
-// arenas a suspended computation left open, and the most entries the journal
-// held when an extent ended — what the emitter reads where an arena lives,
-// and zero where none does.
+// KB reclaimed and moved, the highest point above the heap's base an exit
+// reached (KB), how many arenas a suspended computation left open, and the
+// most entries the journal held when an extent ended — what the emitter reads
+// where an arena lives, and zero where none does.
 fn arena_stat(s: ArenaStat) = 0
 
 type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh | ArSuspended | ArJournalHigh

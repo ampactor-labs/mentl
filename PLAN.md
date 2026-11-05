@@ -790,7 +790,11 @@ as unknown, never as passing.
   wheel's constants (§11.8). The
   runtime counts exits, kept regions, bytes reclaimed and moved, the line
   peak, suspended arenas and the journal's high-water (`arena_stat`), and
-  the march prints them for the self-compile. The regions kept at exits are
+  the march prints them for the self-compile. The line peak is the heap
+  line's highest point above its base (2026-11-05): measured as an address,
+  it rose by the compiler's own static data, so 2,080 bytes of new string
+  literals in the wheel read as a 2 KB rise the march refused, where the
+  computation's memory had not grown. The regions kept at exits are
   on the board at 0 (2026-11-04, `src/board.mn`): the march verb refuses a
   generation whose compile kept one, and `mentl verify` lists the bound.
   The journal's high-water is a size that grows with the wheel, as the line

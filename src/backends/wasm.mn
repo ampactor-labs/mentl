@@ -5588,11 +5588,11 @@ fn task_mvals_offset(yield_slots) = if yield_slots > 0 { 24 } else { 16 }
 // rather than at `_start`, which a spawned instance never runs.
 //
 // The census rides seven counters `arena_stat` reads: exits, kept exits, the
-// KB reclaimed and moved, the highest line an exit reached, the arenas a
-// suspended computation left open, and the most entries the journal held when
-// an extent ended.
+// KB reclaimed and moved, the highest point above the heap's base an exit
+// reached, the arenas a suspended computation left open, and the most entries
+// the journal held when an extent ended.
 fn emit_arena_runtime(start) = {
-  let {journal, spawns, ..._} = start
+  let {heap_base, journal, spawns, ..._} = start
   // The line this instance's arenas open at and reset.
   let line = if spawns { "(global.get $heap_ptr)" } else { "(call $heap_mark_impl)" }
   wat_emit("  (global $ar_depth (mut i32) (i32.const 0))\n  (global $ar_mark (mut i32) (i32.const 0))\n  (global $ar_jb (mut i32) (i32.const 0))\n  (global $ar_jn (mut i32) (i32.const 0))\n  (global $ar_jover (mut i32) (i32.const 0))\n")
@@ -5685,7 +5685,11 @@ fn emit_arena_runtime(start) = {
   // space starting past the memory's end — and wasm bounds-checks a
   // zero-length copy too (measured 2026-10-03: the battery's first fixture,
   // a 14 MB region at a process's start, trapped here).
-  wat_emit("    (if (i32.gt_u (i32.shr_u (global.get $ar_cp) (i32.const 10)) (global.get $ar_high)) (then (global.set $ar_high (i32.shr_u (global.get $ar_cp) (i32.const 10))))) (if (local.get $s) (then (memory.copy (global.get $ar_dst) (global.get $ar_c0) (local.get $s)))) (local.set $f (i32.add (global.get $ar_dst) (local.get $s)))\n")
+  // The line peak is the heap line's highest point above its base, in KB, so
+  // the compiler's own static data (every string literal of the wheel) never
+  // moves it: the march reads it as the computation's memory, never the
+  // source's size.
+  wat_emit("    (if (i32.gt_u (i32.shr_u (i32.sub (global.get $ar_cp) (i32.const {int_to_str(heap_base)})) (i32.const 10)) (global.get $ar_high)) (then (global.set $ar_high (i32.shr_u (i32.sub (global.get $ar_cp) (i32.const {int_to_str(heap_base)})) (i32.const 10))))) (if (local.get $s) (then (memory.copy (global.get $ar_dst) (global.get $ar_c0) (local.get $s)))) (local.set $f (i32.add (global.get $ar_dst) (local.get $s)))\n")
   wat_emit("    (call $ar_zero (local.get $m) (global.get $ar_t) (local.get $f)) (call $ar_scratch_clear)\n")
   wat_emit("    (global.set $ar_freed (i32.add (global.get $ar_freed) (i32.shr_u (i32.sub (global.get $ar_t) (local.get $f)) (i32.const 10)))) (global.set $ar_moved (i32.add (global.get $ar_moved) (i32.shr_u (local.get $s) (i32.const 10)))) (global.set $heap_ptr (local.get $f)))\n")
   wat_emit("  (func $ar_compact (param $j0 i32) (param $o i32) (local $i i32) (local $w i32) (local $e i32) (local $d i32) (local.set $i (local.get $j0)) (local.set $w (local.get $j0)) (block $done (loop $l (br_if $done (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (i32.lt_u (i32.load (local.get $e)) (local.get $o)) (then (local.set $d (i32.add (global.get $ar_jb) (i32.shl (local.get $w) (i32.const 3)))) (i32.store (local.get $d) (i32.load (local.get $e))) (i32.store offset=4 (local.get $d) (i32.load offset=4 (local.get $e))) (local.set $w (i32.add (local.get $w) (i32.const 1))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l))) (call $ar_zero (i32.add (global.get $ar_jb) (i32.shl (local.get $w) (i32.const 3))) (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3))) (i32.const 0)) (global.set $ar_jn (local.get $w)))\n")
