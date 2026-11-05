@@ -1,0 +1,19 @@
+// expect: 1
+// A constructor's record is fresh and holds its arguments: the list a `Box`
+// wraps is the list the frame built, so a store into it, read back off the
+// box, writes the frame's own memory and `!Mutate` holds. The pinned boot
+// read every constructor call as older memory and refused the clause as a
+// store into memory older than the frame it runs in.
+type Box = Box([Int])
+
+fn fill_box() with !Mutate = {
+  let b = Box(make_list(4))
+  match b {
+    Box(xs) => {
+      let _ = list_set(xs, 0, 1)
+      xs[0]
+    },
+  }
+}
+
+fn main() = fill_box()

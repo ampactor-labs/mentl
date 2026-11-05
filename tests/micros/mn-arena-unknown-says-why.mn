@@ -1,0 +1,17 @@
+// at 15:25: ~> arena Alloc unknown unnamed 15:3
+// The caret on a `~> arena` whose roots the judgment could not place says
+// which write it could not place: `run` applies a function through a
+// record's field, so what its call writes is not named, and the exit keeps
+// what it cannot read. The pinned boot said only that the roots were not
+// known, and its short form carried no memory word.
+import arena
+
+fn put(xs) = list_set(xs, 0, 7)
+
+fn run(rig, xs) = rig.put(xs)
+
+fn main() = {
+  let keep = make_list(1)
+  run({put: put}, keep) ~> arena
+  keep[0] - 7
+}

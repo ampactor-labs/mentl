@@ -901,6 +901,29 @@ as unknown, never as passing.
   arguments to be an edge (§11.3). A fact for every precision fixture: a
   write into a parameter is `Mutate` in the writer's own row, and the
   caller that owns the memory masks it, so the clause goes on the caller.
+- **The caret says which write left an extent's roots unknown, and a
+  constructor's record is fresh and holds its arguments** (2026-11-05).
+  `mentl FILE:L:C` on a `~> arena` whose roots the judgment could not place
+  names the write it could not place (`UnplacedWrite`, src/types.mn): a
+  call whose callee's writes nothing names, a call applying the scope's
+  own parameter, a call into a member of the same group before the group's
+  claims are said, or a call storing into memory older than the extent
+  that no claim names; `census arena-unknown` says the same beside each
+  site (tests/micros/mn-arena-unknown-says-why.mn). On the wheel 27 of the
+  28 unknown installs are the last kind, callees writing the graph's
+  state, which the exit reads off the install chain since N1, and one is a
+  function applied through a value. `census unplaced` says what stopped
+  the verifier's walk at each value, and a Bool, a nominal type with no
+  payload or a refined word no longer counts as memory (`holds_memory`,
+  src/verify.mn). The judgment reads a constructor call as the fresh
+  record it is, holding its arguments, and a claim says a fresh result as
+  a word (`Returns`, src/types.mn) in place of an empty kept list, so the
+  rule costs the self-compile nothing where the lists cost 4 KB
+  (tests/micros/mn-constructor-holds-fresh.mn builds where the boot
+  refused `!Mutate`); the verifier reads a part taken apart off a product
+  built in sight as the value put there. `census unplaced` on the wheel
+  fell from 48,122 to 38,694; the candidate compiled the wheel to the
+  boot's bytes.
 - **A `with` clause states decisions and never lists the row**
   (2026-10-30). A declaration's clause leaves every effect it does not
   mention to the body: `fn rate() with Sample(48000) = { print(…);
@@ -1613,13 +1636,6 @@ the last three.
    install's arms, as the value walk already reads them
    (`Hβ.effects.tee-answer-is-the-arms`). Today a function threading a table
    through a fold's result owes `Mutate` it could prove.
-   A claim's returned arguments (`StoreClaim.returns`) are a list kept on
-   the claim; when they are an edge, the one walk (step 1(c)) reads a
-   constructor's record as fresh and holding its arguments, where it reads
-   it as older memory today. Measured 2026-11-05 on the wheel: 326 more
-   values placed, and a `!Mutate` function that stores into the list a
-   constructor wraps builds, at 4 KB on the self-compile's line peak as a
-   kept list, which the march refuses.
    **Verification reads the face.** The verifier decides a predicate's
    expression directly. The `Predicate` projection, `node_to_predicate` and
    the copy frozen into `TRefined` are deleted, and the value walk reads the

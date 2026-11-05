@@ -5868,7 +5868,7 @@ fn emit_arena(h, b) = {
 fn arena_root_free(h) = match graph_arena_roots_at(h) {
   RootsFree => !arena_scans_chain(h),
   RootedAt(roots) => !any(root_journals, roots) && !arena_scans_chain(h),
-  RootsUnknown | OpensNoArena => false,
+  RootsUnknown(_) | OpensNoArena => false,
 }
 
 // Whether the extent's exit reads the install chain's state records as roots:

@@ -279,11 +279,15 @@ fn board_bounds() = [
   // constructors held as values. 54,366 -> 48,122 the same day: a function
   // or a constructor held as a value has no memory a store can reach, so it
   // is the allocation it is, and a module value and a let are what their
-  // initializers are. Another 326 fall when a constructor's record is read
-  // as fresh and holding its arguments (the claim then says what a function
-  // returning one hands back), which waits for the claim's returned
-  // arguments to be an edge rather than a kept list (PLAN §11.3).
-  Bound({ceiling: 48122, question: QCensus(CsUnplaced)}),
+  // initializers are. 48,122 -> 38,694 the same evening: a Bool, a nominal
+  // type whose variants carry no payload and a refined word are no memory
+  // (most of the fall, a correction of the measure); a constructor's record
+  // is fresh and holds its arguments, and a claim says a fresh result as a
+  // word (`Returns`) rather than a kept list; a part taken apart off a
+  // product built in sight is the value put there. The census says beside
+  // each site what stopped the walk, so the next fall is chosen by count:
+  // the answers of calls whose claims do not place them first.
+  Bound({ceiling: 38694, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

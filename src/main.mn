@@ -2022,7 +2022,11 @@ fn show_shape_want(shape) = match shape {
   FanShape(n, s) => ">< {int_to_str(n)} {schedule_word(s)}",
   SeqFanShape(s) => ">< each {schedule_word(s)}",
   ChainShape(k, n, merges) => "|> {int_to_str(k)} {int_to_str(n)}{if merges { " product" } else { "" }}",
-  InstallShape(name, effs, _) => if len(effs) == 0 { "~> {name}" } else { "~> {name} {join(" ", effs)}" },
+  InstallShape(name, effs, roots) => if len(effs) == 0 {
+    "~> {name}{extent_memory_word(roots)}"
+  } else {
+    "~> {name} {join(" ", effs)}{extent_memory_word(roots)}"
+  },
   LoopShape(depth, owner) => match depth {
     Some(n) => "<~ {int_to_str(n)} {owner}",
     None => "<~ _ {owner}",

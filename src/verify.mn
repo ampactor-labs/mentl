@@ -4049,9 +4049,9 @@ fn hands_back(j, b, call) = match arg_at(call, j) {
 // Which allocation a value may be: the stops `stops_of` finds (src/graph.mn),
 // each read as the verifier's question asks. A let is what its value may be,
 // which every read and every store of it resolves to alike; a parameter or a
-// state field is itself; a part of another value, a part read off a value and
-// a node the walk cannot follow are any memory, beyond that node; a
-// declaration held as a value is read by `decl_roots`. A product, a string
+// state field is itself; a part read off a value and a node the walk cannot
+// follow are any memory, beyond that node; a part of another value is read
+// by `part_roots` and a declaration held as a value by `decl_roots`. A product, a string
 // built here, a mint and a literal are the allocation they are. A call is read by
 // `call_roots`. The verifier reads the walk at every let, part and store slot
 // and remembers nothing between asks (its memo is the empty list); the census
@@ -4089,7 +4089,7 @@ fn root_of_stop(memo, stop) = match stop {
     NParam(_) => RootsAt([b]),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => RootsBeyond(b),
   },
-  StopPart(b, _) => RootsBeyond(b),
+  StopPart(b, whole) => part_roots(memo, b, whole),
   StopDecl(r, d) => decl_roots(memo, r, d),
   StopCall(call, callee, args) => call_roots(memo, call, callee, args),
   StopProduct(n, _) | StopAlloc(n) | StopStatic(n) => RootsAt([n]),
@@ -4123,8 +4123,9 @@ fn call_roots(memo, call, callee, args) = if ref_is_constructor(callee) {
       match graph_ref_decl(callee) {
         Some(d) => match graph_store_claim_of(d) {
           Some(StoreClaim(s)) => match s.returns {
-            Some(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
-            None => RootsBeyond(call),
+            ReturnsParams(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
+            ReturnsFresh => RootsAt([call]),
+            ReturnsOlder => RootsBeyond(call),
           },
           None => RootsBeyond(call),
         },
@@ -4155,6 +4156,86 @@ fn decl_roots(memo, r, d) = if ref_is_constructor(r) {
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => RootsBeyond(r),
   }
+}
+
+// A part of another value, bound at `b` by taking `whole` apart: where the
+// whole was built in sight (a tuple, a list literal, a record, a constructor
+// call, through a let's value and every tail of a join), the part is the
+// value put at its position, read as any value is; where it was not, any
+// memory beyond the binder. A constructor the pattern does not name holds no
+// such part and contributes nothing.
+fn part_roots(memo, b, whole) = match graph_binder_of(b) {
+  Some(PartFact(f)) => {
+    let built = construction_stops(whole)
+    if len(built) == 0 {
+      RootsBeyond(b)
+    } else {
+      built |> map(part_of_stop(memo, b, f.step, ??)) |> fold(RootsAt([]), roots_join)
+    }
+  },
+  Some(ParamFact(_)) | Some(StateFact(_)) | None => RootsBeyond(b),
+}
+
+// The stops of a value continued through every let, to the constructions the
+// value may be.
+fn construction_stops(h) = stops_of(h) |> flat_map(through_let)
+
+fn through_let(stop) = match stop {
+  StopLet(b) => construction_stops(b),
+  StopConfig(_) | StopParam(_) | StopState(_) | StopPart(_, _) | StopDecl(_, _) | StopCall(_, _, _)
+  | StopProduct(_, _) | StopAlloc(_) | StopStatic(_) | StopWord(_) | StopPartOf(_, _) | StopBeyond(_) => [stop],
+}
+
+// The part at `step` of one construction the whole may be: the value at the
+// position in a tuple or a list, the field by name in a record, the argument
+// of the constructor the pattern names; a constructor the pattern does not
+// name holds no such part; anything else is beyond the binder.
+fn part_of_stop(memo, b, step, stop) = match stop {
+  StopProduct(n, parts) => match step {
+    PartIndex(i) => roots_at_slot(memo, b, parts, i),
+    PartElem => parts |> map(roots_read(memo, ??)) |> fold(RootsAt([]), roots_join),
+    PartField(_) => field_roots(memo, b, n, step),
+    PartCtor(_, _) | PartRest | PartTypeArg(_) => RootsBeyond(b),
+  },
+  StopCall(_, callee, args) => match step {
+    PartCtor(name, i) => if ref_is_constructor(callee) {
+      if named_reference(callee, name) { roots_at_slot(memo, b, args, i) } else { RootsAt([]) }
+    } else {
+      RootsBeyond(b)
+    },
+    PartIndex(_) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => RootsBeyond(b),
+  },
+  StopDecl(r, _) => match step {
+    PartCtor(name, _) => if ref_is_constructor(r) && !named_reference(r, name) { RootsAt([]) } else { RootsBeyond(b) },
+    PartIndex(_) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => RootsBeyond(b),
+  },
+  StopLet(_) | StopConfig(_) | StopParam(_) | StopState(_) | StopPart(_, _) | StopAlloc(_)
+  | StopStatic(_) | StopWord(_) | StopPartOf(_, _) | StopBeyond(_) => RootsBeyond(b),
+}
+
+fn roots_at_slot(memo, b, nodes, i) = roots_of_found(memo, b, nth_handle(nodes, i))
+
+// The field a record built in sight holds at the step's name, read as any
+// value is (`field_part`); a field an update does not name is its base's, out
+// of this reading's sight.
+fn field_roots(memo, b, n, step) = match graph_node_body(n) {
+  NExpr(MakeRecordExpr(fields)) | NExpr(NamedRecordExpr(_, fields))
+  | NExpr(RecordUpdateExpr(_, fields)) => roots_of_found(memo, b, field_part(fields, step)),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => RootsBeyond(b),
+}
+
+// The nodes a part reader found, each read as any value is, or beyond the
+// binder where it found none.
+fn roots_of_found(memo, b, found) = match found {
+  Some(vs) => vs |> map(roots_read(memo, ??)) |> fold(RootsAt([]), roots_join),
+  None => RootsBeyond(b),
+}
+
+fn named_reference(r, name) = match graph_node_body(r) {
+  NExpr(VarRef(cname)) => cname == name,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn roots_meet(store, read) = match store {
@@ -4228,13 +4309,21 @@ fn config_writes(ctx, hd, k) = match graph_node_body(hd) {
 
 fn arm_stores(hd, arms) = arms |> flat_map({ arm => stores_in(hd, arm.body) })
 
+// Whether a node's value is memory a store can reach: a word is not (an
+// integer, a float, a byte, an address, a unit, a nominal type whose variants
+// carry no payload, which is its tag word, and a refinement of any of these);
+// every pointer kind is, and so is a value whose type is not yet known.
 fn holds_memory(h) = match graph_chase(h) {
-  GNode(NBound(ty), _) => match ty {
-    TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => false,
-    TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_) | TRecordOpen(_, _)
-    | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) => true,
-  },
+  GNode(NBound(ty), _) => type_holds_memory(ty),
   GNode(_, _) => true,
+}
+
+fn type_holds_memory(ty) = match ty {
+  TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => false,
+  TName(_, _) => !sum_is_tag(ty),
+  TRefined(base, _) => type_holds_memory(base),
+  TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) => true,
 }
 
 // A memory's parts are what its writers put there. A part read off how a

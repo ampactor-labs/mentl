@@ -1521,10 +1521,7 @@ fn census_noted(shape) with !Mutate = if shape == CsWildcardOverSum {
   catch_all_refusals() |> map(refusal_noted)
 } else {
   match graph_snapshot() {
-    Graph(next, _) => map(
-      { (m, sp, h) => (m, sp, census_note(shape, h)) },
-      census_walk(census_memo(shape, next), shape, 0, next, make_list(0))
-    ),
+    Graph(next, _) => census_walk(census_memo(shape, next), shape, 0, next, make_list(0)),
   }
 }
 
@@ -1550,19 +1547,97 @@ fn refusal_noted(refusal) = match refusal {
   (pat, roster) => (module_name_of_handle(graph_module_of(pat)), graph_span_of(pat), Some(render_roster(roster))),
 }
 
-// What a site shows beside its address: for a prose shape, the comment line
-// that carries the needle or the class, read by the same test that admitted
-// the comment, so the line is the one the count counted; nothing for a shape
-// whose site says it all. A class a single line cannot carry — a decoration
-// run across several — shows nothing rather than a line that does not.
-fn census_note(shape, h) with !Mutate = match shape {
+// What a site shows beside its address, read where the walk holds its memo:
+// for a prose shape, the comment line that carries the needle or the class,
+// read by the same test that admitted the comment, so the line is the one the
+// count counted; for an unplaced value, the node that stopped the verifier's
+// walk; for an unknown arena, the write the judgment could not place; nothing
+// for a shape whose site says it all. A class a single line cannot carry — a
+// decoration run across several — shows nothing rather than a line that does
+// not.
+fn census_note(memo, shape, h) = match shape {
   CsProse(needle) => prose_line(prose_holds(??, needle), graph_comment_at(h)),
   CsProseClass(c) => prose_line(prose_class_holds(c), graph_comment_at(h)),
+  CsUnplaced => match roots_read(memo, h) {
+    RootsBeyond(n) => Some(beyond_said(n)),
+    RootsAt(_) => None,
+  },
+  // An install whose roots are unknown shows the write the judgment could
+  // not place, the same sentence the caret says at the `~>`.
+  CsArenaUnknown => match graph_arena_roots_at(h) {
+    RootsUnknown(w) => Some(unplaced_write_said(w)),
+    RootsFree | RootedAt(_) | OpensNoArena => None,
+  },
   CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaUnknown | CsArenaRooted | CsUnplaced | CsReadOpWrites | CsText(_) | CsFieldRead(_) => None,
+  | CsArenaRooted | CsReadOpWrites | CsText(_) | CsFieldRead(_) => None,
+}
+
+// The node that stopped the verifier's walk, in a sentence whose first words
+// name the cause, so a count by cause is a sort over the notes: a part of a
+// value taken apart out of sight, a configuration value, the answer of a call
+// whose callee's claim does not place it, a read off a value, a labelled
+// argument, a declaration held as a value, or a node the walk cannot follow.
+fn beyond_said(n) = match graph_binder_of(n) {
+  Some(PartFact(f)) => "part of the value taken apart at {unplaced_line(f.whole)}",
+  Some(ParamFact(_)) | Some(StateFact(_)) => "configuration value at {unplaced_line(n)}",
+  None => match graph_node_body(n) {
+    NExpr(CallExpr(callee, _)) => match graph_ref_decl(callee) {
+      Some(d) => "answer of {unplaced_member(d)} at {unplaced_line(n)}",
+      None => "answer of a call through a value at {unplaced_line(n)}",
+    },
+    NExpr(PipeExpr(_, _, _)) => "answer of a stage at {unplaced_line(n)}",
+    NExpr(FieldExpr(_, _)) => "field read off a value at {unplaced_line(n)}",
+    NExpr(IndexExpr(_, _)) => "element read off a value at {unplaced_line(n)}",
+    NExpr(LabeledArg(_, _)) => "labelled argument at {unplaced_line(n)}",
+    NExpr(VarRef(_)) => "declaration held as a value at {unplaced_line(n)}",
+    NPat(_) | NParam(_) => "configuration value at {unplaced_line(n)}",
+    NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => "out of sight at {unplaced_line(n)}",
+  },
+}
+
+// The write that left an extent's roots unknown (`UnplacedWrite`), in the
+// sentence the caret and the census share, each site named by its line.
+fn unplaced_write_said(w) with !Mutate = match w {
+  WritesUnnamed(site) => "the call at {unplaced_line(site)} applies a function whose writes the judgment cannot name",
+  AppliesParameter(site, p) => "the call at {unplaced_line(site)} applies the parameter declared at {unplaced_line(p)}, whose writes only its callers know",
+  CallsMember(site, callee) => "the call at {unplaced_line(site)} reaches {unplaced_member(callee)}, a member of the same group, before the group's claims are said",
+  StoresBeyond(site) => "the call at {unplaced_line(site)} stores into memory older than the extent that no claim names",
+}
+
+// The same write in the caret's short form: its kind in one word, then the
+// site's address.
+fn unplaced_write_word(w) with !Mutate = match w {
+  WritesUnnamed(site) => "unnamed {unplaced_address(site)}",
+  AppliesParameter(site, _) => "parameter {unplaced_address(site)}",
+  CallsMember(site, _) => "member {unplaced_address(site)}",
+  StoresBeyond(site) => "beyond {unplaced_address(site)}",
+}
+
+// What the judgment knows of the extent an install opens, in the caret's
+// short form, after the handler's name and effects: nothing for an install
+// that opens no arena.
+fn extent_memory_word(roots) with !Mutate = match roots {
+  OpensNoArena => "",
+  RootsFree => " free",
+  RootedAt(rs) => " rooted {int_to_str(len(rs))}",
+  RootsUnknown(w) => " unknown {unplaced_write_word(w)}",
+}
+
+fn unplaced_member(d) with !Mutate = match graph_node_body(d) {
+  NStmt(FnStmt(name, _, _, _, _)) => "`{name}`",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "the declaration at {unplaced_line(d)}",
+}
+
+fn unplaced_line(h) with !Mutate = match graph_span_of(h) {
+  Span(line, _, _, _) => "line {int_to_str(line)}",
+}
+
+fn unplaced_address(h) with !Mutate = match graph_span_of(h) {
+  Span(line, col, _, _) => "{int_to_str(line)}:{int_to_str(col)}",
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1594,7 +1669,7 @@ fn census_walk(memo, shape, i, n, acc) = if i >= n {
     if sp == span_zero() {
       census_walk(memo, shape, i + 1, n, acc)
     } else {
-      census_walk(memo, shape, i + 1, n, push(acc, (m, sp, i)))
+      census_walk(memo, shape, i + 1, n, push(acc, (m, sp, census_note(memo, shape, i))))
     }
   } else {
     census_walk(memo, shape, i + 1, n, acc)
@@ -1908,12 +1983,12 @@ fn census_matches(memo, shape: CensusShape, h, body: NodeBody) = match shape {
   // An install that opens an arena carries what the judgment knows of its
   // roots; every other node reads as no arena.
   CsArenaUnknown => match graph_arena_roots_at(h) {
-    RootsUnknown => true,
+    RootsUnknown(_) => true,
     RootsFree | RootedAt(_) | OpensNoArena => false,
   },
   CsArenaRooted => match graph_arena_roots_at(h) {
     RootedAt(_) => true,
-    RootsUnknown | RootsFree | OpensNoArena => false,
+    RootsUnknown(_) | RootsFree | OpensNoArena => false,
   },
   // A value the verifier's flow walk cannot place in any allocation
   // (`roots_of`): an expression of a type that holds memory, other than

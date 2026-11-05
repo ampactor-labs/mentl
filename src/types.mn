@@ -1805,8 +1805,9 @@ type Handed = HandedParam(Int) | HandedLoop(Int, Int) | HandedNone
 
 // A function's store claim — a declaration's, a nested fn's, a lambda's —
 // written where its judgment ends and read at every call of it, through
-// whatever value carries it: the parameters its result may be (Some([]) a
-// fresh result, None one older than the call), the parameters it stores
+// whatever value carries it: what its result may be (`Returns`: a fresh
+// record of the call's own, the parameters it hands back, or memory older
+// than the call), the parameters it stores
 // cells into for an arena, by position, with the cells a move demands, the
 // parameters it writes, by position, the captures it writes (each the
 // binder, which the frame holding the function resolves at its own age),
@@ -1825,15 +1826,19 @@ type StoreClaim = {
   opaque: Bool,
   record: Bool,
   returned: [Int],
-  returns: Option([Int]),
+  returns: Returns,
   stores: [(Int, [Int])],
 }
 
+// What a function's result may be, read off its claim at every call: a fresh
+// record of the call's own (a word, so the common case keeps no list), the
+// parameters it hands back by position, or memory older than the call.
+type Returns = ReturnsFresh | ReturnsParams([Int]) | ReturnsOlder
+
 // The arena-roots column's value: what may root an arena's extent from
 // outside it, the judgment's answer at the `~>` install that opens the
-// arena. Unknown, where the body applies a function nothing names, writes
-// memory nothing names, or calls a member of its own group before the
-// group's claims are said; free, where no store the judgment saw targets
+// arena. Unknown, with the first write inside the extent the judgment could
+// not place (`UnplacedWrite`); free, where no store the judgment saw targets
 // memory older than the extent; or the stores that may, each as the store
 // site and the value stored (the cell the emitter reads the leaf from, or 0
 // for a store the exit cannot read as a value). A handler installed above
@@ -1842,7 +1847,17 @@ type StoreClaim = {
 // `OpensNoArena` comes first so a virgin cell reads as it. Every other fact
 // of an install is read off its node: the handler expression is its right
 // side, and its config is the product the judgment wrote there.
-type ArenaRoots = OpensNoArena | RootsUnknown | RootsFree | RootedAt([(Int, Int)])
+type ArenaRoots = OpensNoArena | RootsUnknown(UnplacedWrite) | RootsFree | RootedAt([(Int, Int)])
+
+// The first write inside an extent that the judgment could not place, which
+// leaves the extent's roots unknown, each with the site of the call or store:
+// a call whose callee's writes it cannot name (a function applied through a
+// value that names none, or a claim it could not read); a call applying the
+// scope's own parameter, whose writes only the callers know; a call into a
+// member of the scope's own group before the group's claims are said, with
+// the member; or a store into memory older than the extent that no claim
+// names. The caret at the `~>` and `census arena-unknown` say it in words.
+type UnplacedWrite = WritesUnnamed(Int) | AppliesParameter(Int, Int) | CallsMember(Int, Int) | StoresBeyond(Int)
 
 // An edge arriving at a declaration, held at the declaration's handle: a
 // reference the judgment linked to it, a node whose comment names it in
@@ -2423,7 +2438,7 @@ type VerbShape
   // installs over it carry
   | SeqFanShape(Schedule)
   | ChainShape(Int, Int, Bool)
-  | InstallShape(String, [String], Option(String))
+  | InstallShape(String, [String], ArenaRoots)
   | LoopShape(Option(Int), String)
 
 // One verb on the path from a declaration down to a node: the site's handle

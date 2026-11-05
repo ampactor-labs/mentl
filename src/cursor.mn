@@ -491,12 +491,12 @@ fn verb_path_of(h) with !Mutate = {
 
 // What the caret says of the extent an arena install opens, read off the
 // roots the judgment wrote at the install (`ArenaRoots`): nothing it saw can
-// root the extent, the stores that may, or that it could not tell. Nothing
-// for an install that opens no arena, which has no cell.
-fn extent_memory_of(h) with !Mutate = match graph_arena_roots_at(h) {
+// root the extent, the stores that may, or the write it could not place.
+// Nothing for an install that opens no arena, which has no cell.
+fn extent_memory_said(roots) with !Mutate = match roots {
   RootsFree => Some("nothing the judgment sees can root the extent it opens, so its exit moves the result and reclaims the rest"),
-  RootedAt(roots) => Some("stores at {join(", ", map(root_line, roots))} may root the extent it opens, which its exit journals"),
-  RootsUnknown => Some("what may root the extent it opens is not known, so its exit keeps what it cannot read"),
+  RootedAt(rs) => Some("stores at {join(", ", map(root_line, rs))} may root the extent it opens, which its exit journals"),
+  RootsUnknown(w) => Some("what may root the extent it opens is not known, since {unplaced_write_said(w)}, so its exit keeps what it cannot read"),
   OpensNoArena => None,
 }
 
@@ -526,7 +526,7 @@ fn verb_shape_of(h, path) with !Mutate = if len(path) == 0 {
         Some(arms) => handler_effect_names(arms),
         None => [],
       },
-      extent_memory_of(h)
+      graph_arena_roots_at(h)
     )),
     NExpr(PipeExpr(PFeedback, _, r)) => Some(LoopShape(
       match feedback_depth(r) {
@@ -896,13 +896,13 @@ fn shape_text(shape) = match shape {
       "the |> runs {shape_count(n, "stage", "stages")} in sequence, this one completing stage {int_to_str(k)}{tail}"
     }
   },
-  InstallShape(name, effs, memory) => {
+  InstallShape(name, effs, roots) => {
     let base = if len(effs) == 0 {
       "the ~> installs `{name}` over everything to its left"
     } else {
       "the ~> installs `{name}` over everything to its left, answering {join(", ", effs)}"
     }
-    match memory {
+    match extent_memory_said(roots) {
       Some(fact) => "{base}; {fact}",
       None => base,
     }
