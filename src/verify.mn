@@ -2461,7 +2461,7 @@ fn stores_within_writes(b, writes) = match owning_handler(b) {
 }
 
 fn store_may_reach(roots, b) = match roots {
-  RootsAny => true,
+  RootsBeyond(_) => true,
   RootsAt(xs) => any({ x => x == b }, xs),
 }
 
@@ -2876,10 +2876,6 @@ fn ty_names_a_label(t) = match t {
 // every call of the function hands it; the reach of a declared function,
 // which the calls of it decide; or a node the walk cannot read.
 type FlowAtom = FaSource(Reason) | FaArg(Int) | FaParam(Int) | FaReach(Int) | FaOpen(Int)
-
-// The memory a value may be: the binders and the literals it was built as,
-// or any memory at all.
-type Roots = RootsAt([Int]) | RootsAny
 
 // The nodes a walk has met, each once: a value, a reach, a declaration
 // whose code it asked whether a statement unwinds. A walk carries, beside
@@ -3299,7 +3295,7 @@ fn writes_of(ctx, d, k) = match graph_node_body(d) {
 
 fn roots_hold(roots, p) = match roots {
   RootsAt(xs) => any({ x => x == p }, xs),
-  RootsAny => false,
+  RootsBeyond(_) => false,
 }
 
 // A summary read at a call: what the summary says each call hands a
@@ -3494,7 +3490,7 @@ fn declared_flow(ctx, declared, at, beneath) = match declared {
 fn let_flow(ctx, b) = match claims_state(ctx, b) {
   Some(false) => [],
   Some(true) => [flow_source(ctx, b, "the let's annotation")],
-  None => value_flow(ctx, b) ++ stores_flow(ctx, b, value_roots(b)),
+  None => value_flow(ctx, b) ++ stores_flow(ctx, b, roots_of(b)),
 }
 
 fn claims_state(ctx, b) =
@@ -3861,7 +3857,7 @@ fn tee_answer_flow(ctx, body, right) = match tee_arms(right) {
 // sight, through every branch the whole was chosen by, and what the whole's
 // own contract states there where it was not.
 fn part_flow(ctx, whole, step) =
-  part_flow_at(ctx, whole, step) ++ stores_flow(ctx, whole, value_roots(whole))
+  part_flow_at(ctx, whole, step) ++ stores_flow(ctx, whole, roots_of(whole))
 
 fn part_flow_at(ctx, whole, step) = match graph_node_body(whole) {
   NExpr(VarRef(_)) => match binder_read_by(whole) {
@@ -3912,42 +3908,6 @@ fn binder_part_flow(ctx, b, step) = match graph_binder_of(b) {
     },
     NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => binder_flow(ctx, b),
   },
-}
-
-// A callee leaf applied to arguments: a reference applied to them, or a
-// partial application completed by them — the authored `??` slots first,
-// then the slots past its arguments.
-fn stage_application(sh, applied) = match graph_node_body(sh) {
-  NExpr(VarRef(_)) => Some((sh, applied)),
-  NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
-    ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
-    ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) => None,
-    NoProduct => None,
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
-}
-
-// Each authored hole takes the next applied value, in order, and the applied
-// values no hole took follow the slots.
-fn completed_args(nodes, applied) = match fold(([], applied), fill_slot, nodes) {
-  (filled, left) => filled ++ left,
-}
-
-fn fill_slot(acc, n) = match acc {
-  (filled, left) => if is_authored_hole(n) {
-    match left {
-      [v, ...more] => (push(filled, v), more),
-      [] => (push(filled, n), []),
-    }
-  } else {
-    (push(filled, n), left)
-  },
-}
-
-fn is_authored_hole(n) = match graph_node_body(n) {
-  NHole(id) => id != 0,
-  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 // What a call writes into memory, read off the op its callee names: every op
@@ -4086,39 +4046,60 @@ fn hands_back(j, b, call) = match arg_at(call, j) {
   None => false,
 }
 
-// The memory a value may be: a binder it names and what that binder was
-// bound to, a literal it was built as, a fresh allocation, the argument a
-// callee answers back, through every branch it was chosen by — or any
-// memory, where it is a part of another value or comes from where the walk
-// cannot see.
-fn value_roots(t) = match graph_node_body(t) {
-  NExpr(VarRef(_)) => match binder_read_by(t) {
-    Some(b) => match graph_binder_of(b) {
-      Some(PartFact(_)) => RootsAny,
-      Some(_) => RootsAt([b]),
-      None => if b == t { RootsAt([b]) } else { roots_join(RootsAt([b]), value_roots(b)) },
-    },
-    None => RootsAny,
-  },
-  NExpr(CallExpr(callee, args)) => call_roots(t, callee, args),
-  NExpr(MakeListExpr(_)) | NExpr(MakeTupleExpr(_)) | NExpr(MakeRecordExpr(_))
-  | NExpr(NamedRecordExpr(_, _)) | NExpr(MakeStringExpr(_)) => RootsAt([t]),
-  NParam(_) => RootsAt([t]),
-  NExpr(LitString(_)) => RootsAt([t]),
-  NExpr(IfExpr(_, a, b)) => roots_join(value_roots(a), value_roots(b)),
-  NExpr(MatchExpr(_, arms)) => arms |> map(arm_roots) |> fold(RootsAt([]), roots_join),
-  NExpr(BlockExpr(_, final)) => value_roots(final),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => RootsAny,
+// Which allocation a value may be: the stops `stops_of` finds (src/graph.mn),
+// each read as the verifier's question asks. A let is its value and itself; a
+// parameter or a state field is itself; a part of another value, a
+// declaration held as a value, a part read off a value and a node the walk
+// cannot follow are any memory, beyond that node. A product, a string built
+// here, a mint and a literal are the allocation they are. A call is read by
+// `call_roots`. The verifier reads the walk at every let, part and store slot
+// and remembers nothing between asks (its memo is the empty list); the census
+// of values it cannot place (`mentl query … census unplaced`) reads it at
+// every value node through a memo it allocates, one slot a node, so each
+// node's roots are walked once.
+fn roots_of(h) = roots_read([], h)
+
+// The reading through the reader's memo, a list the reader allocated whose
+// slot at a node holds the roots once asked: a node inside it answers from its
+// slot, or is walked and written there; a node outside it is walked. The memo
+// is the reader's own memory, handed down the calls that fill it, so filling
+// it writes nothing older than the reader.
+fn roots_read(memo, h) = if 0 <= h && h < len(memo) {
+  let c = list_index(memo, h)
+  if slot_present(c) {
+    c
+  } else {
+    let r = roots_walk(memo, h)
+    let _ = list_set(memo, h, r)
+    r
+  }
+} else {
+  roots_walk(memo, h)
 }
 
-fn arm_roots(arm) = match arm {
-  (_, body) => value_roots(body),
+fn roots_walk(memo, h) = stops_of(h) |> map(root_of_stop(memo, ??)) |> fold(RootsAt([]), roots_join)
+
+// One stop, the walk continuing where the verifier's question continues it:
+// through a let to its value, and into a call's base or returned arguments.
+fn root_of_stop(memo, stop) = match stop {
+  StopLet(b) => roots_join(RootsAt([b]), roots_read(memo, b)),
+  StopParam(b) | StopState(b) => RootsAt([b]),
+  StopConfig(b) => match graph_node_body(b) {
+    NParam(_) => RootsAt([b]),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => RootsBeyond(b),
+  },
+  StopPart(b, _) => RootsBeyond(b),
+  StopDecl(r, _) => RootsBeyond(r),
+  StopCall(call, callee, args) => call_roots(memo, call, callee, args),
+  StopProduct(n, _) | StopAlloc(n) | StopStatic(n) => RootsAt([n]),
+  StopWord(_) => RootsAt([]),
+  StopPartOf(n, _) | StopBeyond(n) => RootsBeyond(n),
 }
 
 fn roots_join(a, b) = match a {
-  RootsAny => RootsAny,
+  RootsBeyond(n) => RootsBeyond(n),
   RootsAt(xs) => match b {
-    RootsAny => RootsAny,
+    RootsBeyond(n) => RootsBeyond(n),
     RootsAt(ys) => RootsAt(xs ++ ys),
   },
 }
@@ -4126,7 +4107,7 @@ fn roots_join(a, b) = match a {
 // A call's result: a constructor's is fresh, an address `addr_at` moves stays
 // in the allocation its base names, `alloc`'s is fresh, and a declared
 // function's is what its store claim says of the arguments it answers back.
-fn call_roots(call, callee, args) = if ref_is_constructor(callee) {
+fn call_roots(memo, call, callee, args) = if ref_is_constructor(callee) {
   RootsAt([call])
 } else {
   match graph_node_body(callee) {
@@ -4134,35 +4115,35 @@ fn call_roots(call, callee, args) = if ref_is_constructor(callee) {
       RootsAt([call])
     } else if cname == "addr_at" || cname == "addr" {
       match args {
-        [base, ..._] => value_roots(base),
-        [] => RootsAny,
+        [base, ..._] => roots_read(memo, base),
+        [] => RootsBeyond(call),
       }
     } else {
       match graph_ref_decl(callee) {
         Some(d) => match graph_store_claim_of(d) {
           Some(StoreClaim(s)) => match s.returns {
-            Some(idxs) => idxs |> map(slot_roots(args, ??)) |> fold(RootsAt([call]), roots_join),
-            None => RootsAny,
+            Some(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
+            None => RootsBeyond(call),
           },
-          None => RootsAny,
+          None => RootsBeyond(call),
         },
-        None => RootsAny,
+        None => RootsBeyond(call),
       }
     },
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => RootsAny,
+    | NRow(_) | NParam(_) => RootsBeyond(call),
   }
 }
 
-fn slot_roots(args, i) = match nth_handle(args, i) {
-  Some([a]) => value_roots(a),
-  None | Some(_) => RootsAny,
+fn slot_roots(memo, call, args, i) = match nth_handle(args, i) {
+  Some([a]) => roots_read(memo, a),
+  None | Some(_) => RootsBeyond(call),
 }
 
 fn roots_meet(store, read) = match store {
-  RootsAny => true,
+  RootsBeyond(_) => true,
   RootsAt(xs) => match read {
-    RootsAny => true,
+    RootsBeyond(_) => true,
     RootsAt(ys) => any({ x => any({ y => y == x }, ys) }, xs),
   },
 }
@@ -4178,10 +4159,10 @@ fn stores_flow(ctx, h, roots) = if holds_memory(h) {
 }
 
 fn store_meets(read, s) = match read {
-  RootsAny => !s.local,
+  RootsBeyond(_) => !s.local,
   RootsAt(ys) => match s.roots {
     RootsAt(_) => roots_meet(s.roots, read),
-    RootsAny => !s.local || any({ y => owning_fn(y) == s.owner }, ys),
+    RootsBeyond(_) => !s.local || any({ y => owning_fn(y) == s.owner }, ys),
   },
 }
 
@@ -4265,9 +4246,9 @@ fn memory_roots(n) = match graph_binder_of(n) {
   Some(fact) => match fact {
     StateFact(_) => RootsAt([n]),
     ParamFact(_) => RootsAt([n]),
-    PartFact(_) => RootsAny,
+    PartFact(_) => RootsBeyond(n),
   },
-  None => value_roots(n),
+  None => roots_of(n),
 }
 
 fn step_into_list(step) = match step {
@@ -4315,7 +4296,7 @@ fn frame_writes(frame, roots, step) = match frame {
     WrittenUnseen
   } else {
     match roots {
-      RootsAny => scan_verdict(true, frame_scan([], step, scan_start, body)),
+      RootsBeyond(_) => scan_verdict(true, frame_scan([], step, scan_start, body)),
       RootsAt(rs) => scan_verdict(any(root_shared(owner, ??), rs), frame_scan(rs, step, scan_start, body)),
     }
   },
@@ -4384,9 +4365,9 @@ fn expr_unjudged(h) = match graph_node_body(h) {
   NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 } || (graph_node_body(h) |> body_child_handles |> any(expr_unjudged))
 
-fn meets(rs, x) = match value_roots(x) {
+fn meets(rs, x) = match roots_of(x) {
   RootsAt(xs) => any({ x => any({ r => r == x }, rs) }, xs),
-  RootsAny => false,
+  RootsBeyond(_) => false,
 }
 
 // A root the frame did not make: a parameter, a state, a part of another
@@ -4572,7 +4553,10 @@ fn writes_unplaced(n) = match app_of(n) {
 }
 
 fn slot_unplaced(args, i) = match nth_handle(args, i) {
-  Some([a]) => value_roots(a) == RootsAny,
+  Some([a]) => match roots_of(a) {
+    RootsBeyond(_) => true,
+    RootsAt(_) => false,
+  },
   None | Some(_) => true,
 }
 
@@ -4731,7 +4715,7 @@ fn scope_stores(owner, params, h) = match graph_node_body(h) {
 }
 
 fn roots_within(roots, params) = match roots {
-  RootsAny => false,
+  RootsBeyond(_) => false,
   RootsAt(xs) => len(xs) > 0 && all({ x => any({ p => p == x }, params) }, xs),
 }
 
@@ -4752,11 +4736,14 @@ fn node_stores(owner, h) = match graph_node_body(h) {
 
 fn callee_stores(owner, call, callee, args) = match graph_node_body(callee) {
   NExpr(VarRef(_)) => match raw_store_target(callee) {
-    RsAt(i) => [store_at(owner, call, ByRaw, slot_roots(args, i))],
-    RsAll => [store_at(owner, call, ByRaw, RootsAny)],
+    RsAt(i) => [store_at(owner, call, ByRaw, slot_roots([], call, args, i))],
+    RsAll => [store_at(owner, call, ByRaw, RootsBeyond(call))],
     RsNone => match graph_ref_decl(callee) {
       Some(d) => match graph_store_claim_of(d) {
-        Some(StoreClaim(s)) => map({ i => store_at(owner, call, writes_by(d, i), slot_roots(applied_args(call), i)) }, s.mutated),
+        Some(StoreClaim(s)) => map(
+          { i => store_at(owner, call, writes_by(d, i), slot_roots([], call, applied_args(call), i)) },
+          s.mutated
+        ),
         None => [],
       },
       None => [],

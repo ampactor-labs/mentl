@@ -10426,7 +10426,7 @@ fn is_position(i) = i >= 0
 
 fn ages_claim_fixpoint(decl, scope, body_h, params, summary) = {
   graph_store_claim_note(decl, StoreClaim(summary))
-  let next = returns_of(store_targets(body_h, scope, ToArena), params)
+  let next = returns_of(targets_of(body_h, scope, ToArena), params)
   if same_claim(next, summary.returns) {
     ()
   } else {
@@ -10567,7 +10567,7 @@ fn scope_holds_arenas(scope) = match scope {
 // at `site`: a target older than an arena open here roots that arena, and
 // each cell is read as a move where the target may be older.
 fn ages_store(site, target_h, cells) = match ages_top() {
-  Some(scope) => each(ages_settle(site, scope, cells, ??), store_targets(target_h, scope, ToArena)),
+  Some(scope) => each(ages_settle(site, scope, cells, ??), targets_of(target_h, scope, ToArena)),
   None => each(demand_move, cells),
 }
 
@@ -10581,7 +10581,7 @@ fn ages_store(site, target_h, cells) = match ages_top() {
 // their barrier whatever the walk finds.
 fn ages_list_store(site, target_h, cells) = match ages_top() {
   Some(scope) => {
-    let targets = store_targets(target_h, scope, ToArena)
+    let targets = targets_of(target_h, scope, ToArena)
     each(ages_settle(site, scope, cells, ??), targets)
     len(targets) == 0
   },
@@ -10596,7 +10596,7 @@ fn ages_list_store(site, target_h, cells) = match ages_top() {
 // (`StateFact.writes`, noted before any arm was judged), so it notes nothing
 // more: the install reads it there.
 fn ages_store_binder(site, b, cells) = match ages_top() {
-  Some(scope) => each(commit_settle(site, scope, cells, ??), binder_targets(b, scope, ToArena)),
+  Some(scope) => each(commit_settle(site, scope, cells, ??), targets_of_binder(b, scope, ToArena)),
   None => each(demand_move, cells),
 }
 
@@ -10643,10 +10643,10 @@ fn demand_move(cell) = shape_demand(cell, MovedShape)
 // so the Why walk that reaches it enters the callee whose store it is.
 fn ages_mutation(site, target_h) = match ages_top() {
   Some(scope) => {
-    frame_settle(site, scope, store_targets(target_h, scope, ToFrame))
+    frame_settle(site, scope, targets_of(target_h, scope, ToFrame))
     branch_mutation(site, target_h)
     if scope_holds_arenas(scope) {
-      each(raw_root(site, ??), store_targets(target_h, scope, ToArena))
+      each(raw_root(site, ??), targets_of(target_h, scope, ToArena))
     } else {
       ()
     }
@@ -10707,7 +10707,7 @@ fn older_noted(t) = match t {
 fn older_than_frame(scope, t) = match t {
   TgOlder(_) | TgCapture(_) => true,
   TgParam(_) => false,
-  TgState(b) => len(store_targets(b, scope, ToFrame)) > 0,
+  TgState(b) => len(targets_of(b, scope, ToFrame)) > 0,
 }
 
 // A store the frame makes into memory older than itself that nothing in the
@@ -10827,7 +10827,7 @@ fn own_param_of_node(node) = match node {
 // of its own, a capture of its own, or older.
 fn binder_mutation(site, b) = match ages_top() {
   Some(scope) => {
-    frame_settle(site, scope, binder_targets(b, scope, ToFrame))
+    frame_settle(site, scope, targets_of_binder(b, scope, ToFrame))
     match scope {
       AgeScope(r) => if len(r.branches) == 0 {
         ()
@@ -10840,7 +10840,7 @@ fn binder_mutation(site, b) = match ages_top() {
 }
 
 fn branch_binder_settle(site, b, scope, entry) = match entry {
-  (br, sites) => if len(binder_targets(b, scope, ToBranch(br))) > 0 && !index_in(sites, site) {
+  (br, sites) => if len(targets_of_binder(b, scope, ToBranch(br))) > 0 && !index_in(sites, site) {
     (br, push(sites, site))
   } else {
     entry
@@ -10872,7 +10872,7 @@ fn branch_mutation(site, target_h) = match ages_top() {
 }
 
 fn branch_settle(site, target_h, scope, entry) = match entry {
-  (br, sites) => if len(store_targets(target_h, scope, ToBranch(br))) > 0 && !index_in(sites, site) {
+  (br, sites) => if len(targets_of(target_h, scope, ToBranch(br))) > 0 && !index_in(sites, site) {
     (br, push(sites, site))
   } else {
     entry
@@ -11356,13 +11356,13 @@ fn closure_handed_age(scope, params, arg) = match handed_age(scope, params, arg)
 }
 
 fn arg_age(scope, params, ah) =
-  fold((false, []), add_target_age(scope, params, ??, ??), store_targets(ah, scope, ToFrame))
+  fold((false, []), add_target_age(scope, params, ??, ??), targets_of(ah, scope, ToFrame))
 
 fn add_target_age(scope, params, age, t) = match age {
   (older, ps) => match t {
     TgOlder(_) | TgCapture(_) => (true, ps),
     TgParam(b) => (older, add_index(ps, handle_position(params, b))),
-    TgState(b) => if len(store_targets(b, scope, ToFrame)) > 0 { (true, ps) } else { age },
+    TgState(b) => if len(targets_of(b, scope, ToFrame)) > 0 { (true, ps) } else { age },
   },
 }
 
@@ -11576,91 +11576,83 @@ fn state_field_written_cells(sf) = match graph_binder_of(state_field_init(sf)) {
   None => [],
 }
 
-// The targets a store into the value at `h` reaches, read from the scope the
-// store stands in against the view's extent — none when the extent allocated
-// it.
-fn store_targets(h, scope, view) = match graph_node_body(h) {
-  NExpr(VarRef(_)) => match binder_read_by(h) {
-    Some(b) => binder_targets(b, scope, view),
-    // A reference to a declaration is its record: a nested fn's, minted where
-    // the declaring scope holds it as a let (`ages_declared`); a module
-    // function's, the module's own.
-    None => match graph_ref_decl(h) {
-      Some(d) => let_targets(d, scope, view),
-      None => [TgOlder(0)],
-    },
-  },
-  NExpr(CallExpr(callee, args)) => call_targets(callee, args, scope, view),
-  NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, [left]) {
-    Some((callee, args)) => call_targets(callee, args, scope, view),
-    None => [TgOlder(0)],
-  },
-  // A store into a part of a value is a store into memory the whole reaches:
-  // a product built here is its parts' memory, a part read off a value is
-  // the value's, and a word is no memory at all.
-  NExpr(MakeListExpr(parts)) | NExpr(MakeTupleExpr(parts)) => flat_map(store_targets(??, scope, view), parts),
-  NExpr(MakeRecordExpr(fields)) | NExpr(NamedRecordExpr(_, fields)) => flat_map(field_targets(scope, view, ??), fields),
-  NExpr(RecordUpdateExpr(base, fields)) => store_targets(base, scope, view) ++ flat_map(field_targets(scope, view, ??), fields),
-  NExpr(FieldExpr(recv, _)) | NExpr(IndexExpr(recv, _)) => store_targets(recv, scope, view),
-  NExpr(LitInt(_)) | NExpr(LitFloat(_)) | NExpr(LitBool(_)) | NExpr(LitUnit)
-  | NExpr(MakeStringExpr(_)) | NExpr(ShowExpr(_)) => [],
-  NParam(_) | NPat(_) => binder_targets(h, scope, view),
+// Which older memory a store into the value at `h` reaches, read from the
+// scope the store stands in against the view's extent: the stops `stops_of`
+// finds (src/graph.mn), each read as the judgment's question asks. A let the
+// view owns is its value, and one it does not predates the view at the depth
+// it was bound; a product built here is its parts' memory, a part read off a
+// value is the value's, a word and a fresh record are no memory, and a
+// literal in the static data predates every extent. A call is read by
+// `call_targets`. A value the extent allocated has no target at all.
+fn targets_of(h, scope, view) = stops_of(h) |> flat_map(target_of_stop(scope, view, ??))
+
+// The same question of a binder itself: a state commit's, at the value's node.
+fn targets_of_binder(b, scope, view) =
+  stops_of_binder(b) |> flat_map(target_of_stop(scope, view, ??))
+
+fn target_of_stop(scope, view, stop) = match stop {
+  StopLet(b) | StopConfig(b) => unfactored_targets(b, scope, view),
+  StopParam(b) => param_targets(b, scope, view),
+  StopState(b) => state_targets(b, scope, view),
+  // A part taken off a value is the value's memory.
+  StopPart(_, whole) => targets_of(whole, scope, view),
+  // A reference to a declaration is its record: a nested fn's, minted where
+  // the declaring scope holds it as a let (`ages_declared`); a module
+  // function's, the module's own.
+  StopDecl(_, d) => let_targets(d, scope, view),
+  StopCall(_, callee, args) => call_targets(callee, args, scope, view),
+  StopProduct(_, parts) => flat_map(targets_of(??, scope, view), parts),
   // A mint is memory of the frame that mints it.
-  NExpr(LambdaExpr(_, _)) => [],
-  NStmt(FnStmt(_, _, _, _, _)) => [],
-  NExpr(BlockExpr(_, f)) => store_targets(f, scope, view),
-  NExpr(IfExpr(_, t, e)) => store_targets(t, scope, view) ++ store_targets(e, scope, view),
-  NExpr(MatchExpr(_, arms)) => flat_map(arm_targets(scope, view, ??), arms),
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [TgOlder(0)],
+  StopAlloc(_) | StopWord(_) => [],
+  StopStatic(_) | StopBeyond(_) => [TgOlder(0)],
+  StopPartOf(_, recv) => targets_of(recv, scope, view),
 }
 
-fn field_targets(scope, view, field) = match field {
-  (_, v) => store_targets(v, scope, view),
-}
-
-fn arm_targets(scope, view, arm) = match arm {
-  (_, body) => store_targets(body, scope, view),
-}
-
-// A handler's config parameter is a cell with no binder fact of its own; to
-// the frame its arms run in it is the install's memory, as a declared
-// function's parameter is its caller's.
-fn binder_targets(b, scope, view) = match scope {
-  AgeScope(r) => match graph_binder_of(b) {
-    Some(fact) => match fact {
-      ParamFact(_) => match r.kind {
-        AgeFn(params) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), params) {
-          [TgParam(b)]
-        } else {
-          [TgOlder(0)]
-        },
-        AgeClosure(params) => if any(handle_is(b, ??), params) {
-          if view_owns_binders(view, len(r.arenas)) { [TgParam(b)] } else { [TgOlder(0)] }
-        } else {
-          capture_target(view, b)
-        },
-        AgeArm(_, _, _) => [TgOlder(0)],
-      },
-      StateFact(_) => match r.kind {
-        AgeArm(_, states, _) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), states) {
-          [TgState(b)]
-        } else {
-          [TgOlder(0)]
-        },
-        AgeFn(_) => [TgOlder(0)],
-        AgeClosure(_) => capture_target(view, b),
-      },
-      // A part taken off a value is the value's memory.
-      PartFact(f) => store_targets(f.whole, scope, view),
+// A declared function's parameter is its own where the view counts the
+// scope's binders as its own, a closure's where the closure bound it, and a
+// capture otherwise; an arm reads every parameter as its install's memory.
+fn param_targets(b, scope, view) = match scope {
+  AgeScope(r) => match r.kind {
+    AgeFn(params) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), params) {
+      [TgParam(b)]
+    } else {
+      [TgOlder(0)]
     },
-    None => match r.kind {
-      AgeArm(_, _, configs) => if view_is_frame(view) && any(handle_is(b, ??), configs) {
-        [TgParam(b)]
-      } else {
-        let_targets(b, scope, view)
-      },
-      AgeFn(_) | AgeClosure(_) => let_targets(b, scope, view),
+    AgeClosure(params) => if any(handle_is(b, ??), params) {
+      if view_owns_binders(view, len(r.arenas)) { [TgParam(b)] } else { [TgOlder(0)] }
+    } else {
+      capture_target(view, b)
     },
+    AgeArm(_, _, _) => [TgOlder(0)],
+  },
+}
+
+// An arm's own state field is the install's record where the view counts
+// the scope's binders as its own; to a function it is older memory, and to a
+// closure a capture.
+fn state_targets(b, scope, view) = match scope {
+  AgeScope(r) => match r.kind {
+    AgeArm(_, states, _) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), states) {
+      [TgState(b)]
+    } else {
+      [TgOlder(0)]
+    },
+    AgeFn(_) => [TgOlder(0)],
+    AgeClosure(_) => capture_target(view, b),
+  },
+}
+
+// A binder with no fact of its own: a handler's config parameter, which to
+// the frame its arms run in is the install's memory, as a declared function's
+// parameter is its caller's; or a let, read by the depth it was bound at.
+fn unfactored_targets(b, scope, view) = match scope {
+  AgeScope(r) => match r.kind {
+    AgeArm(_, _, configs) => if view_is_frame(view) && any(handle_is(b, ??), configs) {
+      [TgParam(b)]
+    } else {
+      let_targets(b, scope, view)
+    },
+    AgeFn(_) | AgeClosure(_) => let_targets(b, scope, view),
   },
 }
 
@@ -11675,7 +11667,7 @@ fn capture_target(view, b) = match view {
 fn let_targets(b, scope, view) = match scope {
   AgeScope(r) => match find(let_at(b, ??), r.lets) {
     Some(found) => match found {
-      (_, d) => if view_owns_let(view, b, d, len(r.arenas)) { store_targets(b, scope, view) } else { [TgOlder(d)] },
+      (_, d) => if view_owns_let(view, b, d, len(r.arenas)) { targets_of(b, scope, view) } else { [TgOlder(d)] },
     },
     None => match r.kind {
       AgeClosure(_) => capture_target(view, b),
@@ -11718,7 +11710,7 @@ fn arg_targets(args, scope, view, i) = if i >= 0 && i < len(args) {
   match graph_node_body(ah) {
     NExpr(LabeledArg(_, _)) => [TgOlder(0)],
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => store_targets(ah, scope, view),
+    | NRow(_) | NParam(_) => targets_of(ah, scope, view),
   }
 } else {
   [TgOlder(0)]

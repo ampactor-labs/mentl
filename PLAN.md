@@ -852,6 +852,34 @@ as unknown, never as passing.
   (tests/micros/mn-arena-state-commit-no-journal.mn answers 0 where the
   boot answered 3, and mn-arena-state-commit-moves.mn reads the moved pair
   whole). The journal now holds list-slot and raw stores alone.
+- **One walk answers which allocation a value may be** (2026-11-05). The
+  judgment's store-age walk and the verifier's flow walk each walked the
+  edges from a value to the memory it may be, in two functions that
+  disagreed where neither had been measured. Now `stops_of`
+  (src/graph.mn) takes the one step over the edges the judgment drew, to
+  the nearest stops of a value (a let's value, a parameter, a state field,
+  a part and its whole, a declaration held as a value, a call, a product, a
+  fresh record, a static literal, a word, a part read off a value, a node
+  it cannot follow), and each reader continues through the stops its
+  question allows: the verifier's `roots_of` (src/verify.mn) asks which
+  allocation the value may be, the judgment's `targets_of` (src/infer.mn)
+  which older memory a store into it reaches, against the scope and view
+  as before. The candidate compiles the wheel to the same bytes as the
+  boot, so every barrier, move and claim on the wheel is unchanged; the
+  verifier reads a pipe as its call and a record update, a show and a mint
+  as the fresh records they are, where it read any memory. `mentl query
+  <file> census unplaced` counts the values the verifier's walk cannot
+  place, through a memo the census allocates one slot a node, and the board
+  holds the wheel's count (54,366, born 2026-11-05) as a ceiling that only
+  falls; the micro mn-arena-state-commit-moves reads 676 where the two
+  walks read 804, lesson 1 1,026 where they read 1,198. The census walk
+  read each site against every earlier one through an index into a pushed
+  list, which made a census of 6,467 matches take three minutes; superseded
+  nodes were already skipped and no site was doubled, so the check is gone
+  and every census answers in about five seconds (the roster of 37 in
+  under ten). The column that would hold each node's roots waits for the
+  face, since a cell at every value node is about 20 MB on the
+  self-compile's line peak, which the march refuses to let rise.
 - **A `with` clause states decisions and never lists the row**
   (2026-10-30). A declaration's clause leaves every effect it does not
   mention to the body: `fn rate() with Sample(48000) = { print(…);
@@ -1457,7 +1485,9 @@ the last three.
    schedule's demand, the edit cone, `refs of`, `unreachable` and the
    Severance Map's bands, each keyed by edge and none by spelling. Each query
    first gives the same answers as its own separate walk on the wheel and the
-   batteries, and then the separate walks are deleted.
+   batteries, and then the separate walks are deleted. Memory's question,
+   which allocation a value may be, is one walk since 2026-11-05 (§7); the
+   eight queries follow, one landing each.
 
 2. **The keystone: lowering is a column, and the graph gains its evaluator**
    (`Hβ.lower.lowering-is-a-column`, `Hβ.lower.the-evaluator-is-a-projection`).

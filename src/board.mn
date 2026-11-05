@@ -265,6 +265,19 @@ fn board_bounds() = [
   // text one statement at a time through the one install that reads a
   // statement.
   Bound({ceiling: 28, question: QCensus(CsArenaUnknown)}),
+  // THE VALUES WHOSE MEMORY THE VERIFIER CANNOT PLACE (`roots_of`,
+  // src/verify.mn): an expression holding memory, other than a callee or a
+  // stage, whose walk to the allocation it may be stops at a node it cannot
+  // follow: a part of another value, a declaration held as a value, a part
+  // read off a value, a call whose callee claims nothing of what it answers
+  // back. With the installs whose roots the judgment left unknown (above),
+  // these are the blind spots of memory's one walk, and the count falls as
+  // the walk follows more: a parameter to what its calls hand it, a field to
+  // what its records put there (PLAN §11.1(c), the reach one walk). Born
+  // 2026-11-05 at the measured count, 54,366 over the wheel, 10,487 of them
+  // in the judgment and 5,859 in the emitter, two of them this line's own
+  // constructors held as values.
+  Bound({ceiling: 54366, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

@@ -124,6 +124,13 @@ type CensusShape
   // those some store it saw may root from outside, whose exits journal it.
   | CsArenaUnknown
   | CsArenaRooted
+  // A value whose memory the verifier's walk cannot place (`roots_of` answers
+  // beyond a node): an expression of a type that holds memory, other than
+  // the callee of a call or the stage of a pipe. With the installs whose
+  // roots the judgment left unknown, these are the two blind spots of the
+  // readings of memory's one walk; the board holds the count, and a sharper
+  // reading may only lower it.
+  | CsUnplaced
   // The ops of an effect whose name says it reads must read (PLAN §11.1(b)):
   // a resume that writes a handler's state in the arm of such an op is a
   // write declared as a read, which a `!...Write` clause cannot see. The
@@ -715,6 +722,15 @@ fn name_decl(name) with !Mutate = env_resolve(name)
 fn applies_of_name(name) with !Mutate = match name_decl(name) {
   Some(d) => graph_applies_of(d),
   None => [],
+}
+
+// Whether a site stands among those collected so far, by its module and span.
+fn site_in(ref acc, ref m: String, ref sp, i) = if i >= len(acc) {
+  false
+} else {
+  match acc[i] {
+    (am, asp, _h) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
+  }
 }
 
 fn collect_ref_sites(ref hs, i, acc) with !Mutate = if i < 0 {
@@ -1336,6 +1352,7 @@ fn census_label(shape) = match shape {
   CsMatchOption => "match(es) over Some/None",
   CsArenaUnknown => "arena install(s) whose roots the judgment left unknown",
   CsArenaRooted => "arena install(s) a store the judgment saw may root from outside",
+  CsUnplaced => "value(s) whose memory the verifier's walk cannot place",
   CsReadOpWrites => "resume(s) writing a handler's state in the arm of a Read effect's op",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
@@ -1381,6 +1398,7 @@ fn census_name(shape) = match shape {
   CsMatchOption => "match-option",
   CsArenaUnknown => "arena-unknown",
   CsArenaRooted => "arena-rooted",
+  CsUnplaced => "unplaced",
   CsReadOpWrites => "read-op-writes",
   CsText(needle) => "text {needle}",
   CsProse(needle) => "prose {needle}",
@@ -1423,6 +1441,7 @@ fn census_roster() = [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume]
   CsMatchOption,
   CsArenaUnknown,
   CsArenaRooted,
+  CsUnplaced,
   CsReadOpWrites
 ] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
 
@@ -1502,9 +1521,18 @@ fn census_noted(shape) with !Mutate = if shape == CsWildcardOverSum {
   catch_all_refusals() |> map(refusal_noted)
 } else {
   match graph_snapshot() {
-    Graph(next, _) => map({ (m, sp, h) => (m, sp, census_note(shape, h)) }, census_walk(shape, 0, next, make_list(0))),
+    Graph(next, _) => map(
+      { (m, sp, h) => (m, sp, census_note(shape, h)) },
+      census_walk(census_memo(shape, next), shape, 0, next, make_list(0))
+    ),
   }
 }
+
+// What the walk remembers between nodes: the `unplaced` shape reads the
+// verifier's walk at every value node, so it asks through a memo the census
+// allocates here, one slot a node (`roots_read`); every other shape remembers
+// nothing, which the empty list is.
+fn census_memo(shape, next) = if shape == CsUnplaced { make_list(next) } else { [] }
 
 // The catch-alls the judgment refused, read off the bank: each refusal
 // carries the arm's pattern node and the roster it stands for, which the
@@ -1534,7 +1562,7 @@ fn census_note(shape, h) with !Mutate = match shape {
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaUnknown | CsArenaRooted | CsReadOpWrites | CsText(_) | CsFieldRead(_) => None,
+  | CsArenaUnknown | CsArenaRooted | CsUnplaced | CsReadOpWrites | CsText(_) | CsFieldRead(_) => None,
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1548,36 +1576,28 @@ fn prose_line(holds, text) = match find(holds, lines(text)) {
 // (a row's name) does not locate.
 fn span_of_node_raw(handle) with !Mutate = graph_span_of(handle)
 
-// The dedup key is (MODULE, span), not the span alone. It was the span alone
-// while spans were offsets into ONE concatenated weave, where a coordinate was
-// globally unique by construction. The per-module parse makes every file start
-// at line 1, so two modules genuinely share a line 10 and span-keyed dedup
-// silently DROPS the second site — measured the day the parse moved: the verb
-// census missed its own fixture's `|>` because a lib module had already
-// claimed that line. The pair is unique again for the reason the coordinate
-// used to be, and now it says so instead of relying on it.
-// A site in a SUPERSEDED generation is not a site of the program: a session
-// that re-judged a module holds its older parse below the current one, at
-// spans the edit has since moved, so the (module, span) dedup cannot catch it
-// (graph_node_current).
-fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
+// Every node of the graph asked whether it is the shape, each answered once:
+// a site is a current node's module and span. A node of a superseded
+// generation is not a site of the program (a session that re-judged a module
+// holds its older parse below the current one), and a node with no span of its
+// own (a row's name) locates nothing. The walk read each site against every
+// earlier one until 2026-11-05, an index into a pushed list inside the loop,
+// which made a census of 6,467 matches take three minutes; no site was ever
+// doubled once superseded nodes were skipped, so nothing is read twice.
+fn census_walk(memo, shape, i, n, acc) = if i >= n {
   acc
 } else {
-  if census_matches(shape, i, graph_node_body(i)) && graph_node_current(i) {
+  if census_matches(memo, shape, i, graph_node_body(i)) && graph_node_current(i) {
     let sp = census_site_at(shape, i)
-    // A MODULE'S IDENTITY IS ITS PATH, never the node that represents it —
-    // the same law driver_collect_visit's visited set already keys on. The
-    // trial and the final each parse, so each mints its OWN NModule node for
-    // the same file: keying the dedup on the HANDLE made one site read as two
-    // (measured: every census count exactly DOUBLED, types:3748 four times).
+    // A module's identity is its path, never the node that represents it.
     let m = module_name_of_handle(graph_module_of(i))
-    if sp == span_zero() || site_in(acc, m, sp, 0) {
-      census_walk(shape, i + 1, n, acc)
+    if sp == span_zero() {
+      census_walk(memo, shape, i + 1, n, acc)
     } else {
-      census_walk(shape, i + 1, n, push(acc, (m, sp, i)))
+      census_walk(memo, shape, i + 1, n, push(acc, (m, sp, i)))
     }
   } else {
-    census_walk(shape, i + 1, n, acc)
+    census_walk(memo, shape, i + 1, n, acc)
   }
 }
 
@@ -1590,7 +1610,7 @@ fn census_site_at(shape, h) with !Mutate = match shape {
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaUnknown | CsArenaRooted | CsReadOpWrites | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
+  | CsArenaUnknown | CsArenaRooted | CsUnplaced | CsReadOpWrites | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
 }
 
 // The line the note shows, located: a comment's lines are its source lines
@@ -1609,14 +1629,6 @@ fn prose_site(holds, h) with !Mutate = {
   }
 }
 
-fn site_in(ref acc, ref m: String, ref sp, i) = if i >= len(acc) {
-  false
-} else {
-  match acc[i] {
-    (am, asp, _h) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
-  }
-}
-
 // The annotations are Intent Boundaries carrying the eq proof: without
 // them the kinds' `==` floored to pointer i32.eq (the documented
 // pointer-eq-on-names class, here on an ADT — PFeedback's two
@@ -1625,7 +1637,19 @@ fn site_in(ref acc, ref m: String, ref sp, i) = if i >= len(acc) {
 // handle rides beside the body: the judgment shapes read the graph at
 // the site (the lambda's judged row, the fn's own self-calls), where
 // the syntactic shapes read the body alone.
-fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match shape {
+// Whether the node is applied rather than valued: the callee of a call or the
+// stage of a pipe, read off its parent.
+fn applied_position(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NExpr(CallExpr(callee, _)) => callee == h,
+    NExpr(PipeExpr(_, _, stage)) => stage == h,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+  None => false,
+}
+
+fn census_matches(memo, shape: CensusShape, h, body: NodeBody) = match shape {
   CsAnonymous => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
@@ -1890,6 +1914,16 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   CsArenaRooted => match graph_arena_roots_at(h) {
     RootedAt(_) => true,
     RootsUnknown | RootsFree | OpensNoArena => false,
+  },
+  // A value the verifier's flow walk cannot place in any allocation
+  // (`roots_of`): an expression of a type that holds memory, other than
+  // the callee of a call or the stage of a pipe, whose roots are any memory.
+  CsUnplaced => match body {
+    NExpr(_) => holds_memory(h) && !applied_position(h) && match roots_read(memo, h) {
+      RootsBeyond(_) => true,
+      RootsAt(_) => false,
+    },
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
   },
   // A resume that writes the handler's state, where the arm it stands in
   // answers an op of an effect whose name says it reads.
@@ -2247,7 +2281,7 @@ fn subtree_drift_counts(h, roster, counts, fuel) = if fuel <= 0 {
 fn roster_bump(roster, counts, i, n, h, body) = if i >= n {
   counts
 } else {
-  let c2 = if census_matches(list_index(roster, i), h, body) {
+  let c2 = if census_matches([], list_index(roster, i), h, body) {
     list_set(counts, i, list_index(counts, i) + 1)
   } else {
     counts

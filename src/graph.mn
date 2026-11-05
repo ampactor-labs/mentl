@@ -392,6 +392,98 @@ fn is_pattern(h) = match graph_node_body(h) {
   | NParam(_) => false,
 }
 
+// Memory's one question, one step: the nearest stops of the value at `h`
+// (`MemoryStop`), over the edges the judgment drew (PLAN §4, the reach). A
+// reference reaches its binder's fact or the declaration it names; a block
+// its tail; a branch its arms. Every other node is a stop the reader
+// continues through by its own question: the verifier asks which allocation
+// a value may be (roots_of, src/verify.mn), the judgment which older memory
+// a store into it reaches (targets_of, src/infer.mn).
+fn stops_of(h) = match graph_node_body(h) {
+  NExpr(VarRef(_)) => match binder_read_by(h) {
+    Some(b) => stops_of_binder(b),
+    None => match graph_ref_decl(h) {
+      Some(d) => [StopDecl(h, d)],
+      None => [StopBeyond(h)],
+    },
+  },
+  NExpr(CallExpr(callee, args)) => [StopCall(h, callee, args)],
+  NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, [left]) {
+    Some((callee, args)) => [StopCall(h, callee, args)],
+    None => [StopBeyond(h)],
+  },
+  NExpr(MakeListExpr(parts)) | NExpr(MakeTupleExpr(parts)) => [StopProduct(h, parts)],
+  NExpr(MakeRecordExpr(fields)) | NExpr(NamedRecordExpr(_, fields)) => [StopProduct(h, map(field_value, fields))],
+  NExpr(RecordUpdateExpr(base, fields)) => [StopProduct(h, [base] ++ map(field_value, fields))],
+  NExpr(MakeStringExpr(_)) | NExpr(ShowExpr(_)) | NExpr(LambdaExpr(_, _)) => [StopAlloc(h)],
+  NStmt(FnStmt(_, _, _, _, _)) => [StopAlloc(h)],
+  NExpr(LitString(_)) => [StopStatic(h)],
+  NExpr(LitInt(_)) | NExpr(LitFloat(_)) | NExpr(LitBool(_)) | NExpr(LitUnit) => [StopWord(h)],
+  NExpr(FieldExpr(recv, _)) | NExpr(IndexExpr(recv, _)) => [StopPartOf(h, recv)],
+  NExpr(BlockExpr(_, f)) => stops_of(f),
+  NExpr(IfExpr(_, t, e)) => stops_of(t) ++ stops_of(e),
+  NExpr(MatchExpr(_, arms)) => flat_map(arm_stops, arms),
+  NParam(_) | NPat(_) => stops_of_binder(h),
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [StopBeyond(h)],
+}
+
+// The stop a binder is, by the fact the judgment holds at it: a parameter, a
+// state field, a part of a whole, a let's value, or a configuration parameter,
+// which is a cell with no fact of its own.
+fn stops_of_binder(b) = match graph_binder_of(b) {
+  Some(ParamFact(_)) => [StopParam(b)],
+  Some(StateFact(_)) => [StopState(b)],
+  Some(PartFact(f)) => [StopPart(b, f.whole)],
+  None => match graph_node_body(b) {
+    NExpr(_) => [StopLet(b)],
+    NParam(_) | NPat(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [StopConfig(b)],
+  },
+}
+
+fn arm_stops(arm) = match arm {
+  (_, body) => stops_of(body),
+}
+
+fn field_value(field) = match field {
+  (_, v) => v,
+}
+
+// A callee leaf applied to arguments: a reference applied to them, or a
+// partial application completed by them — the authored `??` slots first,
+// then the slots past its arguments.
+fn stage_application(sh, applied) = match graph_node_body(sh) {
+  NExpr(VarRef(_)) => Some((sh, applied)),
+  NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
+    ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
+    ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) => None,
+    NoProduct => None,
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
+}
+
+// Each authored hole takes the next applied value, in order, and the applied
+// values no hole took follow the slots.
+fn completed_args(nodes, applied) = match fold(([], applied), fill_slot, nodes) {
+  (filled, left) => filled ++ left,
+}
+
+fn fill_slot(acc, n) = match acc {
+  (filled, left) => if is_authored_hole(n) {
+    match left {
+      [v, ...more] => (push(filled, v), more),
+      [] => (push(filled, n), []),
+    }
+  } else {
+    (push(filled, n), left)
+  },
+}
+
+fn is_authored_hole(n) = match graph_node_body(n) {
+  NHole(id) => id != 0,
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
+}
+
 // A declaration stands at module level when this edge runs from it to a
 // module node. The decls column holds a block's `let`s and nested fns beside
 // a module's own declarations, and this is the one test that tells them apart.

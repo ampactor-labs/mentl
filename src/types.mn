@@ -1850,6 +1850,43 @@ type ArenaRoots = OpensNoArena | RootsUnknown | RootsFree | RootedAt([(Int, Int)
 // that holds it, a branch's tail or a pipe's stage as much as directly.
 type InEdge = UseBy(Int) | MentionBy(Int) | AppliedAt(Int)
 
+// The memory a value may be, as the verifier reads it: the binders, calls and
+// literals it was built as, or any memory at all, beyond the node the walk
+// could not follow (an unknown callee, a part of another value, a labelled
+// argument).
+type Roots = RootsAt([Int]) | RootsBeyond(Int)
+
+// Where one step of memory's question stops: the nearest nodes a value's
+// memory can be read off, found by the walk in src/graph.mn (stops_of) over
+// the edges the judgment drew. Each reader continues through the stops its
+// own question allows: the verifier through a let to its value (roots_of,
+// src/verify.mn), the judgment through a product to its parts and through a
+// let the extent owns (targets_of, src/infer.mn). A let's binder is its
+// value node; a configuration parameter is a binder with no fact of its own.
+type MemoryStop
+  = StopLet(Int)
+  | StopConfig(Int)
+  | StopParam(Int)
+  | StopState(Int)
+  // the part's binder, and the whole it was taken off
+  | StopPart(Int, Int)
+  // a reference held as a value, and the declaration it names
+  | StopDecl(Int, Int)
+  // a call: its node, its callee and its arguments
+  | StopCall(Int, Int, [Int])
+  // a product built here: its node and the values it holds
+  | StopProduct(Int, [Int])
+  // a fresh record nothing reaches into: a string built here, a show, a mint
+  | StopAlloc(Int)
+  // a literal in the module's static data
+  | StopStatic(Int)
+  // a word, which is no memory
+  | StopWord(Int)
+  // a part read off a value: the node and the value it reads
+  | StopPartOf(Int, Int)
+  // a node the walk cannot follow
+  | StopBeyond(Int)
+
 // What the graph knows of a BINDER the value walk reads through (P0),
 // keyed by the binder's own handle; the walk reaches it through a
 // reference's link, never through the unification class, which holds a
