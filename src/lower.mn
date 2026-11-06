@@ -2647,14 +2647,20 @@ fn lower_stage_call(answer, site, stage, given) = {
 }
 
 // The completed call's slots, read where the judgment wrote them. A stage the
-// judgment never completed is the compiler's own invariant broken, reported.
+// judgment refused has none, and the judgment's own error says why, so the
+// program does not build. A stage with no product in a program the judgment
+// accepted is the compiler's own invariant broken, reported.
 fn stage_product_slots(site) = match graph_product_at(site) {
   ProductOf(slots, _, _) => slots,
   NoProduct => {
-    report(EInternalInvariant(
-      "a stage's call was never judged: the lowering reached a pipe the judgment did not complete",
-      graph_span_of(site)
-    ))
+    if diag_errors() == 0 {
+      report(EInternalInvariant(
+        "a stage's call was never judged: the lowering reached a pipe the judgment did not complete",
+        graph_span_of(site)
+      ))
+    } else {
+      ()
+    }
     []
   },
 }

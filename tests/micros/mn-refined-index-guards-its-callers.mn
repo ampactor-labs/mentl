@@ -1,0 +1,12 @@
+// check: refuse E_EffectMismatch
+// The same read written `xs[i]`: the index's refinement and the guard prove
+// the bounds, so the caller that hands -2 pays Trap and `main with !Trap` is
+// refused. Pin 47767c1238b2 accepted it, and the run read before the list's
+// start.
+type NonNeg = Int where 0 <= self
+
+fn at(xs, i: NonNeg) with !Trap = if i < len(xs) { xs[i] } else { 0 }
+
+fn go(k) = at([4, 5], k - 3)
+
+fn main() with !Trap = go(1)

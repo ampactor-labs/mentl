@@ -337,12 +337,13 @@ fn board_bounds() = [
   // strip reading the claims proven through the calls) added code whose
   // values the walk cannot place yet. 35,936 -> 35,905 (2026-11-06): code
   // left and came when a stage became the call it completes; the walk places
-  // nothing it could not place before. Two of the values are new: the
-  // answers of applied_around and unwrap_labeled_arg in the check that a
-  // hole standing as a pipe's stage is no slot. The second is a Node, which
-  // is an Int, and the census counts it only because it reads an alias as
-  // memory whatever the alias names (PLAN §11, the reach one walk).
-  Bound({ceiling: 35905, question: QCensus(CsUnplaced)}),
+  // nothing it could not place before. 35,905 -> 34,654 the same day, a
+  // correction of the measure: an alias of a word is a word, so the 1,253
+  // values whose type is such an alias, `Node` the most common, are no
+  // memory. The census read every alias as memory whatever it named. Two
+  // answers this landing's code reads are among the 34,654: whether a stage's
+  // callee has a known arrow, and a share branch's own span.
+  Bound({ceiling: 34654, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

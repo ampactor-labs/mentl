@@ -1,0 +1,12 @@
+// check: pending 7:38
+// Two branches of one share owe their claims apart. The calls prove the
+// first cut, 0 to 2 of a list of three, and leave the second, 5 to 9, open
+// at 7:38. Pin 47767c1238b2 placed both claims at the whole share's span, so
+// proving the first through the calls dropped the second, and the check
+// printed nothing for a cut the run stops at.
+fn two(xs) = xs <| (slice(??, 0, 2), slice(??, 5, 9))
+
+fn main() = {
+  let (b, c) = two([1, 2, 3])
+  len(b) + len(c)
+}

@@ -1,0 +1,14 @@
+// check: refuse E_EffectMismatch
+// The same read standing as a pipe's stage: `i |> list_index(xs, ??)` is
+// the call `list_index(xs, i)`, proven by `i: NonNeg` and the guard, so the
+// caller that hands -2 pays Trap and `main with !Trap` is refused. Pin
+// 6b2ecca8bf70 refused it because it proved no claim at a stage; pin
+// 47767c1238b2 proved the claim, charged no caller, and the run read before
+// the list's start.
+type NonNeg = Int where 0 <= self
+
+fn at(xs, i: NonNeg) with !Trap = if i < len(xs) { i |> list_index(xs, ??) } else { 0 }
+
+fn go(k) = at([4, 5], k - 3)
+
+fn main() with !Trap = go(1)

@@ -1,0 +1,11 @@
+// check: accepted
+// A `??` on a pipe's left is the value the pipe hands its stage, an absence
+// of type Int here, so `?? |> double` is an Int and `left` keeps its declared
+// result. The check reports the hole and no error. Pin 47767c1238b2 read the
+// handed hole as a slot the call still waits for and refused the program with
+// "(Int) -> Int vs Int".
+fn double(x: Int) -> Int = x * 2
+
+fn left() -> Int = ?? |> double
+
+fn main() = left()

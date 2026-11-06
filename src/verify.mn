@@ -4697,8 +4697,9 @@ fn arm_stores(hd, arms) = arms |> flat_map({ arm => stores_in(hd, arm.body) })
 
 // Whether a node's value is memory a store can reach: a word is not (an
 // integer, a float, a byte, an address, a unit, a nominal type whose variants
-// carry no payload, which is its tag word, and a refinement of any of these);
-// every pointer kind is, and so is a value whose type is not yet known.
+// carry no payload, which is its tag word, and a refinement or an alias of
+// any of these, so a `Node` is a word); every pointer kind is, and so is a
+// value whose type is not yet known.
 fn holds_memory(h) = match graph_chase(h) {
   GNode(NBound(ty), _) => type_holds_memory(ty),
   GNode(_, _) => true,
@@ -4708,8 +4709,9 @@ fn type_holds_memory(ty) = match ty {
   TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => false,
   TName(_, _) => !sum_is_tag(ty),
   TRefined(base, _) => type_holds_memory(base),
+  TAlias(_, target) => type_holds_memory(target),
   TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _)
-  | TCont(_, _, _, _) | TAlias(_, _) => true,
+  | TCont(_, _, _, _) => true,
 }
 
 // A memory's parts are what its writers put there. A part read off how a

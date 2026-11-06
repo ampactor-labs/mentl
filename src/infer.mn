@@ -522,9 +522,9 @@ fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_
   ) {
     Some(held) => if held {
       // A precondition proved it total: the trap is what that parameter
-      // now GUARDS, paid by any caller whose argument does not prove it.
-      lean_guards(rh, trap_row())
-      lean_guards(lh, trap_row())
+      // now guards, paid by any caller whose argument does not prove it.
+      lean_trap(rh)
+      lean_trap(lh)
     } else {
       ()
     },
@@ -536,6 +536,11 @@ fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_
 // into their guards (verify.mn's leaves: a parameter's precondition is the
 // one assumption a row fact may stand on, and its callers discharge it).
 fn lean_guards(h, row) = leaves_params(value_leaves(h, NoSelf)) |> each(carry_guard(row, ??))
+
+// A claim that holds and would trap where it failed leaves the Trap with
+// the parameters its proof stood on: a division's operands, a read's index,
+// a cut's bounds.
+fn lean_trap(h) = lean_guards(h, trap_row())
 
 // The one-effect rows the judgment charges by name, each built once and
 // shared by every site that charges it (`vocab_handle`).
@@ -5545,9 +5550,15 @@ fn infer_seq_op(cname, fh, args, handle, answer, span: ValidSpan) = {
 // asks it again (`owe_face_claim`).
 fn proven_form(cname: String, args, span: ValidSpan) = match face_claim(cname, args) {
   Some(pred) => match predicate_decide(pred) {
-    Some(true) => match proven_twin(cname) {
-      Some(twin) => env_resolve_linked(twin),
-      None => None,
+    Some(true) => {
+      // The Trap stays with the parameters whose preconditions the proof
+      // stood on, paid by any caller whose argument does not prove them,
+      // as a proven division's operands do (`partiality_claim`).
+      lean_face_operands(args)
+      match proven_twin(cname) {
+        Some(twin) => env_resolve_linked(twin),
+        None => None,
+      }
     },
     Some(false) | None => owe_face_claim(pred, span),
   },
@@ -5567,6 +5578,21 @@ fn owe_face_claim(pred, span: ValidSpan) = {
     Located(span, Inferred("a sequence primitive's precondition"))
   )
   None
+}
+
+// The operands a proven face claim stood on, in the shapes `face_claim`
+// builds the claim from: a read's list and index, a cut's list and bounds.
+fn lean_face_operands(args) = match args {
+  [xs, i] => {
+    lean_trap(xs)
+    lean_trap(i)
+  },
+  [xs, start, end] => {
+    lean_trap(xs)
+    lean_trap(start)
+    lean_trap(end)
+  },
+  [] | [_] | [_, _, _, _, ..._] => (),
 }
 
 // The claim a primitive's face states of the arguments of a call with every
@@ -5603,18 +5629,20 @@ fn substrate_row(fh) = match graph_chase(fh) {
 // (`CallAppliedFresh`).
 type CallForm = CallSaturated | CallSaturatedFresh | CallPartial([Int], [Int]) | CallSubstrateHoled([Int], [Int])
 
-// Where a call stands. A call at an OPERAND — of `+`, `==`, a unary `-` —
-// can be handed nothing later, so an authored `??` among its arguments is a
-// VALUE hole the proposer fills under the slot's contract, never the field a
-// partial suspends at: `choose(??) + 1` is the applied call, while
-// `f(choose(??))` and `let c = choose(??)` keep the suspension (2026-10-13;
-// before that the operand form was the product with a hole, and `+` refused
-// it as arithmetic on a function). A stage is not a site of its own: the
-// pipe completes it and judges the call it completes (`infer_stage_applied`).
-type CallSite = AtCall | AtOperand
+// Where a call stands. A call applied where it stands is handed nothing
+// beyond its arguments, so an authored `??` among them is a value hole the
+// proposer fills under the slot's contract, never the field a partial
+// suspends at.
+// Two calls stand so: a call at an operand of `+`, `==` or a unary `-`, so
+// `choose(??) + 1` is the applied call while `f(choose(??))` and `let c =
+// choose(??)` keep the suspension; and the call a pipe's stage or a share's
+// branch completes, whose open slots the values it was handed have filled,
+// so where a pipe's left is a `??`, that hole is the value the pipe hands its
+// stage.
+type CallSite = AtCall | AtApplied
 
-fn site_is_operand(site) = match site {
-  AtOperand => true,
+fn site_applies(site) = match site {
+  AtApplied => true,
   AtCall => false,
 }
 
@@ -5644,13 +5672,14 @@ fn form_shape(form) = match form {
 }
 
 // Whether a call leaves a slot open: a slot nothing fills, or an authored
-// `??` where something can fill it later. At an operand nothing can, so
-// there the `??` is the value the proposer fills (`CallSite`).
+// `??` where the call can still be handed a value for it. A call applied
+// where it stands is handed nothing more, so there the `??` is the value the
+// proposer fills (`CallSite`).
 fn slots_open(slots, site) = any(slot_open_at(site, ??), slots)
 
 fn slot_open_at(site, s) = match s {
   SlotOpen => true,
-  SlotFilled(n) => is_authored_hole(n) && !site_is_operand(site),
+  SlotFilled(n) => is_authored_hole(n) && !site_applies(site),
 }
 
 // A call judged where it stands, the closure a partial mints charged to the
@@ -5670,7 +5699,7 @@ fn infer_call_expr(func, args, handle, span: ValidSpan, site) = match infer_call
 // where an argument hole is a value hole; anything else is judged as the
 // expression it is.
 fn infer_operand(node) = match graph_node_body(node) {
-  NExpr(CallExpr(func, args)) => infer_call_expr(func, args, node, graph_span_of(node), AtOperand),
+  NExpr(CallExpr(func, args)) => infer_call_expr(func, args, node, graph_span_of(node), AtApplied),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => infer_expr(node),
 }
@@ -6822,11 +6851,11 @@ fn stage_call(input, func, written, stage, site, answer, span: ValidSpan) = {
   judge_slot_args(params, slots)
   let open = len(filter(slot_open_at(AtCall, ??), slots))
   let values = stage_handed_values(input, open)
-  if len(params) == 0 {
+  if !callee_arrow_known(func) {
     stage_call_judged(func, resolve_call_args([], written ++ values, cname), site, answer, span)
     stage_arrow_note(stage, func, values, answer, span)
   } else if open == len(values) {
-    stage_call_judged(func, stage_slots_filled(slots, values), site, answer, span)
+    stage_call_judged(func, stage_slots_filled(slots, values, span), site, answer, span)
     stage_arrow_note(stage, func, values, answer, span)
   } else if open == 0 && stage != func {
     // The complete call is judged where it stands, and the value it answers
@@ -6846,26 +6875,40 @@ fn stage_call(input, func, written, stage, site, answer, span: ValidSpan) = {
 
 // The slots of a stage with the values it is handed in its open ones, in
 // slot order.
-fn stage_slots_filled(slots, values) = match fold(([], values), fill_stage_slot, slots) {
+fn stage_slots_filled(slots, values, span: ValidSpan) = match fold(([], values), fill_stage_slot(span, ??, ??), slots) {
   (filled, _) => filled,
 }
 
-fn fill_stage_slot(acc, s) = match acc {
-  (filled, left) => match stage_slot_taking(s, left) {
+fn fill_stage_slot(span: ValidSpan, acc, s) = match acc {
+  (filled, left) => match stage_slot_taking(s, left, span) {
     (slot, rest) => (push(filled, slot), rest),
   },
 }
 
 // What one slot of a stage holds once filled, with the values left: an open
 // slot takes the next value, and any other slot keeps what was written.
-fn stage_slot_taking(s, left) = if slot_open_at(AtCall, s) {
+fn stage_slot_taking(s, left, span: ValidSpan) = if slot_open_at(AtCall, s) {
   match left {
-    [v, ...more] => (SlotFilled(v), more),
+    [v, ...more] => {
+      marked_by(s, v, span)
+      (SlotFilled(v), more)
+    },
     [] => (s, []),
   }
 } else {
   (s, left)
 }
+
+// A `??` written at the slot a value fills marks where the value goes, so it
+// takes that value's type; a slot nothing was written at marks nothing.
+fn marked_by(s, v, span: ValidSpan) = match s {
+  SlotFilled(h) => unify(h, v, span, handed_slot_reason),
+  SlotOpen => (),
+}
+
+// Why a slot's `??` has the type it has, made once and shared by every slot
+// a pipe or a share fills.
+let handed_slot_reason = Inferred("the value handed to this slot")
 
 // The stage as written is a function of the values its pipe hands it: its
 // node carries that arrow, from the values to the call's answer, so the caret
@@ -6878,8 +6921,21 @@ fn stage_arrow_note(stage, func, values, answer, span: ValidSpan) = if stage == 
   graph_bind(
     stage,
     TFun(build_inferred_params(values), TVar(answer), callee_row(func)),
-    Located(span, Inferred("a stage, as the function of the values its pipe hands it"))
+    Located(span, stage_arrow_reason)
   )
+}
+
+// Why a stage has the arrow it has, made once and shared by every stage.
+let stage_arrow_reason = Inferred("a stage, as the function of the values its pipe hands it")
+
+// Whether the judgment knows the callee's arrow, with its parameters, none
+// included. A callee whose arrow is not known yet, such as a parameter or a
+// record's field, takes the values after its written arguments (the Stage
+// Law); a known function that takes nothing is a complete call, applied whole
+// to what the pipe hands it.
+fn callee_arrow_known(func) = match graph_chase(func) {
+  GNode(NBound(TFun(_, _, _)), _) => true,
+  GNode(_, _) => false,
 }
 
 // The row a callee's arrow carries, or a fresh one where the callee is no
@@ -6890,9 +6946,11 @@ fn callee_row(func) = match graph_chase(func) {
 }
 
 // The completed call, judged by the one call judgment at its site, its
-// product written there for every reader and the lowering.
+// product written there for every reader and the lowering. It is applied
+// where it stands: the values handed to it have filled its open slots, so a
+// `??` among them is a value hole (`CallSite`).
 fn stage_call_judged(func, slots, site, answer, span: ValidSpan) = {
-  let form = infer_call(func, slots, site, answer, span, AtCall)
+  let form = infer_call(func, slots, site, answer, span, AtApplied)
   graph_product_note(site, form_slots(form, slots), form_open(form), form_shape(form))
   if call_is_alloc_returning(func) { tag_alloc_join(answer, slot_fillers(slots)) }
 }
@@ -8669,8 +8727,10 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
   // so it owes what its parameters demand of the input and pays the guard
   // where a claim is open, and its value is the boundary's result
   // (`infer_stage_applied`). The fanout raised nothing until 2026-10-21:
-  // `0 <| (inv, inv)` under `!Trap` checked clean and divided by zero.
-  infer_stage_applied(SharedInput(input_h), branch, branch, ret_h, span)
+  // `0 <| (inv, inv)` under `!Trap` checked clean and divided by zero. The
+  // call's claims stand at the branch's own span, where the traps listing
+  // reads them and where one branch's claim is told from another's.
+  infer_stage_applied(SharedInput(input_h), branch, branch, ret_h, graph_span_of(branch))
   let older_stores = ages_branch_close()
   exit_frame()
   let thunk_row = mk_ef_open([], thunk_row_h)
@@ -9496,8 +9556,16 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   // Trap is charged here, read off the claim, never only through whichever
   // callee the link happens to carry (a program judged with no library
   // still traps at the read), and the note is the verdict the lowering reads
-  // to choose the read it emits (`claim_open_at`).
-  if proven { () } else { inf_add_row_at(handle, trap_row()) }
+  // to choose the read it emits (`claim_open_at`). A proven claim leaves the
+  // Trap with the parameters whose preconditions the proof stood on, paid by
+  // any caller whose argument does not prove them, as a proven division's
+  // operands do (`partiality_claim`).
+  if proven {
+    lean_trap(ih)
+    lean_trap(rh)
+  } else {
+    inf_add_row_at(handle, trap_row())
+  }
   // The sugar calls what its lowering performs: `xs[i]` emits the read the
   // claim's verdict chose, so the node is linked to it and charges its
   // declared row (`sugar_calls`). The tuple-const route stays chargeless:
@@ -15848,10 +15916,16 @@ fn claim_held(verdict) = match verdict {
 
 // A row charged to a parameter's precondition — `Trap` for a division it
 // proved total, a callee's guard for a claim it discharged — joins what the
-// parameter's fact owes; the exit writes the sum into the guard cell.
+// parameter's fact owes; the exit writes the sum into the guard cell. A
+// parameter with no precondition is owed nothing by its callers, so a claim
+// that held without one stood on something else there, and nothing is
+// written.
 fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
   Some(fact) => match fact {
-    ParamFact(f) => graph_binder_note(param_h, ParamFact({guard: f.guard, owes: row_join(f.owes, row), pre: f.pre})),
+    ParamFact(f) => match f.pre {
+      Stated(_) | Learned(_) => graph_binder_note(param_h, ParamFact({...f, owes: row_join(f.owes, row)})),
+      Unstated | Unrefined => (),
+    },
     PartFact(_) => (),
     StateFact(_) => (),
   },

@@ -1,0 +1,12 @@
+// check: pending 7:21
+// A share's branch owes its claim where the branch stands: `one` hands xs to
+// `slice(??, 5, 9)` and to `len`, so the cut's bounds are owed at the cut,
+// 7:21, which is where `mentl query FILE traps` looks for them. Pin
+// 47767c1238b2 placed the claim at the whole share, 7:14, so the traps
+// listing found no claim at the branch while the check printed it pending.
+fn one(xs) = xs <| (slice(??, 5, 9), len)
+
+fn main() = {
+  let (a, n) = one([1, 2, 3])
+  len(a) + n
+}

@@ -3273,7 +3273,13 @@ word. For example, past `i
 >= 0 && i + 1 <= len(xs)` the read `xs[i]` stays open, since `i + 1` wraps
 at the largest Int (tests/micros/mn-path-*.mn). A read that the judgment
 proves in bounds uses the unchecked traversal, which dispatches on the
-list's shape and is total (tests/micros/mn-proven-read-is-total.mn).
+list's shape and is total (tests/micros/mn-proven-read-is-total.mn). Where
+the proof stood on a parameter's refinement, that parameter guards the
+read's `Trap` as a divisor's parameter guards a division's, and a caller
+whose argument does not prove the refinement pays it at the call: under
+`fn at(xs, i: NonNeg) with !Trap = if i < len(xs) { list_index(xs, i) } else
+{ 0 }`, a `main with !Trap` that hands `at` the index `k - 3` is refused
+(tests/micros/mn-refined-read-guards-its-callers.mn).
 
 **A sequence primitive checks its own precondition.** `slice` and
 `str_slice` trap where a bound leaves the sequence (when `0 <= start <= end <=

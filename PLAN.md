@@ -1024,6 +1024,28 @@ as unknown, never as passing.
   lower.mn's link took 16.2 s at 1.26 GB without it and takes 4.1 s at
   275 MB (the pin before this one, which merged those rows, 3.0 s at
   133 MB).
+- **A read a refinement proves is paid for by the caller that cannot
+  prove it** (2026-11-06). A read or a cut whose bounds a parameter's
+  refinement proves, with the guards on its path, leaves its `Trap` with
+  that parameter, as a proven division leaves it with its operands, so a
+  caller whose argument does not prove the refinement pays it: `fn main()
+  with !Trap = go(1)`, where `go` hands `at` the index -2, is refused
+  (tests/micros/mn-refined-read-guards-its-callers.mn and its `xs[i]` and
+  pipe-stage twins), where the pin before this one accepted it and the run
+  read before the list's start. A guard is carried only to a parameter
+  whose callers owe it a precondition, stated or learned. Five answers the
+  stage landing broke are right again, each found by running programs
+  against its pin: a `??` a pipe hands its stage is a value
+  (mn-pipe-hole-on-the-left-is-a-value.mn); the `??` that marks the slot a
+  pipe fills takes the value's type, so `mentl accept` writes nothing there
+  (mn-pipe-filled-hole-takes-its-type.mn); a share's branch owes its claim
+  at its own span (mn-share-claim-at-its-branch.mn,
+  mn-share-branch-claims-apart.mn); a complete call with no arguments
+  standing as a stage is applied whole (mn-pipe-zero-arg-call-stage.mn);
+  and a stage the judgment refused no longer makes `mentl run` report a
+  broken compiler invariant. The census of values the verifier cannot
+  place reads an alias as its target, so a `Node`, an `Int`, is a word, and
+  1,253 values left the count, a correction of the measure.
 - **The crown is a battery** (2026-11-06). Each of the 191 crucibles in
   tests/crown states its contract on its first line, `// check: refuse
   E_EffectMismatch` (or the class it tests) for a leak and `// check:
@@ -1657,14 +1679,13 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    first gives the same answers as its own separate walk on the wheel and the
    batteries, and then the separate walks are deleted. Memory's question,
    which allocation a value may be, is one walk since 2026-11-05 (§7); the
-   eight queries follow, one landing each. The census of the values that
-   walk cannot place (`census unplaced`, a board bound) reads a refinement
-   as its base but an alias as memory whatever the alias names
-   (`type_holds_memory`, src/verify.mn), so a `Node`, which is an `Int`,
-   counts as a value the walk cannot place: measured 2026-11-06 on the
-   answer of `unwrap_labeled_arg`. Read through to its target, an alias of
-   a word is a word, and the fall is a correction of the measure, said as
-   one. The traps facet (2026-11-06, §7)
+   eight queries follow, one landing each. A merge stage's slots are the
+   fanout's boundary result cells, not the parts' own values, so a claim
+   over them prints as `<expr>` and nothing proves it: `fn m(xs) with !Trap
+   = if len(xs) > 5 { ((xs) >< (5)) |> list_index } else { 0 }` is refused
+   although the guard proves the read (measured 2026-11-06); the walk
+   follows a boundary result cell to the value its branch answers. The
+   traps facet (2026-11-06, §7)
    is a ninth: it walks a function's body and not the arms of the handlers
    it installs, so a trap reached through an installed handler counts as
    the installing function's own, with no path into the library (`mentl
@@ -1739,6 +1760,14 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    `Handler(P, A)` type names. Today the value's emit names a global that
    nothing defines. Each charge follows the representation from the day the
    lowering builds it, so `!Alloc` accepts code that allocates nothing.
+   A module value that holds a partial of a declared function, `let inc =
+   plus(1)`, makes the emitter stop with a trap ("a precondition failed at
+   backends/wasm:4533:11") while `mentl check` accepts it: the emitter
+   writes a static closure record for it as though it were a function of
+   the table, and it is a value global. A partial of a sequence primitive
+   written with a `??`, `let cut = slice(??, 0, 2)`, is never built as a
+   closure, so its hole is refused as unresolved while `mentl check`
+   offers proposals for it (both measured 2026-11-06).
 
 3. **The face: every declaration publishes one, and verification reads it**
    (`Hβ.graph.every-declaration-publishes-a-face`). A declaration's face is
@@ -1796,6 +1825,19 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    (`Hβ.verify.handler-is-a-judgment-unit`). A Float carries its range (a
    sine's [-1, 1], affine combinations, a clamp), so a frequency computed from
    a sine or a product is decided (Pulse, Wasatch).
+   The four sequence primitives' face carries parameters with no names, so
+   `slice([1, 2, 3], start = 0, end = 2)` is refused with "no parameter
+   named `start` on `slice`" while `mentl where` prints the declaration's
+   names; the face takes its names from the declaration it stands for. A
+   list parameter's stated length is not read when a cut's or a read's
+   bounds are decided: `fn cut(xs: Big) with !Trap = slice(xs, 5, 9)` over
+   `type Big = [Int] where len(self) >= 9` is refused, and a caller's
+   ten-element literal leaves `9 <= len(...)` pending. A parameter's default
+   is judged and run in the caller's frame: `fn g(a, b = a * 2)` is refused
+   with E_MissingVariable at `a`, and a held partial runs its defaults
+   once, where it is built; a default belongs to the callee, with the
+   earlier parameters in scope (SYNTAX's "Default parameter values"). All
+   three measured 2026-11-06.
    The step's gate is that the
    course and the two scores check clean, the `QOwed` bounds fall to zero,
    and the wheel's open obligations fall with each piece.
@@ -1883,6 +1925,36 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    the arity text "function arity mismatch: 1 param(s) vs 0 param(s)", where
    the refusal should name the parameter and say to write its value
    (tests/micros/mn-install-config-without-default-refuses.mn, 2026-11-06).
+   An install written with an argument list that leaves a configuration
+   slot open, `twice() ~> counting()` where `counting` takes `step`, is
+   judged as an ordinary partial, and the emitter stops at an internal
+   invariant naming a shape number; it is refused where it stands, as the
+   bare install is. Labels at a call whose callee is a function value
+   resolve against whatever parameter names the value's type carries, the
+   first function unified into it, and are dropped without a word when it
+   carries none: `fn app(f) = f(b = 3, a = 10)` hands minus 3 and 10 in
+   written order. Labels there are refused (E_UnknownArgLabel), as they are
+   on a held partial. Two labels for one parameter are accepted, the second
+   replacing the first, and the parameter nobody named becomes an open slot
+   (`plus(a = 1, a = 2)`); the second is refused where it stands. A function
+   spliced into a string prints its raw machine word (`"{double}"` prints
+   4456), and `"{double(??)}"` builds and prints a closure's address; a
+   splice of a function value is refused, which refuses the hole too. The
+   proposer offers fills at a slot a pipe or a share fills, though writing
+   one turns the stage into a complete call the pipe refuses; it offers
+   nothing there and says the pipe fills the slot. It also lists the
+   parameter the parser mints for an arm-list literal (`__al` and a number)
+   as a value in scope, which no source can name. A parse error's recovery
+   makes the node an authored `??` makes, so the compile reports holes at a
+   `=>` and a `}` nobody wrote, with `mentl accept` offered there. A share's
+   bare `??` branch and a merge's `??` part are reported twice, once for
+   each time the lowering reaches them. `mentl why` names "a guard a
+   callee's precondition hands to its caller" whenever the body does not
+   show the effect, even where the effect comes from a default argument or
+   the body still holds a hole, and says a function never uses an effect
+   when its row, to which a hole adds nothing, lacks it; at a hole it says
+   the hole's row is not known yet. All measured on 2026-11-06 by running
+   programs against the pin.
    A dropped value
    is reported (`Hβ.infer.statement-value-is-dropped-silently`). A block's
    non-final statement whose value is a function is refused
@@ -2107,7 +2179,12 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    never holds. A secret is a label on an opaque host handle: the flow walk
    proves it never reaches output, and an import's negation proves that a
    dependency never touches it. The score then plays in the page as the
-   readings change.
+   readings change. The judgment reads any one-parameter function value on
+   the left of `<~` as the recurrence, typing the site as its result, while
+   the lowering applies only a function literal there, so `acc(x = x) <~
+   delay(1)` is typed Int and compiled as a closure (measured 2026-11-06);
+   the left side is read as SYNTAX's `<~` part says, where a literal binds
+   the prior and any other value is fed forward.
 
 8. **Forks on every core** (`Hβ.oracle.forks-on-threads`,
    `Hβ.driver.level-set-par-walk`, `Hβ.native.deterministic-handle-partition`,

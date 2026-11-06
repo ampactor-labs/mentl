@@ -1,0 +1,14 @@
+// check: refuse E_EffectMismatch
+// A read that a parameter's refinement proves leaves that parameter guarding
+// the trap. `at` calls `list_index(xs, i)` without its check, because
+// `i: NonNeg` and the guard prove the bounds, so a caller whose argument does
+// not prove `0 <= self` pays Trap where it calls, as a division's caller does.
+// `go` hands `k - 3`, which is -2 here, so `main with !Trap` is refused. Pin
+// 47767c1238b2 accepted it, and the run read before the list's start.
+type NonNeg = Int where 0 <= self
+
+fn at(xs, i: NonNeg) with !Trap = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn go(k) = at([4, 5], k - 3)
+
+fn main() with !Trap = go(1)
