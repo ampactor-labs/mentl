@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // A stage written for 44.1 kHz under a clock whose rate is computed: the
 // install serves the instance its config's operand names, which nothing says
 // is 44100, so the stage's Sample(44100) passes it and reaches the root. On

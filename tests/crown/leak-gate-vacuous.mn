@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — THE VACUOUS NEGATION. `run`'s body row is its parameter's row,
 // a free cell at run's exit, and a declared `!E` over it used to constrain
 // nothing: `run(() => op())` compiled clean and ran (exit 7, measured

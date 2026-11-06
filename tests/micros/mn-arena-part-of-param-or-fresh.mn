@@ -1,0 +1,22 @@
+// expect: 7
+// pick answers its parameter xs or a new list holding o. poke takes the first
+// element of pick's answer, which is the older list o, and stores a list built
+// inside the arena into it. The arena around poke's call must keep that list
+// past its exit, so main reads 7 from older afterwards.
+import arena
+
+fn pick(c, xs, o) = if c { push([], o) } else { xs }
+
+fn poke(xs, o) = {
+  let p = pick(true, xs, o)
+  if 0 < len(p) { list_set(p[0], 0, [7, 8, 9]) } else { o }
+  0
+}
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  { poke(make_list(1), older) } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

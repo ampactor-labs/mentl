@@ -21,7 +21,7 @@
 //   mentl why examples/pulse/course/05-silence.mn frame Alloc    shows that no Alloc enters
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

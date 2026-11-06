@@ -1,0 +1,9 @@
+// check: pending 5:40
+// The division a / b stays pending when the swap goes through a group: g
+// hands f's arguments back in the other order, so the second division is
+// INT_MIN / -1.
+fn f(a, b, n) = if n == 0 { 0 } else { a / b + g(a, b, n) }
+
+fn g(x, y, n) = f(y, x, n - 1)
+
+fn main() = f(-1, -2147483648, 2)

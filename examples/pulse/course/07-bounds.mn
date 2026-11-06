@@ -26,7 +26,7 @@
 //   mentl examples/pulse/course/07-bounds.mn:48    Teach: `notes: Rate` or `notes: Positive` … which is meant?
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

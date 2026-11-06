@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a `~>` mask covers the computation it encloses and nothing
 // beside it. `run`'s row is f's row joined with g's row MINUS E: the tee
 // absorbs E for g only, so a caller passing an E-performing f under a

@@ -1,0 +1,30 @@
+// at 27:10: ~> arena Alloc state
+// The one provider of `cells` resumes `s.table`, a field of a state record,
+// and the one provider of `cells_let` resumes a let bound to a state field.
+// `put` and `put_let` store into those answers with no install in sight, so
+// each store may reach the state of an install around its caller, and the
+// arenas around them must keep what the state reaches when they exit.
+import arena
+
+effect Cells {
+  cells() -> [Int]
+  cells_let() -> [Int]
+}
+
+handler cell_store with s = {table: make_list(2)}, xs = make_list(2) {
+  cells() => resume(s.table),
+  cells_let() => {
+    let t = xs
+    resume(t)
+  },
+}
+
+fn put(v) = list_set(cells(), 0, v)
+
+fn put_let(v) = list_set(cells_let(), 0, v)
+
+fn main() = {
+  put(7) ~> arena
+  put_let(7) ~> arena
+  cells()[0] - 7
+} ~> cell_store

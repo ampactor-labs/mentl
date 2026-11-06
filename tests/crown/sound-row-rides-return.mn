@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN modal (§11 6.3's crucible sweep): the LATENT/PERFORMED
 // distinction — mk constructs and RETURNS the closure without calling
 // it, so mk's own row is pure and E rides the returned VALUE's row

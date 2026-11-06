@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (S4, 2026-10-02): a list's elements under a refined
 // element contract, one taken by a pattern. The element `k + 1` owes
 // `Positive`, and the open claim pays the guarded `Trap`. Checked clean and

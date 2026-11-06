@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4·D, 2026-10-01): a function at a PART of a parameter
 // learns where the part is applied. `first` applies its list's first
 // element at `k`, so a caller handing `[inv]` owes `inv`'s precondition at a

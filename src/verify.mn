@@ -10,6 +10,8 @@
 // proposer whose certificate the kernel checks.
 import types
 
+import arena
+
 import canon
 
 import effects
@@ -24,7 +26,11 @@ import io
 // owed or decided as the latest settle left it.
 // A claim whose reading met code the judgment had not reached is kept
 // among the unsettled as well, the only debt the settle asks again.
-handler verify_ledger with debt = [], decided = [], flows = [], settled = [], unsettled = [] {
+// A claim the settle proves only through what the calls hand a parameter
+// is kept among the handed: this program owes it nothing, but the
+// declaration still owes it to any other caller, so it stays in the debt
+// the declarations' own faces carry (`verify_face_debt`).
+handler verify_ledger with debt = [], decided = [], flows = [], handed = [], settled = [], unsettled = [] {
   verify(modh, span, predicate, reason) => match decide_noting(predicate) {
     (Some(true), _) => resume(Some(true)) with decided = [(modh, span, predicate, true)] ++ decided,
     (Some(false), _) => resume(Some(false)) with decided = [(modh, span, predicate, false)] ++ decided,
@@ -36,22 +42,29 @@ handler verify_ledger with debt = [], decided = [], flows = [], settled = [], un
       resume(None) with debt = [(modh, span, predicate, reason)] ++ debt
     },
   },
-  verify_decide(predicate) => resume(predicate_decide(predicate)),
   verify_debt() => resume(debt ++ flat_map(settled_owed, settled)),
+  verify_face_debt() => resume(debt ++ flat_map(settled_owed, settled) ++ handed),
+  verify_handed() => resume(handed),
   verify_decided() => resume(decided ++ flat_map(settled_verdict, settled)),
   verify_flows() => resume(flows),
   verify_adopt(entries) => resume() with decided = entries ++ decided,
   verify_reask() => {
-    let asked = unsettled |> map(reasked)
+    // The re-ask runs once the judgment has ended. Each claim is read first
+    // as the judgment read it, with no parameter read through its calls, so
+    // a verdict there holds for every caller. A claim still open is read
+    // again with every reference linked, where a parameter may be read as
+    // what its calls hand it (`reask_of`).
+    let asked = unsettled |> map(reasked_apart)
     let verdicts = flat_map(reask_verdict, asked)
-    if len(verdicts) == 0 {
+    let through = flat_map(reask_handed, asked)
+    if len(verdicts) == 0 && len(through) == 0 {
       resume([])
     } else {
-      resume(flat_map(reask_refuted, asked)) with debt = filter(still_owed(verdicts, ??), debt), unsettled = flat_map(reask_owed, asked), decided = verdicts ++ decided
+      resume(flat_map(reask_refuted, asked)) with debt = debt |> filter(still_owed(verdicts, ??)) |> filter(still_owed(through, ??)), handed = through ++ handed, unsettled = flat_map(reask_owed, asked), decided = verdicts ++ decided
     }
   },
   verify_settle(entries) => resume() with settled = entries,
-  verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided), flows = filter(debt_outside(gone, ??), flows), settled = filter(settled_outside(gone, ??), settled), unsettled = filter(debt_outside(gone, ??), unsettled),
+  verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided), flows = filter(debt_outside(gone, ??), flows), handed = filter(debt_outside(gone, ??), handed), settled = filter(settled_outside(gone, ??), settled), unsettled = filter(debt_outside(gone, ??), unsettled),
 }
 
 // A claim decided, and whether its reading met code the judgment had not
@@ -65,23 +78,59 @@ fn still_owed(verdicts, entry) = match entry {
   (modh, span, _, _) => !any({ (m, s, _, _) => m == modh && s == span }, verdicts),
 }
 
+// What the settle's re-ask made of one claim: decided as the judgment
+// reads it, proven only through what the calls hand its parameters, or
+// still open.
+type Reask = ReaskDecided(Bool) | ReaskHanded | ReaskOpen
+
 fn reasked(entry) = match entry {
-  (_, _, pred, _) => (entry, predicate_decide(pred)),
+  (_, _, pred, _) => (entry, reask_of(pred)),
+}
+
+// Each claim is asked again in an extent of its own, so the walk one claim
+// makes dies at that extent's exit and the settle holds one walk's memory at
+// a time: the wheel's 756 open claims asked in one extent raised the
+// self-compile's peak by 60 MB.
+fn reasked_apart(entry) = reasked(entry) ~> arena
+
+// The first reading is the judgment's own (`decide_noting`), where a
+// parameter is never read through its calls. Only a claim it leaves open is
+// read again with every reference linked. The linked handler is installed
+// here, around that reading, because a perform inside a ledger arm is
+// answered outside the ledger's install.
+fn reask_of(pred) = match decide_noting(pred) {
+  (Some(held), _) => ReaskDecided(held),
+  (None, _) => linked_reask(linked_decide(pred)),
+}
+
+fn linked_decide(pred) = predicate_decide(pred) ~> references_linked
+
+// A hand-off only proves, so a refutation in the linked reading comes from
+// the claim's own operands and is reported as the first reading's would be.
+fn linked_reask(verdict) = match verdict {
+  Some(true) => ReaskHanded,
+  Some(false) => ReaskDecided(false),
+  None => ReaskOpen,
 }
 
 fn reask_owed(asked) = match asked {
-  (entry, None) => [entry],
-  (_, Some(_)) => [],
+  (entry, ReaskOpen) => [entry],
+  (_, ReaskDecided(_)) | (_, ReaskHanded) => [],
 }
 
 fn reask_verdict(asked) = match asked {
-  ((modh, span, pred, _), Some(held)) => [(modh, span, pred, held)],
-  (_, None) => [],
+  ((modh, span, pred, _), ReaskDecided(held)) => [(modh, span, pred, held)],
+  (_, ReaskHanded) | (_, ReaskOpen) => [],
+}
+
+fn reask_handed(asked) = match asked {
+  (entry, ReaskHanded) => [entry],
+  (_, ReaskDecided(_)) | (_, ReaskOpen) => [],
 }
 
 fn reask_refuted(asked) = match asked {
-  (entry, Some(false)) => [entry],
-  (_, Some(true)) | (_, None) => [],
+  (entry, ReaskDecided(false)) => [entry],
+  (_, ReaskDecided(true)) | (_, ReaskHanded) | (_, ReaskOpen) => [],
 }
 
 // The settle's re-ask: a claim refuted now is reported where it was raised.
@@ -121,20 +170,14 @@ fn debt_outside(gone, entry) = match entry {
 // (node_const_at). litval_compare folds the comparison; cross-kind equality is
 // Some(false), cross-kind ordering is None. PAnd/POr/PNot recurse with
 // three-valued short-circuit; PWithSelf rebinds `self` over its inner predicate.
-fn predicate_decide(ref pred) = predicate_decide_at(pred, NoSelf)
+fn predicate_decide(ref pred) = predicate_decide_at(pred, NoSelf) ~> no_claim_walked
 
-// What `self` resolves to while a predicate is decided: nothing (a bare
-// claim — `self` is undecidable), the VALUE NODE a claim was raised over
-// (PWithSelf's binder, read live through its joins), or a GROUND CONSTANT
-// — the implication read, which asks a refinement whether it admits one
-// point (`contract_excludes`). It was a handle with 0 for "none", the
-// flag-as-int the drift catalog names; the three readings are three
-// constructors now.
-type SelfBind = NoSelf | SelfNode(Int) | SelfVal(LitValue)
-
+//
+// A claim the operands leave open is asked once more through the calls of
+// the one declaration whose parameters it names (`or_handed`).
 fn predicate_decide_at(ref pred, bind) = match pred {
   PTrue => Some(true),
-  PCompare(op, l, r) => compare_decide_at(op, l, r, bind),
+  PCompare(op, l, r) => or_handed(compare_decide_at(op, l, r, bind), AskClaim(pred), bind),
   PAnd(a, b) => and_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
   POr(a, b) => or_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
   PNot(inner) => not_decide(predicate_decide_at(inner, bind)),
@@ -149,12 +192,335 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   // a destructuring pattern's shape, read off the value's edges
   PPatternMatch(pat, n) => shape_decide(pat, n),
   // bind `self` = sh over inner, through its tails when sh is a join
-  PWithSelf(sh, inner) => decide_with_self(inner, SelfNode(sh)),
-  PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
+  PWithSelf(sh, inner) => or_handed(decide_with_self(inner, SelfNode(sh)), AskClaim(pred), bind),
+  PTotalDiv(op, a, b) => or_handed(total_div_decide(op, a, b, bind), AskClaim(pred), bind),
+  // a read's two faces and a cut's three are each asked through their own
+  // hand-offs
   PInBounds(recv, idx) => in_bounds_decide(recv, idx, bind),
   PSliceBounds(recv, start, end) => slice_bounds_decide(recv, start, end, bind),
   // a provision states what arrives at a position, never a demand on it
   PProvides(_) => Some(true),
+}
+
+// A verdict the operands decided stands. An open one is asked again through
+// the calls only where every operand of the claim is a constant, the self
+// of a refinement, or a plain reference to a parameter of one declaration, so
+// that each call can stand in for every operand at once. Any other operand
+// leaves the claim open, since a call hands it nothing.
+fn or_handed(verdict, asked, bind) = match verdict {
+  Some(held) => Some(held),
+  None => match asked_operands(asked) |> fold(HandsNone, handing_step) {
+    HandsOf(d, params) => handed_decides(asked, d, params, bind),
+    HandsNone | HandsOpen => None,
+  },
+}
+
+// What a hand-off asks again with an argument in a parameter's place: a
+// whole claim, or one face of a sequence read or cut, which is decided apart
+// from the other faces (`in_bounds_decide`, `slice_bounds_decide`). A face
+// carries the two nodes it compares.
+type Asked = AskClaim(Predicate) | AskFace(Face, Int, Int)
+
+// The faces of a sequence read `xs[i]`, `0 <= i` and `i < len(xs)`, and the
+// two a cut `slice(xs, a, b)` adds to its start's `0 <= a`: `a <= b` and
+// `b <= len(xs)`. A lower face is asked over a receiver and the value that
+// may not be negative, an ordered face over the start and the end, and an
+// upper face over the receiver and the value it bounds.
+type Face = FaceLower | FaceUpper | FaceOrdered | FaceUpTo
+
+// The operands a claim holds, in a fixed order. A lower face holds only the
+// value it bounds below; every other face holds both of its nodes.
+fn asked_operands(asked) = match asked {
+  AskClaim(pred) => pred_operands(pred),
+  AskFace(FaceLower, _, idx) => [idx],
+  AskFace(FaceUpper, a, b) | AskFace(FaceOrdered, a, b) | AskFace(FaceUpTo, a, b) => [a, b],
+}
+
+fn pred_operands(pred) = match pred {
+  PTrue => [],
+  PProvides(_) => [],
+  PCompare(_, l, r) => [l, r],
+  PAnd(a, b) => pred_operands(a) ++ pred_operands(b),
+  POr(a, b) => pred_operands(a) ++ pred_operands(b),
+  PNot(inner) => pred_operands(inner),
+  PBoolNode(n) => [n],
+  PPatternMatch(_, n) => [n],
+  PWithSelf(sh, inner) => [sh] ++ pred_operands(inner),
+  PTotalDiv(_, a, b) => [a, b],
+  PInBounds(recv, idx) => [recv, idx],
+  PSliceBounds(recv, start, end) => [recv, start, end],
+}
+
+// What a claim's operands allow, read one operand at a time: no parameter
+// among them yet; the parameters of one declaration, each operand node with
+// its parameter's position; or an operand that no call can stand in for.
+type Handing = HandsNone | HandsOf(Int, [(Int, Int)]) | HandsOpen
+
+// One operand's part in the reading: a parameter of a declaration at a
+// position, a value every call leaves as it is, or anything else.
+type OperandRole = RoleParam(Int, Int) | RoleFixed | RoleOther
+
+fn handing_step(acc, node) = match acc {
+  HandsOpen => HandsOpen,
+  HandsNone => match operand_role(node) {
+    RoleParam(d, i) => HandsOf(d, [(node, i)]),
+    RoleFixed => HandsNone,
+    RoleOther => HandsOpen,
+  },
+  HandsOf(d, params) => match operand_role(node) {
+    RoleParam(e, i) => if e == d { HandsOf(d, push(params, (node, i))) } else { HandsOpen },
+    RoleFixed => HandsOf(d, params),
+    RoleOther => HandsOpen,
+  },
+}
+
+fn operand_role(node) = match operand_param(node) {
+  [(_, b), ..._] => match param_position(b) {
+    Some((d, i)) => RoleParam(d, i),
+    None => RoleOther,
+  },
+  [] => if fixed_operand(node) { RoleFixed } else { RoleOther },
+}
+
+// A constant, or the self of a refinement the claim carries, which names
+// the value the claim is about and is replaced with it.
+fn fixed_operand(node) = match node_const_at(node, NoSelf) {
+  Some(_) => true,
+  None => match graph_node_body(node) {
+    NExpr(VarRef(name)) => name == "self",
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+}
+
+// An operand that is a plain reference to a parameter whose precondition
+// states nothing, paired with the parameter's binder; nothing for any other
+// operand. A parameter with a stated or learned precondition is already
+// read through that contract.
+fn operand_param(node) = match graph_node_body(node) {
+  NExpr(VarRef(_)) => match binder_read_by(node) {
+    Some(b) => match graph_binder_of(b) {
+      Some(ParamFact(f)) => match f.pre {
+        Unstated | Unrefined => [(node, b)],
+        Stated(_) | Learned(_) => [],
+      },
+      Some(PartFact(_)) | Some(StateFact(_)) | None => [],
+    },
+    None => [],
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
+}
+
+// A parameter is what its calls hand it, so a claim over the parameters of
+// a declaration holds where it holds at every call, with each parameter
+// replaced by the argument that call hands its position. The replaced claim
+// is decided where the call stands: its operands are that call's arguments
+// and constants, and the conditions on the call's path are the ones read.
+//
+// While the judgment runs, some references are not drawn yet, so the claim
+// stays open and is filed among the unsettled ones the settle asks again
+// (`walk_unsettled`). A declaration referred to as a value, where its calls
+// are out of sight, leaves the claim open, and so does a declaration that
+// nothing calls: no argument is in sight to decide it.
+//
+// Inside the walk of a declaration's calls, the claim being walked is the
+// hypothesis (`claim_walked`). A call met inside that walk whose replaced
+// claim names the walked declaration's own parameters again holds by
+// induction where it is the walked claim slot for slot, each parameter
+// handed on unchanged at its own position: every activation of the
+// declaration that such a call creates is created by an activation the walk
+// already covers. Any other claim over a declaration being walked is open.
+//
+// A hand-off only proves. The argument is read where its call stands,
+// without the conditions on the path to the claim inside the callee, so an
+// argument that fails the claim may never reach it, and refutes nothing.
+//
+// One reading walks each declaration's calls once (`claim_entries`): a
+// declaration met again down another path leaves the claim open there, so
+// the reading costs the declarations it reaches, never the paths between
+// them.
+fn handed_decides(asked, d, params, bind) = if !walk_linked() {
+  walk_unsettled()
+  None
+} else {
+  match claim_walked(d) {
+    Some(walked) => if slots_kept(asked, walked) { Some(true) } else { None },
+    None => match claim_entered(d) {
+      Some(true) => None,
+      Some(false) => calls_decide(asked, d, params, bind),
+      None => calls_decide(asked, d, params, bind) ~> claim_entries(d),
+    },
+  }
+}
+
+// A declaration the host calls (`host_calls`: `main`, or a library's
+// declarations) takes values no call in sight hands, so its calls decide
+// nothing; nor do the calls of a declaration nothing calls.
+fn calls_decide(asked, d, params, bind) = {
+  let refs = graph_refs_of(d)
+  if host_calls(d) || len(refs) == 0 {
+    None
+  } else if all(call_proves(asked, params, bind, ??), refs) {
+    Some(true)
+  } else {
+    None
+  }
+} ~> walking_claim(d, asked)
+
+// The replaced claim is decided where the call stands: a constant operand
+// is still the callee's own node, so the path read is the call's
+// (`path_site`), never the constant's inside the callee.
+fn call_proves(asked, params, bind, r) = match applied_in_sight(r) {
+  Some(args) => match params |> fold(Some([]), handed_step(args, ??, ??)) {
+    Some(swaps) => (asked_decide(asked_with(asked, swaps), bind) ~> deciding_at_call(call_of(r))) == Some(true),
+    None => false,
+  },
+  None => false,
+}
+
+// The node a reference applied in sight is applied by.
+fn call_of(r) = match graph_parent_of(r) {
+  Some(call) => call,
+  None => r,
+}
+
+// The node whose path a claim's operand is read on: the call a replaced
+// claim stands at, or the operand itself in the claim as written.
+fn path_site(h) = match claim_site() {
+  Some(call) => call,
+  None => h,
+}
+
+// Each parameter operand paired with the argument the call hands its
+// position; nothing where the call hands a position nothing.
+fn handed_step(args, acc, param) = match acc {
+  Some(swaps) => match param {
+    (node, i) => if i < len(args) { Some(push(swaps, (node, list_index(args, i)))) } else { None },
+  },
+  None => None,
+}
+
+fn asked_decide(asked, bind) = match asked {
+  AskClaim(pred) => predicate_decide_at(pred, bind),
+  AskFace(face, recv, idx) => face_decide(face, recv, idx, bind),
+}
+
+fn asked_with(asked, swaps) = match asked {
+  AskClaim(pred) => AskClaim(with_operands(pred, swaps)),
+  AskFace(face, recv, idx) => AskFace(face, operand_swapped(swaps, recv), operand_swapped(swaps, idx)),
+}
+
+// The claim with every parameter operand replaced at once by the argument
+// paired with it.
+fn with_operands(pred, swaps) = match pred {
+  PTrue => PTrue,
+  PCompare(op, l, r) => PCompare(op, operand_swapped(swaps, l), operand_swapped(swaps, r)),
+  PAnd(a, b) => PAnd(with_operands(a, swaps), with_operands(b, swaps)),
+  POr(a, b) => POr(with_operands(a, swaps), with_operands(b, swaps)),
+  PNot(inner) => PNot(with_operands(inner, swaps)),
+  PBoolNode(n) => PBoolNode(operand_swapped(swaps, n)),
+  PPatternMatch(pat, n) => PPatternMatch(pat, operand_swapped(swaps, n)),
+  PWithSelf(sh, inner) => PWithSelf(operand_swapped(swaps, sh), with_operands(inner, swaps)),
+  PTotalDiv(op, a, b) => PTotalDiv(op, operand_swapped(swaps, a), operand_swapped(swaps, b)),
+  PProvides(p) => PProvides(p),
+  PInBounds(recv, idx) => PInBounds(operand_swapped(swaps, recv), operand_swapped(swaps, idx)),
+  PSliceBounds(recv, start, end) => PSliceBounds(
+    operand_swapped(swaps, recv),
+    operand_swapped(swaps, start),
+    operand_swapped(swaps, end)
+  ),
+}
+
+fn operand_swapped(swaps, h) = match find({ (n, _) => n == h }, swaps) {
+  Some((_, arg)) => arg,
+  None => h,
+}
+
+// Whether a claim met at a call is the walked claim slot for slot: the same
+// question, and in each slot the same node, a reference to the same
+// parameter, or an equal constant. Faces of a different kind over the same
+// operands are different claims, so the kind is compared before the slots.
+fn slots_kept(asked, walked) = {
+  let met = asked_operands(asked)
+  let held = asked_operands(walked)
+  same_question(asked, walked) && len(met) == len(held) && all(slot_kept, zip(met, held))
+}
+
+// Two claims, or two faces of one kind.
+fn same_question(asked, walked) = match asked {
+  AskClaim(_) => match walked {
+    AskClaim(_) => true,
+    AskFace(_, _, _) => false,
+  },
+  AskFace(face, _, _) => match walked {
+    AskFace(other, _, _) => face == other,
+    AskClaim(_) => false,
+  },
+}
+
+fn slot_kept(pair) = match pair {
+  (m, w) => m == w || same_param(m, w) || same_constant(m, w),
+}
+
+fn same_param(m, w) = match operand_param(m) {
+  [(_, b), ..._] => match operand_param(w) {
+    [(_, c), ..._] => b == c,
+    [] => false,
+  },
+  [] => false,
+}
+
+fn same_constant(m, w) = match node_const_at(m, NoSelf) {
+  Some(a) => match node_const_at(w, NoSelf) {
+    Some(c) => litval_compare(BEq, a, c) == Some(true),
+    None => false,
+  },
+  None => false,
+}
+
+// The claims one reading is walking through the calls of declarations, and
+// the declarations whose calls it has walked. `no_claim_walked` is the root
+// every claim is decided under; `claim_entries` holds what one reading has
+// entered; `walking_claim` is installed around the walk of one
+// declaration's calls.
+effect ClaimWalk {
+  // the claim being walked over the declaration's parameters, where the
+  // reading stands inside that walk
+  claim_walked(d: Int) -> Option(Asked)
+  // None where no walk has begun, Some(true) where the reading has walked
+  // the declaration's calls already, Some(false) the first time, now marked
+  claim_entered(d: Int) -> Option(Bool)
+  // the call a replaced claim is decided at, None for the claim as written
+  claim_site() -> Option(Int)
+}
+
+handler no_claim_walked {
+  claim_walked(_) => resume(None),
+  claim_entered(_) => resume(None),
+  claim_site() => resume(None),
+}
+
+handler claim_entries(first) with seen = [first] {
+  claim_walked(x) => resume(claim_walked(x)),
+  claim_entered(d) => if any({ s => s == d }, seen) {
+    resume(Some(true))
+  } else {
+    resume(Some(false)) with seen = [d] ++ seen
+  },
+  claim_site() => resume(claim_site()),
+}
+
+handler walking_claim(d, asked) {
+  claim_walked(x) => resume(if x == d { Some(asked) } else { claim_walked(x) }),
+  claim_entered(x) => resume(claim_entered(x)),
+  claim_site() => resume(claim_site()),
+}
+
+handler deciding_at_call(call) {
+  claim_walked(x) => resume(claim_walked(x)),
+  claim_entered(x) => resume(claim_entered(x)),
+  claim_site() => resume(Some(call)),
 }
 
 // Integer `/` and `%` trap on a zero divisor, and `/` on INT_MIN / -1 (the
@@ -198,6 +564,14 @@ fn total_div_faces(op, a, b, bind) = match op {
 // face the values leave open is proven where the read's path implies it
 // (`if i >= 0 && i < len(xs) { xs[i] }`), and otherwise stays open, which is
 // the row fact `Trap` at the site.
+//
+// The two faces are decided apart. A face the values and the path leave
+// open is asked again through what the calls hand its parameter operand
+// (`face_handed`), so one face can hold through the calls while the other
+// holds on the read's own path, as in
+// `fn at(xs, i) = if i < len(xs) { xs[i] } else { 0 }` called with 0 and 1.
+// The claim holds when both faces hold, is refuted when the operands refute
+// either face, and is otherwise open.
 fn in_bounds_decide(recv, idx, bind) = {
   let ileaves = value_leaves(idx, bind)
   let lower = leaves_nonneg(ileaves)
@@ -205,16 +579,147 @@ fn in_bounds_decide(recv, idx, bind) = {
   match and_decide(lower, upper) {
     Some(true) => Some(true),
     // The path's hypotheses are one fact of the site, read once for both
-    // faces, and only where the values left a face to prove.
+    // faces, and only where the values left a face to prove; where a call
+    // hands the read's operands, the path is that call's (`path_site`).
     Some(false) | None => {
-      let hyps = path_hyps(idx)
+      let hyps = path_hyps(path_site(idx))
       let at = term_of(idx, bind)
-      and_decide(
-        or_hyps(lower, hyps, BLe, Some(TermAt(MZero, 0)), at),
-        or_hyps(upper, hyps, BLt, at, length_of(recv, bind))
+      faces_joined(
+        face_handed(FaceLower, or_hyps(lower, hyps, BLe, Some(TermAt(MZero, 0)), at), recv, idx, bind),
+        or_hyps(upper, hyps, BLt, at, length_of(recv, bind)),
+        recv,
+        idx,
+        bind
       )
     },
   }
+}
+
+// The lower face's verdict joined with the upper face's. The upper face is
+// asked through the calls only where the lower face holds: where the lower
+// face is open the claim stays open whatever the upper face is, and a
+// hand-off never refutes.
+fn faces_joined(lower, upper, recv, idx, bind) = match lower {
+  Some(true) => face_handed(FaceUpper, upper, recv, idx, bind),
+  Some(false) => Some(false),
+  None => and_decide(None, upper),
+}
+
+// One face of a read or a cut decided alone, with an argument in a
+// parameter's place: through its operands and the path of the call it
+// stands at (`path_site`), and then through the calls.
+fn face_decide(face, recv, idx, bind) = match face {
+  FaceLower => face_handed(
+    FaceLower,
+    or_path(
+      leaves_nonneg(value_leaves(idx, bind)),
+      path_site(idx),
+      BLe,
+      Some(TermAt(MZero, 0)),
+      term_of(idx, bind)
+    ),
+    recv,
+    idx,
+    bind
+  ),
+  FaceUpper => face_handed(
+    FaceUpper,
+    or_path(
+      bounded_by_lengths(BLt, value_leaves(idx, bind), seq_lengths(recv)),
+      path_site(idx),
+      BLt,
+      term_of(idx, bind),
+      length_of(recv, bind)
+    ),
+    recv,
+    idx,
+    bind
+  ),
+  // A cut's order face: here `recv` is the start and `idx` the end.
+  FaceOrdered => face_handed(
+    FaceOrdered,
+    or_path(
+      points_ordered(value_leaves(recv, bind), value_leaves(idx, bind)),
+      path_site(idx),
+      BLe,
+      term_of(recv, bind),
+      term_of(idx, bind)
+    ),
+    recv,
+    idx,
+    bind
+  ),
+  FaceUpTo => face_handed(
+    FaceUpTo,
+    or_path(
+      bounded_by_lengths(BLe, value_leaves(idx, bind), seq_lengths(recv)),
+      path_site(idx),
+      BLe,
+      term_of(idx, bind),
+      length_of(recv, bind)
+    ),
+    recv,
+    idx,
+    bind
+  ),
+}
+
+// A face the values and the path leave open, asked again through the calls:
+// a lower face after the successor step (`successor_kept`), each face as a
+// claim over its own operands (`asked_operands`).
+fn face_handed(face, verdict, recv, idx, bind) = match verdict {
+  Some(held) => Some(held),
+  None => if face == FaceLower && successor_kept(idx) {
+    Some(true)
+  } else {
+    or_handed(None, AskFace(face, recv, idx), bind)
+  },
+}
+
+// The successor step. While the calls of a declaration D are walked for
+// the lower face over D's parameter p, the walked claim `0 <= p` is the
+// hypothesis (`handed_decides`): every activation of D satisfies it by
+// induction. An index `p + 1`, with p that same parameter of D and so a call
+// standing inside D, keeps the face where the call stands on a path that
+// holds `p < e` for some expression e. The step cannot wrap: e is an Int, so
+// `p < e` makes p at most the largest Int minus one, and `p + 1` is at most
+// the largest Int. Only the step `+ 1` is admitted; `p + c` for any other
+// constant, and `p - 1`, decide nothing here.
+fn successor_kept(idx) = match graph_node_body(idx) {
+  NExpr(BinOpExpr(BAdd, l, r)) => step_kept(idx, l, r) || step_kept(idx, r, l),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
+fn step_kept(idx, p, one) = match node_const_at(one, NoSelf) {
+  Some(LVInt(k)) => k == 1 && param_below(idx, p),
+  Some(_) | None => false,
+}
+
+// The operand is the parameter the walked lower face is over, and the path
+// to the index holds that it is less than some expression.
+fn param_below(idx, p) = match operand_param(p) {
+  [(_, b), ..._] => lower_face_over(b) && any(holds_below(b, ??), path_hyps(idx)),
+  [] => false,
+}
+
+// Whether the claim walked over the parameter's declaration is the lower
+// face of a read whose index is that parameter.
+fn lower_face_over(b) = match param_position(b) {
+  Some((d, _)) => match claim_walked(d) {
+    Some(AskFace(face, _, walked)) => face == FaceLower && match operand_param(walked) {
+      [(_, w), ..._] => w == b,
+      [] => false,
+    },
+    Some(AskClaim(_)) | None => false,
+  },
+  None => false,
+}
+
+fn holds_below(b, hyp) = match hyp {
+  Holds(BLt, TermAt(MBinder(x), 0), _) => x == b,
+  Holds(BGt, _, TermAt(MBinder(x), 0)) => x == b,
+  Holds(_, _, _) => false,
 }
 
 // A sequence cut's precondition (TRAP): `0 <= start`, `start <= end` and
@@ -223,8 +728,12 @@ fn in_bounds_decide(recv, idx, bind) = {
 // the start can be with every constant the end can be; the upper face pairs
 // every constant the end can be with every length the receiver can have. A
 // face the values leave open is proven where the call's path implies it
-// (`if 0 <= a && a < b && b <= len(xs) { slice(xs, a, b) }`), and otherwise
-// stays open, which is the row fact `Trap` at the call.
+// (`if 0 <= a && a < b && b <= len(xs) { slice(xs, a, b) }`). A face the
+// values and the path leave open is asked again through what the calls hand
+// its parameter operands, as a read's faces are, so one face can hold
+// through the calls while the others hold on the cut's own path. The claim
+// holds when all three faces hold, is refuted when the operands refute any
+// face, and is otherwise open, which is the row fact `Trap` at the call.
 fn slice_bounds_decide(recv, start, end, bind) = {
   let sleaves = value_leaves(start, bind)
   let eleaves = value_leaves(end, bind)
@@ -234,20 +743,43 @@ fn slice_bounds_decide(recv, start, end, bind) = {
   match and_decide(lower, and_decide(ordered, upper)) {
     Some(true) => Some(true),
     // Both bounds are arguments of the one call, so the path to either is
-    // the path to the call, read once for the three faces.
+    // the path to the call, read once for the three faces; where a call
+    // hands the cut's operands, the path is that call's (`path_site`).
     Some(false) | None => {
-      let hyps = path_hyps(end)
+      let hyps = path_hyps(path_site(end))
       let at_start = term_of(start, bind)
       let at_end = term_of(end, bind)
-      and_decide(
-        or_hyps(lower, hyps, BLe, Some(TermAt(MZero, 0)), at_start),
-        and_decide(
-          or_hyps(ordered, hyps, BLe, at_start, at_end),
-          or_hyps(upper, hyps, BLe, at_end, length_of(recv, bind))
-        )
+      cut_faces_joined(
+        face_handed(
+          FaceLower,
+          or_hyps(lower, hyps, BLe, Some(TermAt(MZero, 0)), at_start),
+          recv,
+          start,
+          bind
+        ),
+        or_hyps(ordered, hyps, BLe, at_start, at_end),
+        or_hyps(upper, hyps, BLe, at_end, length_of(recv, bind)),
+        recv,
+        start,
+        end,
+        bind
       )
     },
   }
+}
+
+// A cut's three verdicts joined, each later face asked through the calls
+// only where the faces before it hold: where an earlier face is open the
+// claim stays open whatever the later ones are, and a hand-off never
+// refutes.
+fn cut_faces_joined(lower, ordered, upper, recv, start, end, bind) = match lower {
+  Some(true) => match face_handed(FaceOrdered, ordered, start, end, bind) {
+    Some(true) => face_handed(FaceUpTo, upper, recv, end, bind),
+    Some(false) => Some(false),
+    None => and_decide(None, upper),
+  },
+  Some(false) => Some(false),
+  None => and_decide(None, and_decide(ordered, upper)),
 }
 
 // `start <= end` over every constant each can be: proven when every pair is
@@ -961,7 +1493,7 @@ fn contract_excludes(c, k) = match c {
   | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => false,
 }
 
-fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) {
+fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) ~> no_claim_walked {
   Some(false) => true,
   None | Some(_) => false,
 }
@@ -986,86 +1518,6 @@ fn decide_with_self(inner, bind) = match bind {
 }
 
 fn decide_tail(inner, acc, tail) = and_decide(acc, decide_with_self(inner, SelfNode(tail)))
-
-// A JOIN's tails: the nodes whose values the join takes — an `if`'s two
-// branches, every `match` arm's body, a block's final expression; None for
-// a node that is not a join. One home for the structure that the claim
-// decided over a join, the value walk and the claim noted over a join each
-// fold.
-fn join_tails(h) = match graph_node_body(h) {
-  NExpr(IfExpr(_, t, e)) => Some([t, e]),
-  NExpr(MatchExpr(_, arms)) => Some(arms |> map(tail_of_arm)),
-  NExpr(BlockExpr(_, final_expr)) => Some([final_expr]),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
-}
-
-fn tail_of_arm(arm) = match arm {
-  (_, body) => body,
-}
-
-// A VALUE's tails: a join's, or a tee's — the body it governs and every arm
-// of the handler it installs (`install_arm_tails`). The one home the claim
-// decider, the leaves, the path read, the flow label and the function-value
-// walk read a value's structure through. A claim NOTED over a value stays
-// with the join's own tails (infer.mn's note_claim): a handler's arms are shared by
-// every install, and a note there would claim for all of them.
-fn value_tails(h) = match join_tails(h) {
-  Some(tails) => Some(tails),
-  None => match graph_node_body(h) {
-    NExpr(PipeExpr(PTee, left, right)) => match install_arm_tails(right) {
-      Some(tails) => Some([left] ++ tails),
-      None => None,
-    },
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => None,
-  },
-}
-
-// A TEE's value is every value its install can answer: the body's tails —
-// the body completing, or a resuming arm's remainder answering, which is
-// the body's own value — and each arm's tails of its own. An arm whose tail
-// is the `resume` hands the remainder's answer through and adds no value;
-// any other tail is a value of the install's. A handler's arms met again
-// while they are being read add nothing: an arm installing its own handler
-// makes the tails a fixed point whose least solution is the body's, so the
-// re-entry is exact, never a floor. The walk's dynamic scope (`StateWalk`)
-// knows the handler by its residual row cell — minted once at
-// pre-registration, the one cell every reference to the handler reads it
-// through, so the declaration's identity is on the env entry and no name
-// is scanned for it. None when the install's handler is not a declaration
-// the graph noted, so each walk keeps its own floor. Until 2026-10-03
-// every walk read a tee as nothing it could read, so `100 / ((…) ~> h)`
-// was debt whatever `h` answered.
-fn install_arm_tails(right) = match tee_handler_decl(right) {
-  Some(d) => match graph_published(d) {
-    Some((_, _, kind)) => match kind {
-      HandlerKind(r_handle, _, _, _, arms) => if walking_state(r_handle) {
-        Some([])
-      } else {
-        Some(arms |> flat_map({ arm => arm_tails(arm.body) }) ~> walking_state_of(r_handle))
-      },
-      FnScheme | ConstructorScheme(_, _) | EffectOpScheme(_, _, _) | RecordSchemeKind(_)
-      | EffectDeclKind(_, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_)
-      | ValueScheme | PrimitiveKind(_) => None,
-    },
-    None => None,
-  },
-  None => None,
-}
-
-// The reference a tee's right side installs through — the handler bare, or
-// applied to its config — or the side itself when it is no reference.
-fn tee_ref(r) = match graph_node_body(r) {
-  NExpr(CallExpr(f, _)) => tee_ref(f),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => r,
-}
-
-// The declaration a tee installs: its reference followed along its edge.
-// None when that side is no reference — no declaration answers it, which is
-// the frame fence.
-fn tee_handler_decl(r) = graph_ref_decl(tee_ref(r))
 
 // What a handler declaration was published as: the residual row cell its
 // arms were judged under, its config, its state and its arms. None for a
@@ -1111,15 +1563,6 @@ fn tee_handler_name(r) = match graph_node_body(r) {
   // drift-audit: ignore — the frame-fence sentinel, documented above
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => "",
-}
-
-fn arm_tails(h) = match value_tails(h) {
-  Some(tails) => tails |> flat_map(arm_tails),
-  None => match graph_node_body(h) {
-    NExpr(ResumeExpr(_, _)) => [],
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => [h],
-  },
 }
 
 // A comparison decides iff BOTH operands reduce to ground constants under the
@@ -1212,95 +1655,9 @@ fn module_let_const(r) = match binder_read_by(r) {
   None => None,
 }
 
-// A refinement is a fact about a VALUE, and the edges the value flowed
-// through say what it is. Its unification class says nothing: a cell holds
-// a shape (types.mn `shape_of`), because union-find merges every value a
-// join can take and every operand an operator meets — the class model
-// typed `x - 1` over `x: Positive` as Positive and `if c { n } else { 0 }`
-// as Positive (P0, 2026-10-01). The walk reads a value as its LEAVES, each
-// a graph READ minting nothing:
-//   · a constant is its point (node_const_at folds literals, module
-//     constants and the arithmetic over them at the word's own wrap)
-//   · a reference reads its binder through its own link — a declared
-//     parameter's precondition, a let's value, the claim's `self`
-//   · an if / match / block is every tail's leaves — a join is all of them
-//   · len / byte_len are lengths, by the sequence representation itself
-//   · a call — and a pipe stage, the same application — is its callee's
-//     declared return, or a function-typed parameter's contract on its
-//     result
-//   · Add folds its operands' lower bounds
-// and each reader asks its own question of the leaves: a ROW fact
-// (partiality, a guard) stands on constants, lengths and preconditions
-// alone; a CLAIM's bound and echo may stand on a postcondition, which its
-// callee owes at its declaration, and on the Add fold, which models Int as
-// unbounded where the i32 floor wraps
-// (Hβ.verify.interval-fragment-assumes-unbounded-int). It replaced the
-// class reads and three compensations for them: a two-face "contamination
-// law" that read types only where a class boundary was crossed, a licence
-// refusing the echo to computation nodes, and a rebind exposing a let
-// annotation on its value's class.
-type Leaf
-  // a constant — exact, at the word's own wrap
-  = LPoint(LitValue)
-  // a declared parameter's precondition: assumed here, owed by every
-  // caller, and the parameter whose guard a row fact standing on it grows
-  | LParam(Int, Ty)
-  // a callee's declared return: the callee owes it at its own declaration,
-  // and it is debt there until proven
-  | LPost(Ty)
-  // the Add fold's lower bound for a sum — overflow-blind
-  | LSum(Option(Int))
-  // len / byte_len: a length, never below zero
-  | LLength
-  // a callee's return still a free cell — nothing to any reader but the
-  // summary of the declaration whose return it is, where a self-call is
-  // the claim being proven (`proven_return`)
-  | LRet(Int)
-  // a value under a contract claimed of it where it was made — a `let`'s
-  // annotation, a constructor field's declared refinement — owed there: a
-  // claim may stand on the contract, a row fact only on the leaf beneath
-  | LClaimed(Ty, Leaf)
-  // a value built by this constructor, named bare or applied — the fact
-  // `construction_part` compares, read by a destructuring pattern's claim
-  // (`shape_decide`); no number, bound or label stands on it
-  | LBuilt(String)
-  // a value the read MAY take: what a writer stored into the memory, which
-  // another write may have replaced since, or what one of an op's providers
-  // resumes with, where which install answers is not in sight — what holds
-  // of every such value holds of the read, and no one of them alone refutes
-  // a claim
-  | LMay(Leaf)
-  // nothing this walk can read
-  | LUnknown
-
 // The leaves of a value the walk cannot read, the answer at every place it
 // stops: one value, made once.
 let leaves_unknown = [LUnknown]
-
-// A value walk's dynamic scope: the state binders whose writers it is
-// reading, the handler declarations whose arms it is reading, and the calls
-// and performs it has entered, each with what its parameters take there. A
-// write may read the state it writes (`with d = d + 1`, or through a let), so
-// a walk that meets a state it is already inside reads it as unknown rather
-// than looping; an arm may install its own handler, and the arms met again
-// add no tail (the least fixed point, exact); a declaration met again inside
-// its own body answers what it publishes. The chain of handlers installed
-// around the walks IS the stack of states, declarations and calls entered
-// (walking_state_of, walking_args).
-effect StateWalk {
-  walking_state(b: Int) -> Bool
-  walked_arg(b: Int, path: [PartStep]) -> Option([Leaf])
-  // what `self` is while a predicate is decided: a call the predicate makes
-  // hands it on as an argument, and the callee's reads reach it here
-  walked_self() -> SelfBind
-  // whether the reading has entered the declaration's body already: None
-  // where no call is entered yet, Some(true) where it has, Some(false) where
-  // this is the first time, now marked
-  walk_enter(d: Int) -> Option(Bool)
-  // the reading met code the judgment has not reached yet — a handler whose
-  // arms are not all judged, a declaration not yet published
-  walk_unsettled()
-}
 
 // Whether the reading of one claim met code the judgment had not reached.
 effect Unsettled {
@@ -1313,14 +1670,9 @@ handler noting_unsettled with met = false {
   walked_self() => resume(walked_self()),
   walk_enter(d) => resume(walk_enter(d)),
   walk_unsettled() => resume() with met = true,
+  walk_linked() => resume(walk_linked()),
   unsettled_met() => resume(met),
 }
-
-// What a parameter takes at the call or the perform the walk entered: the
-// argument's node; the value the perform's instance holds, for a handler's
-// config that pins one of its effect's dimensions; or, for any other config,
-// only the precondition its install owes.
-type WalkedArg = ArgNode(Int) | ArgPoint(LitValue) | ArgOpaque
 
 fn value_leaves(h, bind) = match node_const_at(h, bind) {
   Some(v) => [LPoint(v)],
@@ -1549,26 +1901,6 @@ fn state_leaves(b, writes) = if walking_state(b) {
   writes |> flat_map(value_leaves(??, NoSelf)) ~> walking_state_of(b)
 }
 
-// No state entered: the root every value walk runs under, installed where
-// the graph is.
-handler no_state_walked {
-  walking_state(_) => resume(false),
-  walked_arg(_, _) => resume(None),
-  walked_self() => resume(NoSelf),
-  walk_enter(_) => resume(None),
-  walk_unsettled() => resume(),
-}
-
-// Inside state `b`'s writers: `b` answers yes, and any other state is asked
-// of the handler around this one — an arm's own perform resolves outward.
-handler walking_state_of(b) {
-  walking_state(x) => resume(x == b || walking_state(x)),
-  walked_arg(x, path) => resume(walked_arg(x, path)),
-  walked_self() => resume(walked_self()),
-  walk_enter(d) => resume(walk_enter(d)),
-  walk_unsettled() => resume(walk_unsettled()),
-}
-
 // Inside a predicate decided over a value: `self` is that value wherever the
 // predicate's calls hand it.
 handler walking_self_as(bind) {
@@ -1577,6 +1909,7 @@ handler walking_self_as(bind) {
   walked_self() => resume(bind),
   walk_enter(d) => resume(walk_enter(d)),
   walk_unsettled() => resume(walk_unsettled()),
+  walk_linked() => resume(walk_linked()),
 }
 
 // The declarations one reading has entered, installed by its first entry: a
@@ -1593,6 +1926,7 @@ handler walk_entries with seen = [] {
     resume(Some(false)) with seen = [d] ++ seen
   },
   walk_unsettled() => resume(walk_unsettled()),
+  walk_linked() => resume(walk_linked()),
 }
 
 // Inside a call or a perform the walk entered: each parameter it binds takes
@@ -1610,6 +1944,7 @@ handler walking_args(binds) {
   walked_self() => resume(walked_self()),
   walk_enter(d) => resume(walk_enter(d)),
   walk_unsettled() => resume(walk_unsettled()),
+  walk_linked() => resume(walk_linked()),
 }
 
 // What a parameter takes, at a path into it, as leaves: the argument's part
@@ -2252,6 +2587,7 @@ handler reading_published {
   walked_self() => resume(walked_self()),
   walk_enter(_) => resume(Some(true)),
   walk_unsettled() => resume(walk_unsettled()),
+  walk_linked() => resume(walk_linked()),
 }
 
 // The contract every leaf carries, named by one alias — the first leaf's,
@@ -2504,7 +2840,7 @@ fn call_part_by_signature(h, callee, path) = match graph_ref_decl(callee) {
 // Whether a declaration writes memory older than its frame, as its store
 // claim says: a parameter's, a capture's, or memory it cannot name.
 fn writes_in_place(d) = match graph_store_claim_of(d) {
-  Some(StoreClaim(s)) => len(s.mutated) > 0 || len(s.captures) > 0 || s.beyond || s.opaque,
+  Some(StoreClaim(s)) => len(s.mutated) > 0 || len(s.captures) > 0 || writes_older_memory(s.beyond) || s.opaque,
   None => false,
 }
 
@@ -4048,10 +4384,12 @@ fn hands_back(j, b, call) = match arg_at(call, j) {
 
 // Which allocation a value may be: the stops `stops_of` finds (src/graph.mn),
 // each read as the verifier's question asks. A let is what its value may be,
-// which every read and every store of it resolves to alike; a parameter or a
-// state field is itself; a part read off a value and a node the walk cannot
-// follow are any memory, beyond that node; a part of another value is read
-// by `part_roots` and a declaration held as a value by `decl_roots`. A product, a string
+// which every read and every store of it resolves to alike; a parameter is
+// read by `param_roots`, as what its calls hand it; a state field is itself;
+// a part read off a value and a node the walk cannot follow are any memory,
+// beyond that node; a part of another value is read by `part_roots`, a part
+// of a parameter by `param_part_roots`, and a declaration held as a value by
+// `decl_roots`. A product, a string
 // built here, a mint and a literal are the allocation they are. A call is read by
 // `call_roots`. The verifier reads the walk at every let, part and store slot
 // and remembers nothing between asks (its memo is the empty list); the census
@@ -4084,7 +4422,8 @@ fn roots_walk(memo, h) = stops_of(h) |> map(root_of_stop(memo, ??)) |> fold(Root
 // through a let to its value, and into a call's base or returned arguments.
 fn root_of_stop(memo, stop) = match stop {
   StopLet(b) => roots_read(memo, b),
-  StopParam(b) | StopState(b) => RootsAt([b]),
+  StopParam(b) => param_roots(memo, b),
+  StopState(b) => RootsAt([b]),
   StopConfig(b) => match graph_node_body(b) {
     NParam(_) => RootsAt([b]),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => RootsBeyond(b),
@@ -4092,6 +4431,10 @@ fn root_of_stop(memo, stop) = match stop {
   StopPart(b, whole) => part_roots(memo, b, whole),
   StopDecl(r, d) => decl_roots(memo, r, d),
   StopCall(call, callee, args) => call_roots(memo, call, callee, args),
+  // An op's answer is memory the install answering it holds, where one
+  // stands in the function, and any memory where none does.
+  StopPerform(_, Some(install)) => RootsAt([install]),
+  StopPerform(call, None) => RootsBeyond(call),
   StopProduct(n, _) | StopAlloc(n) | StopStatic(n) => RootsAt([n]),
   StopWord(_) => RootsAt([]),
   StopPartOf(n, _) | StopBeyond(n) => RootsBeyond(n),
@@ -4105,26 +4448,24 @@ fn roots_join(a, b) = match a {
   },
 }
 
-// A call's result: a constructor's is fresh, an address `addr_at` moves stays
-// in the allocation its base names, `alloc`'s is fresh, and a declared
-// function's is what its store claim says of the arguments it answers back.
+// A call's result: a constructor's is fresh, `alloc`'s is fresh, and a
+// declared function's is what its store claim says of the arguments it
+// answers back. An address op never reaches here: the walk reads its answer
+// as its first argument's (`stops_of`).
 fn call_roots(memo, call, callee, args) = if ref_is_constructor(callee) {
   RootsAt([call])
 } else {
   match graph_node_body(callee) {
     NExpr(VarRef(cname)) => if cname == "alloc" {
       RootsAt([call])
-    } else if cname == "addr_at" || cname == "addr" {
-      match args {
-        [base, ..._] => roots_read(memo, base),
-        [] => RootsBeyond(call),
-      }
     } else {
       match graph_ref_decl(callee) {
         Some(d) => match graph_store_claim_of(d) {
           Some(StoreClaim(s)) => match s.returns {
-            ReturnsParams(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
+            ReturnsParams(idxs) | ReturnsPartOf(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
             ReturnsFresh => RootsAt([call]),
+            // One of the literals in the static data, or fresh at the call.
+            ReturnsStatic(ns) => RootsAt([call] ++ ns),
             ReturnsOlder => RootsBeyond(call),
           },
           None => RootsBeyond(call),
@@ -4158,6 +4499,35 @@ fn decl_roots(memo, r, d) = if ref_is_constructor(r) {
   }
 }
 
+// A parameter is what its calls hand it: the roots of every argument the
+// declaration's calls put at its position (param_handed, src/graph.mn),
+// read once every reference is linked (walk_linked), with the parameter
+// itself standing for a hand-off met inside its own walk (a recursive call
+// handing it on), so the walk ends. The parameter is its own root, as it
+// was, while the judgment runs, where a reference to the declaration is
+// held as a value, where the parameter is a lambda's, an op's or a
+// configuration's, and where one of the handed arguments cannot be placed.
+fn param_roots(memo, b) = if !walk_linked() || walking_state(b) {
+  RootsAt([b])
+} else {
+  match param_handed(b) {
+    Some(args) => placed_or_self(
+      b,
+      {
+        args |> map(roots_read(memo, ??)) |> fold(RootsAt([]), roots_join)
+      } ~> walking_state_of(b)
+    ),
+    None => RootsAt([b]),
+  }
+}
+
+// The sharper answer where it places the value, else the binder itself,
+// the answer it sharpens.
+fn placed_or_self(b, roots) = match roots {
+  RootsAt(_) => roots,
+  RootsBeyond(_) => RootsAt([b]),
+}
+
 // A part of another value, bound at `b` by taking `whole` apart: where the
 // whole was built in sight (a tuple, a list literal, a record, a constructor
 // call, through a let's value and every tail of a join), the part is the
@@ -4183,17 +4553,21 @@ fn construction_stops(h) = stops_of(h) |> flat_map(through_let)
 fn through_let(stop) = match stop {
   StopLet(b) => construction_stops(b),
   StopConfig(_) | StopParam(_) | StopState(_) | StopPart(_, _) | StopDecl(_, _) | StopCall(_, _, _)
-  | StopProduct(_, _) | StopAlloc(_) | StopStatic(_) | StopWord(_) | StopPartOf(_, _) | StopBeyond(_) => [stop],
+  | StopPerform(_, _) | StopProduct(_, _) | StopAlloc(_) | StopStatic(_) | StopWord(_)
+  | StopPartOf(_, _) | StopBeyond(_) => [stop],
 }
 
 // The part at `step` of one construction the whole may be: the value at the
-// position in a tuple or a list, the field by name in a record, the argument
+// position in a tuple, the field by name in a record, the argument
 // of the constructor the pattern names; a constructor the pattern does not
 // name holds no such part; anything else is beyond the binder.
 fn part_of_stop(memo, b, step, stop) = match stop {
   StopProduct(n, parts) => match step {
+    // A tuple and a record are built once, so a position or a field holds
+    // the value put there. A list's element is whatever a store has put
+    // there since the list was built, which this reading does not follow.
     PartIndex(i) => roots_at_slot(memo, b, parts, i),
-    PartElem => parts |> map(roots_read(memo, ??)) |> fold(RootsAt([]), roots_join),
+    PartElem => RootsBeyond(b),
     PartField(_) => field_roots(memo, b, n, step),
     PartCtor(_, _) | PartRest | PartTypeArg(_) => RootsBeyond(b),
   },
@@ -4209,8 +4583,26 @@ fn part_of_stop(memo, b, step, stop) = match stop {
     PartCtor(name, _) => if ref_is_constructor(r) && !named_reference(r, name) { RootsAt([]) } else { RootsBeyond(b) },
     PartIndex(_) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => RootsBeyond(b),
   },
-  StopLet(_) | StopConfig(_) | StopParam(_) | StopState(_) | StopPart(_, _) | StopAlloc(_)
+  StopParam(pb) => param_part_roots(memo, b, step, pb),
+  StopLet(_) | StopConfig(_) | StopState(_) | StopPart(_, _) | StopPerform(_, _) | StopAlloc(_)
   | StopStatic(_) | StopWord(_) | StopPartOf(_, _) | StopBeyond(_) => RootsBeyond(b),
+}
+
+// A part of a parameter: the part at the same step of every construction the
+// parameter's calls hand it, read once every reference is linked and under
+// the parameter's own walk, so a hand-off of the parameter's own parts back
+// to it ends the walk; any memory beyond the binder while the judgment runs,
+// where the calls are not in sight, and where the parameter is already
+// under walk.
+fn param_part_roots(memo, b, step, pb) = if !walk_linked() || walking_state(pb) {
+  RootsBeyond(b)
+} else {
+  match param_handed(pb) {
+    Some(args) => {
+      args |> flat_map(construction_stops) |> map(part_of_stop(memo, b, step, ??)) |> fold(RootsAt([]), roots_join)
+    } ~> walking_state_of(pb),
+    None => RootsBeyond(b),
+  }
 }
 
 fn roots_at_slot(memo, b, nodes, i) = roots_of_found(memo, b, nth_handle(nodes, i))
@@ -4588,7 +4980,7 @@ fn app_hands_away(rs, kind, args) = match kind {
   AkRaw(target) => args |> enumerate |> any({ (i, a) => !raw_targets(target, i) && meets(rs, a) }),
   AkFace(d) => face_stored_slots(d) |> any({ i => slot_meets(rs, args, i) }),
   AkDecl(d) => match graph_store_claim_of(d) {
-    Some(StoreClaim(s)) => (s.beyond || s.opaque) && any(meets(rs, ??), args) || applies_write_handed(rs, s, args),
+    Some(StoreClaim(s)) => (writes_older_memory(s.beyond) || s.opaque) && any(meets(rs, ??), args) || applies_write_handed(rs, s, args),
     None => any(meets(rs, ??), args),
   },
   AkPerform(_) | AkInstall | AkValue => any(meets(rs, ??), args),
@@ -4612,7 +5004,7 @@ fn slot_nodes(args, i) = match nth_handle(args, i) {
 // A function a callee applies writes what the callee hands it: the memory a
 // slot hands the callee is written where it is handed to such a function.
 fn applies_write_handed(rs, s, args) =
-  s.applies |> any({ (k, handed) => applied_writes(args, k) && any(handed_meets(rs, args, ??), handed) })
+  s.applies |> any({ (path, handed) => applied_writes_at(args, path) && any(handed_meets(rs, args, ??), handed) })
 
 fn handed_meets(rs, args, handed) = match handed {
   HandedParam(j) => slot_meets(rs, args, j),
@@ -4625,10 +5017,19 @@ fn handed_meets(rs, args, handed) = match handed {
 // declaration read by its claim, anything else by nothing it can show.
 fn applied_writes(args, k) = match nth_handle(args, k) {
   Some([f]) => match fn_claim(f) {
-    Some(StoreClaim(s)) => len(s.mutated) > 0 || len(s.captures) > 0 || s.record || s.beyond || s.opaque,
+    Some(StoreClaim(s)) => len(s.mutated) > 0 || len(s.captures) > 0 || s.record || writes_older_memory(s.beyond) || s.opaque,
     None => true,
   },
   None | Some(_) => true,
+}
+
+// Whether the function a claim applies at a path writes memory: at a
+// parameter, the function at the slot by its claim (applied_writes); at a part
+// of a parameter, taken as writing, since this reading does not follow the
+// argument into its construction.
+fn applied_writes_at(args, path) = match path {
+  AppliedParam(k) => applied_writes(args, k),
+  AppliedPart(_, _) => true,
 }
 
 fn fn_claim(f) = match graph_node_body(f) {
@@ -4680,7 +5081,7 @@ fn claim_mutated(d) = match graph_store_claim_of(d) {
 fn writes_older(n) = match app_of(n) {
   Some((kind, args)) => match kind {
     AkDecl(d) => match graph_store_claim_of(d) {
-      Some(StoreClaim(s)) => s.beyond || s.opaque || (s.applies |> any({ (k, _) => applied_writes(args, k) })),
+      Some(StoreClaim(s)) => writes_older_memory(s.beyond) || s.opaque || (s.applies |> any({ (path, _) => applied_writes_at(args, path) })),
       None => true,
     },
     AkPerform(providers) => any(arms_write, providers),
@@ -4729,7 +5130,7 @@ fn edge_may_carry_mutate(e) = if any(names_mutate, edge_mask(e)) {
 }
 
 fn arms_write(hd) = match graph_store_claim_of(hd) {
-  Some(StoreClaim(s)) => s.beyond || s.opaque || len(s.mutated) > 0,
+  Some(StoreClaim(s)) => writes_older_memory(s.beyond) || s.opaque || len(s.mutated) > 0,
   None => true,
 }
 
@@ -5831,27 +6232,20 @@ fn report_refinement_rejected(ref pred, ref span, ref reason) with !Mutate =
 // Spans render as the developer's own file:line through the graph's
 // NModule seams — the weave coordinate was hand-mapped four times in
 // one session before this projection existed.
-fn report_verify_debt(debt) = if len(debt) == 0 {
-  ()
-} else {
-  // The per-obligation lines apply the register's own law PER SPAN
-  // (the diag_report arm's exact test): a user's OWN pending renders —
-  // it is their teaching surface ("this claim was not checked") — while
-  // the wheel's obligations (types.mn spans printed on every
-  // hello-world, the audit's measured flood) stay the census
-  // channel's. ScopeAll keeps every line; the SUMMARY counts the same
-  // obligations the lines render — the project's own — so a six-line
-  // program never answers for the runtime library's open claims. Measured
-  // 2026-10-12 against the whole-ledger count this replaces: a hello-world
-  // reported seventeen obligations it had no way to discharge, every one
-  // the library's, while the lines beside the count filtered them out.
-  let scope = diag_scope_of()
-  debt |> each(debt_line(scope, ??))
-  // The summary stands at the first obligation it counts — the project's
-  // own, at its own coordinate — never at whichever module the judgment
-  // entered last, which under the project register could be the library's
-  // and hide it, nor at a line and column no obligation has.
-  match filter({ (modh, _, _, _) => debt_in_scope(modh, scope) }, debt) {
+fn report_verify_debt(debt) = {
+  // The lines and the summary count the same obligations: those the
+  // register's scope hears (`debt_heard`). A user's own pending claim is
+  // printed, since it says which claim was not checked, while the library's
+  // stay quiet unless the scope hears every module. Measured 2026-10-12
+  // against the whole-ledger count this replaces: a hello-world reported
+  // seventeen obligations it had no way to discharge, every one the
+  // library's, while the lines beside the count filtered them out.
+  let heard = debt_heard(debt, diag_scope_of())
+  heard |> each(debt_said)
+  // The summary stands at the first obligation it counts, at that
+  // obligation's own module and coordinate, never at whichever module the
+  // judgment entered last.
+  match heard {
     [] => (),
     [first, ...rest] => match first {
       (modh, s, _, _) => report_at(modh, VPending(len(rest) + 1, s)),
@@ -5859,11 +6253,17 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   }
 }
 
-// One open obligation's line, where the scope renders it: the span is the
-// developer's own coordinate and the module rides the obligation, so scoping
-// is a compare of modules.
-fn debt_line(ref scope, entry) = match entry {
-  (modh, dspan, pred, _) => if debt_in_scope(modh, scope) { said("verify: {obligation_text(modh, dspan, pred)}\n") } else { () },
+// The open obligations a scope hears. The module rides each obligation, so
+// scoping is a compare of modules. The pending summary counts this list, and
+// the gate's verdict prints it.
+fn debt_heard(debt, ref scope) = filter({ (modh, _, _, _) => debt_in_scope(modh, scope) }, debt)
+
+fn debt_said(entry) = said(debt_text(entry))
+
+// One open obligation's line, as check and compile print it and the gate's
+// verdict carries it: the span is the developer's own coordinate.
+fn debt_text(entry) = match entry {
+  (modh, dspan, pred, _) => "verify: {obligation_text(modh, dspan, pred)}\n",
 }
 
 // One open obligation said once: the ledger's summary lines and the Verify

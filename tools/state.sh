@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/state.sh — THE BOARD, and `mentl land` (--land). It only SEQUENCES;
 # each check has one home (verify.sh: micros + census, stamped; march.sh: the
-# cost ratchets and the fixed point; the frontier, proof-exactness, crown,
+# cost ratchets and fixed point; the batteries; the frontier, proof-exactness,
 # effect-identity, instrument, thread and ide gates). --quick runs verify only.
 #
 # --land judges the CANDIDATE the tree compiles to, cheapest first, stopping
@@ -59,8 +59,7 @@ if [ "${1:-}" = "--land" ]; then
     fell=$(echo "$GATE_OUT" | awk '/ — within / && $2 + 0 < $NF + 0')
     [ -z "$fell" ] || { printf '%s\n' "$fell" "▸ LAND STOPPED: lower each fallen ceiling in src/board.mn (a dated reason), then run \`mentl land\` again."; exit 1; }
     step "MARCH (the cost ratchets and the fixed point)" bash tools/march.sh
-    for d in micros syntax proposals teach frontier; do step "BATTERY tests/$d" wt_battery "$cand" "tests/$d"; done
-    step "CROWN" env MENTL_BOOT="$cand" bash tools/crown-gate.sh
+    for d in micros syntax proposals teach frontier crown; do step "BATTERY tests/$d" wt_battery "$cand" "tests/$d"; done
     step "PROOF-EXACTNESS" bash tools/proof-exactness-gate.sh fresh
     step "FRONTIER" bash tools/frontier-gate.sh --compiler fresh
     step "EFFECT IDENTITY" env MENTL_BOOT="$cand" bash tools/effect-identity-gate.sh
@@ -117,7 +116,7 @@ if [ "${1:-}" != "--quick" ]; then
   memo_gate "MARCH (the fixpoint ratchet)" march "$boot" tools/march.sh bash tools/march.sh
   gate "FRONTIER (scheduled matrix + the ?? authoring workflows)"        bash tools/frontier-gate.sh
   gate "PROOF-EXACTNESS (hole refuses · debt surfaces · suspension runs)" bash tools/proof-exactness-gate.sh
-  gate "CROWN (!E soundness crucibles)"                                  bash tools/crown-gate.sh
+  gate "BATTERY tests/crown (!E soundness crucibles)"                    wt_battery "$boot" tests/crown
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
   memo_gate "INSTRUMENT (can the board go RED?)" instrument "$boot" tools/instrument-gate.sh bash tools/instrument-gate.sh
   memo_gate "THREADS (is the concurrency width what the source says?)" threads "$boot" tools/thread-gate.sh bash tools/thread-gate.sh

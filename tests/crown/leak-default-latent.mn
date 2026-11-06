@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the DEFAULT PARAMETER VALUE. A default is not a
 // call-site convenience: SYNTAX desugars it once at the declaration to a
 // callee-scoped fill, evaluated in the CALLEE's parameter scope. So the

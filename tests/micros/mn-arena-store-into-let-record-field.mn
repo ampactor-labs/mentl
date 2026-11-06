@@ -1,0 +1,16 @@
+// expect: 7
+// A record bound before an arena opens is older than the arena, and so is the
+// list its field holds: a list built inside the arena and stored into that
+// field's list must survive the arena's exit.
+import arena
+
+fn main() = {
+  let r = {col: make_list(1)}
+  list_set(r.col, 0, [0])
+  {
+    list_set(r.col, 0, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(r.col, 0), 0) + len(junk) - 16
+}

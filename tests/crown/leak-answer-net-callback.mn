@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: the negation binds the arm that answers a callback's operation.
 // run never uses Net and calls the function it is handed, which performs
 // price(); online's arm answers it with a fetch, so the fetch would run

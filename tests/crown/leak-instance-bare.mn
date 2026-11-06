@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN instance (§11 6.2) — a BARE !Sample forbids EVERY instance:
 // the body reaches Sample(44100) and must be rejected. Expect
 // E_EffectMismatch.

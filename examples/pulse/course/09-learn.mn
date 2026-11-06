@@ -21,7 +21,7 @@
 //   mentl examples/pulse/course/09-learn.mn:44    the derivative request, and the handler that serves it
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/feedback
 

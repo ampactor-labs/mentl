@@ -104,8 +104,8 @@ board_self_run() {
   local out="" name script rc
   for name in crown proof-exactness effect-identity; do
     script="tools/${name}-gate.sh"
-    [ -x "$script" ] || script="tools/${name}.sh"
-    if [ -x "$script" ]; then
+    if [ "$name" = crown ]; then wt_battery "$PWD/boot/mentl.wasm" tests/crown >/dev/null 2>&1 && rc="green" || rc="RED"
+    elif [ -x "$script" ]; then
       if bash "$script" >/dev/null 2>&1; then rc="green"; else rc="RED"; fi
     else
       rc="NOT RUN (no $script)"

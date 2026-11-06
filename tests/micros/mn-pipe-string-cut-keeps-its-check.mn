@@ -1,0 +1,6 @@
+// expect: 134
+// A pipe into the end slot of `str_slice` completes the cut, so an end past a
+// three-byte string keeps its bounds check and stops the run.
+fn cut_text(s, end) = end |> str_slice(s, 0, ??)
+
+fn main() = len(cut_text("abc", 9))

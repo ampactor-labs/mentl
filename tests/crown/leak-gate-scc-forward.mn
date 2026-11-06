@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the cycle's forward reference: `a` instantiates `run`'s
 // pre-registered scheme before run is judged, so its copy of f's cell is
 // noted under the PREREG cell; run's judgment binds that cell to its

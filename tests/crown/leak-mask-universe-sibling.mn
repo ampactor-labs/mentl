@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a universe edge beside a free one. f's declared row is
 // "anything except E" and g is free, so run may perform anything,
 // including g's E. The fold that met the universe dropped g's edge and

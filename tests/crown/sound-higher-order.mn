@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN control — `run` applied to a pure lambda: no E performed, `!E` holds.
 // Must be ACCEPTED (no mismatch) — the gate must not over-reject.
 effect E { op() -> Int }

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the controller shape: a second effect declared with the name the
 // negation uses, carrying an op of its own. Today two declarations of one
 // name join their ops (PLAN §11, a module is a scope), so the negation

@@ -1,0 +1,18 @@
+// expect: 7
+// A tuple bound before an arena opens holds a list built before it too; a
+// list built inside the arena and stored into that list, read off the tuple
+// by destructuring, must survive the arena's exit.
+import arena
+
+fn main() = {
+  let pair = (make_list(1), 5)
+  let (col, _) = pair
+  list_set(col, 0, [0])
+  {
+    let (inner, _) = pair
+    list_set(inner, 0, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(col, 0), 0) + len(junk) - 16
+}

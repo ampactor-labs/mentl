@@ -1126,7 +1126,7 @@ This section is written from the ultimate form PLAN §0 and §5 describe, and to
 
 **The thesis in syntax.** A Mentl program is written in three layers and nothing else. The shape of every flow is written with the five operators, so the shape on the page is the shape the compiler holds. The claims are written on the stages: what a stage must never do (`with !Alloc`, `!Trap`, `!Network`) and what range its values keep (`Hz`, `SpinW`). What the effects do is written at the right edge, as handlers installed with `~>`, and no body ever says how an effect is handled. The compiler derives everything else: each stage's row, the ownership of every value, the schedule of every fanout, the clock and the memory of every cycle, the width of every number, and the proof that every claim holds through every call. At any position the cursor says what is true there and why, back to the decision that made it so. Where the author leaves `??`, the compiler forks the candidates, proves each, shows only the survivors and asks only when two proven meanings differ. The same program runs against a model, a recording or real hardware by swapping one handler.
 
-**One shape per operator.** The third column is what the compiler derives when the shape is written; where it cites a PLAN §11 step, that part of the derivation is open work, and the citation is replaced by the command's output when the step lands.
+**One shape per operator.** Each operator's name says what it does to the value and its memory: pipe (`|>`), share (`<|`), split (`><`), install (`~>`) and feedback (`<~`). The third column is what the compiler derives when the shape is written; where it cites a PLAN §11 step, that part of the derivation is open work, and the citation is replaced by the command's output when the step lands.
 
 | The shape you mean | Write | The compiler derives | Shown in | Where its memory lives |
 |---|---|---|---|---|
@@ -1134,7 +1134,7 @@ This section is written from the ultimate form PLAN §0 and §5 describe, and to
 | one value to several places | `dry <\| (rig.echo, rig.room)` | the input is borrowed by every branch, so the fanout cannot race; the result is the branches' product; a join aligns branches of known latency or refuses the misaligned merge (PLAN §11.7) | lesson 3, line 49 | one record, the input, read by every branch; a branch's result is its own |
 | independent flows side by side | `(echoed) >< (dry)`, `notes() >< render_voice(sr, frames)` | each branch owns its input; the schedule comes from the handler at the foot, never from the verb, and runs on every core deterministically (PLAN §11.8) | lesson 3, line 50; lesson 10, line 65 | the branches allocate in the extent that encloses the fanout; a spawned instance allocates in a run of its own |
 | the branches rejoin | `((a) >< (b)) \|> mix(0.35)` | the product fills the stage's open slots; no tuple is built | lesson 3, lines 50 and 51 | the stage's slots; no tuple record |
-| a flow that needs its own past | `{ prev => … } <~ delay(N)` | a line of depth N owned by the stage's record, allocated once, so `!Alloc` holds across the cycle; the cycle's clock is inferred, the depth may be a value read at run time, and the line is read at any tap (PLAN §11.7) | lesson 2, line 44; the controller's five recurrences in `decide` | the line's N slots, allocated once with the stage's record |
+| a flow that needs its own past | `{ prev => … } <~ delay(N)` | a line of depth N owned by the stage's record, allocated once, so `!Alloc` holds across the cycle; the cycle's clock is inferred, the depth may be a value read at run time, and the line is read at any tap (PLAN §11.7) | lesson 2, line 44; the controller's seven recurrences in `decide` | the line's N slots, allocated once with the stage's record |
 | what the effects do | `body ~> inner ~> outer` | the row loses what each handler absorbs and gains what its arms perform; the install edge carries the schedule, the derivative reading or persistence; a negation holds through every handler a caller installs (PLAN §11.1) | lesson 4, `rack`; lesson 9, `~> grad`; lesson 10, `~> parallel_compose`; lesson 11, `~> arena`; the controller's `~> station` and `~> arena` | the handler's state record, which outlives every resume; an arena's body is an extent, reclaimed at its exit except what its result reaches, and the caret says whether anything can root it (PLAN §4⑨) |
 
 **Twelve rules for using them well.** Each is checked by the compiler, so breaking one is a refusal or a worse row, never a matter of taste.
@@ -1196,7 +1196,7 @@ Why: through <~, at examples/pulse/course/02-line:44
 
 The same bus without the operators is what every other language makes you write: a tuple built by hand and taken apart on the next line, three `let`s where one chain reads, a closure allocated per stage, and no proof that the two branches cannot race, because nothing in the text says the input is shared. The operators are not shorter for their own sake. Each one is a fact the compiler can prove because the shape says it.
 
-Lesson 4 (`04-rack.mn`) writes a limiter as a handler and chains it behind the library's distortion; the frame calls `distort` and `tame` and never says how either is done, and `mentl why examples/pulse/course/04-rack.mn frame Distort` names where the effect enters: `frame calls `distort` at examples/pulse/course/04-rack:72:11`. Lesson 10 (`10-voices.mn`) renders four voices with `><` over a list, and `mentl where examples/pulse/course/10-voices.mn render` reads the schedule from the install edge: `fanout [Thread, a branch per element]` under `~> parallel_compose`. The grid controller (`examples/grid/station.mn`) keeps its memory from one reading to the next with five `<~ delay(1)` recurrences inside `decide`, and the caret inside the first of them, `mentl examples/grid/station.mn:188`, answers `Topology: the recurrence the <~ feeds back at examples/grid/station:186:19`.
+Lesson 4 (`04-rack.mn`) writes a limiter as a handler and chains it behind the library's distortion; the frame calls `distort` and `tame` and never says how either is done, and `mentl why examples/pulse/course/04-rack.mn frame Distort` names where the effect enters: `frame calls `distort` at examples/pulse/course/04-rack:72:11`. Lesson 10 (`10-voices.mn`) renders four voices with `><` over a list, and `mentl where examples/pulse/course/10-voices.mn render` reads the schedule from the install edge: `fanout [Thread, a branch per element]` under `~> parallel_compose`. The grid controller (`examples/grid/station.mn`) keeps its memory from one reading to the next with seven `<~ delay(1)` recurrences inside `decide`, and the caret inside the first of them, `mentl examples/grid/station.mn:188`, answers `Topology: the recurrence the <~ feeds back at examples/grid/station:186:19`.
 
 **The developer's loop.** Write the shape; `mentl check` prints nothing; the caret on an operator says its shape; `mentl why` names where an effect enters and `mentl where` the schedule the install edge carries; a hole proposes the proven survivors and asks only at a tie (`mentl examples/pulse/course/08-hole.mn:50:76` proposes the one stage that fits, and `mentl accept` writes it; `mentl tests/proposals/scope-binder-tie.mn:7:3` offers the two parameters and the let around an `Int` hole beside the three literals that fit, and asks which value the position means); a refusal names the path (`mentl check examples/grid/station-leak.mn`); `mentl rename` moves a name through every edge; `mentl run` renders the sound. Every claim in this paragraph is a command that runs on the pinned binary today.
 
@@ -2122,9 +2122,9 @@ fn main() = decide(1) ~> online ~> offline
 
 `mentl check` refuses the install: "decide is declared `with !Net`, which
 does not allow Net, and decide uses Net: while decide runs, `price` is
-performed at tests/crown/leak-answer-net:14:30, and `online`'s arm at
-tests/crown/leak-answer-net:17:3 answers it: online calls `fetch` at
-tests/crown/leak-answer-net:17:21". The compiler before this rule built the
+performed at tests/crown/leak-answer-net:15:30, and `online`'s arm at
+tests/crown/leak-answer-net:18:3 answers it: online calls `fetch` at
+tests/crown/leak-answer-net:18:21". The compiler before this rule built the
 program, and the fetch ran while `decide` ran (exit 8). This holds
 through a callee (leak-answer-net-through-callee.mn), through a function
 handed to the declaration (leak-answer-net-callback.mn) and through a named
@@ -3292,23 +3292,31 @@ is the form beneath the check, `list_index_unchecked` or `slice_raw`, and
 charges no `Trap`, so `fn from(s, k) with !Trap = if 0 <= k && k <=
 byte_len(s) { str_slice(s, k, byte_len(s)) } else { "" }` is accepted.
 Refuted, the call is refused where it stands: `slice([1, 2, 3], 1, 5)` is
-`E_RefinementRejected`. Open, the call keeps the primitive, and the
-primitive's own row carries the `Trap`; the ledger owes nothing for it, since
-that row already says the program can stop there, where an open claim at
-`xs[i]` or at `/` has no other record
+`E_RefinementRejected`. Open, the call keeps the primitive, whose own row
+carries the `Trap`, and its claim is owed where the call stands, so `mentl
+check` prints it as it prints an open claim at `xs[i]` or at `/`: "verify:
+pending partiality 0 <= i && i < len(xs) at
+tests/micros/mn-explicit-read-handed-past-end-pending:5:28-5:45"
 (tests/micros/mn-explicit-read-proven-is-total.mn,
 mn-explicit-cut-proven-is-total.mn,
-mn-explicit-cut-fixed-out-of-range-refuses.mn,
-mn-explicit-read-open-is-a-row-fact.mn). `make_list`'s count and `list_set`'s
-index are still checked in their bodies alone, and a call that a pipe
-completes (`xs |> slice(1, 3)`) raises no claim yet (`PLAN.md` §11, the
-face).
+mn-explicit-cut-fixed-out-of-range-refuses.mn). `make_list`'s count and
+`list_set`'s index are still checked in their bodies alone. A call that a
+pipe completes (`xs |> slice(1, 3)`) keeps the primitive's check, so a cut
+past the end stops the run ("trap: a precondition failed at lists:442:57",
+tests/micros/mn-pipe-cut-keeps-its-check.mn), but it raises no claim yet
+(`PLAN.md` §11, a stage is the call it completes).
 
-The fragment cannot yet read a bound that a parameter takes from every call,
-such as `0 <= i` where each call passes `0` or `i + 1`
-(`Hβ.verify.parameter-is-what-its-calls-hand`). A destructuring
-pattern follows the same rule in another form: the shape it asserts is its
-precondition, decided by the same walk (§«Exhaustiveness»).
+A bound that a parameter takes from every call, such as `0 <= i` where each
+call passes `0` or `i + 1`, is read after the judgment
+(`Hβ.verify.parameter-is-what-its-calls-hand`). In `fn walk(xs, i) = if i
+>= len(xs) { 0 } else { xs[i] + walk(xs, i + 1) }`, called as `walk([1, 2,
+3], 0)`, the read's claim leaves what `mentl check` prints and stays on
+`walk`'s face, where `mentl teach` still proposes it ("`i` must make 0 <= i
+&& i < len(xs) hold (line 5)"), and `walk`'s row keeps the `Trap` it was
+charged (`with Memory + Trap + Address + Diverge`,
+tests/micros/mn-settle-index-inductive.mn). A destructuring pattern follows
+the same rule in another form: the shape it asserts is its precondition,
+decided by the same walk (§«Exhaustiveness»).
 
 **Non-termination is a row fact too.** A computation that may never finish
 performs `Diverge` (lib/memory.mn), so `!Diverge` claims a function always

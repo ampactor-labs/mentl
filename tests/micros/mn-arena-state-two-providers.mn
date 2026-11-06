@@ -1,0 +1,28 @@
+// at 26:10: ~> arena Alloc state
+// The op `cells` has two providers: `cell_store` resumes its state field,
+// and `cell_fresh` resumes a list it builds in the arm. `put` stores into
+// the op's answer with no install in sight, so the store may reach the state
+// field of an install around its caller, and the arena around `put(7)` must
+// keep what the state reaches when it exits.
+import arena
+
+effect Cells {
+  cells() -> [Int]
+}
+
+handler cell_store with xs = make_list(2) {
+  cells() => resume(xs),
+}
+
+handler cell_fresh {
+  cells() => resume(make_list(2)),
+}
+
+fn put(v) = list_set(cells(), 0, v)
+
+fn other() = cells()[0] ~> cell_fresh
+
+fn main() = {
+  put(7) ~> arena
+  cells()[0] - 7 + other()
+} ~> cell_store

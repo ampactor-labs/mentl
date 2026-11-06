@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a named row negated in a let annotation's function type: the value
 // the let binds is a function performing A, and `!Both` forbids it. Measured
 // on boot 493a5619: checked clean. Expect E_EffectMismatch.

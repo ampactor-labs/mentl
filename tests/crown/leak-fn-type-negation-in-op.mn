@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a named row negated in an op's parameter type: every perform of
 // `run_it` hands a function the row forbids to perform A or B. Measured on
 // boot 493a5619: checked clean. Expect E_EffectMismatch.

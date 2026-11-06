@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0, 2026-10-01): a computation's result is a NEW value,
 // and `x - 1` over `x: Positive` is not Positive — `dec(1)` is 0. The
 // refinement rode the arithmetic unification into the result's class, so

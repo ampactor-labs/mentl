@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a named row negated in a function type that a type's argument
 // writes: `Held(() -> Int with !Both)` forbids its function A and B as the
 // bare function type does. Measured on boot 493a5619: checked clean. Expect

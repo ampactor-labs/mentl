@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (S6, 2026-10-02): a declaration returning functions
 // publishes, at every position of its return, the meet of every function the
 // position can hold. `pick` returns `succ` or `inv` at `f`, so `.f` demands

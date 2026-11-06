@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound dual at the PARAMETER PRODUCT carrier: the same
 // partial application is BUILT under `with !E` and its hole is never
 // filled, so nothing performs. Must accept.

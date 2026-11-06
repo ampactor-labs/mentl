@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a named handler chain absorbs ONLY what its members absorb. `one`
 // is `counter ~> idle`, and neither member answers Trace, so `(work()) ~>
 // one` under `!Trace` REFUSES (E_EffectMismatch at `leaky`): the chain is

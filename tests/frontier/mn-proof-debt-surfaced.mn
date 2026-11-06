@@ -1,13 +1,12 @@
 // expect: 1
-// `x` is not statically known to satisfy Positive, so the construction
-// leaves honest verification debt — the sound-incomplete NORMAL state
-// (PLAN §0: undecidable residue accrues visibly, never assume-true, and
-// never a blanket refusal: the wheel's own self-compile carries
-// structurally undecidable obligations). Compile must SURFACE the
-// V_Pending projection on stderr, exit 0, and emit the module. The
-// runtime value here even satisfies the predicate (unchecked(1)) —
-// refusing it would refuse a correct program.
-
+// `unchecked` claims its argument is Positive, and main hands it one minus
+// the number of arguments the host passes, which no reading of the program
+// can know: with no argument the claim holds, with any it fails. So the
+// claim is pending, the normal state of a claim the verifier cannot decide:
+// the compile prints it as V_Pending, exits 0 and emits the module, neither
+// assuming the claim true nor refusing the program. The battery passes no
+// argument, so the claim holds and the run answers 1; refusing the program
+// would refuse one that runs correctly.
 type Positive = Int where 0 < self
 
 fn unchecked(x) -> Positive = {
@@ -15,4 +14,9 @@ fn unchecked(x) -> Positive = {
   claimed
 }
 
-fn main() = unchecked(1)
+fn given(args) = match args {
+  [] => 0,
+  [_, ...rest] => 1 + given(rest),
+}
+
+fn main(argv) = unchecked(1 - given(argv))

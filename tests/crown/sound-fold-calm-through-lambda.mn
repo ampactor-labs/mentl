@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN sound twin of leak-fold-spill-through-lambda: the same lambda
 // applied to an Int compares a word, which allocates nothing, so the gate on
 // run's callback holds and the program runs.

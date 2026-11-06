@@ -1,26 +1,28 @@
-// clock.mn — time as four peer effects (spec 11)
+// clock.mn: time as four peer effects, each negated on its own.
 //
-// Four, not one. Different domains need different notions of time;
-// collapsing them into one erases the distinctions the refinement
-// algebra needs to prove.
+// Time is a capability of any program, such as a lock that reads the hour or
+// a controller that times its readings, so it is a module of the library's
+// own and not of the audio library. Programs need different kinds of time,
+// so the module declares four effects instead of one, and a row names or
+// refuses each kind separately:
 //
-//   Clock    — wall time (now, sleep, deadline_remaining)
-//   Tick     — logical time (monotonic counter, no wall relation)
-//   Sample   — DSP time (integer counter at known rate)
-//   Deadline — budget (completion guarantee, independent of wall read)
+//   Clock    wall time: the current instant, and a sleep
+//   Tick     logical time: a counter that only goes up, unrelated to the wall
+//   Sample   audio time: a count of samples at a known rate
+//   Deadline a time budget: when the work must end, and how much is left
 //
-// Each is negated independently (`!Clock`, `!Tick`, `!Sample`,
-// `!Deadline`) through spec 01's Boolean algebra. `<~` feedback infers
-// its clock from its own site (SYNTAX §«<~»: a per-site line whose
-// previous iteration is the enclosing function's next call) and requires
-// none of these; they are the rates a program declares it runs at. The
-// IterContext marker below is the vocabulary an inferred clock calculus
-// will read (`Hβ.dataflow.clock-calculus-sample-rate`); nothing reads it
-// at a `<~` site today.
+// Each is negated on its own (`!Clock`, `!Tick`, `!Sample`, `!Deadline`), so
+// a function can promise that it never reads the wall clock while it still
+// counts samples. `<~` feedback infers its clock from its own site (SYNTAX
+// §«<~»: a per-site line whose previous iteration is the enclosing
+// function's next call) and requires none of these; they are the rates a
+// program declares it runs at.
 //
-// Three handler tiers per effect: real (delegates to host) · test
-// (deterministic) · record (tees to trace); the tick's replay reads a trace.
-// Time vocabulary — Instant and Duration are nanosecond-scale wrappers.
+// The handlers come in three kinds: real ones, which ask the host or keep a
+// count; test ones, which answer the same values on every run; and record
+// ones, which keep every value they answer in a trace. tick_replay answers
+// ticks from such a trace. Instant and Duration each wrap a count of
+// nanoseconds.
 //
 // nanoseconds since epoch
 type Instant = Instant(Int)
@@ -61,8 +63,13 @@ effect Deadline {
   remaining() -> Duration
 }
 
-// Tier 1: real — delegates to host via HostClock. In WASM builds, host_*
-// effects are mapped at emit time to WASI imports; pure composition here.
+// The real handlers. clock_real and clock_record ask the host for the time
+// through HostClock's one operation, and no host answers it yet: the
+// compiler's emitter maps no operation to a clock call (the WASI effect in
+// lib/io.mn lists every host call the emitted code makes, and none of them
+// reads a clock). So nothing handles `host_clock_ns`, and a program that
+// installs either handler does not build: mentl check refuses it with
+// E_EffectUnhandled, naming HostClock.
 effect HostClock {
   host_clock_ns() -> Int
 }

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound dual: a record CARRYING an effectful closure
 // transports under `with !E` — latency is not performance; only the
 // call performs. Must accept.

@@ -283,16 +283,26 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
 // when every claim is proven. The audience sets what the register narrates:
 // the battery hears every module, the gate the proposal's own layer. The
 // answer is one record of facts, what the compile left, how many errors it
-// reported, the reports the judgment banked and the scope they were heard
-// in. The lines a verdict prints (`heard_lines`) and the classes a contract
-// compares (`report_classes`) are projections of that record, so a caller
-// renders only what it reads, and the battery and the MCP gate are two
-// readers of one law.
+// reported, the reports the judgment banked, the scope they were heard in
+// and the open obligations that scope hears (the ones the pending summary
+// counts), each rendered here as check prints it, since an obligation names
+// its module by a node only this judgment's graph holds. The lines a verdict prints (`heard_lines`) and the classes a
+// contract compares (`report_classes`) are projections of that record, so a
+// caller renders only what it reads, and the battery and the MCP gate are
+// two readers of one law.
 fn gated_compile(module: String, wat_path, audience) = {
   driver_link_scoped(module, audience)
   let left =
     link_program() |> saturate_pass |> lower_program |> reachable_from_main |> gated_write(??, wat_path)
-  {errors: diag_errors(), left, reports: diag_banked(), scope: diag_scope_of()}
+  let scope = diag_scope_of()
+  {
+    errors: diag_errors(),
+    left,
+    pending: debt_heard(verify_debt(), scope) |> map(debt_text),
+    reports: diag_banked(),
+    scope,
+    traps: trap_lines(),
+  }
 } ~> wasi_filesystem ~> compile_context
 
 // The CLI's refusal: say the count when there are errors, and exit 1 with
@@ -426,9 +436,36 @@ fn heap_line(at: String) = match diag_scope_of() {
 // ends, once the module is written or before a refusal says why it was not,
 // so one line counts them all.
 fn arena_line() = match diag_scope_of() {
-  ScopeAll => said("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, journal high {int_to_str(arena_stat(ArJournalHigh))} entries of 8 bytes, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
+  ScopeAll => {
+    said("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB at {peak_site_text(arena_stat(ArHighSite))}, journal high {int_to_str(arena_stat(ArJournalHigh))} entries of 8 bytes, {int_to_str(arena_stat(ArSuspended))} suspended\n")
+    said(column_sizes_line(graph_column_sizes()))
+  },
   ScopeNone => (),
   ScopeProject(_) => (),
+}
+
+// Where the line peak was reached: the runtime answers the address of the
+// "module:line" text of the install whose exit raised the peak, and that
+// address is the string itself. Zero means no exit raised it, and a negative
+// answer means the runtime does not record the site. A runtime emitted
+// before the site was recorded answers its last stat, the journal's
+// high-water, for a stat it does not know, so that answer names no site
+// either: the compiler the pinned boot builds runs on such a runtime.
+fn peak_site_text(site) = if site == 0 {
+  "no exit"
+} else if site < 0 || site == arena_stat(ArJournalHigh) {
+  "no site recorded"
+} else {
+  site |> word_addr |> str_of_buf
+}
+
+// The graph's columns, each with the leaf lists it holds, on one line beside
+// the arena line, so a column that grows shows by name. The last pair is the
+// node count, which is a count of handles and not of leaves.
+fn column_sizes_line(sizes) = "columns: {join(", ", map(column_size_text, sizes))}\n"
+
+fn column_size_text(pair) = match pair {
+  (name, n) => if name == "nodes-next" { "{name} {int_to_str(n)}" } else { "{name} {int_to_str(n)} leaves" },
 }
 
 // `mentl resume <img>` — the image IS the process: swap it in and run
@@ -486,6 +523,10 @@ fn pipeline_check(entry_module) = {
   // It is not an error: the program still builds, as compile's own report
   // says.
   report_verify_debt(verify_debt())
+  // Beside the open claims, how many places can still stop the program with
+  // a trap, read off the traps facet, so a check that prints no claim never
+  // hides a trap that no claim guards.
+  traps_said(entry_module)
   // Check refuses what compiling the executable refuses: a judgment that
   // left no error is lowered and planned as compile plans it, so a refusal
   // the plan makes, such as a footprint claim the start exceeds, is said
@@ -501,11 +542,21 @@ fn planned_as_compiled() =
   link_program() |> saturate_pass |> lower_program |> reachable_from_main |> plan_whole ~> emit_context
 
 // Check admits a hole, and a program with one is not yet an executable, so
-// only a whole program is planned.
-fn plan_whole(lowered) = if len(graph_holes_at()) == 0 {
-  emit_plan(lowered)
-  ()
+// only a whole program is planned. Each hole the reach kept is said as a
+// note in the sentence compile refuses with, and check still exits 0: the
+// course's lesson 8 is a program written around its hole, and the board
+// counts a lesson check refuses as one the compiler cannot yet judge.
+fn plan_whole(lowered) = {
+  let holes = graph_holes_at()
+  holes |> each(hole_said)
+  if len(holes) == 0 {
+    emit_plan(lowered)
+    ()
+  }
 }
+
+fn hole_said(h) =
+  said("verify: {hole_text(h)} at {module_name_of_handle(graph_module_of(h))}:{show_span(graph_span_of(h))}\n")
 
 fn query(entry_module, question) = match query_judged(entry_module, query_render(question, ??)) {
   None => {
@@ -1176,6 +1227,22 @@ fn severance_unlocks(severable) = severable |> fold(
   (acc, s) => acc ++ (capabilities_for_severance(s) |> filter((c) => !(acc |> any((x) => x == c))))
 )
 
+// Whether code provably finishes: Diverge is among the effects it never uses.
+fn finishes_in(severable) = name_set_contains(severable, ENamed(intern_str("Diverge")))
+
+// A capability as the audit says it. Code that never allocates is safe to
+// call from a real-time loop only when it also always returns, so where its
+// row carries Diverge the sentence says that it never allocates memory and
+// that its finishing is not proven.
+fn show_capability_of(finishes: Bool, cap) = match cap {
+  CRealTime => if finishes {
+    show_capability(cap)
+  } else {
+    "allocation-free (it never allocates memory; that it always finishes is not proven)"
+  },
+  CIsolated | CSandbox | CTrapFree | CPure | CProvenAbsence(_) => show_capability(cap),
+}
+
 // Terminal renderer over AuditReport records — reads fields by name.
 // JSON / IDE-projection renderers are peer functions on the same
 // record (one substrate, multiple projections per CLAUDE.md insight 8).
@@ -1189,6 +1256,7 @@ fn render_audit(entries) = {
       fn_name,
       row_str,
       severance_beyond(module_sev, severable),
+      finishes_in(severable),
       referenced_by,
       pipe_chains,
       loop_costume,
@@ -1212,7 +1280,7 @@ fn render_module_severance(module_sev) = {
   let named_line = if len(named) == 0 {
     ""
   } else {
-    "Nothing in this module uses {show_list(named, show_eff_name, ", ")}, so it is {show_list(severance_unlocks(named), show_capability, " and ")}\n"
+    "Nothing in this module uses {show_list(named, show_eff_name, ", ")}, so it is {show_list(severance_unlocks(named), show_capability_of(finishes_in(module_sev), ??), " and ")}\n"
   }
   let unnamed_line = if unnamed == 0 {
     ""
@@ -1235,7 +1303,7 @@ fn drift_note_fold(acc, pair) = match pair {
   (shape, n) => if n == 0 { acc } else { "{acc}{int_to_str(n)} {census_label(shape)}; " },
 }
 
-fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [String], pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) = {
+fn audit_report_lines(fn_name: String, row_str: String, beyond, finishes: Bool, referenced_by: [String], pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) = {
   let header = "{fn_name} {row_str}\n"
   // Only the DELTA above the module's own severance, and only its teaching
   // half. A fn that severs exactly what its module severs says nothing here,
@@ -1246,7 +1314,7 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
   let severance_section = if len(named_beyond) == 0 {
     ""
   } else {
-    "  never uses {show_list(named_beyond, show_eff_name, ", ")}, so it is {show_list(severance_unlocks(named_beyond), show_capability, " and ")}\n"
+    "  never uses {show_list(named_beyond, show_eff_name, ", ")}, so it is {show_list(severance_unlocks(named_beyond), show_capability_of(finishes, ??), " and ")}\n"
   }
   let refs_section = if len(referenced_by) == 0 {
     ""
@@ -1546,7 +1614,7 @@ fn render_query_result(result) = match result {
   // The debt renders WHAT is owed, not just how much (the refs facet's
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.
-  QRVerifyDebt(obligations) => "→ {int_to_str(len(obligations))} verification obligations pending{render_debt_lines(obligations)}",
+  QRVerifyDebt(obligations) => "→ {int_to_str(len(obligations))} verification obligations pending, besides the claims open at explicit calls of a partial primitive, which `census call-claims` lists{render_debt_lines(obligations)}",
   // Each report as the check prints it, so a session's answer and a cold
   // check of the same tree can be compared line for line.
   QRReports(entries) => "→ {int_to_str(len(entries))} report(s){entries |> map(report_line) |> str_concat_all}",
@@ -1581,7 +1649,85 @@ fn render_query_result(result) = match result {
   QRGhosts(sites) => "→ {int_to_str(len(sites))} cell(s) minted and never judged{render_census_sites(sites)}",
   QROwed(sites) => "→ {int_to_str(len(sites))} program(s) the medium owes{render_census_sites(sites)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
+  QRClaim(name, claim) => render_claim_rows(name, claim),
+  // Each place where the program can stop with a trap, with what the ledger
+  // says of the claim that guards it, then a count of each state.
+  QRTraps(entries) => "→ {int_to_str(len(entries))} place(s) where the program can stop with a trap{entries |> map(trap_line) |> str_concat_all}{trap_counts_line(entries)}",
   QRError(msg) => "error: {msg}",
+}
+
+// A store claim as one line per field, in the words a caller reads it with:
+// which parameters and captures the function writes, whether it writes its
+// own record or memory nothing names, which parameters it applies and what
+// it hands each slot, what its result may be, what a store into a part of
+// its result reaches, and which parameters it stores cells into.
+fn render_claim_rows(name: String, claim) = match claim {
+  None => "→ {name} has no store claim (not a declared function, or not judged)",
+  Some(c) => "→ claim of {name}{c |> claim_lines |> map({ l => "\n  {l}" }) |> str_concat_all}",
+}
+
+fn claim_lines(c) = [
+  "mutated: {claim_positions(c.mutated)}",
+  "captures: {int_to_str(len(c.captures))} binder(s)",
+  if c.record { "record: writes its own record" } else { "record: no" },
+  claim_beyond_line(c.beyond),
+  if c.opaque { "opaque: applies a function it cannot name" } else { "opaque: no" }
+] ++ claim_applies_lines(c.applies) ++ ["returns: {claim_returns(c.returns)}", "holds: {claim_returns(c.holds)}"] ++ claim_stores_lines(c.stores) ++ ["returned: {int_to_str(len(c.returned))} node(s)"]
+
+fn claim_beyond_line(b) = match b {
+  WritesOlder => "beyond: writes memory nothing names",
+  WritesState => "beyond: writes memory a handler's state reaches",
+  WritesNothingOlder => "beyond: no",
+}
+
+fn claim_positions(ps) =
+  if len(ps) == 0 { "none" } else { "positions {join(", ", map(int_to_str, ps))}" }
+
+fn claim_applies_lines(applies) =
+  if len(applies) == 0 { ["applies: none"] } else { map(claim_applies_line, applies) }
+
+fn claim_applies_line(entry) = match entry {
+  (path, handed) => "applies: {claim_applied(path)} (handing {claim_handed(handed)})",
+}
+
+// What a claim applies, said by the step it holds: a parameter whole, or the
+// part of one the step reads.
+fn claim_applied(path) = match path {
+  AppliedParam(p) => "parameter {int_to_str(p)}",
+  AppliedPart(p, step) => "{claim_part(step)} of parameter {int_to_str(p)}",
+}
+
+fn claim_part(step) = match step {
+  PartField(f) => "field {f}",
+  PartElem => "an element",
+  PartIndex(k) => "part {int_to_str(k)}",
+  PartCtor(c, k) => "field {int_to_str(k)} of constructor {c}",
+  PartRest => "the rest",
+  PartTypeArg(k) => "a value of type argument {int_to_str(k)}",
+}
+
+fn claim_handed(handed) =
+  if len(handed) == 0 { "no slot" } else { join(", ", map(claim_handed_text, handed)) }
+
+fn claim_handed_text(h) = match h {
+  HandedParam(j) => "parameter {int_to_str(j)}",
+  HandedLoop(j, k) => "loop {int_to_str(j)} {int_to_str(k)}",
+  HandedNone => "nothing",
+}
+
+fn claim_returns(r) = match r {
+  ReturnsFresh => "fresh",
+  ReturnsParams(ps) => "parameters {join(", ", map(int_to_str, ps))}",
+  ReturnsPartOf(ps) => "part of parameters {join(", ", map(int_to_str, ps))}",
+  ReturnsStatic(ns) => "static: {int_to_str(len(ns))} literal(s), else fresh",
+  ReturnsOlder => "older",
+}
+
+fn claim_stores_lines(stores) =
+  if len(stores) == 0 { ["stores: none"] } else { map(claim_stores_line, stores) }
+
+fn claim_stores_line(entry) = match entry {
+  (i, cells) => "stores: parameter {int_to_str(i)} ({int_to_str(len(cells))} cell(s))",
 }
 
 // It JOINS AND INDENTS — every element after the first lands two spaces in —
@@ -1642,6 +1788,7 @@ type QueryVerb
   | QVVerification
   | QVReports
   | QVFlow
+  | QVClaim
   | QVCensus
   | QVWhere
   | QVDecls
@@ -1661,6 +1808,7 @@ type QueryVerb
   | QVProse
   | QVWrites
   | QVReads
+  | QVTraps
   | QVUnknownVerb
 
 fn classify_query_verb(w: String) with Pure = if w == "type" {
@@ -1683,6 +1831,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVReports
 } else if w == "flow" {
   QVFlow
+} else if w == "claim" {
+  QVClaim
 } else if w == "census" {
   QVCensus
 } else if w == "where" {
@@ -1723,6 +1873,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVReads
 } else if w == "owed" {
   QVOwed
+} else if w == "traps" {
+  QVTraps
 } else {
   QVUnknownVerb
 }
@@ -1750,9 +1902,9 @@ fn parse_query_string(scope: String, q) = {
         QVWhy => QWhy(w1, Some(w2)),
         verb @ (
           QVType | QVEffects | QVOwnership | QVRefs | QVOwed | QVProvider | QVUnresolved | QVVerification
-          | QVReports | QVFlow | QVCensus | QVWhere | QVDecls | QVVariants | QVModules | QVImports
+          | QVReports | QVFlow | QVClaim | QVCensus | QVWhere | QVDecls | QVVariants | QVModules | QVImports
           | QVUnreferenced | QVUnreachable | QVPerforms | QVEnv | QVOrphanClaims | QVCost | QVGhosts | QVHeads
-          | QVSmt | QVText | QVProse | QVWrites | QVReads | QVUnknownVerb
+          | QVSmt | QVText | QVProse | QVWrites | QVReads | QVTraps | QVUnknownVerb
         ) => build_question(verb, w2, q, scope),
       }
     },
@@ -1778,6 +1930,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVRefs => QRefsOf(arg),
   QVProvider => QHandlerProvider(arg),
   QVFlow => QFlowOf(arg),
+  QVClaim => QClaim(arg),
   QVCensus => if arg == "" {
     QCensusRoster
   } else {
@@ -1807,6 +1960,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVWrites => QStateWrites(arg),
   QVReads => QCensus(CsFieldRead(arg)),
   QVOwed => QOwed(arg),
+  QVTraps => QTraps,
   QVUnknownVerb => QUnknown(raw),
 }
 

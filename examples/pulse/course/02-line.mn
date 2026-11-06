@@ -20,7 +20,7 @@
 //   mentl examples/pulse/course/02-line.mn:44    the aspects at `<~`: the line, its depth, its owner
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/feedback
 

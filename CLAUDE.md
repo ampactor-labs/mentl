@@ -233,9 +233,10 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   the class of error that should refuse it.
 - Every test directory runs through `wt_battery <compiler> <dir>`: micros,
   syntax, proposals, teach and frontier. `mentl test` checks a directory and
-  prints each fixture's RUN line, and the host runs it. `tests/crown` counts
-  `E_EffectMismatch` refusals for its leak-* and sound-* fixtures
-  (`tools/crown-gate.sh`). `tests/proposals`, `tests/teach` and
+  prints each fixture's RUN line, and the host runs it. `tests/crown` is a
+  battery too: a leak-* crucible's first line names the class that must
+  refuse it (`// check: refuse E_EffectMismatch`), and its sound twin's says
+  it must be accepted (`// check: accepted`). `tests/proposals`, `tests/teach` and
   `tests/frontier` state their contract on the first line, where
   `// propose L:C:` and `// teach N:` refer to lines of the fixture itself.
 - Behavior that no first-line contract covers yet, such as a command's
@@ -248,8 +249,8 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   the wheel.
 - `mentl land` runs every gate through the candidate. To run one gate by hand
   against the candidate, pass `fresh`: `bash tools/proof-exactness-gate.sh
-  fresh`, `bash tools/frontier-gate.sh --compiler fresh`, `MENTL_BOOT=… bash
-  tools/crown-gate.sh`, `MENTL_BOOT=… mentl verify`.
+  fresh`, `bash tools/frontier-gate.sh --compiler fresh`, `wt_battery
+  <candidate> tests/crown`, `MENTL_BOOT=… mentl verify`.
 
 ## The working loop
 
@@ -379,13 +380,13 @@ The hooks and gates enforce these rules. They are not suggestions.
 ## Writing Mentl code
 
 The five pipe operators name the shape of every flow. Use them in code, and
-use them to describe a flow in prose.
+use them to describe a flow in prose, by their names.
 
-- `|>` runs stages in sequence.
-- `<|` sends one input to several branches.
-- `><` runs independent pipelines side by side.
-- `~>` installs a handler over everything to its left.
-- `<~` feeds back a value from the previous step.
+- Pipe, `|>`, runs stages in sequence.
+- Share, `<|`, sends one input to several branches, each borrowing it.
+- Split, `><`, runs independent pipelines side by side, each owning its input.
+- Install, `~>`, puts a handler over everything to its left.
+- Feedback, `<~`, feeds back a value from the previous step.
 
 Always write a sequence with `|>`: `y |> f |> g`, never
 `let x = f(y); g(x)`.

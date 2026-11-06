@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides HANDLER STATE: a closure performing E held in a
 // handler's own state field, CALLED from an arm, with the install under
 // `with !E`. The row must ride the state slot to the arm's call.

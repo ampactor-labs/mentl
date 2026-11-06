@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the same held resume through `apply`'s `!Log`, over a remainder
 // that performs nothing apply forbids: the install's remainder is `□ + 2`,
 // whose row carries the op's own multi-shot cost and no Log. Expect NO

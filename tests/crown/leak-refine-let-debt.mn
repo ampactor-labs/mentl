@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0, 2026-10-01): a let annotation is a CLAIM about its
 // value, and an open claim is debt, not a fact. The annotation was rebound
 // onto the value's class whatever the claim's verdict, so the division read

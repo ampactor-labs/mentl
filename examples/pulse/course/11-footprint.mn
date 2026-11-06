@@ -53,7 +53,7 @@ import audio/wav
 
 import arena
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

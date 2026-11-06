@@ -21,7 +21,7 @@
 // and shown), never typed; a signature holds only your decisions.
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/osc
 

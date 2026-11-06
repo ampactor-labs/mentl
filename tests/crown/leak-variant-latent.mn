@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the SUM carrier: a closure performing E, carried
 // as an ADT variant's PAYLOAD, matched out and CALLED under `with !E` —
 // the row must ride the payload through the match to the call.

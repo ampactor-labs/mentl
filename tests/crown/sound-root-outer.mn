@@ -1,3 +1,4 @@
+// check: accepted
 // The sound twin of leak-root-inner-install: `he` installed OUTSIDE hf, so
 // hf's arm's `op` resolves outward to it. Row: E absorbed at the outer tee.
 // Accepted, and runs to 11.

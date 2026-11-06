@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN refinement (S6, 2026-10-02): the meet `pick` publishes at `f`
 // demands `Positive`, and a constant that proves it owes nothing, so `!Trap`
 // holds — the control beside `leak-fn-part-returned`, which only the

@@ -113,7 +113,7 @@ fn stereo_strip(sr: Int) = {
 //   a value is handed in.
 // - `for sample in stream { ... }`: per-sample iteration is what `<~` draws.
 // - A hard-coded sample rate: the rate is the `Sample(rate)` instance a
-//   program declares and a handler answers (lib/dsp/clock.mn), and two rates
+//   program declares and a handler answers (lib/clock.mn), and two rates
 //   are two effects.
 // - A processor base class with a virtual `process()` (JUCE's
 //   AudioProcessor, RtAudio's hierarchy) and a filter-design-then-apply

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — HUM's controller shape (examples/grid/station.mn): the decision is
 // declared `!Net`, and the network read hides behind three plain-looking
 // helpers. The negation walks every call, so the refusal names the whole

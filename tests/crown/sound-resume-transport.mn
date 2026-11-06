@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound control for leak-resume-latent: a PURE closure handed
 // back out of an arm through `resume` and called under `with !E` is
 // transport, not performance, and must be admitted. Expect exit 7.

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4, 2026-10-01): the same merge inside one body. `f` is
 // whichever branch ran, so applying it owes both preconditions; the open
 // claim on `k + 1` pays the `Trap` that `inv`'s guards. Checked clean and

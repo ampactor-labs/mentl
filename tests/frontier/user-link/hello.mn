@@ -1,6 +1,6 @@
-// A clean program. Its check prints nothing: no narration about the
-// library's prose, no summary of the library's own open obligations — the
-// user's link is the user's (the frontier's user-link leg).
+// A program with no claim of its own. Its check prints only its trap summary,
+// one place inside the library, and no narration about the library's prose
+// or summary of the library's own debt (the frontier's user-link leg).
 import io
 
 fn main() = {

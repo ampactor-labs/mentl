@@ -1,0 +1,20 @@
+// expect: 4
+// `word_name` answers one of two string literals, which live in the
+// module's static data, so its claim says its answer is static. A list built
+// before an arena holds a string, and a store inside the arena puts
+// word_name's answer into it; after the arena's exit the list still holds
+// the literal "zero", four bytes long.
+import arena
+
+fn word_name(n) = if n == 0 { "zero" } else { "many" }
+
+fn main() = {
+  let names = make_list(1)
+  list_set(names, 0, "x")
+  {
+    list_set(names, 0, word_name(0))
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  len(list_index(names, 0)) + len(junk) - 16
+}

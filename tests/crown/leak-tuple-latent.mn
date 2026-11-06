@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the TUPLE carrier: a closure performing E,
 // carried as a tuple element, extracted and CALLED under `with !E` —
 // the row must ride the position to the call. Expect E_EffectMismatch.

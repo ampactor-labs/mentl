@@ -1,0 +1,67 @@
+// door: a lock that opens for the right code during opening hours, and
+// counts how many times it has opened today.
+//
+// Follow the arrows to read it:
+//   a |> f                  a, and then f
+//   (a) >< (b)              a and b, each on its own
+//   a <| (f, g)             a, handed to f and to g
+//   { x => ... } <~ delay(1)  a step that remembers its last answer, x
+//   body ~> h               the body, with h doing what it asks for
+//
+// The promise, checked by the compiler on every build through every step
+// try_door takes: the lock never reaches the computer it runs on (no
+// network, no files: with !WASI) and never stops with an error (!Trap).
+// It talks to the world only through Door, and the handler at the right
+// edge of main decides what a door is: here a recorded morning, on a real
+// lock the keypad and the bolt.
+//
+// `mentl run examples/hello/door.mn` prints:
+//   shut, 0 today
+//   open, 1 today
+//   shut, 1 today
+// and `mentl check examples/hello/door.mn` prints nothing.
+import io
+
+// What a door can do: read the code someone typed, tell the hour, and move
+// the bolt.
+effect Door {
+  typed() -> Int
+  hour() -> Int
+  bolt(open: Bool) -> Bool
+}
+
+fn right_code(code) = code == 2468
+
+fn opening_hours(h) = 7 <= h && h < 22
+
+fn both(code_ok, hour_ok) = code_ok && hour_ok
+
+// The lock's decision: the code typed and the hour, each checked on its
+// own, and then both.
+fn decide() = ((typed() |> right_code) >< (hour() |> opening_hours)) |> both
+
+fn move_bolt(open) = bolt(open)
+
+// How many times the door has opened today: one more each time it opens.
+fn opened_today(open) with !Alloc = { before => if open { before + 1 } else { before } } <~ delay(1)
+
+// One try at the door: the decision goes to the bolt and to today's count.
+fn try_door() with !WASI + !Trap = decide() <| (move_bolt, opened_today)
+
+fn tell((opened, count)) =
+  print(if opened { "open, {count} today\n" } else { "shut, {count} today\n" })
+
+// A recorded morning, for trying the lock without a door: a wrong code at
+// nine, the right code at ten, and the right code at eleven at night.
+handler recorded with visitor = 0 {
+  typed() => resume(if visitor == 0 { 1357 } else { 2468 }),
+  hour() => resume(if visitor == 0 { 9 } else if visitor == 1 { 10 } else { 23 }) with visitor = visitor + 1,
+  bolt(open) => resume(open),
+}
+
+fn main() = {
+  try_door() |> tell
+  try_door() |> tell
+  try_door() |> tell
+  0
+} ~> recorded ~> stdout_console

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a negation binds the handler that answers the declaration's own
 // operation. decide says it never uses Net and performs price(); the
 // install of online answers price with an arm that fetches, an op of Net,

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN modal (§11 6.3's crucible sweep): the SUBTRACT half at the
 // INSTANCE altitude — an instance-unpinned handler absorbs a pinned
 // instance's perform. work's row is Sample(48000); h declares no

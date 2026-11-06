@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // THE EXECUTABLE ROOT GATE READS THE ROW AND NOTHING ELSE (PROGRAM Step 2,
 // 2026-09-27). `op()` performed OUTSIDE the `~> h` extent: main's row is
 // `E`, correct, and the executable must refuse — E reaches the root with

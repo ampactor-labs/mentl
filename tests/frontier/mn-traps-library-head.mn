@@ -1,0 +1,8 @@
+// expect: 134
+// The program's only trap is inside the library: `head` traps on an empty
+// list, and this program hands it one, so it stops with a trap. No claim
+// stands at the call, so the traps facet names the call and the path into
+// the library beside it.
+fn empty() -> [Int] = []
+
+fn main() = head(empty())

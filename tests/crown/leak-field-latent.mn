@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides STORAGE: a closure performing E, stored in a
 // record field, extracted and CALLED under `with !E` — the row must ride
 // the field load to the call. Expect E_EffectMismatch.

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4·D, 2026-10-01): the channel through a generic callee
 // defined beside it. `feed`'s signature hands its list's elements to its
 // callback, so the callback applying what it is handed at `k + 1` applies

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4·D, 2026-10-01): the same through a record field. The
 // field's function is applied at `k`, so the record handed in owes the
 // precondition of the function it holds there. Checked clean and divided by

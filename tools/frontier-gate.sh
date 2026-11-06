@@ -742,7 +742,7 @@ run_wasatch() {
   if [ "$(grep -c "$pattern" "$src/inversion.mn")" != "1" ]; then
     fail "wasatch-network: the patch no longer applies to inversion.mn"; return
   fi
-  sed -i "s/$pattern/  let lake = drone_hz(lake_elevation_ft)\n  let _ = fetch_param(\"lake\")/" "$tdir/inversion.mn"
+  sed -i "s/$pattern/  let lake = drone_hz(lake_elevation_ft)\n  let _ = fetch(\"lake\")/" "$tdir/inversion.mn"
   wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" check inversion > "$dir/wasatch-network.out" 2> "$dir/wasatch-network.err"; rc=$?
   if [ "$rc" -ne 0 ] && grep -q E_EffectMismatch "$dir/wasatch-network.err"; then
     pass "wasatch-network refuses (E_EffectMismatch: the per-sample path cannot reach the network)"
@@ -1959,12 +1959,12 @@ for i in "${!compilers[@]}"; do
   run_env_protocol "$compiler" "$dir"
   # The compile says where it is (PLAN §11): at a terminal a check draws the
   # link, each module parsed and the judging, then clears its row; into a pipe
-  # it writes no live line. RED on boot 30605949: 0 bytes at a terminal.
+  # it writes no live line. The only text after the last clear is the trap summary. RED on boot 30605949: 0 bytes at a terminal.
   live=$(cd "$ROOT" && script -qec "$WT run ${WT_RUN_FLAGS[*]} --dir . --dir $ROOT::/mentl-home $compiler check examples/pulse/course/01-tone.mn" /dev/null)
   piped=$(cd "$ROOT" && wt_run --dir . --dir "$ROOT::/mentl-home" "$compiler" check examples/pulse/course/01-tone.mn 2>&1 >/dev/null | grep -c $'\r')
   linked=$(printf '%s' "$live" | grep -o 'linked [0-9]* modules' | grep -o '[0-9]*')
-  if [ -n "$linked" ] && [[ "$live" == *"parsing $linked/$linked modules"* && "$live" == *"judging 1/"* && "$live" == *$'\e[K' ]] && [ "$piped" = 0 ]; then
-    pass "the compile says where it is: $linked modules linked and parsed, the judging drawn, its row cleared; a pipe gets no live line"
+  if [ -n "$linked" ] && [[ "$live" == *"parsing $linked/$linked modules"* && "$live" == *"judging 1/"* && "${live##*$'\e[K'}" == "verify: "* ]] && [ "$piped" = 0 ]; then
+    pass "the compile says where it is: $linked modules linked and parsed, the judging drawn, its row cleared before the trap summary; a pipe gets no live line"
   else
     fail "the compile's live line (linked='$linked', carriage returns into a pipe=$piped)"
   fi
@@ -2088,14 +2088,14 @@ for i in "${!compilers[@]}"; do
   fi
   # AN ARGUMENT HOLE AT AN OPERAND IS A VALUE HOLE (2026-10-13). Nothing can
   # fill the field of `choose(??) + 1` later, so the call is applied and the
-  # hole takes the slot's contract: `check` is clean (RED on boot c939f5b8:
+  # hole takes the slot's contract: `check` notes the hole alone (RED on boot c939f5b8:
   # the call was the product with a hole and `+` refused E_ArithOnAggregate),
   # the proposal battery fills `1` (tests/proposals/arg-slot-operand.mn), and
   # the executable still refuses the unfilled hole honestly.
   ho_file="$ROOT/tests/proposals/arg-slot-operand.mn"
   ho_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ho_file" 2>&1)
   ho_rc=$?
-  if [ "$ho_rc" -eq 0 ] && [ -z "$ho_out" ]; then
+  if [ "$ho_rc" -eq 0 ] && [ "$(printf '%s\n' "$ho_out" | grep -vc 'this program has a hole (??) at 7:20; ')" = 0 ]; then
     pass "hole-operand check (an argument hole at an operand is a value hole; the call applies)"
   else
     fail "hole-operand check (exit=$ho_rc: $(printf '%s' "$ho_out" | head -2 | tr '\n' ' '))"
@@ -2148,18 +2148,15 @@ for i in "${!compilers[@]}"; do
   # missing line is the mute-gate class this file's canary legs exist to
   # refuse.
 
-  # Severance honesty (audit): a fn whose row carries Alloc is never
-  # offered "proven zero allocation"; a pure fn still earns the offer.
-  # The reached set reads the CHASED row (row_names was a top-link read
-  # and a chained row hid its deeper presents — measured on the wheel).
-  # The assertion anchors on the CLAIM (`real-time safe`), not on
-  # the section keyword, because the keyword moved: severance reads at the
-  # MODULE now and a function's own line carries only its delta above it
-  # (`severs beyond the module:`), so `severable:` no longer appears per fn.
-  # The invariant is unchanged and is what this leg is for.
+  # Severance honesty (audit): a function whose row carries Alloc is never
+  # called real-time safe, a pure one still is, and one that may never return
+  # (`at` in the grid controller carries Diverge) is only allocation-free.
   wt_entry "$ROOT/tests/frontier/mn-audit-severance-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
+  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" audit examples/grid/station.mn > "$dir/audit-station.out" 2>/dev/null
   if grep -A1 '^allocates ' "$dir/audit-sev.out" | grep -q 'real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
+  elif ! grep -A1 '^at uses .*Diverge' "$dir/audit-station.out" | grep -q 'allocation-free (it never allocates memory; that it always finishes is not proven)'; then
+    fail "audit-severance-honest (a function that may never return was called real-time safe; see $dir/audit-station.out)"
   elif grep -A1 '^quiet ' "$dir/audit-sev.out" | grep -q 'real-time safe'; then
     pass "audit-severance-honest (Alloc never offered on an allocating row; the pure control keeps it)"
   else
@@ -2495,14 +2492,12 @@ for i in "${!compilers[@]}"; do
   else
     fail "comment lede (decl=$l2 interior=$l4 trailing=$l5 lambda=$l12)"
   fi
-  # `mentl doc` — the comment paradigm's reader-facing verb. It ran the
-  # per-module walk check retired, so every invocation opened with
-  # E_MissingVariable noise from the prelude and rendered nothing of its
-  # own (RED 2026-09-17). Contract: no diagnostics, each decl with its type,
-  # the decl's prose as its lede.
+  # `mentl doc`: no diagnostics, each declaration with its type, the clause
+  # its author wrote (five.mn's `add` says `with !Alloc`) and its whole comment.
   dout=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" doc lede 2>"$dir/doc.err")
+  d5=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" doc examples/hello/five.mn 2>/dev/null)
   derr=$(grep -c ' error: ' "$dir/doc.err" || true)
-  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute(' && printf '%s' "$dout" | grep -q 'The outer prose'; then
+  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute(' && printf '%s' "$dout" | grep -q 'The outer prose' && printf '%s' "$d5" | grep -q '^  with !Alloc (declared)' && printf '%s' "$d5" | grep -q 'is checked on every build'; then
     pass "doc projection (decls with types and ledes, no diagnostics)"
   else
     fail "doc projection (errors=$derr; see $dir/doc.err; got: $(printf '%s' "$dout" | head -3))"
@@ -2580,8 +2575,8 @@ for i in "${!compilers[@]}"; do
     fail "caret topology (got: $(printf '%s' "$cx" | grep '^Topology' ) / $(printf '%s' "$cstage" | grep '^Topology'); see $dir/caret.err)"
   fi
   if printf '%s' "$ctick" | grep -q '^Handler: Tick is served by `~> ticker` at walk:19:14$' \
-     && printf '%s' "$craw" | grep -q '^Handler: no install inside `raw` answers Tick' \
-     && printf '%s' "$clam" | grep -q '^Handler: Tick is performed when the function value at walk:25:25 is called'; then
+     && printf '%s' "$craw" | grep -q "^Handler: no install in this function answers tick; a caller's handler does$" \
+     && printf '%s' "$clam" | grep -q "^Handler: no install in this function answers tick; a caller's handler does$"; then
     pass "caret handler (the install that serves a perform, or why none on the path does)"
   else
     fail "caret handler (got: $(printf '%s' "$ctick" | grep '^Handler') / $(printf '%s' "$craw" | grep '^Handler'); see $dir/caret.err)"
@@ -2966,8 +2961,8 @@ for i in "${!compilers[@]}"; do
   rm -rf "$uld"; mkdir -p "$uld"
   cp "$ROOT/tests/frontier/user-link/hello.mn" "$ROOT/tests/frontier/user-link/owes.mn" "$uld/"
   ulhello=$(wt_run --dir "$uld::." --dir "$ROOT::/mentl-home" "$compiler" check hello.mn 2>&1); ulrc=$?
-  if [ "$ulrc" = 0 ] && [ -z "$ulhello" ]; then
-    pass "user link: a clean program's check prints nothing (no library narration, no library debt)"
+  if [ "$ulrc" = 0 ] && [ "$ulhello" = "verify: 1 place(s) can stop this program with a trap, 1 of them inside the library through the program's calls; \`mentl query hello traps\` lists each with its claim" ]; then
+    pass "user link: hello's check prints only its trap summary, one place inside the library (no library narration, no library debt)"
   else
     fail "user link hello (exit=$ulrc, $(printf '%s\n' "$ulhello" | grep -c .) line(s): $(printf '%s' "$ulhello" | head -1 | cut -c1-120))"
   fi
@@ -3059,6 +3054,11 @@ for i in "${!compilers[@]}"; do
   else
     fail "effect-enters-absorbed (exit=$abs_rc: $(printf '%s' "$abs_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"
   fi
+  # `why quiet WASI` prints the path the check refused through stdout_console's arm, and door.mn, refused nothing, still never uses WASI. RED on boot 5cf955cd.
+  wa_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-why-answering-arm.mn "why quiet WASI" 2>/dev/null)
+  wa_door=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query examples/hello/door.mn "why try_door WASI" 2>/dev/null)
+  if printf '%s' "$wa_why" | grep -q '^quiet uses WASI: while quiet runs, `print` is performed at [a-z/-]*mn-why-answering-arm:9:25, and `stdout_console`.s arm at io:[0-9:]* answers it: .*`fd_write` is an operation of WASI' \
+     && printf '%s' "$wa_door" | grep -q '^try_door never uses WASI: '; then pass "why through an answering arm (the banked refusal's path; none banked, the row's answer)"; else fail "why through an answering arm (got: $(printf '%s' "$wa_why" | head -1 | cut -c1-200) / $wa_door)"; fi
   # `!Mutate` refuses naming the store, through calls and through a partial handed to a callee (clean on boot 65e2f966).
   mut_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-mutate-enters.mn 2>&1)
   if printf '%s' "$mut_out" | grep -q 'relayed uses Mutate: relayed calls `relay` at [a-z/-]*mn-mutate-enters:12:[0-9]* → relay calls `fill` at [a-z/-]*mn-mutate-enters:8:[0-9]* → fill calls `list_set` at [a-z/-]*mn-mutate-enters:6:[0-9]* → at lists:[0-9:]*, `store_i32`, a store into memory older' \
@@ -3182,18 +3182,9 @@ for i in "${!compilers[@]}"; do
   else
     fail "mcp handshake (see $mcp_dir/out.jsonl)"
   fi
-  # The span assertion names the SOURCE as well as the line (2026-09-15).
-  # It read `at 3:1` and broke the day the diagnostic render gained its
-  # module half — a gate welded to a render, snapped by improving the
-  # render, the RENDER-PARSE class this session spent the day naming.
-  # `at .build/mcp/proposal:3:1` names the proposal's module: the gate
-  # judges the proposal from that path, so a teaching span that pointed at
-  # any OTHER file would fail here — which is exactly the property the
-  # pass line claims, the agent's own lines named.
-  # TWO errors, re-derived by hand (§9.11): `fn bad() with !E = op()` with
-  # no handler anywhere violates its own declared `!E` (E_EffectMismatch)
-  # AND lets E reach the executable root unhandled (E_EffectUnhandled), and
-  # every error refuses.
+  # The span names the proposal's own module, so a span in any other file
+  # fails. Two errors: `fn bad() with !E = op()` breaks its own `!E`
+  # (E_EffectMismatch), and E reaches the top unhandled (E_EffectUnhandled).
   if grep -q 'REFUSED — 2 error' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectMismatch' "$mcp_dir/out.jsonl" \
      && grep -q 'at .build/mcp/proposal:3:1' "$mcp_dir/out.jsonl" \
@@ -3202,8 +3193,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "mcp refusal verdict (see $mcp_dir/out.jsonl)"
   fi
-  if grep -q 'PROVEN — every claim in the program is proven' "$mcp_dir/out.jsonl" \
-     && [ -s "$mcp_dir/.build/mcp/last.wat" ]; then
+  if grep -q 'PROVEN — every claim in the program is proven' "$mcp_dir/out.jsonl" && [ -s "$mcp_dir/.build/mcp/last.wat" ]; then
     pass "mcp propose PROVES and the artifact lands"
   else
     fail "mcp proven verdict + artifact (see $mcp_dir/out.jsonl)"
@@ -3214,6 +3204,21 @@ for i in "${!compilers[@]}"; do
     pass "mcp malformed call teaches; unknown method -32601; ping answers"
   else
     fail "mcp error contract (see $mcp_dir/out.jsonl)"
+  fi
+  # The verdict's first line says what the gate did: a claim the verifier
+  # could not decide reads PENDING, with the claim printed at its line, and a
+  # refusal after a proven build says the artifact on disk is the earlier one.
+  gv_dir="$dir/mcp-verdicts"; mkdir -p "$gv_dir"
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"propose","arguments":{"source":"fn half(total, parts) = total / parts\n\nfn main() = half(10, len([1, 2]))\n"}}}' \
+    '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"propose","arguments":{"source":"fn double(x) = x * 2\n\nfn main() = double(21)\n"}}}' \
+    '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"propose","arguments":{"source":"effect E { op() -> Int }\nfn bad() with !E = op()\nfn main() = bad()\n"}}}' \
+    | "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$gv_dir::." --dir "$ROOT::/mentl-home" "$compiler" mcp >"$gv_dir/out.jsonl" 2>"$gv_dir/err.log"
+  if grep '"id":2' "$gv_dir/out.jsonl" | grep -q '"text":"PENDING — 1 claim(s)' && ! grep '"id":2' "$gv_dir/out.jsonl" | grep -q 'every claim in the program is proven' \
+     && grep '"id":2' "$gv_dir/out.jsonl" | grep -q 'verify: pending partiality' && grep '"id":4' "$gv_dir/out.jsonl" | grep -q 'last.wat is the previous proven build, not this program'; then
+    pass "mcp verdicts: an undecided claim reads PENDING at its line; a refusal names the earlier build"
+  else
+    fail "mcp verdicts (see $gv_dir/out.jsonl)"
   fi
   # ── the RESIDENT SESSION (Hβ.session.resident-verbs, first rung) ───
   # A project dir: the server derives the graph ONCE at startup (the
@@ -3237,7 +3242,7 @@ for i in "${!compilers[@]}"; do
   # mount, every other leg's mount) — the engine meets the surface.
   # main declares `with Pure` since T2 (2026-10-13), so its clause is what
   # stands on `double` and the teach read answers `→ add` for it; a lock
-  # nothing stands on is no longer taught. All three proposals prove, the third sent with a `é`.
+  # nothing stands on is no longer taught. The first proposal proves; the two that print are PENDING, since print_string can trap inside the library; the third is sent with a `é`.
   printf 'fn double(x) = x * 2\n\nfn main() with Pure = double(21)\n' > "$ses_dir/main.mn"
   "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ses_dir::." --dir "$ROOT::/mentl-home" "$compiler" mcp \
     < "$ROOT/tests/frontier/mcp-resident-session.jsonl" >"$ses_dir/out.jsonl" 2>"$ses_dir/err.log"
@@ -3258,7 +3263,7 @@ for i in "${!compilers[@]}"; do
      && grep -q 'Nothing in this module uses Alloc' "$ses_dir/out.jsonl" \
      && grep -qE 'annotation density|→ add' "$ses_dir/out.jsonl" \
      && ! grep -qE 'iterate (uses|performs) ' "$ses_dir/out.jsonl" \
-     && [ "$(grep -c 'PROVEN — every claim in the program is proven' "$ses_dir/out.jsonl")" = "3" ]; then
+     && [ "$(grep -c 'PROVEN — every claim in the program is proven, nothing in it can stop with a trap' "$ses_dir/out.jsonl")" = "1" ] && grep '"id":9,' "$ses_dir/out.jsonl" | grep -q 'PENDING — 0 claim(s) the verifier could not decide and 2 place(s) that can stop the program with a trap; the program was built' && grep '"id":10,' "$ses_dir/out.jsonl" | grep -q 'PENDING — 0 claim(s) the verifier could not decide and 1 place(s) that can stop the program with a trap; the program was built'; then
     pass "resident session: one derivation, live query + at + audit + teach reads, propose coexists and resolves the library"
   else
     fail "resident session (resident-lines=$(grep -c 'session: graph resident' "$ses_dir/err.log"); see $ses_dir/out.jsonl)"
@@ -3809,15 +3814,10 @@ for i in "${!compilers[@]}"; do
   # boot answered unknown-verb).
   wy_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" why "$wdoc" gain 2>/dev/null)
   printf '%s' "$wy_out" | grep -q 'let gain' || { w_ok=0; fail "why verb (got: $wy_out)"; }
-  # AT THE DEVELOPER'S COORDINATES. `gain` is line 8 of a 24-line fixture,
-  # so a weave coordinate is unmistakable here — born RED 2026-09-06, when
-  # this answered `at 2729:1-2729:15` because show_reason rendered the raw
-  # span from the one-namespace concatenation. Every felt surface goes
-  # through that renderer (LSP hover, the cursor view's Why line, the type
-  # facet's Reason), and the refs facet three lines away had been answering
-  # local coordinates the whole time. §0's intent-is-walkable property is
-  # only true if the chain walks somewhere a developer can open.
-  #
+  # The developer's coordinates: `gain` is line 8 of a 24-line fixture, so
+  # the why verb's `at 8:1-8:15` is the line in the developer's own file,
+  # which every surface that renders a Reason shares (hover, the caret's Why
+  # line, the type facet).
   # WHAT IT MEASURES NOW (re-read 2026-09-15, because the message had gone
   # stale against its own subject — the smaller face of the RENDER-PARSE
   # class the two legs above just paid for). The LINE HALF IS FIXED: this
@@ -4016,17 +4016,17 @@ for i in "${!compilers[@]}"; do
 
   # ─── The imports facet reads the references that cross an import ────
   # An import is used when a reference standing in the importing module
-  # links to a declaration the imported one makes. The fixture's entry reads
-  # consts.mn's module value and nothing of unused.mn. Born RED 2026-10-14:
-  # boots 16d5706e and 259f244e both answered the consts edge DEAD, since a
-  # module value `let` was no declaration to the facet (PLAN §7's canon
-  # finding, `Hβ.query.facets-read-the-link`).
+  # links to a declaration the imported one makes: the fixture reads consts.mn's
+  # module value and nothing of unused.mn (RED 2026-10-14: consts DEAD). The
+  # prelude's import of memory is used by the modules of hello's link that see
+  # memory only through the prelude (RED 2026-11-05 on the boot: memory DEAD).
   ie_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/imports-by-edge/main.mn" "imports" 2>/dev/null)
+  ip_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/examples/hello/five.mn" "imports" 2>/dev/null)
   if printf '%s' "$ie_out" | grep -qE "^ *used +.*imports-by-edge/main -> import consts" \
-     && printf '%s' "$ie_out" | grep -qE "^ *DEAD +.*imports-by-edge/main -> import unused"; then
-    pass "imports by edge: the module value's import used, the unreferenced module's DEAD"
+     && printf '%s' "$ie_out" | grep -qE "^ *DEAD +.*imports-by-edge/main -> import unused" && printf '%s' "$ip_out" | grep -qE "^ *used +prelude -> import memory$"; then
+    pass "imports by edge: consts used, unused DEAD, and the prelude's import of memory used"
   else
-    fail "imports by edge (want consts used, unused DEAD; got: $(printf '%s' "$ie_out" | grep 'imports-by-edge/main ->' | tr '\n' ' '))"
+    fail "imports by edge (want consts used, unused DEAD, prelude memory used; got: $(printf '%s\n%s' "$ie_out" "$ip_out" | grep ' -> import' | tr '\n' ' '))"
   fi
 
   # ─── The reading facets: text, prose, writes of, reads of ───────────

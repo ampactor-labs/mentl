@@ -1,0 +1,6 @@
+// expect: 134
+// A pipe into the index slot of `list_index` completes the read, so an index
+// past the end of a list of three keeps its bounds check and stops the run.
+fn read_at(xs, i) = i |> list_index(xs, ??)
+
+fn main() = read_at([1, 2, 3], 7)

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN instance order (§11 6.2) — a 48 kHz reader FIRST, then a 44.1 kHz
 // one, under !Sample(44100): the negation must REJECT the 44.1 kHz perform
 // whichever call comes first. Until 2026-09-28 the row's dedup kept the

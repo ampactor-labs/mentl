@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0, 2026-10-01): a declared return is a postcondition,
 // and `g`'s is open — its else tail is a parameter nothing bounds. The
 // caller's division trusted the declaration and charged nothing. Boot

@@ -1,0 +1,20 @@
+// expect: 7
+// A list built in an arena and stored through holder[0], where a fresh literal holder had its element replaced by an older list, must survive the arena's exit.
+import arena
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  {
+    let holder = [[[0]]]
+    list_set(holder, 0, older)
+    if 0 < len(holder) {
+      list_set(holder[0], 0, [7, 8, 9])
+      0
+    } else {
+      0
+    }
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

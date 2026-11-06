@@ -9,6 +9,8 @@
 //
 //   propose {source} -> PROVEN   (artifact streamed to .build/mcp/last.wat
 //                                 — only proven bytes ever land there)
+//                     | PENDING  (built, with each claim the verifier could
+//                                 not decide printed at its line)
 //                     | REFUSED  (each error named at its file-local span;
 //                                 the refusal teaches)
 //
@@ -83,31 +85,53 @@ handler console_bank with lines = [] {
 // resolve from there yet (PLAN §11, a module is a scope). The gate hears the
 // proposal's own layer (`Project`), as `mentl check` does. Emission streams
 // through wat_to_file so stdout stays protocol-only; a refused proposal
-// never opens the artifact at all. Returns the diagnostic lines, the errors
-// the judgment reported and what the gate did.
+// never opens the artifact at all. Returns the gated compile's record: what
+// the gate did, the errors and reports the judgment made, and the open
+// obligations the proposal's layer hears.
 fn mcp_judge(source, wat_path) = {
   {
     fs_mkdir(".build")
     fs_mkdir(".build/mcp")
     fs_write_file("{mcp_proposal_module()}.mn", source)
   } ~> wasi_filesystem
-  let judged = gated_compile(mcp_proposal_module(), wat_path, Project)
-  (heard_lines(judged), judged.errors, judged.left)
+  gated_compile(mcp_proposal_module(), wat_path, Project)
 }
 
 // The module a proposal's text stands as while it is judged, beside the
 // artifact; the walk reads it from `<module>.mn`.
 fn mcp_proposal_module() with Pure = ".build/mcp/proposal"
 
-// The verdict's head states exactly what the gate did — refused or proven
-// whole. The diagnostic text follows verbatim: the refusal's teaching IS the
-// payload.
-fn mcp_verdict_text(text, nerr, left, wat_path) = {
-  let head = match left {
-    ArtifactRefused => "REFUSED — {int_to_str(nerr)} error(s), so nothing was built\n",
-    ArtifactWritten(_) => "PROVEN — every claim in the program is proven, and it was built to {wat_path}\n",
-  }
-  head ++ text
+// The verdict's first line says what the gate did: it refused the program,
+// built it with claims the verifier could not decide or places that can
+// still trap, or built it with every claim proven and no place that can
+// trap. Each pending claim follows as `mentl check` prints it, then each
+// place that can trap as `mentl query <file> traps` prints it, then the
+// reports the judgment made, in the words check uses.
+fn mcp_verdict_text(judged, wat_path) =
+  "{mcp_verdict_head(judged, wat_path)}{str_concat_all(judged.pending)}{mcp_trap_lines(judged.traps)}{heard_lines(judged)}"
+
+fn mcp_trap_lines(traps) = match traps {
+  [] => "",
+  [_, ..._] => "traps:{str_concat_all(traps)}\n",
+}
+
+// A refusal writes nothing, so an artifact already at the path is the one an
+// earlier proposal left, and the headline says so. A program whose main row
+// carries `Trap` has a place that can trap, so it is never headed PROVEN.
+fn mcp_verdict_head(judged, wat_path) = match judged.left {
+  ArtifactRefused => "REFUSED — {int_to_str(judged.errors)} error(s), so nothing was built{mcp_earlier_build(wat_path)}\n",
+  ArtifactWritten(_) => if len(judged.pending) == 0 && len(judged.traps) == 0 {
+    "PROVEN — every claim in the program is proven, nothing in it can stop with a trap, and it was built to {wat_path}\n"
+  } else {
+    "PENDING — {int_to_str(len(judged.pending))} claim(s) the verifier could not decide and {int_to_str(len(judged.traps))} place(s) that can stop the program with a trap; the program was built to {wat_path}, and each is printed below at its line.\n"
+  },
+}
+
+fn mcp_earlier_build(wat_path) = {
+  let earlier = {
+    fs_exists(wat_path)
+  } ~> wasi_filesystem
+  if earlier { ". {wat_path} is the previous proven build, not this program." } else { "" }
 }
 
 // ─── The protocol surface — JSON-RPC response builders ───────────────
@@ -275,17 +299,15 @@ fn mcp_tool_call(id, params, at_read) = {
         None => None,
       }
       match srco {
-        Some(JStr(source)) => match mcp_judge(source, ".build/mcp/last.wat") {
-          (banked, nerr, left) => {
-            let text = mcp_verdict_text(banked, nerr, left, ".build/mcp/last.wat")
-            mcp_response(
-              id,
-              JObj([
-                ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
-                ("isError", JBool(false))
-              ])
-            )
-          },
+        Some(JStr(source)) => {
+          let text = mcp_judge(source, ".build/mcp/last.wat") |> mcp_verdict_text(??, ".build/mcp/last.wat")
+          mcp_response(
+            id,
+            JObj([
+              ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
+              ("isError", JBool(false))
+            ])
+          )
         },
         None | Some(_) => mcp_response(
           id,

@@ -4,13 +4,13 @@
 // This is examples/grid/station.mn line for line, plus one addition a
 // reasonable engineer might write: read the hour's electricity price
 // online, so that Pulse leans harder into an expensive rush hour. The read
-// is `fetch_param`, an operation of the `Network` effect (lib/dsp/signal.mn),
-// and `decide` reaches it through `price_m`. `decide` is declared
-// `!Network`, so the program does not build:
+// is `fetch`, an operation of the `Network` effect (lib/net.mn), and
+// `decide` reaches it through `price_m`. `decide` is declared `!Network`,
+// so the program does not build:
 //
 //   mentl check examples/grid/station-leak.mn
 //   E_EffectMismatch: … decide uses Network: decide calls `price_m` at …
-//     → price_m calls `fetch_param` at … → `fetch_param` is an operation of Network
+//     → price_m calls `fetch` at … → `fetch` is an operation of Network
 //
 // The error names the whole path, one call at a time, from the restriction in
 // the signature of `decide` to the network operation, rather than saying
@@ -25,6 +25,8 @@ import dsp/signal
 import fs
 
 import io
+
+import net
 
 import strings
 
@@ -108,7 +110,7 @@ fn facility_w(rush) with Pure = if rush == 1 { 300000 } else { 200000 }
 // The hour's price in thousandths of a dollar per megawatt-hour, read
 // online.
 fn price_m(url) = {
-  let text = fetch_param(url)
+  let text = fetch(url)
   milli_at(text, 0)
 }
 

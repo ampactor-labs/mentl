@@ -20,7 +20,7 @@
 //   mentl examples/pulse/course/03-bus.mn:49:30    the `<|`: what it shares, with how many branches
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/osc
 

@@ -491,10 +491,12 @@ fn verb_path_of(h) with !Mutate = {
 
 // What the caret says of the extent an arena install opens, read off the
 // roots the judgment wrote at the install (`ArenaRoots`): nothing it saw can
-// root the extent, the stores that may, or the write it could not place.
-// Nothing for an install that opens no arena, which has no cell.
+// root the extent, every store reaches handler state, the stores that may,
+// or the write it could not place. Nothing for an install that opens no
+// arena, which has no cell.
 fn extent_memory_said(roots) with !Mutate = match roots {
   RootsFree => Some("nothing the judgment sees can root the extent it opens, so its exit moves the result and reclaims the rest"),
+  RootsInState => Some("the stores inside the extent it opens all reach handler state, which the install chain and its exit's journal root"),
   RootedAt(rs) => Some("stores at {join(", ", map(root_line, rs))} may root the extent it opens, which its exit journals"),
   RootsUnknown(w) => Some("what may root the extent it opens is not known, since {unplaced_write_said(w)}, so its exit keeps what it cannot read"),
   OpensNoArena => None,
@@ -536,9 +538,53 @@ fn verb_shape_of(h, path) with !Mutate = if len(path) == 0 {
       },
       line_owner(path)
     )),
+    NExpr(CallExpr(_, _)) | NExpr(VarRef(_)) => perform_shape_of(h),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => None,
   }
+}
+
+// A perform's shape, at the call or at the op's name the call is made
+// through: the op's name and the install that answers it, read off the edge
+// the judgment wrote at the call where the perform's row was charged. A call
+// of anything else, and any other reference, has no shape.
+fn perform_shape_of(h) with !Mutate = match perform_call_of(h) {
+  Some((call, callee)) => match graph_node_body(callee) {
+    NExpr(VarRef(op)) => if callee_is_op(callee) { Some(PerformShape(op, graph_perform_install_of(call))) } else { None },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
+  },
+  None => None,
+}
+
+// The call at the caret and its callee: the node itself when it is a call,
+// or the call a reference is the callee of. Any other node names no call.
+fn perform_call_of(h) with !Mutate = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => Some((h, callee)),
+  NExpr(VarRef(_)) => match graph_parent_of(h) {
+    Some(c) => match graph_node_body(c) {
+      NExpr(CallExpr(callee, _)) => if callee == h { Some((c, h)) } else { None },
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => None,
+    },
+    None => None,
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
+}
+
+// The handler the install answering a perform puts in force, by the name its
+// right side carries, and the line the install starts at. None where no
+// install answers the perform in its function.
+fn perform_install_said(install) with !Mutate = match install {
+  Some(i) => match graph_node_body(i) {
+    NExpr(PipeExpr(PTee, _, r)) => match graph_span_of(i) {
+      Span(line, _, _, _) => Some((tee_handler_name(r), line)),
+    },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
+  },
+  None => None,
 }
 
 // The head of the chain a pipe at path[i] belongs to: up the path while the
@@ -701,58 +747,34 @@ fn shared_branch_role(r, path, at) with !Mutate = if at < len(path) {
   None
 }
 
-// Which install serves an operation performed at a node — the Handler facet's
-// answer at a perform, read up the path the topology reads: the innermost
-// `~>` whose handler answers the op's effect. A function value minted on the
-// way up runs where it is called, so the search stops there; an operation no
-// install on the path answers leaves its declaration through the row.
-type Served = ServedBy(Int, String) | ServedWhereCalled(Int) | ServedByCaller(Int)
+// Which install serves an operation performed at a node, the Handler facet's
+// answer at a perform: the install the judgment's edge names at the call
+// (`graph_perform_install_of`), with its handler's name, or no install in
+// the perform's function, so a caller's handler answers the op.
+type Served = ServedBy(Int, String) | ServedByCaller(String)
 
 // The op's effect and who serves it, when the node performs one: a call of
-// an operation, or the operation's name at the caret. The search reads the
-// node's ancestry, node first, and a perform no install on it answers is
-// carried by the row of the declaration that ends it.
-fn served_at(h) with !Mutate = match performed_effect(h) {
-  None => None,
-  Some(en) => match ancestry(h, [h]) {
-    None => None,
-    Some(up) => match fold(None, served_step(en, up, ??, ??), range(1, len(up))) {
-      Some(s) => Some((en, s)),
-      None => Some((en, ServedByCaller(last(up)))),
+// an operation, or the operation's name the call is made through.
+fn served_at(h) with !Mutate = match perform_call_of(h) {
+  Some((call, callee)) => match ref_op_effect(callee) {
+    Some(en) => match plain_name(callee) {
+      Some(op) => Some((en, served_of(call, op))),
+      None => None,
     },
+    None => None,
   },
+  None => None,
 }
 
-fn performed_effect(h) with !Mutate = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => ref_op_effect(callee),
-  NExpr(VarRef(_)) => ref_op_effect(h),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
-}
-
-fn served_step(en: String, up, found, i) with !Mutate = match found {
-  Some(_) => found,
-  None => {
-    let a = list_index(up, i)
-    match graph_node_body(a) {
-      NExpr(LambdaExpr(_, _)) => Some(ServedWhereCalled(a)),
-      NStmt(FnStmt(_, _, _, _, _)) => if i + 1 < len(up) { Some(ServedWhereCalled(a)) } else { None },
-      NExpr(PipeExpr(PTee, l, r)) => if l == list_index(up, i - 1) && tee_answers(r, en) {
-        Some(ServedBy(a, tee_handler_name(r)))
-      } else {
-        None
-      },
-      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-      | NRow(_) | NParam(_) => None,
-    }
+// The install the edge at the call names, as the handler it puts in force.
+// A call with no edge is answered by a caller's handler.
+fn served_of(call, op: String) with !Mutate = match graph_perform_install_of(call) {
+  Some(install) => match graph_node_body(install) {
+    NExpr(PipeExpr(PTee, _, r)) => ServedBy(install, tee_handler_name(r)),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => ServedByCaller(op),
   },
-}
-
-// Whether the handler a tee installs answers the effect: its arms, read
-// along the tee's edge to the declaration.
-fn tee_answers(r, en: String) with !Mutate = match tee_arms(r) {
-  Some(arms) => string_in_list(handler_effect_names(arms), en),
-  None => false,
+  None => ServedByCaller(op),
 }
 
 // The row facet spoken. A function value whose evaluation performs nothing
@@ -910,6 +932,10 @@ fn shape_text(shape) = match shape {
   LoopShape(depth, owner) => match depth {
     Some(n) => "the <~ feeds back the output {shape_count(n, "tick", "ticks")} ago; its line is owned by `{owner}` and allocated once",
     None => "the <~ feeds back the previous output; its line is owned by `{owner}` and allocated once",
+  },
+  PerformShape(op, install) => match perform_install_said(install) {
+    Some((name, line)) => "the perform of `{op}` is answered by the ~> `{name}` at line {int_to_str(line)}",
+    None => "the perform of `{op}` reaches no install in its function; a caller's handler answers it",
   },
 }
 

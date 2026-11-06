@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the control for sound-gate-cap-sibling: the callback in the
 // `!E`-typed position performs E and refuses at the argument edge,
 // naming the parameter's declaration. Expect E_EffectMismatch.

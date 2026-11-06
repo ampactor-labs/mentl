@@ -1,0 +1,11 @@
+// check: pending 7:28
+// The read xs[2] stays pending. Its guard 2 < len(ys) speaks of ys, and the
+// recursive call hands ys as the next xs, so the guard of one activation is
+// no fact about the receiver of the next. The second activation reads [1] at
+// index 2.
+fn g(xs, ys, n) = {
+  let r = if 2 < len(ys) { xs[2] } else { 0 }
+  if n > 0 { r + g(ys, [9, 9, 9], n - 1) } else { r }
+}
+
+fn main() = g([1, 2, 3], [1], 1)

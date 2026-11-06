@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4·D, 2026-10-01): a function handed a FUNCTION. `run2`
 // hands its callback `inv`, and the lambda handed to `run2` applies what it
 // is handed at `k + 1`: `inv` crosses into that usage and owes its

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN instance order, the sound twin — two readers at the SAME rate under
 // !Sample(44100): both instances are provably distinct from the forbidden
 // one, so the declaration must ACCEPT (the dedup keeps one member for one

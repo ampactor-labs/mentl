@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a function that may never return, handed to one that calls it,
 // makes the caller's call one that may never return. spin counts up with
 // nothing to stop it; settle says it always finishes and calls apply with

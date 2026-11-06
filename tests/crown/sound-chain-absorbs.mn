@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — a named handler chain absorbs what its members absorb. `both` is
 // `counter ~> tracer`, so `(work()) ~> both` is the install of each, and a
 // declaration negating Count and Trace over it ACCEPTS: the row of the

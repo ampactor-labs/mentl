@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4, 2026-10-01): a list of functions merges its
 // elements' types as a join does, and an element applied is any of them.
 // `fs[0]` is `inv`, whose precondition guards a `Trap`; the open claim on

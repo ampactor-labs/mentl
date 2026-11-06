@@ -1,0 +1,6 @@
+// check: clean
+// The read xs[i] holds both faces: every call hands i a value of at least
+// zero, which gives 0 <= i, and the read's own guard gives i < len(xs).
+fn at(xs, i) = if i < len(xs) { xs[i] } else { 0 }
+
+fn main() = at([4, 5], 1) + at([4, 5], 0) - 9

@@ -25,7 +25,7 @@
 // frame and written into the file, so the lesson has no unproven claims.
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

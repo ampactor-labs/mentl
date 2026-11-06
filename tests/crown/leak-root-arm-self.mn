@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // A handler arm performing an op of the effect it handles asks an OUTER
 // install to serve it (an arm's performs resolve outer, never self — the
 // arm runs in the install's own world). With one install there is no outer

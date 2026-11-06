@@ -74,9 +74,11 @@ you hear later.
 
 ## The modules
 
-- `clock.mn` defines the notions of time (`Clock`, `Tick`, `Sample`,
-  `Deadline`). `Sample(rate)` is the rate a program declares it runs at. It
-  is an effect whose instance is the rate, so two rates are two effects.
+The time these modules run at comes from `lib/clock.mn`, outside this
+folder, since any program that reads an hour or runs at a rate uses it. Its
+`Sample(rate)` is the rate a program declares it runs at. It is an effect
+whose instance is the rate, so two rates are two effects.
+
 - `signal.mn` has the signal's value types (`Sample`, `Hz`, `Gain`), the pure
   stages (`gain`, `mix`, `clip`, `soft_clip`), and the spectral analysis
   (stft, bandpass, the comodulogram).

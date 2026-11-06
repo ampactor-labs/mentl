@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN env (E1) — `!Env` refuses a body reading ANY variable: the read is
 // an Env perform, its instance grounded by its own literal argument. Expect
 // E_EffectMismatch.

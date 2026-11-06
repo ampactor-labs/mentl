@@ -1,0 +1,7 @@
+// check: pending 5:18
+// The read xs[i] stays pending. The recursive call hands the literal [9] as
+// the next xs, so its guard on the caller's xs says nothing about the read
+// in the next activation, which reads [9] at index 1.
+fn walk(xs, i) = xs[i] + (if i < len(xs) && i + 1 < len(xs) { walk([9], i + 1) } else { 0 })
+
+fn main() = walk([1, 2, 3], 0) - 1

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN modal (§11 6.3's walk): MASKING satisfies negation — the body
 // performs E, the install absorbs it at evaluation, and the declared
 // !E holds (row(expr ~> h) = row(expr) - handled(h)). Expect NO

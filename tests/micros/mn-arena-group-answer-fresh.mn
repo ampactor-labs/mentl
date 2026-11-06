@@ -1,0 +1,26 @@
+// expect: 7
+// Two functions that call each other answer a list they allocate: `mk`
+// answers a new list or what `mk2` answers, and `mk2` answers what `mk`
+// answers. Inside the arena the young list [7, 8, 9] is stored into the list
+// `mk` answers, and then that slot's value is stored into the list older,
+// built before the arena opened. The second store keeps its barrier whatever
+// the first list is, so the young list survives the arena's exit. The answer
+// must be 7 on every compiler.
+import arena
+
+fn mk(n) = if n == 0 { make_list(1) } else { mk2(n - 1) }
+
+fn mk2(n) = mk(n)
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  {
+    let ys = mk(3)
+    list_set(ys, 0, [7, 8, 9])
+    list_set(older, 0, list_index(ys, 0))
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

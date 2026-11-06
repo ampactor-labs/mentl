@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides a field whose function type names no row: a closure
 // performing E stored in `Holds(() -> Int)`, matched out and CALLED under
 // `with !E`. The field's row is one cell of the declaration, written by the

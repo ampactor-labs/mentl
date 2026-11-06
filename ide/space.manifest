@@ -16,7 +16,7 @@ lib lib/io.mn
 lib lib/fs.mn
 lib lib/prelude.mn
 lib lib/math.mn
-lib lib/dsp/clock.mn
+lib lib/clock.mn
 lib lib/dsp/feedback.mn
 lib lib/dsp/signal.mn
 lib lib/dsp/spectral.mn

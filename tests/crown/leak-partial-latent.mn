@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the PARAMETER PRODUCT: a fn performing E,
 // PARTIALLY APPLIED so its remaining hole is unfilled, then completed
 // under `with !E`. The row must ride the hole-product to the filling

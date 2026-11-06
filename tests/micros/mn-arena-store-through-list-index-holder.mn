@@ -1,0 +1,16 @@
+// expect: 7
+// A list built in an arena and stored into an older list read off a holder by list_index must survive the arena's exit.
+import arena
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  {
+    let holder = [older]
+    let o = list_index(holder, 0)
+    list_set(o, 0, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

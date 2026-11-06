@@ -2,7 +2,7 @@
 // A pin binds its own effect: `frame_rate` is pinned to the 48 kHz clock and
 // calls `old_rate`, which reads the 44.1 kHz one, so the clause refuses it
 // and names both instances.
-import dsp/clock
+import clock
 
 fn old_rate() with Sample(44100) = sample_rate()
 

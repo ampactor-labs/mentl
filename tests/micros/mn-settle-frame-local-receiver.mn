@@ -1,0 +1,11 @@
+// check: pending 8:3
+// The read ys[i] stays pending. The receiver is a local each activation
+// builds again, so the guard i + 1 < len(ys) at the recursive call says
+// nothing about the list the next activation reads. The second activation
+// reads [7] at index 1.
+fn f(i, n) = {
+  let ys = if n > 1 { [1, 2, 3] } else { [7] }
+  ys[i] + (if i < len(ys) && i + 1 < len(ys) { f(i + 1, n - 1) } else { 0 })
+}
+
+fn main() = f(0, 2) - 3

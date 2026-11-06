@@ -1,0 +1,10 @@
+// check: pending 6:11
+// The read xs[i] stays pending. The recursive call hands ys as the next xs,
+// and its guard i + 1 < len(xs) speaks of the caller's xs, not of the list
+// the call hands in its place. The second activation reads [1] at index 1.
+fn g(xs, ys, i) = {
+  let v = xs[i]
+  if i < len(xs) && i + 1 < len(xs) { v + g(ys, ys, i + 1) } else { v }
+}
+
+fn main() = g([1, 2, 3], [1], 0) - 3

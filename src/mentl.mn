@@ -430,8 +430,11 @@ fn row_suggestion(c) = match c {
 // OWN MODULE — the obligation carries its module, and every module numbers
 // its lines from 1, so an extent alone matches a stranger's claim at the
 // same lines. A claim pending over an authored hole is the hole's demand,
-// paid by its fill, and is the proposer's to answer.
-fn open_obligations(h) = verify_debt() |> filter(owed_at(graph_module_of(h), graph_span_of(h), ??))
+// paid by its fill, and is the proposer's to answer. The claims are the
+// ones the declaration's own face owes, so a claim this program's calls
+// prove is still taught: a precondition makes it hold for every caller.
+fn open_obligations(h) =
+  verify_face_debt() |> filter(owed_at(graph_module_of(h), graph_span_of(h), ??))
 
 fn owed_at(m, sp, o) = match o {
   (dm, dsp, pred, _) => dm == m && span_overlaps(sp, dsp) && !claim_is_a_holes_demand(pred),
@@ -835,7 +838,7 @@ fn learn_then_claim(contract, ah, sp: ValidSpan) = {
 fn return_suggestions(f) = if authored_return(f.retty) {
   []
 } else {
-  match verify_debt() |> flat_map(resting_on(f.handle, ??)) {
+  match verify_face_debt() |> flat_map(resting_on(f.handle, ??)) {
     [] => [],
     resting => {
       let fitting = aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??))

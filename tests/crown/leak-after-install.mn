@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN modal (§11 6.3's crucible sweep): INSTALL-EXTENT EXACTNESS —
 // the `~>` absorbs only its own expression; an op performed AFTER the
 // install closed is unabsorbed and the declared !E refuses it.

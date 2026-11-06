@@ -1,0 +1,7 @@
+// expect: 134
+// A pipe that fills the last slot of `slice`, with no hole written, completes
+// the call `slice(xs, 0, end)`, so an end past the list keeps the check and
+// stops the run.
+fn cut_to(xs, end) = end |> slice(xs, 0)
+
+fn main() = len(cut_to([1, 2, 3], 9))

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — negation distributes over a NAMED EFFECT ROW. `type Both =
 // A + B` is a transparent alias (SYNTAX §Named effect rows, landed
 // 2026-08-07), so `with !Both` must forbid BOTH members. A body

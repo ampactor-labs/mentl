@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (S6, 2026-10-02): an op's declared return is a stated
 // position the resumed value crosses into. `get_fn` states `(Int) -> Int`, the
 // arm resumes `inv`, which demands `Positive`, so the guard `inv`'s division

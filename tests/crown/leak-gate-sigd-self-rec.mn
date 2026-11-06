@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the pre-gate copy: a fully signature'd fn instantiates its own
 // pre-registered scheme at the recursive call, BEFORE its exit gates f's
 // cell, so the copy bound to `() => op()` was never checked (exit 7 on

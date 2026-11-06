@@ -1,0 +1,11 @@
+// check: refuse E_RefinementRejected
+// f hands x to inv, so x learns inv's precondition NonZero. The recursive
+// call hands 0 as the next x, and mentl check refuses that call, as it
+// refuses a call from outside the recursion that hands a zero.
+type NonZero = Int where !(self == 0)
+
+fn inv(n: NonZero) = 100 / n
+
+fn f(x, k) = if k == 0 { 0 } else { inv(x) + f(0, k - 1) }
+
+fn main() = f(5, 2) - 20

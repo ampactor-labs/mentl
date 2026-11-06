@@ -5,7 +5,7 @@
 // clock at its rate the root refuses, proposing `~> sample_at(44100)`. On
 // boot 342695ce the install absorbed every instance of Sample by its name,
 // and the stage read 48000 as its rate.
-import dsp/clock
+import clock
 
 fn rate44() with Sample(44100) = sample_rate()
 

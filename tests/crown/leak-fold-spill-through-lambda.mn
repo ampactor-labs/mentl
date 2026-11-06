@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a fold's spill reaches the function value that makes it. The
 // lambda compares its parameter through a generic function, and `run`
 // applies it to a tree under `!Alloc`: the comparison keeps its pending work

@@ -1,0 +1,12 @@
+// check: pending 6:11
+// The read xs[i] stays pending through a two-function group. f's guard
+// speaks of f's xs, but h hands f the ys that f handed it, so the next
+// activation of f reads [1] at index 1.
+fn f(xs, ys, i) = {
+  let v = xs[i]
+  if i < len(xs) && i + 1 < len(xs) { v + h(ys, ys, i + 1) } else { v }
+}
+
+fn h(xs, ys, i) = f(xs, ys, i)
+
+fn main() = f([1, 2, 3], [1], 0) - 3

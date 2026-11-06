@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a mask covers ITS names only: `!E + !F` over `(f()) ~> h` with
 // h absorbing E gates f's cell with `!F` alone, and a callback performing
 // F refuses. Trapped at run time on boot 2974547b (adv-mask-partial-

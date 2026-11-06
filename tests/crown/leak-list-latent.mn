@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the SEQUENCE kind: a closure performing E,
 // carried as a list element, indexed out and CALLED under `with !E` —
 // the row must ride the element type to the call. Expect

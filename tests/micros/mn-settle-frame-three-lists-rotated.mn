@@ -1,0 +1,10 @@
+// check: pending 6:11
+// The read a[i] stays pending. The recursion rotates three lists, so the
+// guard on a at one call speaks of a list that is not the next receiver.
+// The third activation reads [7] at index 2.
+fn g(a, b, c, i) = {
+  let v = a[i]
+  if i < len(a) && i + 1 < len(a) { v + g(b, c, a, i + 1) } else { v }
+}
+
+fn main() = g([1, 2, 3], [1, 2, 3], [7], 0) - 6

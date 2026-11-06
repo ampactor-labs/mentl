@@ -1,0 +1,17 @@
+// at 15:20: ~> arena Alloc rooted 1
+// A function applied through a record's field is read by the judgment: run
+// applies the put its parameter's field holds, so main's call of run charges
+// put's claim, put writes the list main handed it, and the store roots the
+// extent, which its exit journals. The pinned boot read the application as
+// a write it could not name and left the extent unknown.
+import arena
+
+fn put(xs) = list_set(xs, 0, 7)
+
+fn run(rig, xs) = rig.put(xs)
+
+fn main() = {
+  let keep = make_list(1)
+  run({put}, keep) ~> arena
+  keep[0] - 7
+}

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound twin of leak-fn-type-alias-negation: a callback
 // performing an effect OUTSIDE the named row is admitted under `!Both`, so
 // the row inside the function type forbids its members and nothing else.

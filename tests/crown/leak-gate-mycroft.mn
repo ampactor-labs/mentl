@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the assumed scheme's copy: polymorphic recursion (`[x]` where
 // `x` was) sends this declaration through the Mycroft rounds, whose
 // self-calls instantiate the ASSUMED scheme's fresh cells rather than the

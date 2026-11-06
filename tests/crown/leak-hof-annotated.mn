@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN crucible — the higher-order leak with a bare fn-type ANNOTATION on
 // run's param. The annotation's row var is minted at pre-registration, below
 // the mint ceiling, yet the live root at finalize is judgment-era (the entry

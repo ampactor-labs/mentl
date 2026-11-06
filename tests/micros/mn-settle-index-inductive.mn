@@ -1,0 +1,7 @@
+// check: clean
+// The index i is handed 0 by main and i + 1 by the recursive call, which
+// stands where i < len(xs) holds, so i + 1 cannot wrap and 0 <= i holds at
+// every call; the read's own guard gives i < len(xs), so the read is proven.
+fn walk(xs, i) = if i >= len(xs) { 0 } else { xs[i] + walk(xs, i + 1) }
+
+fn main() = walk([1, 2, 3], 0) - 6

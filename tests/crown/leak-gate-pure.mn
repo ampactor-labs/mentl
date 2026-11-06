@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — `with Pure` over a parameter's row is the empty closed cap on
 // that cell: a performing callback violates it at the argument edge.
 // Accepted by boot 2974547b (the same vacuous class as leak-gate-vacuous).

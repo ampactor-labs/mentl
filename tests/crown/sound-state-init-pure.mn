@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound dual: a handler whose state init performs NOTHING
 // installs freely under `with !E`. Charging the init's row must not charge
 // an init that has none, which is what keeps every handler in the wheel

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — negation distributes over a named effect row inside a FUNCTION
 // TYPE. `f: () -> Int with !Both` forbids both of Both's members to every
 // callback `run` is handed, exactly as `with !Both` on a declaration forbids

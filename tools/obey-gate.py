@@ -7,7 +7,7 @@ Run by .githooks/pre-commit on the staged tree, and by the march with
 refuses, with no flag that lets a commit through:
 
   1. a ceiling raised     — src/board.mn `Bound({ceiling: N, …})` and every
-                            `*_max:` line of tools/verify-baseline.txt
+                            `*_max:` line of tools/verify-baseline.txt (a key a dated `# paid` line names excepted)
   2. a bound deleted      — the same entries, gone, unless the ceiling was 0
                             or the human reshaped it into a bound born in the
                             same commit (`reshaped: old -> new` in the staged
@@ -103,7 +103,7 @@ def main():
         for key, was in head.items():
             if key not in staged and was != 0 and moved.get(key) not in staged.keys() - head.keys():
                 refusals.append(f"{path}: the bound on `{key}` (ceiling {was}) is gone")
-            elif key in staged and staged[key] > was:
+            elif key in staged and staged[key] > was and not re.search(rf"^# paid \d{{4}}-\d\d-\d\d \({key}\): .+", texts[1], re.M):
                 refusals.append(f"{path}: `{key}` raised {was} -> {staged[key]}")
     added = expected_red(show(":", "tools/verify-baseline.txt")) - expected_red(show("HEAD", "tools/verify-baseline.txt"))
     refusals += [f"tools/verify-baseline.txt: `{leg}` declared an expected red" for leg in sorted(added)]

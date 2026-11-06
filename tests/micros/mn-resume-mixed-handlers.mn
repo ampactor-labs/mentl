@@ -1,0 +1,18 @@
+// expect: 7
+// One effect, two handlers: `look_none` never resumes and `look_plus`
+// resumes once. A perform cannot know which of the two answers it, so it
+// keeps its continuation, and the installed `look_plus` resumes it: 3 is
+// looked up as 6, and the remainder adds 1.
+effect Look { look(key: Int) -> Int }
+
+handler look_none {
+  look(key) => 0 - key,
+}
+
+handler look_plus(n: Int) {
+  look(key) => resume(key + n),
+}
+
+fn body() = look(3) + 1
+
+fn main() = body() ~> look_plus(3)

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — an authored `!E` on a function-type parameter is a GATE on
 // that parameter's cell, not a universe value: `f()` charges a gated free
 // row, the sibling terminal g survives the fold, and `!F` is judged on

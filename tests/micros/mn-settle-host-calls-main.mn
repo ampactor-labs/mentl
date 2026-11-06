@@ -1,0 +1,9 @@
+// check: pending 9:21
+// The host calls main with the run's arguments, a call no reference in the
+// program records. The one call of main in sight hands it four strings, but
+// a run with fewer arguments reads past the end, so the read stays pending.
+import io
+
+fn helper() = main(["a", "b", "c", "d"])
+
+fn main(argv) = len(argv[3]) * 0

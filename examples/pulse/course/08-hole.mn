@@ -22,7 +22,7 @@
 // into a scratch copy and renders it, so the board checks it as a contract.
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

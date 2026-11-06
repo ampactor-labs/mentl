@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN instance (§11 6.2) — the CONSERVATIVE arm: a non-literal
 // instance argument (EANode — `Sample(rate)`) is not provably distinct
 // from the forbidden 44100, so the gate refuses rather than assumes.

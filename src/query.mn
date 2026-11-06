@@ -120,10 +120,13 @@ type CensusShape
   | CsMatchOption
   // The arena installs by what the judgment knows of their roots
   // (`ArenaRoots`): those whose roots it left unknown, whose exits keep what
-  // they cannot read, a count the board holds and which only falls; and
-  // those some store it saw may root from outside, whose exits journal it.
+  // they cannot read, a count the board holds and which only falls; those
+  // some store it saw may root from outside, whose exits journal it; and
+  // those whose stores all reach a handler's state, which the install chain
+  // and the journal root.
   | CsArenaUnknown
   | CsArenaRooted
+  | CsArenaState
   // A value whose memory the verifier's walk cannot place (`roots_of` answers
   // beyond a node): an expression of a type that holds memory, other than
   // the callee of a call or the stage of a pipe. With the installs whose
@@ -136,6 +139,23 @@ type CensusShape
   // write declared as a read, which a `!...Write` clause cannot see. The
   // board holds the count at zero.
   | CsReadOpWrites
+  // A match arm whose pattern lists three or more constructors, each written
+  // bare or with only `_` for its arguments. Such an arm answers a sum by
+  // naming the cases it does not take apart, so a constructor added to the
+  // sum must be added to every such list. The board holds the count, and it
+  // falls as those arms become defaults, records and edges.
+  | CsWildcardRoster
+  // A place in the program's own modules where `Trap` reaches main's row and
+  // no claim stands at the place, so nothing the compiler checks says whether
+  // the program can stop there (`trap_sites`). The board holds the count, and
+  // it falls as each such place gains a claim or stops trapping.
+  | CsSilentTrap
+  // A claim left open at an explicit call of a partial primitive, such as
+  // `list_index(xs, i)` or `slice(xs, a, b)`: the precondition the call's
+  // check traps on, owed where the call stands as `xs[i]` owes its own. The
+  // board counts these apart from the other open obligations, since they
+  // were made visible together and fall as the reads and cuts are proven.
+  | CsCallClaim
   // A string literal whose text contains the needle — the `text` facet's
   // shape, the one reach into what the wheel WRITES rather than what it
   // calls: the emit's WAT is string literals, and no identifier edge reaches
@@ -222,6 +242,9 @@ type Question
   // declares (§4⑥): what a function answers or endorses, what each of its
   // parameters demands, and the source that can reach a value
   | QFlowOf(String)
+  // "claim NAME" asks for the store claim the judgment wrote for NAME's
+  // declaration: what it writes, applies and returns, as every call reads it
+  | QClaim(String)
   // "census <shape>" — count + sites of a structural shape in the weave
   | QCensus(CensusShape)
   // "census" — the roster itself: every shape the census knows, by the name
@@ -280,6 +303,9 @@ type Question
   // claim's; a program that never joins the weave is owed at its first line.
   // The course and the score are measured by it (src/board.mn).
   | QOwed(String)
+  // "traps" — every place where the program can stop with a trap, each with
+  // the state of the claim that guards it (`trap_sites`)
+  | QTraps
   // "QUESTION in MODULE" — a site facet's answer kept to one module's sites:
   // the link answers every module it judged, and a developer asking about the
   // module they are writing reads that module's sites alone
@@ -323,6 +349,9 @@ type QueryResult
   | QRHandlerProvider([(String, String)])
   // the name asked about, and one line per flow fact it states or owes
   | QRFlow(String, [String])
+  // the name asked about, and the store claim of its declaration, or None
+  // where the judgment wrote none
+  | QRClaim(String, Option(StoreClaim))
   // census label + the located sites (count = len)
   // the sites as (module, span, note): a local span names a line, the module
   // names whose line it is — the two halves the weave used to fuse into one
@@ -356,6 +385,8 @@ type QueryResult
   | QROwed([(String, Span)])
   // the derived badges (plain lines) + the fanout sites
   | QRWhere([String], [WhereSite])
+  // each place that can trap, beside what the ledger says of its claim
+  | QRTraps([(TrapSite, TrapClaim)])
   | QRError(String)
 
 // A fanout site as `where` reports it: how its branches are written and how
@@ -440,7 +471,14 @@ fn query_answer(q) = match q {
             None => not_an_effect(name, e),
             Some(effect_entry) => match effect_entry {
               (_, _, kind) => match kind {
-                EffectDeclKind(_, _) => QRAbsent(name, e),
+                // The row is the declaration's own, but the arm of an
+                // install that answers one of its performs may use the
+                // effect; the judgment refused that and banked the path, so
+                // the refusal is the answer.
+                EffectDeclKind(_, _) => match answered_breaches(name, e) {
+                  [] => QRAbsent(name, e),
+                  refused => QRWhy(refused),
+                },
                 FnScheme | ConstructorScheme(_, _) | RecordSchemeKind(_) | HandlerKind(_, _, _, _, _)
                 | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_) | ValueScheme
                 | PrimitiveKind(_) | EffectOpScheme(_, _, _) => not_an_effect(name, e),
@@ -465,7 +503,10 @@ fn query_answer(q) = match q {
     lines => QRWhere(lines, []),
   },
   QDecls => QRDecls(flat_map(decl_names_at, decl_handles())),
-  QVerifyDebt => QRVerifyDebt(verify_debt()),
+  // The claims raised at an explicit call of a partial primitive are counted
+  // by a question of their own (`census call-claims`), so this one counts
+  // the obligations the board bounded before those claims were raised.
+  QVerifyDebt => QRVerifyDebt(verify_debt() |> filter(raised_beside_a_call)),
   QReports => QRReports(filter(heard_now(diag_scope_of(), ??), diag_banked())),
   // The same bank, handed to the render that speaks solver. Nothing is
   // re-derived here and nothing may be: a second walk that collected the
@@ -482,6 +523,11 @@ fn query_answer(q) = match q {
   QFlowOf(name) => match name_decl(name) {
     None => QRError("not found: {name}"),
     Some(d) => QRFlow(name, flow_facts(d)),
+  },
+  // The store claim the judgment wrote where the declaration's judgment ended.
+  QClaim(name) => match name_decl(name) {
+    None => QRError("not found: {name}"),
+    Some(d) => QRClaim(name, graph_store_claim_of(d)),
   },
   QCensus(shape) => QRCensus(census_label(shape), census_noted(shape)),
   QCensusRoster => QRCensusRoster(census_roster() |> map(roster_row)),
@@ -501,6 +547,7 @@ fn query_answer(q) = match q {
   QCost => QRCost(len(module_cells()), weave_line_extent(), graph_next()),
   QGhosts => QRGhosts(ghost_sites()),
   QOwed(dir) => QROwed(owed_programs(dir)),
+  QTraps => QRTraps(trap_sites() |> map(with_trap_claim(trap_ledger(), ??))),
   QHeads => QRWhere(head_round_trip(), []),
   QIn(inner, m) => query_answer(inner) |> sites_in(m),
   QUnknown(raw) => QRError("unknown query: {raw}"),
@@ -538,7 +585,7 @@ fn sites_in(m, answer) = match answer {
     QRType(_, _) | QRUnresolved(_) | QREffects(_) | QROwnership(_) | QRWhy(_) | QRAbsent(_, _)
     | QRHandlerProvider(_) | QRFlow(_, _) | QRCensusRoster(_) | QRModules(_) | QRImports(_)
     | QRUnreferenced(_) | QRUnreachable(_) | QRPerforms(_) | QREnv(_) | QROrphanClaims(_)
-    | QRCost(_, _, _) | QRWhere(_, _)
+    | QRCost(_, _, _) | QRWhere(_, _) | QRClaim(_, _) | QRTraps(_)
   ) => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, owed, decls, verification, smt, reports"),
 }
 
@@ -765,7 +812,10 @@ fn collect_ref_sites(ref hs, i, acc) with !Mutate = if i < 0 {
 // ─── The import edges, read for what they actually carry ────────────
 //
 // An import is DEAD when nothing the imported module declares is
-// referenced from inside the importing one. Every term of that is already
+// referenced, or mentioned in a backticked comment, from inside the
+// importing one. The prelude's imports are the exception: every module sees
+// them through the prelude, so a reference from any module that sees the
+// imported module only that way counts too. Every term of that is already
 // in the graph: module_cells gives each module its path, its span and its
 // decls; an ImportStmt among those decls IS the edge; and a declaration's
 // in-edges (`graph_refs_of`) are its references, each standing in its own
@@ -782,12 +832,11 @@ fn collect_ref_sites(ref hs, i, acc) with !Mutate = if i < 0 {
 // abort() }` lost silently to the compiler's Abort. Deleting them took
 // that module out of a bare weave and more than halved the prelude floor.
 //
-// The honest limit, stated because a reader will otherwise trust this
-// further than it goes: imports are TRANSITIVE, so an edge carrying no
-// referenced name of its own may still be the conduit by which a third
-// module arrives. This facet reports what it measured — the direct
-// reference — and says nothing about the conduit; `Hβ.driver.link-is-
-// reachability` is the judgment that decides those.
+// The limit: imports are transitive, so an edge other than the prelude's
+// that carries no referenced name of its own may still be the conduit by
+// which a third module arrives. This facet reports the direct reference
+// and says nothing about such a conduit; `Hβ.driver.link-is-reachability`
+// is the judgment that decides those.
 // The whole report: every module's every import, paired with whether this
 // module references anything that import brings. One pass over the cells,
 // one O(1) refs probe per declared name.
@@ -819,19 +868,40 @@ fn import_is_used(imported: String, importer: Int, cells, i) with !Mutate = if i
   false
 } else {
   match cells[i] {
-    (_h, p, _, decls) => if module_tail_eq(p, imported) {
-      decls |> flat_map(decl_links_of) |> any({ (_, d) => referenced_from(importer, d) })
+    (x, p, _, decls) => if module_tail_eq(p, imported) {
+      let seers = import_seers(importer, x)
+      decls |> flat_map(decl_links_of) |> any({ (_, d) => referenced_from(seers, d) })
     } else {
       import_is_used(imported, importer, cells, i + 1)
     },
   }
 }
 
-// Whether a reference standing in the module links to the declaration.
-fn referenced_from(module: Int, d) with !Mutate =
-  any({ r => graph_module_of(r) == module }, graph_refs_of(d))
+// The modules that see module `x` through an import edge of `importer`: the
+// importer itself, and, where the importer is the link's prelude, every
+// module of the link that sees `x` only because the prelude imports it. The
+// prelude's closure is every module's (`ambient_closure`), so a list module
+// that calls memory's operations without importing memory reaches them
+// through the prelude's import.
+fn import_seers(importer: Int, x: Int) with !Mutate = match link_prelude() {
+  Some(p) => if p == importer {
+    [importer] ++ (link_modules() |> filter(sees_only_through_prelude(x, ??)))
+  } else {
+    [importer]
+  },
+  None => [importer],
+}
 
-// An import names a PATH (`dsp/clock`); a module cell names its resolved
+fn sees_only_through_prelude(x: Int, m: Int) with !Mutate = !handles_contain(module_closure(m), x)
+
+// Whether a reference to the declaration, or a backticked mention of it in a
+// comment, stands in one of the modules. A mention resolves through the
+// import edges of the module its comment stands in, so removing the edge
+// leaves it unresolved.
+fn referenced_from(modules, d) with !Mutate =
+  graph_refs_of(d) ++ graph_comment_refs_of(d) |> any({ r => handles_contain(modules, graph_module_of(r)) })
+
+// An import names a PATH (`dsp/signal`); a module cell names its resolved
 // file. They agree on the last segment, which is the module's identity.
 fn module_tail_eq(a: String, b: String) = last_segment(a) == last_segment(b)
 
@@ -1352,8 +1422,12 @@ fn census_label(shape) = match shape {
   CsMatchOption => "match(es) over Some/None",
   CsArenaUnknown => "arena install(s) whose roots the judgment left unknown",
   CsArenaRooted => "arena install(s) a store the judgment saw may root from outside",
+  CsArenaState => "arena install(s) whose stores all reach handler state",
   CsUnplaced => "value(s) whose memory the verifier's walk cannot place",
   CsReadOpWrites => "resume(s) writing a handler's state in the arm of a Read effect's op",
+  CsWildcardRoster => "match arm(s) listing three or more constructors with only `_` arguments",
+  CsSilentTrap => "place(s) in the program that can trap with no claim checked there",
+  CsCallClaim => "claim(s) left open at an explicit call of a partial primitive",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
   CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
@@ -1398,8 +1472,12 @@ fn census_name(shape) = match shape {
   CsMatchOption => "match-option",
   CsArenaUnknown => "arena-unknown",
   CsArenaRooted => "arena-rooted",
+  CsArenaState => "arena-state",
   CsUnplaced => "unplaced",
   CsReadOpWrites => "read-op-writes",
+  CsWildcardRoster => "wildcard-roster",
+  CsSilentTrap => "silent-trap",
+  CsCallClaim => "call-claims",
   CsText(needle) => "text {needle}",
   CsProse(needle) => "prose {needle}",
   CsProseClass(c) => "prose-{prose_class_name(c)}",
@@ -1441,8 +1519,12 @@ fn census_roster() = [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume]
   CsMatchOption,
   CsArenaUnknown,
   CsArenaRooted,
+  CsArenaState,
   CsUnplaced,
-  CsReadOpWrites
+  CsReadOpWrites,
+  CsWildcardRoster,
+  CsSilentTrap,
+  CsCallClaim
 ] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
 
 fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
@@ -1488,6 +1570,8 @@ fn noted_answer(r) = match r {
   QROrphanClaims(_) => None,
   QRCost(_, _, _) => None,
   QRWhere(_, _) => None,
+  QRClaim(_, _) => None,
+  QRTraps(_) => None,
   QRError(_) => None,
 }
 
@@ -1516,12 +1600,17 @@ fn census_sites(shape) with !Mutate = census_noted(shape) |> map(noted_address)
 
 // The sites with what stands at each — the answer the terminal renders; the
 // board and the caret read the addresses alone, through `located_answer`, and
-// the roster counts them (`census_sites`).
+// the roster counts them (`census_sites`). The census runs once the judgment
+// has ended, so it reads the walk with every reference linked.
 fn census_noted(shape) with !Mutate = if shape == CsWildcardOverSum {
   catch_all_refusals() |> map(refusal_noted)
+} else if shape == CsSilentTrap {
+  silent_traps()
+} else if shape == CsCallClaim {
+  verify_debt() |> filter(raised_at_a_call) |> map(debt_site) |> map(unnoted)
 } else {
   match graph_snapshot() {
-    Graph(next, _) => census_walk(census_memo(shape, next), shape, 0, next, make_list(0)),
+    Graph(next, _) => census_walk(census_memo(shape, next), shape, 0, next, make_list(0)) ~> references_linked,
   }
 }
 
@@ -1538,6 +1627,20 @@ fn catch_all_refusals() = fold([], catch_all_refusal_of, diag_banked())
 
 fn catch_all_refusal_of(acc, entry) = match entry {
   (ECatchAllOverSum(roster, pat, _), _, _, _) => push(acc, (pat, roster)),
+  _ => acc,
+}
+
+// The paths the judgment refused for a declaration's negation of an effect,
+// read off the bank: each refusal carries the chain from the declaration,
+// through the arm that answers one of its performs, to the operation the
+// arm uses.
+fn answered_breaches(name: String, e: String) = match name_decl(name) {
+  Some(d) => fold([], answered_breach_of(d, e, ??, ??), diag_banked()),
+  None => [],
+}
+
+fn answered_breach_of(d, e: String, acc, entry) = match entry {
+  (EEffectMismatch(_, _, chain @ EffectEnters(eff, site, _), _), _, _, _) => if site == d && eff == e { push(acc, chain) } else { acc },
   _ => acc,
 }
 
@@ -1566,13 +1669,14 @@ fn census_note(memo, shape, h) = match shape {
   // not place, the same sentence the caret says at the `~>`.
   CsArenaUnknown => match graph_arena_roots_at(h) {
     RootsUnknown(w) => Some(unplaced_write_said(w)),
-    RootsFree | RootedAt(_) | OpensNoArena => None,
+    RootsFree | RootsInState | RootedAt(_) | OpensNoArena => None,
   },
   CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaRooted | CsReadOpWrites | CsText(_) | CsFieldRead(_) => None,
+  | CsArenaRooted | CsArenaState | CsReadOpWrites | CsWildcardRoster | CsSilentTrap | CsCallClaim
+  | CsText(_) | CsFieldRead(_) => None,
 }
 
 // The node that stopped the verifier's walk, in a sentence whose first words
@@ -1622,6 +1726,7 @@ fn unplaced_write_word(w) with !Mutate = match w {
 fn extent_memory_word(roots) with !Mutate = match roots {
   OpensNoArena => "",
   RootsFree => " free",
+  RootsInState => " state",
   RootedAt(rs) => " rooted {int_to_str(len(rs))}",
   RootsUnknown(w) => " unknown {unplaced_write_word(w)}",
 }
@@ -1685,7 +1790,8 @@ fn census_site_at(shape, h) with !Mutate = match shape {
   | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
   | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
   | CsAuthoredPositiveRow | CsRecordPattern | CsMatch | CsMatchDestructure | CsMatchOption
-  | CsArenaUnknown | CsArenaRooted | CsUnplaced | CsReadOpWrites | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
+  | CsArenaUnknown | CsArenaRooted | CsArenaState | CsUnplaced | CsReadOpWrites | CsWildcardRoster
+  | CsSilentTrap | CsCallClaim | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
 }
 
 // The line the note shows, located: a comment's lines are its source lines
@@ -1823,6 +1929,11 @@ fn census_matches(memo, shape: CensusShape, h, body: NodeBody) = match shape {
   // the shape (E_CatchAllOverSum), so its sites are the refusals, read off
   // the bank (`census_noted`), and no node is convicted here.
   CsWildcardOverSum => false,
+  // The places that can trap and the claims at explicit calls are read off
+  // the row's sources and the ledger (`census_noted`), so no node is
+  // convicted here either.
+  CsSilentTrap => false,
+  CsCallClaim => false,
   // Drift mode 15's shape (the fifth absorption): a let whose
   // binder KEEPS a leading underscore — an unused value renamed
   // instead of deleted. A bare `_` is PWild at parse, so any PVar
@@ -1984,11 +2095,15 @@ fn census_matches(memo, shape: CensusShape, h, body: NodeBody) = match shape {
   // roots; every other node reads as no arena.
   CsArenaUnknown => match graph_arena_roots_at(h) {
     RootsUnknown(_) => true,
-    RootsFree | RootedAt(_) | OpensNoArena => false,
+    RootsFree | RootsInState | RootedAt(_) | OpensNoArena => false,
   },
   CsArenaRooted => match graph_arena_roots_at(h) {
     RootedAt(_) => true,
-    RootsUnknown(_) | RootsFree | OpensNoArena => false,
+    RootsUnknown(_) | RootsFree | RootsInState | OpensNoArena => false,
+  },
+  CsArenaState => match graph_arena_roots_at(h) {
+    RootsInState => true,
+    RootsUnknown(_) | RootsFree | RootedAt(_) | OpensNoArena => false,
   },
   // A value the verifier's flow walk cannot place in any allocation
   // (`roots_of`): an expression of a type that holds memory, other than
@@ -2004,6 +2119,14 @@ fn census_matches(memo, shape: CensusShape, h, body: NodeBody) = match shape {
   // answers an op of an effect whose name says it reads.
   CsReadOpWrites => match body {
     NExpr(ResumeExpr(_, updates)) => len(updates) > 0 && in_read_arm(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+  // The site is the arm's own pattern node: an alternation whose parent is the
+  // match, so an alternation nested inside a constructor's argument is not an
+  // arm.
+  CsWildcardRoster => match body {
+    NPat(PAlt(alts)) => len(alts) >= 3 && all(bare_constructor, alts) && arm_pattern_of_match(h),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => false,
   },
@@ -2200,6 +2323,29 @@ fn option_arm(arm) = {
     PCon(name, _) => name == "Some" || name == "None",
     PVar(_) | PWild | PLit(_) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
   }
+}
+
+// A constructor pattern that takes nothing apart: written bare, or with `_`
+// for every argument.
+fn bare_constructor(p) = match pat_of(p) {
+  PCon(_, args) => all(wild_pattern, args),
+  PVar(_) | PWild | PLit(_) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
+}
+
+fn wild_pattern(p) = match pat_of(p) {
+  PWild => true,
+  PVar(_) | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
+}
+
+// Whether a pattern node is an arm's whole pattern: its parent is the match.
+// A match's only pattern children are its arms' patterns.
+fn arm_pattern_of_match(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NExpr(MatchExpr(_, _)) => true,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
+  },
+  None => false,
 }
 
 // The match half of CsRecordPattern: an arm whose pattern is a record.
@@ -3633,6 +3779,253 @@ fn chain_enters(e: String, chain) = match chain {
   | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
   | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => false,
 }
+
+// The traps facet lists every place where the program can stop with a trap.
+// The places are the sources of `Trap` in main's row, read off the edges
+// `mentl why <file> main Trap` walks. That walk follows the first source;
+// this one follows every one. A node is a place where its own notes carry
+// `Trap` and nothing it calls explains them: a read, a division, a pattern,
+// an operation performed, a call through a value, or a call into the
+// library. A call into the library is one place, with its path into the
+// library beside it, because the program's call is where the claim that
+// guards it stands. A call of a function of the program is entered instead,
+// each function once.
+type TrapSite = {node: Int, path: Option(Reason)}
+
+// What the ledger says of the claim that guards a place: proven by its
+// operands once the program was judged, proven only through what the
+// program's calls hand a parameter, still pending, refused, or no claim at
+// all, so nothing the compiler checks says whether the program stops there.
+type TrapClaim = TrapProven | TrapHanded | TrapPending | TrapRefused | TrapUnchecked
+
+// The ledger as the facet reads it, once per question: the claims still
+// owed, the claims proven only through what the program's calls hand a
+// parameter, and the claims decided.
+type TrapLedger = {
+  decided: [(Int, Span, Predicate, Bool)],
+  handed: [(Int, Span, Predicate, Reason)],
+  owed: [(Int, Span, Predicate, Reason)],
+}
+
+fn trap_ledger() =
+  TrapLedger({decided: verify_decided(), handed: verify_handed(), owed: verify_debt()})
+
+fn trap_effect() = ENamed(vocab_handle("Trap"))
+
+// The places that can trap: below main's body, or, in a link with no main,
+// below every function of the program's own modules. A root whose row
+// carries `Trap` where no node below it charges it is its own place.
+fn trap_sites() = {
+  let roots = trap_roots()
+  let sites = match roots |> fold(([], []), trap_walk_decl) {
+    (_, found) => found,
+  }
+  if len(sites) > 0 { sites } else { roots |> filter(decl_traps) |> map(unexplained_site) }
+}
+
+fn trap_roots() = match name_decl("main") {
+  Some(m) => [m],
+  None => graph_decls_at() |> filter(program_function),
+}
+
+fn program_function(d) = len(decl_body(Some(d))) > 0 && !in_library(d)
+
+fn in_library(h) = module_layer_of_handle(graph_module_of(h)) == Lib
+
+fn decl_traps(d) = effect_entries_of(d) |> any(chain_enters("Trap", ??))
+
+fn unexplained_site(d) = TrapSite({node: d, path: None})
+
+// A function of the program, entered once: the places in what runs when it
+// is entered (`entry_nodes`).
+fn trap_walk_decl(acc, d) = match acc {
+  (seen, sites) => if any(handle_is(d, ??), seen) {
+    acc
+  } else {
+    entry_nodes(d) |> fold((push(seen, d), sites), trap_walk)
+  },
+}
+
+// What runs when a declaration is entered: each parameter's pattern, matched
+// against the argument a call hands it, then the body.
+fn entry_nodes(d) = map(param_pat, decl_params(d)) ++ decl_body(Some(d))
+
+// The places below a node: those under each child that carries `Trap`, in
+// the order the code runs, then the node itself where its own notes carry
+// it. A tee's own note is its body's row with what the install absorbs
+// taken out, so the places under its body are the tee's and the tee is none.
+fn trap_walk(acc, h) = {
+  let below = carriers_in_order(trap_effect(), h) |> fold(acc, trap_walk)
+  if len(install_body(h)) == 0 && any(note_traps, graph_rows_at(h)) {
+    trap_place(below, h)
+  } else {
+    below
+  }
+}
+
+fn note_traps(r) = row_carries(resolve_row(r), trap_effect())
+
+// A node whose own notes carry `Trap`: a call is followed to what it calls,
+// and any other node is the place itself.
+fn trap_place(acc, h) = match called_decl(h) {
+  Some(d) => trap_call(acc, h, d),
+  None => trap_found(acc, h, None),
+}
+
+fn trap_found(acc, h, path) = match acc {
+  (seen, sites) => (seen, push(sites, TrapSite({node: h, path}))),
+}
+
+// A call reaches what its callee does and what the function values it hands
+// on do. A function of the program is entered. A function of the library is
+// one place, the call, with the path into the library beside it. A callee
+// with no body of its own (an operation, a parameter, a primitive of the
+// substrate) leaves the call as the place, and so does a callee whose body
+// charges nothing and that is handed no function value carrying `Trap`: the
+// call pays a guard its callee's precondition hands to it.
+fn trap_call(acc, h, d) = {
+  let handed = node_children(h) |> filter(hands_trap(d, ??))
+  match decl_body(Some(d)) {
+    [] => trap_found(acc, h, None),
+    [body, ..._] => if any(carries(trap_effect(), ??), entry_nodes(d)) {
+      handed |> fold(trap_callee(acc, h, d, body), trap_handed)
+    } else if len(handed) > 0 {
+      handed |> fold(acc, trap_handed)
+    } else {
+      trap_found(acc, h, None)
+    },
+  }
+}
+
+fn hands_trap(d, c) = called_decl(c) != Some(d) && value_carries(trap_effect(), c)
+
+fn trap_callee(acc, h, d, body) = if in_library(d) {
+  trap_found(acc, h, Some(EffectEnters("Trap", d, body_entry(trap_effect(), body, [d]))))
+} else {
+  trap_walk_decl(acc, d)
+}
+
+// A function value handed to a call runs where the callee applies it: a
+// named function or a partial application is followed to what it calls,
+// and a function literal's body is walked where it stands.
+fn trap_handed(acc, v) = match called_decl(v) {
+  Some(d) => trap_call(acc, v, d),
+  None => node_children(v) |> fold(acc, trap_walk),
+}
+
+fn with_trap_claim(ledger, s) = (s, trap_claim(ledger, s))
+
+// The claim that guards a place: the ledger's entry at the place's own span,
+// since a claim stands at the node that charges its `Trap` (`claim_shape`
+// puts a destructure's there too), so no other node's claim is read as this
+// one's.
+fn trap_claim(ledger, s) = trap_claim_at(ledger, graph_module_of(s.node), graph_span_of(s.node))
+
+// Of several claims at one place, the one that says most about whether the
+// program can stop there: a refusal, then an open claim, then one proven
+// only through the calls, then one its operands prove.
+fn trap_claim_at(ledger, m, sp) = if any(trap_decided_at(m, sp, false, ??), ledger.decided) {
+  TrapRefused
+} else if any(trap_owed_at(m, sp, ??), ledger.owed) {
+  TrapPending
+} else if any(trap_owed_at(m, sp, ??), ledger.handed) {
+  TrapHanded
+} else if any(trap_decided_at(m, sp, true, ??), ledger.decided) {
+  TrapProven
+} else {
+  TrapUnchecked
+}
+
+fn trap_owed_at(m, sp, entry) = match entry {
+  (em, es, _, _) => em == m && es == sp,
+}
+
+fn trap_decided_at(m, sp, held: Bool, entry) = match entry {
+  (em, es, _, h) => em == m && es == sp && h == held,
+}
+
+// The places in the program that no claim guards, as census sites, each
+// with its path into the library where it has one.
+fn silent_traps() = {
+  let ledger = trap_ledger()
+  trap_sites() |> filter(unguarded(ledger, ??)) |> map(trap_noted)
+}
+
+fn unguarded(ledger, s) = trap_claim(ledger, s) == TrapUnchecked
+
+fn trap_noted(s) = (
+  module_name_of_handle(graph_module_of(s.node)),
+  graph_span_of(s.node),
+  map_option(library_said, s.path)
+)
+
+fn library_said(r) = "inside the library, {show_reason(r)}"
+
+// One place as the facet and the proof gate print it: where it stands, what
+// the ledger says of its claim, and its path into the library where it has
+// one.
+fn trap_line(entry) = match entry {
+  (s, claim) => "\n  {module_name_of_handle(graph_module_of(s.node))}:{show_span(graph_span_of(s.node))}: {claim_words(claim)}{trap_path_words(s.path)}",
+}
+
+fn trap_path_words(path) = match path {
+  Some(r) => "; {library_said(r)}",
+  None => "",
+}
+
+fn claim_words(claim) = match claim {
+  TrapProven => "its claim is proven by its operands",
+  TrapHanded => "its claim is proven only through what the program's calls hand it",
+  TrapPending => "its claim is pending",
+  TrapRefused => "its claim is refused",
+  TrapUnchecked => "no claim is checked here",
+}
+
+// The facet's last line: how many places hold each state of claim.
+fn trap_counts_line(entries) =
+  "\n{int_to_str(len(entries))} place(s) can trap: {count_claim(entries, TrapProven)} proven by their operands, {count_claim(entries, TrapHanded)} proven only through the program's calls, {count_claim(entries, TrapPending)} pending, {count_claim(entries, TrapRefused)} refused, {count_claim(entries, TrapUnchecked)} with no claim"
+
+fn count_claim(entries, claim) = int_to_str(len(filter({ (_, c) => c == claim }, entries)))
+
+fn through_library(s) = match s.path {
+  Some(_) => true,
+  None => false,
+}
+
+// The line `mentl check` prints after its open claims when a place can trap:
+// how many, how many of them are inside the library, reached through the
+// program's calls, and the question that lists each with its claim.
+fn traps_said(entry: String) = {
+  let sites = trap_sites()
+  if len(sites) > 0 {
+    said("verify: {int_to_str(len(sites))} place(s) can stop this program with a trap, {int_to_str(len(filter(through_library, sites)))} of them inside the library through the program's calls; `mentl query {entry} traps` lists each with its claim\n")
+  }
+}
+
+// The places that can trap as the proof gate prints them, each on its line.
+fn trap_lines() = {
+  let ledger = trap_ledger()
+  trap_sites() |> map(with_trap_claim(ledger, ??)) |> map(trap_line)
+}
+
+// Whether an open claim was raised at an explicit call of a partial
+// primitive. A cut's bounds are raised nowhere else. A read's bounds stand
+// at a call when the list they bound is a call's argument: the node above
+// it reaches the primitive through its callee, where `xs[i]` draws its own
+// edge to the primitive it calls.
+fn raised_at_a_call(entry) = match entry {
+  (_, _, pred, _) => match pred {
+    PSliceBounds(_, _, _) => true,
+    PInBounds(recv, _) => match graph_parent_of(recv) {
+      Some(p) => graph_ref_decl(p) == None,
+      None => false,
+    },
+    PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+    | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) => false,
+  },
+}
+
+fn raised_beside_a_call(entry) = !raised_at_a_call(entry)
 
 // Fill a typed hole with THE sole proven survivor from the Synth chain,
 // returned WITH its Reason. The allowed row is the Context's — the

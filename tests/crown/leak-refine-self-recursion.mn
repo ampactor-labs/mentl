@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // A self-recursive call pays its own precondition's guard. `n: Positive`
 // proves `100 / n` total inside the body, so the division charges nothing
 // there and its Trap is guarded by the precondition instead. The recursive

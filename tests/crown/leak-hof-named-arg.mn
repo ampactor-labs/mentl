@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN crucible — the higher-order leak through a NAMED fn argument, not a
 // lambda: run's param row var must ride the published scheme AND run's own
 // row, so performer's closed [E] flows through the instance into bad's row.

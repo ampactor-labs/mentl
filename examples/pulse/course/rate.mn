@@ -1,6 +1,6 @@
 // rate.mn: the course's sample rate, 48,000 samples a second, set in one place
 //
-// The clock is the `Sample(48000)` effect (lib/dsp/clock.mn), and the rate
+// The clock is the `Sample(48000)` effect (lib/clock.mn), and the rate
 // is pinned here, at the three functions that read the clock: `Sample(48000)`
 // on each states which instance of the effect the course performs, and every
 // lesson that calls them carries that instance in its projected row without
@@ -8,7 +8,7 @@
 // up to the last frame. Its `!Alloc` also applies to the frame it
 // is handed (SYNTAX §«Negation in `with` clauses»): a lesson whose frame
 // allocates is rejected at the call, and the error names this declaration.
-import dsp/clock
+import clock
 
 fn rate() with Sample(48000) = sample_rate()
 

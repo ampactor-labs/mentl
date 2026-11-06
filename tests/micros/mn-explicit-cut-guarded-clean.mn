@@ -1,0 +1,7 @@
+// check: clean
+// An explicit cut whose three bounds its own guards state: `0 <= a`,
+// `a <= b` and `b <= len(xs)` stand on the cut's path, so its claim is
+// proven at the call and nothing is left owed.
+fn cut(xs, a, b) = if 0 <= a { if a <= b { if b <= len(xs) { slice(xs, a, b) } else { [] } } else { [] } } else { [] }
+
+fn main() = len(cut([1, 2, 3, 4], 1, 3))

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound dual: `!Both` forbids its members and NOTHING more.
 // A body performing C, which the alias does not name, must be accepted
 // under `with !Both` — a negation that over-refused would make named

@@ -6,7 +6,7 @@
 // its rate through a stage that names none, which runs at the instance
 // its caller declares. On boot 342695ce both reached the inner clock and
 // the control stage read 48000.
-import dsp/clock
+import clock
 
 fn stage() = sample_rate()
 

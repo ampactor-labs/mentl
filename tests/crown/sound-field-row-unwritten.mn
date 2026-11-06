@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound dual of leak-field-row-unwritten: a field whose function
 // type names no row holds only functions that perform nothing, so the one
 // row of the declaration carries nothing and the call under `with !E` is

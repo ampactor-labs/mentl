@@ -28,7 +28,7 @@
 // the page that plays it are not built yet (PLAN §11, Wasatch's live half).
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 
@@ -45,6 +45,8 @@ import fs
 import io
 
 import math
+
+import net
 
 import readings
 

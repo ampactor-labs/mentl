@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0, 2026-10-01): the guard TRAVELS. `caller` passes its
 // own parameter to `inv`, so `inv`'s precondition is discharged by
 // `caller`'s, and `caller`'s parameter now guards the trap `inv`'s guards.

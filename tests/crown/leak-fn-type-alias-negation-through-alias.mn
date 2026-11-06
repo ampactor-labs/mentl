@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a named row negated inside a function type an ALIAS names, the
 // alias declared after the function that reads it. The alias's body is read
 // through the alias, never through a signature's intake, so its written row

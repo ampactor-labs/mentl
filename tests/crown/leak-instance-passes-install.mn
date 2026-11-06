@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // A negation sees the instance an install passes on: the 48 kHz clock
 // absorbs only Sample(48000), so the 44.1 kHz stage's Sample(44100) still
 // escapes `play`, whose declared `!Sample(44100)` refuses it. On boot

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the "under polymorphism" case: `run`'s row var is instantiated with E
 // through the lambda, leaking E past `bad`'s `!E`. Expect E_EffectMismatch.
 effect E { op() -> Int }

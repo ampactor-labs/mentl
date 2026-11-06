@@ -346,12 +346,13 @@ const READ_BAR_MS = 50;   // PLAN §1's felt loop, its bar measured here rather 
     if (!okb) bad++;
     await asCold(rb, ['mentl', 'space', 'main.mn:3:4'], 'after the cone edits');
     // A module that LEAVES the link keeps nothing in either ledger: `lib2`
-    // carries an open claim (`100 / n` over a parameter nothing bounds) and
-    // the next tree drops its import, so the session's whole-ledger read —
-    // every open obligation as SMT-LIB — must equal a cold process's, which
-    // never judged `lib2`. The session's prune cleared its bank alone until
-    // the one generation clear forgot the proof ledger beside it.
-    await sess.call(['mentl', 'space', 'main.mn:3:4'], { 'lib2.mn': 'fn inv(n) = 100 / n\n', 'main.mn': 'import lib2\n\nfn main() = inv(5)\n' });
+    // carries an open claim (`100 / n`, handed the number of the host's
+    // arguments, which may be zero) and the next tree drops its import, so
+    // the session's whole-ledger read — every open obligation as SMT-LIB —
+    // must equal a cold process's, which never judged `lib2`. The session's
+    // prune cleared its bank alone until the one generation clear forgot the
+    // proof ledger beside it.
+    await sess.call(['mentl', 'space', 'main.mn:3:4'], { 'lib2.mn': 'fn inv(n) = 100 / n\n', 'main.mn': 'import lib2\n\nfn main(argv) = inv(len(argv))\n' });
     const rq = await sess.call(['mentl', 'query', 'main.mn', 'smt'], { 'main.mn': 'fn main() = 5\n' });
     const cq = await runWheel({ argv: ['mentl', 'query', 'main.mn', 'smt'], vfs: Object.assign({}, sess.vfs) });
     const okq = rq.exit === 0 && rq.resident && rq.out === cq.out && !rq.out.includes('lib2');
@@ -383,15 +384,15 @@ const READ_BAR_MS = 50;   // PLAN §1's felt loop, its bar measured here rather 
     '',                                         // 11
     'fn needs() = ask() + 1',                   // 12  performs Ask; no install on the path: the row carries it to callers
     '',                                         // 13
-    'fn inv(n) = 100 / n',                      // 14  an open claim: n may be zero
+    'fn inv(n) = 100 / n',                      // 14  a claim its one call proves: inv(4) at 22
     '',                                         // 15
-    'fn main() = {',                            // 16
+    'fn main(argv) = {',                        // 16  main takes the host's arguments
     '  let a = (ask() + needs()) ~> one',       // 17  served here: the install grants Ask
     '  let b = [1, 2, 3]',                      // 18
     '    |> map(double)',                       // 19
     '    |> len',                               // 20
     '  let c = 100 / 5',                        // 21  a proven claim
-    '  a + b + c + inv(4) + ("s{a}" |> len)',   // 22  a splice
+    '  a + b + c + inv(4) + 100 / (1 - len(argv)) + ("s{a}" |> len)', // 22  a splice, and an open claim: one argument makes the divisor zero
     '}',                                        // 23
     '',
   ].join('\n');
@@ -431,7 +432,8 @@ const READ_BAR_MS = 50;   // PLAN §1's felt loop, its bar measured here rather 
     ['the lede\'s Reason at 2', has(2, 'why', 'proven')],
     ['a perform its row carries out, hollow, at 12', has(12, 'effects', 'open')],
     ['the install that grants it, filled, at 17', has(17, 'effects', 'proven')],
-    ['the open claim at 14', has(14, 'verify', 'open')],
+    ['the claim its one call proves at 14', has(14, 'verify', 'proven')],
+    ['the open claim at 22', has(22, 'verify', 'open')],
     ['the proven claim at 21', has(21, 'verify', 'proven')],
     ['a |> stage at 19 and 20', has(19, 'topology') && has(20, 'topology')],
     ['the gradient\'s step at 14', has(14, 'teach', 'open')],

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the controller shape: the decision installs a handler over its own
 // body, and that handler's arm reads the network. Net enters `decide`
 // through the install, not through the body it absorbs from.

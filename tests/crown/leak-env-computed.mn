@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN env (E1) — `!Env("A")` refuses `env(name)`: a computed name leaves
 // the instance ungrounded, and an ungrounded instance is never provably
 // distinct from "A". Expect E_EffectMismatch.

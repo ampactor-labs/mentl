@@ -67,6 +67,8 @@ import fs
 
 import io
 
+import net
+
 import strings
 
 // ─── The ranges each value must stay in ──────────────────────────────

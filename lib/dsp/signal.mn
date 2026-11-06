@@ -61,12 +61,6 @@ effect DSP {
   process(Float) -> Float
 }
 
-// Domain capability effects — exist primarily to be NEGATED. Allocation
-// uses the one substrate Alloc declaration in memory.mn.
-effect Network {
-  fetch_param(String) -> String
-}
-
 // ── Pure processors — stages, the signal last ────────────────
 //
 // Each takes its configuration first and the signal last, so the pipe fills
@@ -83,11 +77,12 @@ fn mix(amount: Float, wet: Float, dry: Float) -> Float with Pure =
   dry * (1.0 - amount) + wet * amount
 
 // Soft saturation into the open unit interval: x / (1 + |x|). Every finite
-// input lands strictly inside (−1, 1), which is the `Sample` claim the
-// result makes — so a stage returning `soft_clip(…)` as a Sample rests on
-// this one claim instead of carrying its own. The claim over these two
-// divisions is the Float interval tier's (Phase 8.3), so it is the one
-// pending obligation the library owns here, once, never one per caller.
+// input lands strictly inside (−1, 1), which is what the result's type, the
+// unit-range sample type declared above, claims. So a stage that returns
+// `soft_clip(…)` as a sample rests on this one claim instead of carrying its
+// own. Proving the claim over these two divisions needs the verifier to
+// carry a Float's range, so it is the one pending obligation the library
+// owns here, once, never one per caller.
 fn soft_clip(x: Float) -> Sample with Pure = if x >= 0.0 { x / (1.0 + x) } else { x / (1.0 - x) }
 
 fn db_to_linear(db: Float) -> Float with Pure = exp(db * log(10.0) / 20.0)

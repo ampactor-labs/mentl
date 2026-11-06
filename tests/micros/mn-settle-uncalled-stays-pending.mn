@@ -1,0 +1,6 @@
+// expect: 0
+// No call hands inv's divisor anything, so nothing decides that n is not
+// zero: mentl check prints the division as pending.
+fn inv(n) = 100 / n
+
+fn main() = 0

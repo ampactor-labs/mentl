@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the latent half at the DEFAULT PARAMETER carrier: a default
 // whose value is an effectful closure TRANSPORTS under `with !E` as long
 // as nothing calls it. The effect rides the value; only performing it is

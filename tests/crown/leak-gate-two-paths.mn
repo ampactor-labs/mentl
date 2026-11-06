@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — one cell reached on two paths keeps the meet: the direct `f()`
 // pushes `!E`, the masked `(f()) ~> h` pushes nothing, and the unmasked
 // call correctly forbids E. Accepted by boot 2974547b. Expect

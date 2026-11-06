@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // The handler that serves the arm's ask is installed INSIDE the asking
 // handler's extent: hf's arm performs `op`, and `he` sits under hf. The arm
 // resolves outer of hf, where no E handler is; the row says exactly that

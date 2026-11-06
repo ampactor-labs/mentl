@@ -1803,6 +1803,11 @@ type Graph = Graph(Int, [(ValidSpan, Int)])
 // back keeps it the init); or nothing it can name.
 type Handed = HandedParam(Int) | HandedLoop(Int, Int) | HandedNone
 
+// What a function applies, as its claim names it: a parameter of its own by
+// position, or a part of one, read off that parameter at one step (a field,
+// an element), as a frame applies a function it is handed inside a record.
+type ApplyPath = AppliedParam(Int) | AppliedPart(Int, PartStep)
+
 // A function's store claim — a declaration's, a nested fn's, a lambda's —
 // written where its judgment ends and read at every call of it, through
 // whatever value carries it: what its result may be (`Returns`: a fresh
@@ -1812,16 +1817,23 @@ type Handed = HandedParam(Int) | HandedLoop(Int, Int) | HandedNone
 // parameters it writes, by position, the captures it writes (each the
 // binder, which the frame holding the function resolves at its own age),
 // whether it writes its own record (a feedback line a closure owns, as old
-// as the value), the parameters it APPLIES, each with what it hands every
-// slot, the functions its result can be, whether it writes memory older than
-// its frame beyond all of these, and whether it applies a function it cannot
+// as the value), the parameters it applies, or the parts of its parameters
+// it applies, each with what it hands every slot, the functions its result can be, what it writes beyond all of these
+// (`Beyond`), and whether it applies a function it cannot
 // name (opaque: its row is then the only truth of what it writes, and no
 // caller masks it). A handler's claim reads its config parameters the same
 // way, each install standing for the call.
+// Its holds field says what a store into a part of the answer reaches,
+// read off each tail of the body: a record, a tuple or a constructor built
+// there holds its parts, each a whole; a parameter holds its parts; a call
+// holds what its callee's claim says its answer holds, read against the
+// arguments; a raw allocation, an unknown callee and anything else hold
+// older memory, since their parts are whatever a store put there.
 type StoreClaim = {
-  applies: [(Int, [Handed])],
-  beyond: Bool,
+  applies: [(ApplyPath, [Handed])],
+  beyond: Beyond,
   captures: [Int],
+  holds: Returns,
   mutated: [Int],
   opaque: Bool,
   record: Bool,
@@ -1832,8 +1844,36 @@ type StoreClaim = {
 
 // What a function's result may be, read off its claim at every call: a fresh
 // record of the call's own (a word, so the common case keeps no list), the
-// parameters it hands back by position, or memory older than the call.
-type Returns = ReturnsFresh | ReturnsParams([Int]) | ReturnsOlder
+// parameters it hands back by position, a part of the memory those
+// parameters name (a word read off a list, never the parameter itself), one
+// of a set of literals in the module's static data (by their nodes) or else
+// memory fresh at the call, or memory older than the call.
+type Returns = ReturnsFresh | ReturnsParams([Int]) | ReturnsPartOf([Int]) | ReturnsStatic([Int]) | ReturnsOlder
+
+// What a function writes beyond its parameters, captures and record: nothing
+// older than its frame; memory a handler's state reaches (through an op's
+// answer and the loads off it), which the install chain and the journal
+// root; or memory nothing names.
+type Beyond = WritesNothingOlder | WritesState | WritesOlder
+
+// The join of two answers of what a function writes beyond what it names:
+// memory nothing names outranks memory a handler's state reaches, which
+// outranks nothing older.
+fn beyond_join(a, b) = match a {
+  WritesOlder => WritesOlder,
+  WritesState => match b {
+    WritesOlder => WritesOlder,
+    WritesState | WritesNothingOlder => WritesState,
+  },
+  WritesNothingOlder => b,
+}
+
+// Whether a function writes memory older than its frame beyond what it
+// names, whether a handler's state reaches it or nothing does.
+fn writes_older_memory(b) = match b {
+  WritesNothingOlder => false,
+  WritesState | WritesOlder => true,
+}
 
 // The arena-roots column's value: what may root an arena's extent from
 // outside it, the judgment's answer at the `~>` install that opens the
@@ -1847,7 +1887,10 @@ type Returns = ReturnsFresh | ReturnsParams([Int]) | ReturnsOlder
 // `OpensNoArena` comes first so a virgin cell reads as it. Every other fact
 // of an install is read off its node: the handler expression is its right
 // side, and its config is the product the judgment wrote there.
-type ArenaRoots = OpensNoArena | RootsUnknown(UnplacedWrite) | RootsFree | RootedAt([(Int, Int)])
+// `RootsInState` says every store inside the extent that reaches older
+// memory reaches a handler's state, which the install chain and the journal
+// root, so the exit need read nothing beyond them.
+type ArenaRoots = OpensNoArena | RootsUnknown(UnplacedWrite) | RootsFree | RootsInState | RootedAt([(Int, Int)])
 
 // The first write inside an extent that the judgment could not place, which
 // leaves the extent's roots unknown, each with the site of the call or store:
@@ -1889,6 +1932,9 @@ type MemoryStop
   | StopDecl(Int, Int)
   // a call: its node, its callee and its arguments
   | StopCall(Int, Int, [Int])
+  // a call of an op: its node, and the install that answers it where one
+  // stands in the function's frames
+  | StopPerform(Int, Option(Int))
   // a product built here: its node and the values it holds
   | StopProduct(Int, [Int])
   // a fresh record nothing reaches into: a string built here, a show, a mint
@@ -1951,6 +1997,113 @@ type PartStep
   | PartElem
   | PartRest
   | PartTypeArg(Int)
+
+// What `self` resolves to while a predicate is decided: nothing (a bare
+// claim — `self` is undecidable), the VALUE NODE a claim was raised over
+// (PWithSelf's binder, read live through its joins), or a GROUND CONSTANT
+// — the implication read, which asks a refinement whether it admits one
+// point (verify.mn's contract_excludes). It was a handle with 0 for "none", the
+// flag-as-int the drift catalog names; the three readings are three
+// constructors now.
+type SelfBind = NoSelf | SelfNode(Int) | SelfVal(LitValue)
+
+// A refinement is a fact about a VALUE, and the edges the value flowed
+// through say what it is. Its unification class says nothing: a cell holds
+// a shape (`shape_of`), because union-find merges every value a
+// join can take and every operand an operator meets — the class model
+// typed `x - 1` over `x: Positive` as Positive and `if c { n } else { 0 }`
+// as Positive (P0, 2026-10-01). The walk reads a value as its LEAVES, each
+// a graph READ minting nothing:
+//   · a constant is its point (node_const_at folds literals, module
+//     constants and the arithmetic over them at the word's own wrap)
+//   · a reference reads its binder through its own link — a declared
+//     parameter's precondition, a let's value, the claim's `self`
+//   · an if / match / block is every tail's leaves — a join is all of them
+//   · len / byte_len are lengths, by the sequence representation itself
+//   · a call — and a pipe stage, the same application — is its callee's
+//     declared return, or a function-typed parameter's contract on its
+//     result
+//   · Add folds its operands' lower bounds
+// and each reader asks its own question of the leaves: a ROW fact
+// (partiality, a guard) stands on constants, lengths and preconditions
+// alone; a CLAIM's bound and echo may stand on a postcondition, which its
+// callee owes at its declaration, and on the Add fold, which models Int as
+// unbounded where the i32 floor wraps
+// (Hβ.verify.interval-fragment-assumes-unbounded-int). It replaced the
+// class reads and three compensations for them: a two-face "contamination
+// law" that read types only where a class boundary was crossed, a licence
+// refusing the echo to computation nodes, and a rebind exposing a let
+// annotation on its value's class.
+type Leaf
+  // a constant — exact, at the word's own wrap
+  = LPoint(LitValue)
+  // a declared parameter's precondition: assumed here, owed by every
+  // caller, and the parameter whose guard a row fact standing on it grows
+  | LParam(Int, Ty)
+  // a callee's declared return: the callee owes it at its own declaration,
+  // and it is debt there until proven
+  | LPost(Ty)
+  // the Add fold's lower bound for a sum — overflow-blind
+  | LSum(Option(Int))
+  // len / byte_len: a length, never below zero
+  | LLength
+  // a callee's return still a free cell — nothing to any reader but the
+  // summary of the declaration whose return it is, where a self-call is
+  // the claim being proven (verify.mn's proven_return)
+  | LRet(Int)
+  // a value under a contract claimed of it where it was made — a `let`'s
+  // annotation, a constructor field's declared refinement — owed there: a
+  // claim may stand on the contract, a row fact only on the leaf beneath
+  | LClaimed(Ty, Leaf)
+  // a value built by this constructor, named bare or applied — the fact
+  // verify.mn's construction_part compares, read by a destructuring
+  // pattern's claim (shape_decide); no number, bound or label stands on it
+  | LBuilt(String)
+  // a value the read MAY take: what a writer stored into the memory, which
+  // another write may have replaced since, or what one of an op's providers
+  // resumes with, where which install answers is not in sight — what holds
+  // of every such value holds of the read, and no one of them alone refutes
+  // a claim
+  | LMay(Leaf)
+  // nothing this walk can read
+  | LUnknown
+
+// What a parameter takes at the call or the perform the walk entered: the
+// argument's node; the value the perform's instance holds, for a handler's
+// config that pins one of its effect's dimensions; or, for any other config,
+// only the precondition its install owes.
+type WalkedArg = ArgNode(Int) | ArgPoint(LitValue) | ArgOpaque
+
+// A value walk's dynamic scope: the state binders whose writers it is
+// reading, the handler declarations whose arms it is reading, and the calls
+// and performs it has entered, each with what its parameters take there. A
+// write may read the state it writes (`with d = d + 1`, or through a let), so
+// a walk that meets a state it is already inside reads it as unknown rather
+// than looping; an arm may install its own handler, and the arms met again
+// add no tail (the least fixed point, exact); a declaration met again inside
+// its own body answers what it publishes. The handlers installed around a
+// walk are the stack of states, declarations and calls it has entered:
+// graph.mn's no_state_walked at the root and walking_state_of inside a
+// state's writers or a handler's arms, and verify.mn's walking_args inside
+// a call or a perform.
+effect StateWalk {
+  walking_state(b: Int) -> Bool
+  walked_arg(b: Int, path: [PartStep]) -> Option([Leaf])
+  // what `self` is while a predicate is decided: a call the predicate makes
+  // hands it on as an argument, and the callee's reads reach it here
+  walked_self() -> SelfBind
+  // whether the reading has entered the declaration's body already: None
+  // where no call is entered yet, Some(true) where it has, Some(false) where
+  // this is the first time, now marked
+  walk_enter(d: Int) -> Option(Bool)
+  // the reading met code the judgment has not reached yet — a handler whose
+  // arms are not all judged, a declaration not yet published
+  walk_unsettled()
+  // whether every reference of the link is drawn: false while the judgment
+  // runs, since the in-edge column is still being written, and true only
+  // under the handler a reader installs once the judgment has ended
+  walk_linked() -> Bool
+}
 
 // Where a parameter's precondition comes from. An unannotated parameter
 // handed straight to a refined one LEARNS that precondition — its own
@@ -2440,6 +2593,9 @@ type VerbShape
   | ChainShape(Int, Int, Bool)
   | InstallShape(String, [String], ArenaRoots)
   | LoopShape(Option(Int), String)
+  // a call of an effect's op: the op's name and the install node that
+  // answers it, None where no install in the call's function does
+  | PerformShape(String, Option(Int))
 
 // One verb on the path from a declaration down to a node: the site's handle
 // and the node's role there. The topology at a position is the list of them,
@@ -2718,6 +2874,7 @@ type Version = {
   next: Int,
   nodes: [[[[GNode]]]],
   parent: [[[[Int]]]],
+  perform_installs: [[[[Option(Int)]]]],
   products: [[[[CallProduct]]]],
   program: [[[[NodeBody]]]],
   published: [[[[[(Binding, Reason, SchemeKind)]]]]],
@@ -3764,6 +3921,8 @@ effect GraphRead {
   // the handle's OWN reason cell, unchased — a bind's VarLookup survives here even when the bound type is a var the chase would follow; the stmt-layer projection reads reference edges through it
   graph_reason_at(Int) -> Reason
   graph_snapshot() -> Graph
+  // each column of the graph by name with the leaf lists it holds, and the node count under the name nodes-next
+  graph_column_sizes() -> [(String, Int)]
   // resolve a node's body by its handle from the parallel program weave — every AST node is registered there at construction (NHole if absent)
   graph_node_body(Int) -> NodeBody
   // the birth-span by HANDLE — the spans spine column's O(1) read (the
@@ -3886,6 +4045,11 @@ effect GraphRead {
   // The arena-roots column's read, by the install's handle: the emitter's
   // exit, the census and the caret read what may root an arena's extent.
   graph_arena_roots_at(Int) -> ArenaRoots
+  // The install that answers a perform, written where the perform's row is
+  // charged, for performs whose answering install stands in the same
+  // function's frames. A perform that a caller's handler answers has no
+  // cell, and reads None.
+  graph_perform_install_of(Int) -> Option(Int)
   // The call-product column's read: the lowering's, which resolves no
   // callee by name and re-decides no shape
   // (Hβ.lower.callee-resolved-by-name-in-the-module-env), and the
@@ -4105,6 +4269,12 @@ effect GraphWrite {
   // of each `~>` that opens an arena, what may root its extent, a column of
   // the version so a restored judgment's answer goes with it.
   graph_arena_roots_note(Int, ArenaRoots)
+  // The install that answers a perform, keyed by the perform's call node:
+  // written where the perform's row is charged, for performs whose answering
+  // install stands in the same function's frames. A perform that a caller's
+  // handler answers has no cell. A column of the version, so a restored
+  // judgment's answer goes with it.
+  graph_perform_install_note(Int, Int)
   // The call-product column's write: the judgment notes each call's
   // positional product at the call node — the ONE reader of a callee's
   // parameters — with the open slots' cells and the shape it decided
@@ -5174,12 +5344,25 @@ fn diag_message(d) with !Mutate = match d {
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EEnvNameUngrounded(_) => "`env` is a required read, and its name here is computed: the program's demand on its host cannot be stated before it runs, so nothing could check it at launch. Write the variable's name at the read — `env(\"PORT\")` — or ask `env_opt` and decide what an absent value means",
   EDerivativeUnreachable(why, _) => "{why}. The program is not built, since the reading would answer zero here and zero is not the slope",
-  EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
+  EUnresolvedHole(h, _) => hole_text(h),
   EFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed where this is emitted, so there is no slot to read; close the row: annotate the receiver at its Intent Boundary, or give the call site a shape its specialization can key on",
   EShapeUnprovable(why, _) => "{why} — the operand's type is still a variable where this is emitted, so nothing proves the shape the read needs, and reading it as a word is a lie for anything but a word; prove the operand: give the call site a shape its specialization can key on, or name the type at its Intent Boundary",
   EInstantiationDepth(why, _) => "{why} — the recursion instantiates it at a type that grows with every call and a body on the chain reads that structure, so the medium specializes eight levels deep and refuses the ninth rather than read it as a word; keep the type the recursion reads from growing",
   EArithOnAggregate(why, _) => "{why} — arithmetic on an address, or on a product, sum, sequence, function, continuation or unit, has no meaning: the operands are addresses, and the result would be arithmetic on where the values live, never on the values. A number is a word (Int, Float, Byte); give this operand one, read the field you meant, or move an address with addr_at",
   EHandlerChainShape(why, _) => why,
+}
+
+// A hole (`??`) the program still carries, said with the two commands that
+// answer it at its own file, line and column: the caret there shows what the
+// compiler proved could fill it, and accept writes one of those in. Compile
+// refuses the program with this sentence, and check prints it as a note.
+// The file is the module's name with its extension, which is the path the
+// person typed for a module of their own.
+fn hole_text(h) with !Mutate = match graph_span_of(h) {
+  Span(sl, sc, _, _) => {
+    let at = "{module_name_of_handle(graph_module_of(h))}.mn:{int_to_str(sl)}:{int_to_str(sc)}"
+    "this program has a hole (??) at {int_to_str(sl)}:{int_to_str(sc)}; `mentl {at}` shows the proposals the compiler proved, and `mentl accept {at}` takes one"
+  },
 }
 
 // The programs a directory holds that the medium cannot yet judge clean, each
@@ -5321,13 +5504,19 @@ effect Verify {
   // only when its precondition stays open — reads it here, off the one
   // decide, never a second decide beside the ledger's.
   verify(Int, Span, Predicate, Reason) -> Option(Bool)
-  // The claim a primitive's face states at an explicit call of it, decided
-  // by the same fragment and kept nowhere here: the verdict is written in
-  // the call's own row, which carries the primitive's `Trap` exactly where
-  // the claim stayed open, so the ledger would only copy it, and an open one
-  // is owed nothing, since that row already says the program can stop there.
-  verify_decide(Predicate) -> Option(Bool)
+  // The claims this program leaves open: what `mentl check` prints and the
+  // board counts.
   verify_debt() -> [(Int, Span, Predicate, Reason)]
+  // What the declarations' own faces still owe: the program's open claims
+  // and every claim the settle proved only through what this program's
+  // calls hand a parameter, which another caller may not hand. Teach reads
+  // these, since a precondition there makes the claim hold for every caller.
+  verify_face_debt() -> [(Int, Span, Predicate, Reason)]
+  // The claims the settle proved only through what this program's calls
+  // hand a parameter: this program owes them nothing, and another caller
+  // may not hand the same. The traps facet names them, and the canvas marks
+  // them at their sites.
+  verify_handed() -> [(Int, Span, Predicate, Reason)]
   // Every claim the ledger DECIDED, with its verdict — true proven, false
   // refuted — at the module and span it was raised in. The canvas marks
   // them at their sites; the decision was made once, here, and kept rather
@@ -6705,7 +6894,7 @@ fn names_effect(h, e) = match e {
 // effect: that declaration's refusal already names the path, so a report
 // about the same path at the program's root points to it.
 fn negating_decl_on_path(ename: String, reason) = match reason {
-  EffectEnters(_, site, next) => match callee_negating(ename, site) {
+  EffectEnters(_, site, next) => match decl_negating(ename, called_decl(site)) {
     Some(name) => Some(name),
     None => negating_decl_on_path(ename, next),
   },
@@ -6716,13 +6905,24 @@ fn negating_decl_on_path(ename: String, reason) = match reason {
   | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => None,
 }
 
-// The declaration a call site reaches, read through its callee's edge, when
-// its clause negates the effect.
-fn callee_negating(ename: String, site) = match graph_node_body(site) {
-  NExpr(CallExpr(f, _)) => decl_negating(ename, graph_ref_decl(f)),
-  NExpr(VarRef(_)) => decl_negating(ename, graph_ref_decl(site)),
+// The declaration a site calls, read through its edges: a call's callee, the
+// stage a `|>` completes with the piped value, and otherwise the node's own
+// reference edge, which a name has and which a sugar such as `xs[i]` or `++`
+// draws to the primitive it calls. None where the site calls nothing.
+fn called_decl(site) = match graph_node_body(site) {
+  NExpr(CallExpr(f, _)) => named_callee(f),
+  NExpr(PipeExpr(PForward, _, stage)) => called_decl(stage),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
+  | NRow(_) | NParam(_) => graph_ref_decl(site),
+}
+
+// The declaration a callee names. A callee that is itself a call (it has the
+// product a call's judgment writes) answers a function value and names
+// none, though its own edge may name the form beneath its check, which is
+// what it calls, never what it answers.
+fn named_callee(f) = match graph_product_at(f) {
+  NoProduct => graph_ref_decl(f),
+  ProductOf(_, _, _) => None,
 }
 
 fn decl_negating(ename: String, decl) = match decl {

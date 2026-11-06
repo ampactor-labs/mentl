@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN modal (§11 6.3's crucible sweep): the TEE'S ADD HALF under
 // negation — row(expr ~> h) = row(expr) - handled(h) + row(h). h's arm
 // performs F while absorbing E, so the install CARRIES F, and the

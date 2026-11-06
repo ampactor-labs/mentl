@@ -1,0 +1,8 @@
+// check: clean
+// A cut's three bounds are decided one at a time, each by the guard that
+// states it: `0 <= a`, `a <= b` and `b <= len(xs)` are three conditions on
+// the cut's path, so the whole claim holds and the cut charges no Trap.
+fn cut(xs, a, b) with !Trap =
+  if 0 <= a { if a <= b { if b <= len(xs) { slice(xs, a, b) } else { [] } } else { [] } } else { [] }
+
+fn main() = len(cut([1, 2, 3, 4], 0, 2)) + len(cut([1, 2, 3, 4], 1, 3))

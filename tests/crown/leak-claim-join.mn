@@ -1,3 +1,4 @@
+// check: refuse E_RefinementRejected
 // CROWN refinement (P0, 2026-10-01): a join takes EVERY tail's value. The
 // if's cell was unified with its first tail, a parameter refined Positive,
 // so `d` was typed Positive though its else tail is 0, and `100 / d` was

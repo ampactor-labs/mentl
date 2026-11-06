@@ -287,6 +287,23 @@ fn pt_keys_leaf(l, below, base, acc) =
 fn pt_keys_cell(l, below, base, acc, i) =
   if base + i >= below || !slot_present(list_index(l, i)) { acc } else { push(acc, base + i) }
 
+// The number of leaf lists a column holds: the fourth-level lists of 64
+// cells, each minted when a key below it was first written. A column's
+// resident size is this count times a leaf's 64 words plus its header.
+fn pt_leaves(ref root) = fold(0, pt_leaves_root(root, ??, ??), range(0, len(root)))
+
+fn pt_leaves_root(ref root, acc, i) = pt_leaves3(list_index(root, i), acc)
+
+fn pt_leaves3(n, acc) =
+  if slot_present(n) { fold(acc, pt_leaves3_at(n, ??, ??), pt_digits) } else { acc }
+
+fn pt_leaves3_at(n, acc, i) = pt_leaves2(list_index(n, i), acc)
+
+fn pt_leaves2(n, acc) =
+  if slot_present(n) { fold(acc, pt_leaves2_at(n, ??, ??), pt_digits) } else { acc }
+
+fn pt_leaves2_at(n, acc, i) = if slot_present(list_index(n, i)) { acc + 1 } else { acc }
+
 // Keep, in every cell, the values `keep` holds — in place: the purge runs at
 // the outermost boundary, on the root's own column, and a cell with nothing
 // to drop stays the object it was.

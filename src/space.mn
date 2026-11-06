@@ -159,15 +159,16 @@ fn canvas_of(v, field, ledger, lens) = {
   let nodes = module_handles(v.node)
   let frames = nodes |> map(frames_at) |> flatten
   let decided = filter(decided_here(v.node, ??), verify_decided())
+  let handed = filter(decided_here(v.node, ??), verify_handed())
   let owed = module_pending(v.node)
   let uses = nodes |> map(param_uses) |> flatten
   let traces = nodes |> map(own_traces(uses, ??)) |> flatten
   let cells =
-    (nodes |> map(node_cells(v, ??)) |> flatten) ++ (field |> map(field_cell) |> flatten) ++ (ledger |> map(ledger_cell) |> flatten) ++ (frames |> map(frame_cells) |> flatten) ++ map(decided_cell, decided) ++ map(owed_cell, owed) ++ (traces |> map(trace_cells) |> flatten) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
+    (nodes |> map(node_cells(v, ??)) |> flatten) ++ (field |> map(field_cell) |> flatten) ++ (ledger |> map(ledger_cell) |> flatten) ++ (frames |> map(frame_cells) |> flatten) ++ map(decided_cell, decided) ++ map(handed_cell, handed) ++ map(owed_cell, owed) ++ (traces |> map(trace_cells) |> flatten) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
   Canvas({
     frames,
     lines: count_lines(v.text) + 1,
-    marks: map(decided_mark, decided) ++ map(owed_mark, owed),
+    marks: map(decided_mark, decided) ++ map(handed_mark, handed) ++ map(owed_mark, owed),
     strip: strip_of(cells),
     tokens: canvas_tokens(v.text),
     traces,
@@ -472,13 +473,12 @@ fn is_nested_fn(body) = match body {
   | NRow(_) | NParam(_) => false,
 }
 
-// A perform an install on its path serves is GRANTED here — the filled
-// glyph; one no install serves is REQUIRED of the callers — the hollow
-// glyph, a refusal where nothing grants it at the root (the Lens says so,
-// and the refusal's cell outranks this one).
+// A perform that an install in its own function serves is granted here and
+// shows the filled glyph. One that no install in its function serves is
+// required of the callers and shows the hollow glyph; where nothing grants it
+// at the root, the refusal's cell outranks this one.
 fn served_cell(en: String, s, sp, target: String) = match s {
   ServedBy(_, _) => cell_at(OnEffects, CellProven, en, sp, show_served(en, s, target)),
-  ServedWhereCalled(_) => cell_at(OnEffects, CellOpen, en, sp, show_served(en, s, target)),
   ServedByCaller(_) => cell_at(OnEffects, CellOpen, en, sp, show_served(en, s, target)),
 }
 
@@ -547,9 +547,10 @@ fn frame_cell(verb, n, entry) = match entry {
   (k, sp) => cell_at(OnTopology, CellProven, canvas_verb_word(verb), sp, verb_role_text(frame_role(verb, k, n))),
 }
 
-// The claims the ledger decided, in this module: proven or refuted. A
-// provision (what a body hands a function) and the trivial claim are facts
-// of the walk, not claims a developer wrote, so they mark nothing.
+// The claims the ledger decided, in this module: proven, refuted, or proven
+// only through what the program's calls hand a parameter. A provision (what
+// a body hands a function) and the trivial claim are facts of the walk, not
+// claims a developer wrote, so they mark nothing.
 fn decided_here(mh, entry) = match entry {
   (m, _, pred, _) => m == mh && claim_is_marked(pred),
 }
@@ -583,6 +584,19 @@ fn decided_cell(entry) = match entry {
 fn decided_mark(entry) = match entry {
   (_, sp, pred, proven) => ProofMark(decided_state(proven), sp, show_predicate(pred)),
 }
+
+// A claim the program's calls prove holds at every call this program makes;
+// the declaration still owes it to any other caller, which the teach cell
+// beside it says.
+fn handed_cell(entry) = match entry {
+  (_, sp, pred, _) => cell_at(OnVerify, CellProven, "proven by its calls", sp, handed_text(pred)),
+}
+
+fn handed_mark(entry) = match entry {
+  (_, sp, pred, _) => ProofMark(CellProven, sp, handed_text(pred)),
+}
+
+fn handed_text(pred) = "{show_predicate(pred)}, at every call the program makes"
 
 fn owed_cell(entry) = match entry {
   (_, sp, pred, _) => cell_at(OnVerify, CellOpen, "pending", sp, show_predicate(pred)),
@@ -777,7 +791,7 @@ fn ring_of(view, h, pspan, v) = match view {
     RingFact(AOwnership(trace), []),
     RingFact(AVerify, map(obligation_note, verify)),
     teach_fact(h, teach, v.tights),
-    why_fact(why, v)
+    why_fact(h, why, v)
   ],
 }
 
@@ -803,10 +817,10 @@ fn query_fact(h, kind, pspan, v) = {
 // past that width the surface carries the count and the computed question
 // alone. The refusals stand under the proposal: every name the medium
 // considered and would not offer, each with its Why, so the audit trail
-// the Proposal has carried since it was a pair of lists can be read. And
-// the Handler facet at a perform — which install serves the operation, the
-// innermost `~>` on the declaration's path whose handler answers it — is
-// the same primitive's other face, so it stands here too.
+// the Proposal has carried since it was a pair of lists can be read. The
+// Handler facet at a perform stands here too: it names the install that
+// serves the operation, read off the edge the judgment wrote at the call
+// (`served_at`).
 fn propose_fact(h, propose, target: String) = match propose {
   Proposal(pr) => {
     let refusals = map(refusal_note, pr.rejected)
@@ -874,12 +888,20 @@ fn teach_fact(h, teach, tights) = match teach {
 // The Why: the node's own chain, then the chain its type is read from when
 // its cell links to another. The first hop is the aspect's sentence; every
 // deeper hop is a note, and each type chain a note holding its own hops.
-fn why_fact(why, v) = match why {
+fn why_fact(h, why, v) = match why {
   [] => RingFact(AWhy(""), []),
-  [here, ...types] => match why_lines(here, v, 0) {
+  [_, ...types] => match why_own_lines(h, why, v) {
     [] => RingFact(AWhy(""), []),
     [first, ...rest] => RingFact(AWhy(first), map(NoteHop, rest) ++ map(chain_note(v, ??), types)),
   },
+}
+
+// The lines of the node's own chain, one per hop. At a reference, the
+// declaration its edge reaches goes down the chain, so the hop that says
+// where the name is declared names the module that declares it.
+fn why_own_lines(h, why, v) = match why {
+  [] => [],
+  [here, ..._] => why_lines(here, v, 0, graph_ref_decl(h)),
 }
 
 // The chain a node's type is read from, as one note over its hops — or, at a
@@ -893,7 +915,7 @@ fn chain_note(v, chain) = match chain {
   | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
   | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
   | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
-  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => match why_lines(chain, v, 0) {
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => match why_lines(chain, v, 0, None) {
     [] => NoteTypeChain("", []),
     [first, ...rest] => NoteTypeChain(first, rest),
   },
@@ -1880,8 +1902,7 @@ fn file_line_col(target: String, span) = match span {
 // The Handler facet's sentence for a perform.
 fn show_served(en: String, served, target: String) with !Mutate = match served {
   ServedBy(site, hname) => "{en} is served by `~> {hname}` at {file_line_col(target, graph_span_of(site))}",
-  ServedWhereCalled(site) => "{en} is performed when the function value at {file_line_col(target, graph_span_of(site))} is called — the install in force there serves it",
-  ServedByCaller(decl) => "no install inside `{body_decl_name(graph_node_body(decl))}` answers {en} — its row carries {en} to the callers",
+  ServedByCaller(op) => "no install in this function answers {op}; a caller's handler does",
 }
 
 // The Why chain, one line per hop: file:line through the module's own
@@ -1890,20 +1911,33 @@ fn show_served(en: String, served, target: String) with !Mutate = match served {
 // live) and the author's attached lede (graph_comment_at). The prose rides
 // the same rails as the types: nothing here is stored twice. The first line
 // is the hop at the position; every later one a deeper hop; past eight hops
-// the chain says it goes deeper rather than going on.
-fn why_lines(reason, v, depth) = if depth > 7 {
+// the chain says it goes deeper rather than going on. The declaration a
+// reference's edge reaches, when there is one, goes to the hop just below
+// the variable lookup, and a declared hop there names that declaration's
+// module; every other hop is in the addressed module's coordinates.
+fn why_lines(reason, v, depth, decl) = if depth > 7 {
   ["… the chain goes deeper than the eight hops shown"]
 } else {
   match reason {
-    Located(span, inner) => ["{reason_phrase(inner)}, at {file_line(v.name, span)}{binding_ledes(span, inner, v)}"] ++ why_deeper(inner, v, depth),
-    VarLookup(name, br) => ["{name} read here"] ++ why_lines(br, v, depth + 1),
+    Located(span, inner @ Declared(_)) => ["{reason_phrase(inner)}, at {declared_line(span, decl, v)}"],
+    Located(span, inner) => ["{reason_phrase(inner)}, at {file_line(v.name, span)}{binding_ledes(span, inner, v)}"] ++ why_deeper(inner, v, depth, decl),
+    VarLookup(name, br) => ["{name} read here"] ++ why_lines(br, v, depth + 1, decl),
     EffectEnters(eff, site, next) => enters_lines(eff, site, next, v),
     Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | FnReturn(_, _) | FnParam(_, _, _)
     | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _) | Unified(_, _)
     | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _) | InferredCallReturn(_, _)
     | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _) | LabelEnters(_, _, _)
-    | ChainInstall(_, _) | StateBinding(_, _) => ["{reason_phrase(reason)}"] ++ why_deeper(reason, v, depth),
+    | ChainInstall(_, _) | StateBinding(_, _) => ["{reason_phrase(reason)}"] ++ why_deeper(reason, v, depth, None),
   }
+}
+
+// Where a declared hop stands: the declaring module, read from the
+// declaration node the reference's edge reaches, with the hop's line, which
+// is already in that module's coordinates. With no such node, the hop is
+// read in the addressed module.
+fn declared_line(span, decl, v) = match decl {
+  Some(d) => "{module_name_of_handle(graph_module_of(d))}:{int_to_str(span_line_of(span))}",
+  None => file_line(v.name, span),
 }
 
 // An effect's entry chain, one line per hop: the effect and the declaration
@@ -1935,25 +1969,28 @@ fn enters_rest(next, v) = match next {
   | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
   | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
   | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
-  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => why_lines(next, v, 0),
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => why_lines(next, v, 0, None),
 }
 
-fn why_deeper(inner, v, depth) = match inner {
+// The hops beneath one hop. Only a variable lookup hands down the
+// declaration its reference reaches; below any other hop the name read
+// there is another one.
+fn why_deeper(inner, v, depth, decl) = match inner {
   EffectEnters(_, _, next) => enters_rest(next, v),
   // The accept edge: its phrase names the proposal and its proof; the
   // hop beneath is the binding's own reason, which the acceptance wraps.
-  Accepted(_, _, br) => why_lines(br, v, depth + 1),
-  VarLookup(_, br) => why_lines(br, v, depth + 1),
-  LetBinding(_, br) => why_lines(br, v, depth + 1),
-  FnReturn(_, br) => why_lines(br, v, depth + 1),
-  InferredCallReturn(_, br) => why_lines(br, v, depth + 1),
-  InferredPipeResult(_, br) => why_lines(br, v, depth + 1),
+  Accepted(_, _, br) => why_lines(br, v, depth + 1, None),
+  VarLookup(_, br) => why_lines(br, v, depth + 1, decl),
+  LetBinding(_, br) => why_lines(br, v, depth + 1, None),
+  FnReturn(_, br) => why_lines(br, v, depth + 1, None),
+  InferredCallReturn(_, br) => why_lines(br, v, depth + 1, None),
+  InferredPipeResult(_, br) => why_lines(br, v, depth + 1, None),
   // A unification joins TWO provenances — walk both (the second indented
   // as its own branch), the DAG rendered as the tree it is.
-  Unified(a, b) => why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
-  OpConstraint(_, a, b) => why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
-  IfBranch(br) => why_lines(br, v, depth + 1),
-  Instantiation(_, br) => why_lines(br, v, depth + 1),
+  Unified(a, b) => why_lines(a, v, depth + 1, None) ++ why_lines(b, v, depth + 1, None),
+  OpConstraint(_, a, b) => why_lines(a, v, depth + 1, None) ++ why_lines(b, v, depth + 1, None),
+  IfBranch(br) => why_lines(br, v, depth + 1, None),
+  Instantiation(_, br) => why_lines(br, v, depth + 1, None),
   Declared(_) | Inferred(_) | Fresh(_) | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_)
   | Placeholder(_) | MissingVar(_) | Refinement(_, _) | Located(_, _) | DefaultReason(_, _)
   | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => [],

@@ -5,7 +5,7 @@
 // serving 750. On boot 342695ce the stage's perform reached the innermost
 // clock by the effect's name, and `lfo` read 48000 under a declaration
 // that said 750 — a false proof of the row it published.
-import dsp/clock
+import clock
 
 fn stage() = sample_rate()
 

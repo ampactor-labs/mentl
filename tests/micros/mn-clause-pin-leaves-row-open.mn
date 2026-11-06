@@ -2,7 +2,7 @@
 // A pin says which instance an effect runs at, and nothing else: `rate`
 // reads the 48 kHz clock and also prints, and its clause leaves Console to
 // the body, so the program builds and answers the rate in kHz.
-import dsp/clock
+import clock
 
 import io
 

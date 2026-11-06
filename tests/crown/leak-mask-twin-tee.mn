@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — two installs, two masks, one row: each subtraction belongs to
 // its own path. `run` reads (r_f - E) + (r_g - F); f's F escapes h, which
 // absorbs only E, so the declared !F refuses. The one-absent row stored

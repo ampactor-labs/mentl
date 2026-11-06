@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // A cycle member pays a guard of a member judged after it. `ping` and
 // `pong` call each other; ping is judged first and calls pong's `m`, whose
 // precondition pong has not learned yet — pong learns `Positive` by handing

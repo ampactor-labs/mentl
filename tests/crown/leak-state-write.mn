@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (S5, 2026-10-02): a handler's state is every value
 // written into it. `d` starts at 5 and `shrink` writes `d - 5`, so the
 // division `ask` makes owes `d != 0` of a write nothing bounds, and the open

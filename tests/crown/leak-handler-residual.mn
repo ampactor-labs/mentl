@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN crucible — the handler-residual face of the higher-order leak
 // (Hβ.infer.handler-residual-outside-the-scheme): a handler-based HOF's
 // residual must carry its CONFIG fn's row. run_each installs consume over

@@ -1,0 +1,7 @@
+// check: pending 5:43
+// The division a / b stays pending. The recursive call hands the divisor b
+// to the dividend's position and -1 to the divisor's, so the second call
+// divides INT_MIN by -1.
+fn step(a, b, n) = if n == 0 { 0 } else { a / b + step(b, -1, n - 1) }
+
+fn main() = step(1, -2147483648, 2)

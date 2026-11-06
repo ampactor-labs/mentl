@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the sound dual at the tuple carrier: a tuple CARRYING an
 // effectful closure transports under `with !E`; only the call
 // performs. Must accept.

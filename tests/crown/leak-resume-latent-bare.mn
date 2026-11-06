@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the same leak as leak-resume-latent, with the row UNWRITTEN.
 // This is the form a person actually types: `give() -> (() -> Int)`, no
 // `with` clause. It checked clean and RAN (exit 7) until 2026-08-18,

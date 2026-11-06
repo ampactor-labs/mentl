@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // CROWN root (S6, 2026-10-02): a module value let's init runs before `main`,
 // so what it performs is the executable's, and an effect no handler serves
 // refuses at the let as it would in `main`. The init was judged in no frame

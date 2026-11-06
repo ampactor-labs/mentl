@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN, a sound twin: the handler fetches only in the arm for refresh(),
 // which decide never performs; the arm that answers decide's price() uses
 // nothing. Accepted.

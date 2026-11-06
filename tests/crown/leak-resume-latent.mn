@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the RESUME VALUE. A closure performing E, handed
 // back out of an arm through `resume`, extracted and CALLED under `with
 // !E`: the row must ride the continuation's answer to the call site.

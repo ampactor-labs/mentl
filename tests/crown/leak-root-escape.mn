@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // THE ESCAPED CLOSURE CALLED OUTSIDE ANY INSTALL (the root gate reads the
 // row alone, 2026-09-27). E rides the closure's value row out of `escaped`;
 // the bare call at main performs it with no enclosing install, so E is in

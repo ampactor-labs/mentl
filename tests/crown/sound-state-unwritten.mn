@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN refinement (S5, 2026-10-02): a state no arm writes holds its init
 // at every read, so `100 / d` over `with d = 5` is total and `!Trap` holds —
 // the control beside `leak-state-write`, which only the write separates.

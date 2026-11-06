@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN A5 (LENS §2.4): a handler that negates the very effect it handles
 // forbids its ARMS from recursing through it (the registration-time gate)
 // while its remainder's performs of that effect are the ones it absorbs —

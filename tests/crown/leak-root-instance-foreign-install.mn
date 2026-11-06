@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // A stage written for 44.1 kHz under an install of the 48 kHz clock: the
 // install serves Sample(48000), the instance its config names, so the
 // stage's Sample(44100) passes it, and with no clock at 44.1 kHz around it

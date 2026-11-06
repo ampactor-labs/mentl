@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the control for leak-gate-mask-partial: the callback performs
 // the effect the tee absorbs, and `!F` is untouched. Expect NO
 // E_EffectMismatch.

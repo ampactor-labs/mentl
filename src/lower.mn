@@ -880,24 +880,19 @@ fn site_schedule_seed(fh) = match lower_site_schedule() {
 // A call whose callee resolved to module scope, where the env's kinds live:
 // a primitive, an intrinsic, a substrate op, a constructor, an effect op, or
 // a function. A primitive is read off the declaration the callee's edge
-// reaches; it applies its instruction where it stands.
+// reaches; it applies its instruction where it stands. A sequence primitive
+// called where the judgment proved its face's claim is the form beneath its
+// check, as `xs[i]` is: the judgment linked the call's node to that form
+// (`calls_form`), and the call is lowered to what the edge reaches, directly
+// at its own signature. A call the judgment did not link, because its claim
+// stayed open or was never raised, is the call as written, its check in its
+// body.
 fn lower_global_call(handle, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
   Some(PrimitiveKind(p)) => LPrim(handle, p, lo_args),
-  Some(_) | None => match beneath_check(handle, fh, name) {
-    Some(twin) => LDirectCall(handle, fh, vocabulary_callee(twin), false, lo_args),
+  Some(_) | None => match graph_ref_decl(handle) {
+    Some(form) => LDirectCall(handle, fh, DeclaredAt(form), false, lo_args),
     None => lower_named_call(handle, fh, name, r_args, lo_args),
   },
-}
-
-// A sequence primitive called where the judgment proved its face's claim is
-// the form beneath its check, as `xs[i]` is: the call's node carries no
-// `Trap`, which is the verdict the judgment wrote there (`claim_open_at`),
-// and the twin is called directly at its own signature (`proven_twin`). A
-// call whose claim stayed open, or of a primitive with no such form, is the
-// call as written.
-fn beneath_check(handle, fh, name: String) = match proven_twin(name) {
-  Some(twin) => if reaches_substrate(fh) && !claim_open_at(handle) { Some(twin) } else { None },
-  None => None,
 }
 
 fn lower_named_call(handle, fh, name: String, r_args, lo_args) = if name == "to_string" && len(r_args) == 1 {
@@ -1559,10 +1554,10 @@ fn eff_names_of(names) = flatten(map(
 // imports and which have no handler record.
 fn row_dispatched_names(names) = filter((n) => !is_builtin_effect(n), names)
 
-// Memory's reads, its writes, the image swap, allocation and the host's
-// system interface.
+// Memory's reads, the arithmetic of addresses, memory's writes, the image
+// swap, allocation and the host's system interface.
 fn is_builtin_effect(ename) =
-  index_of_name(["Memory", "MemoryWrite", "ImageSwap", "Alloc", "WASI"], ename, 0) >= 0
+  index_of_name(["Memory", "Address", "MemoryWrite", "ImageSwap", "Alloc", "WASI"], ename, 0) >= 0
 
 // op_name → its declaring effect's name via EffectOpScheme ("" if not an
 // effect op in scope — productive-under-error). The graph carries the
@@ -2603,13 +2598,10 @@ fn lower_expr_body(e, handle, span) = match e {
     // `capture_frame`). The catching handler
     // (in-memory / oracle-rollback / persist) is the swap.
     MultiShot => lower_resume_callk(handle, val, state_updates),
-    // M4 — a resume inside a pure-Abandon op's arm is the MIXED case (the
-    // op has an abandon arm AND a resume arm). It does not occur in the
-    // wheel or crucibles: abort/fail are single-handler UZero, so a
-    // resume under an Abandon-graded op is unreachable-by-construction (a
-    // UZero arm has no resume). If it ever arises, the op must reify k at
-    // the perform (become MultiShot — the abandon perform's dead k=0
-    // would trap here, loud, never silent): Hβ.lower.abandon-with-resume-arm.
+    // An Abandon op's arms never resume: an op whose handlers' arms differ
+    // is MultiShot (`disc_join`), so no resume is lowered under Abandon. Were
+    // one lowered, the abandoning perform's dead continuation would trap
+    // here at its first call.
     Abandon => lower_resume_callk(handle, val, state_updates),
   },
   // W6: the field NAME rides the node; the offset projects at emit from

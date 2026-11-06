@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — `!E` propagates transitively (SYNTAX §Negation). E flows a -> b -> bad;
 // bad declares `with !E`. Expect E_EffectMismatch (the effect reaches bad's row).
 effect E { op() -> Int }

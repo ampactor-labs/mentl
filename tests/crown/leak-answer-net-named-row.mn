@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a negation written through a named row binds the arm too. decide
 // says it never uses Outside, which holds Net, and online's arm answers its
 // price() with a fetch, an op of Net. Expect E_EffectMismatch, naming the

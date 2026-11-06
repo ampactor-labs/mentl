@@ -1,3 +1,4 @@
+// check: accepted
 // The sound twin of leak-instance-foreign-install: a stage written for
 // 48 kHz under the 48 kHz clock is served by the install its config names.
 effect Sample(rate: Int) {

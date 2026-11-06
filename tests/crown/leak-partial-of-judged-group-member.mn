@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a partial application handed a function of its own recursive
 // group carries that function's effects when the function was judged
 // first. e is declared before r, so r meets e's whole row, its name

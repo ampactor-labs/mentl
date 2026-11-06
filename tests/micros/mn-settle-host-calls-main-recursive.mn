@@ -1,0 +1,7 @@
+// check: pending 7:62
+// main's only call in sight is its own, handing its arguments back
+// unchanged; the host's call hands it whatever the run was given, so the
+// read of the fourth argument stays pending.
+import io
+
+fn main(argv) = if len(argv) == 99 { main(argv) } else { len(argv[3]) * 0 }

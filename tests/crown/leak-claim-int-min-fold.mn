@@ -1,3 +1,4 @@
+// check: refuse E_RefinementRejected
 // CROWN partiality (TRAP, 2026-10-06): `INT_MIN / -1` is the one quotient a
 // signed word cannot hold, so its claim is refuted at the inner division,
 // and the outer one, whose dividend now folds to nothing, stays proven by

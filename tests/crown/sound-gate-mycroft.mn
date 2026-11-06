@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the control for leak-gate-mycroft: the same stable Mycroft
 // shape with a quiet self-callback; the transferred gate judges a pure
 // copy and admits it. Expect NO E_EffectMismatch.

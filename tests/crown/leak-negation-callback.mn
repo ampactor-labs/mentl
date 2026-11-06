@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a negation on a higher-order function holds its callbacks: `run`
 // is declared `with !F`, so the callback handed to it, which performs F, is
 // refused at the argument edge, and the refusal names `run`'s declaration.

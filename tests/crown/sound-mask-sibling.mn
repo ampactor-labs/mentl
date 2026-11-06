@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the control for leak-mask-sibling: the E-performing callback
 // is the one the tee encloses, so h absorbs it and the declared !E holds.
 // Expect NO E_EffectMismatch.

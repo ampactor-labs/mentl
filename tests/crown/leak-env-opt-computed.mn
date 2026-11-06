@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN env (E1) — a computed optional name still carries an ungrounded
 // instance. `!Env("A")` cannot prove it distinct, even though absence is
 // optional. Expect E_EffectMismatch.

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN, a sound twin: a handler's state starts at the install, before its
 // body runs, so the fetch that sets it runs outside decide, and the arm
 // that answers decide's price() only reads the state. Accepted.

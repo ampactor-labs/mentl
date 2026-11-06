@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (H4, 2026-10-01): a function value merged at a join owes
 // every precondition a branch can bring. `pick` returns `inv2` or `inv`, so a
 // caller applying what it returns owes `inv`'s `n: Positive` — and the

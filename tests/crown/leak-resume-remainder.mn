@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a held resume runs its remainder INSIDE the frame that calls it.
 // `apply` declares `!Log` and calls its callback; the callback resumes a held
 // continuation (the arm computes after `apply` returns, so the op is

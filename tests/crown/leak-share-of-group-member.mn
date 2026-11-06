@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a `<|` branch that is a function of the caller's own recursive
 // group carries that function's effects. r shares its argument with plain
 // and with e, and e, which calls r back, asks for a name. quiet says it

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the control for leak-mask-twin-tee: each callback performs the
 // effect its own tee absorbs, so both masks hold and the declared
 // !E + !F is sound. Expect NO E_EffectMismatch.

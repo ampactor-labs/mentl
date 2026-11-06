@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (S6, 2026-10-02): an authored return is a stated
 // position, claimed inside the declaration's frame. `inv` crossing into `->
 // (Int) -> Int` pays the guard of the `Positive` it demands, in `mk`'s row,

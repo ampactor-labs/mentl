@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN instance (§11 6.2) — !Sample(44100) must REJECT a body reaching
 // the SAME instance transitively. Expect E_EffectMismatch.
 effect Sample(rate: Int) { tick() -> Int }

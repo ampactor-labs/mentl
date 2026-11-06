@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN modal (§11 6.3's crucible sweep): MASK COMPOSITION — nested
 // installs of the SAME effect. The inner absorbs, the outer decl's !E
 // holds, and dispatch picks the INNERMOST (measured: runs 1, h1's

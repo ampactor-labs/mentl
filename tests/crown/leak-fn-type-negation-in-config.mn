@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a named row negated in a handler's configuration: the function an
 // install hands `apply` performs neither A nor B. Measured on boot 493a5619:
 // checked clean. Expect E_EffectMismatch.

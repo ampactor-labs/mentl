@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (S6, 2026-10-02): a nominal record's declared field type
 // is a stated position, claimed where the record is built. `inv` crossing
 // into `f: (Int) -> Int` pays the guard of the `Positive` it demands, in

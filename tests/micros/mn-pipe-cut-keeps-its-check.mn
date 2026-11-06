@@ -1,0 +1,7 @@
+// expect: 134
+// A pipe that completes a call of `slice` is that call, so a cut past the end
+// of a list of three keeps its bounds check and stops the run. Calling the
+// cut beneath the check here would answer four elements read past the end.
+fn cut_past(xs) = xs |> slice(??, 5, 9)
+
+fn main() = len(cut_past([1, 2, 3]))

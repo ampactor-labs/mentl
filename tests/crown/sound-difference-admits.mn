@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — row SUBTRACTION leaves the unsubtracted members ADMITTED.
 // `type OnlyA = Both - B` still permits A, higher-order included, or `-`
 // would silently drop capabilities the row names.

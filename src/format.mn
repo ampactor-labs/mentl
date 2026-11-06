@@ -1297,7 +1297,7 @@ fn label_spelling(node, label: String, v) = match graph_parent_of(node) {
 
 // The parameter node whose slot a value fills in a call's product.
 fn call_slot_param(call, v) = match graph_product_at(call) {
-  ProductOf(slots, _, _) => match call_callee_decl(call) {
+  ProductOf(slots, _, _) => match called_decl(call) {
     Some(d) => map_option(slot_param, find(slot_is(v, ??), zip(slots, callee_params(d)))),
     None => None,
   },
@@ -1310,12 +1310,6 @@ fn slot_is(v, pair) = match pair {
 
 fn slot_param(pair) = match pair {
   (_, p) => p,
-}
-
-fn call_callee_decl(call) = match graph_node_body(call) {
-  NExpr(CallExpr(f, _)) => graph_ref_decl(f),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
 }
 
 // The parameter nodes a callee's declaration holds: a function's, a

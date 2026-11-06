@@ -9,16 +9,18 @@
 //   2. The developer can read what operations exist.
 //   3. They participate in the graph like every other effect.
 //   4. Effect rows are honest: `Memory` in a row means the function reads
-//      linear memory, `MemoryWrite` that it writes it, and `ImageSwap` that
-//      it replaces the whole image. Arithmetic on a word's bits (`i32_xor`
-//      and its six siblings) is a primitive and performs nothing.
+//      linear memory, `MemoryWrite` that it writes it, `ImageSwap` that
+//      it replaces the whole image, and `Address` that it computes
+//      addresses without reading what they name. Arithmetic on a word's
+//      bits (`i32_xor` and its six siblings) is a primitive and performs
+//      nothing.
 //
 // This is the single source of truth for substrate operations.
 // If an operation isn't declared here, it doesn't exist.
 //
-// Memory, MemoryWrite, ImageSwap: reads of linear memory, writes into it,
-// and the swap of the whole image. Each op maps to one instruction or one
-// emitted routine.
+// Memory, Address, MemoryWrite, ImageSwap: reads of linear memory, the
+// arithmetic of addresses, writes into memory, and the swap of the whole
+// image. Each op maps to one instruction or one emitted routine.
 // Cast — a value's address. A heap value's word IS the address of its
 // record ("a handle IS a word"), and addr answers it as one, typed, so it
 // stays an address wherever it goes: an arena's exit that finds one of its
@@ -41,48 +43,18 @@ effect Memory {
   //
   // (addr) -> byte (0-255)
   load_i8(Addr) -> Int
-  // An address is the word that names memory: what an allocation answers,
-  // what a load reads from and a store writes to. It is a word in every
-  // machine respect and not a number — it moves by addr_at, never by
-  // arithmetic, and orders by magnitude — and its type is what an arena's
-  // exit reads: an address of its region found where the exit looks (its
-  // value, a field, an element, a slot its barriers journaled) keeps the
-  // region whole, since nothing can say what the address names. The
-  // guarantee is about values: a word computed from an address is the
-  // program's own claim, and bits copied by mem_copy are opaque — written
-  // into older memory, they keep the arena.
-  //
-  // (addr, bytes) -> the address that many bytes on
-  addr_at(Addr, Int) -> Addr
-  // (a, b) -> the bytes from b to a
-  addr_diff(Addr, Addr) -> Int
   // (addr) -> the address stored there
   load_addr(Addr) -> Addr
-  // The address no allocation answers, which a virgin slot reads.
-  null_addr() -> Addr
   // How many 64 KiB pages the memory holds now, so a program can read its
   // own footprint and a fixture can state the pages a module's start needs.
   // A read of Memory, not an op of Alloc: an op of Alloc means the memory
   // may grow, and this one grows nothing, so a program that reads its
   // footprint keeps a footprint the compiler can prove constant.
   memory_pages() -> Int
-  // An address's word, and the address a word names: the puns where a value
-  // crosses the runtime's word protocol (a list slot holds its element as a
-  // word). Each is the identity on the machine.
-  addr_word(Addr) -> Int
-  word_addr(Int) -> Addr
   // The live world — the top of the install chain ($world_g; emit projects
   // the global read, the heap_mark shape). 0 = the empty world. A Memory
   // read, not an Alloc verb: the perform path reads it on every dispatch.
   world_top() -> Int
-  // The fork boundary's world reset — the fork pair's THIRD leg (graph
-  // checkpoint + heap region + world). Writes $world_g back to a value
-  // world_top() returned at the fork point. NOT a general setter: its one
-  // sound use is the fork boundary, where the restored value predates
-  // every push the forked extent made (the chain nodes above it die with
-  // the region). Everywhere else the world's writers stay the emitted
-  // pushes and bracket restores.
-  world_restore(Int)
   // 64-bit float load, the wide-value boundary (§5.U): a wide value
   // crosses the word altitude by reference (its address is a word, a handle
   // is a word), and this op reads its native width at a typed site, 1:1
@@ -105,6 +77,36 @@ effect Memory {
   image_key() -> Int
   // globals_area — the globals record's byte size (8 bytes per global).
   globals_area() -> Int
+}
+
+// Address: the arithmetic of addresses, which reads nothing. Its ops answer
+// an address a distance into an allocation, the distance between two
+// addresses, the address no allocation answers, and the puns between an
+// address and a word. A function whose row holds Address and not Memory
+// computes where memory is without reading any of it.
+effect Address {
+  // An address is the word that names memory: what an allocation answers,
+  // what a load reads from and a store writes to. It is a word in every
+  // machine respect and not a number — it moves by addr_at, never by
+  // arithmetic, and orders by magnitude — and its type is what an arena's
+  // exit reads: an address of its region found where the exit looks (its
+  // value, a field, an element, a slot its barriers journaled) keeps the
+  // region whole, since nothing can say what the address names. The
+  // guarantee is about values: a word computed from an address is the
+  // program's own claim, and bits copied by mem_copy are opaque — written
+  // into older memory, they keep the arena.
+  //
+  // (addr, bytes) -> the address that many bytes on
+  addr_at(Addr, Int) -> Addr
+  // (a, b) -> the bytes from b to a
+  addr_diff(Addr, Addr) -> Int
+  // The address no allocation answers, which a virgin slot reads.
+  null_addr() -> Addr
+  // An address's word, and the address a word names: the puns where a value
+  // crosses the runtime's word protocol (a list slot holds its element as a
+  // word). Each is the identity on the machine.
+  addr_word(Addr) -> Int
+  word_addr(Int) -> Addr
 }
 
 // MemoryWrite: a write into linear memory through an address. Every op
@@ -135,6 +137,15 @@ effect MemoryWrite {
   // dst. Slot 0 is the heap line (the persist packer patches it to the
   // image extent so restore rewinds allocation to the persisted moment).
   globals_save(Addr)
+  // Sets the runtime's world register ($world_g, the top of the install
+  // chain) back to a value world_top() returned, and reads nothing. Unlike
+  // the other ops here it writes a register, not memory at an address. Its
+  // one sound use is the end of a fork, where the graph checkpoint and the
+  // heap region are restored too: the value it restores predates every
+  // install the forked work pushed, and the chain nodes above it die with
+  // the region. Everywhere else only the emitted pushes and the restores
+  // around each install write the world register.
+  world_restore(Int)
 }
 
 // ImageSwap: the swap of the whole image, which writes every byte of memory
@@ -155,7 +166,16 @@ effect ImageSwap {
 // where an arena lives, and zero where none does.
 fn arena_stat(s: ArenaStat) = 0
 
-type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh | ArSuspended | ArJournalHigh
+type ArenaStat
+  = ArExits
+  | ArKept
+  | ArFreed
+  | ArMoved
+  | ArHigh
+  | ArSuspended
+  | ArJournalHigh
+  // The address of the "module:line" string of the install whose exit raised the line peak, 0 where no exit did.
+  | ArHighSite
 
 // Alloc — heap allocation. Bump allocator in WASM linear memory.
 // alloc(n) advances the heap pointer by n bytes (8-byte aligned)

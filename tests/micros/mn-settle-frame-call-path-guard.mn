@@ -1,0 +1,7 @@
+// check: pending 5:34
+// The read xs[i] stays pending. The guard i + 1 < len(xs) on the recursive
+// call's path speaks of the caller's xs, while the call hands ys as the next
+// xs. The second activation reads [9] at index 1.
+fn f(xs, ys, i, n) = if n == 0 { xs[i] } else if i < 5 { if i + 1 < len(xs) { f(ys, xs, i + 1, n - 1) } else { 0 } } else { 0 }
+
+fn main() = f([1, 2, 3], [9], 0, 1) - 9

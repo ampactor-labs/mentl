@@ -16,24 +16,24 @@ import types
 
 import strings
 
-// Smart constructors — sort invariant by construction
-// Every row value in the system passes through these
-// constructors. They canonicalize their input at the boundary so
-// downstream consumers (set_union, set_diff, set_contains, equality
-// checks) can assume sorted-flat input and run at substrate speed.
-// Permanent overhead-at-call drops to a single set_canonicalize per
-// construction; consumers can then drop their boundary canonicalize
-// adapters entirely.
-//
-// DESIGN Ch 4 substrate discipline: the row IS the sorted set. The
-// graph stores rows in the form they were constructed; constructors
-// enforce the invariant the algebra depends on.
+// Row constructors
+// Every row value in the system is built by these constructors. The graph
+// stores a row in the form it was built, so a row's present and absent
+// lists must already be sets (no two entries naming one member) when it is
+// built, and every reader of the algebra relies on that.
 //
 // ─── the canonical triple's constructors ────────────────────────────
 // row = present ∪ ⋃ (edge cell ∖ edge mask), or present ∪ (everything ∖
-// absent) under EtAll. Invariants enforced HERE, once, so every flowing
-// row is canonical at birth and no read ever normalizes: present and
-// absent each deduped, and under EtOpen the absent set is pushed onto
+// absent) under EtAll. ef_make builds the row from its present and absent
+// lists as it is given them. Those lists are sets by construction: they
+// come from the set algebra (name_set_union, name_set_intersect,
+// name_set_diff, name_set_canonicalize), from a literal of no names or one
+// name, from a filter of a set, or from another row's fields. That is the
+// writers' invariant, as the tail's order is (tail_canonical), and ef_make
+// does not check it again on every construction. A writer whose list may
+// name one member twice, such as a map that rewrites entries or a
+// concatenation, passes it through `name_set_canonicalize` before it
+// builds the row. Under EtOpen the absent set is pushed onto
 // every edge's mask and stored empty — a mask filters the path it was
 // written on, so the row keeps no mask of its own to spill onto an edge
 // it never covered. present ∩ a mask is COHERENT under the reading law —
@@ -52,9 +52,9 @@ import strings
 // gates carry B here, and subsumption checks a body's presents against
 // it transitively.
 fn ef_make(ref present, ref absent, tail) with !Mutate = match tail_canonical(tail) {
-  EtOpen(es) => EfRow(name_set_canonicalize(present), [], EtOpen(edges_masked(es, name_set_canonicalize(absent)))),
-  EtClosed => EfRow(name_set_canonicalize(present), name_set_canonicalize(absent), EtClosed),
-  EtAll => EfRow(name_set_canonicalize(present), name_set_canonicalize(absent), EtAll),
+  EtOpen(es) => EfRow(present, [], EtOpen(edges_masked(es, absent))),
+  EtClosed => EfRow(present, absent, EtClosed),
+  EtAll => EfRow(present, absent, EtAll),
 }
 
 // EtOpen([]) IS EtClosed — a union of zero edges contributes nothing
@@ -121,7 +121,12 @@ fn edge_meet(h, e) = if len(edge_mask(h)) == 0 {
 } else if len(edge_mask(e)) == 0 {
   e
 } else {
-  row_edge(edge_cell(h), name_set_intersect(edge_mask(h), edge_mask(e)))
+  // A mask the chase or a substitution renamed can repeat a name, so each
+  // is made a set before the algebra reads it.
+  row_edge(
+    edge_cell(h),
+    name_set_intersect(name_set_canonicalize(edge_mask(h)), name_set_canonicalize(edge_mask(e)))
+  )
 }
 
 fn tail_set_union(ref vs: [RowEdge], ref ws: [RowEdge]) = match ws {
@@ -144,12 +149,19 @@ fn tail_set_diff(ref vs: [RowEdge], ref ws: [RowEdge]) = match vs {
 }
 
 // Every edge subtracts `m` too — the subtraction's own move, and ef_make's
-// push of a row-level absent onto the edges it filters.
+// push of a row-level absent onto the edges it filters. An edge's mask and
+// `m` can each be a list the chase or a substitution renamed, which may
+// repeat a name, so both are made sets before the union.
 fn edges_masked(es: [RowEdge], m) = if len(m) == 0 { es } else { edges_masked_walk(es, m) }
 
 fn edges_masked_walk(es: [RowEdge], m) = match es {
   [] => [],
-  [e, ...rest] => [row_edge(edge_cell(e), name_set_union(edge_mask(e), m))] ++ edges_masked_walk(rest, m),
+  [e, ...rest] => [
+    row_edge(
+      edge_cell(e),
+      name_set_union(name_set_canonicalize(edge_mask(e)), name_set_canonicalize(m))
+    )
+  ] ++ edges_masked_walk(rest, m),
 }
 
 // Two edge sets over the same cells, whatever their masks — the unify
@@ -183,10 +195,11 @@ fn edges_unmasked(es: [RowEdge]) = match es {
 }
 
 // What every edge still subtracts, starting from `acc` — the universe
-// fold's bound: (ALL ∖ X) ∪ ⋃ (v ∖ m) ⊆ ALL ∖ (X ∩ ⋂ m).
+// fold's bound: (ALL ∖ X) ∪ ⋃ (v ∖ m) ⊆ ALL ∖ (X ∩ ⋂ m). `acc` is a set;
+// each mask is made one, since a renamed mask can repeat a name.
 fn edges_mask_meet(es: [RowEdge], acc) = match es {
   [] => acc,
-  [e, ...rest] => edges_mask_meet(rest, name_set_intersect(acc, edge_mask(e))),
+  [e, ...rest] => edges_mask_meet(rest, name_set_intersect(acc, name_set_canonicalize(edge_mask(e)))),
 }
 
 // A fold's result: the open residual, or — when some edge's content was
@@ -195,8 +208,14 @@ fn edges_mask_meet(es: [RowEdge], acc) = match es {
 // universe reaches a row VALUE only through a supply-side EtAll, which
 // the ETALL law forbids and the cell-carried gate removes
 // (`Hβ.infer.declared-row-vacuous-against-a-free-body-row`).
-fn row_of_fold(p, am, res: [RowEdge], saw_all) =
-  if saw_all { ef_make(p, edges_mask_meet(res, am), EtAll) } else { ef_make(p, [], EtOpen(res)) }
+// The presents are deduped here: the chase face and the substitution start
+// the fold from names they rewrote, and two rewritten entries can name one
+// member. The universe mask is a set already, an intersection of masks.
+fn row_of_fold(p, am, res: [RowEdge], saw_all) = if saw_all {
+  ef_make(name_set_canonicalize(p), edges_mask_meet(res, am), EtAll)
+} else {
+  ef_make(name_set_canonicalize(p), [], EtOpen(res))
+}
 
 fn absent_minus_present(ref a, ref p) with !Mutate =
   filter((entry) => !any((pe) => absent_contradicted_by(entry, pe), p), a)
@@ -238,7 +257,9 @@ fn absent_contradicted_by(absent, present) = if eff_name_handle(absent) != eff_n
   }
 }
 
-fn mk_ef_closed(ref names) = ef_make(names, [], EtClosed)
+// A closed row of the names a caller lists, deduped: some callers write
+// their list by hand.
+fn mk_ef_closed(ref names) = ef_make(name_set_canonicalize(names), [], EtClosed)
 
 fn mk_ef_open(ref names, v) = ef_make(names, [], EtOpen([bare_edge(v)]))
 
@@ -588,7 +609,8 @@ fn resolve_row_edges(row) = match row {
 // so the algebra compares what the graph knows, never a stale handle.
 fn instances_read(row) = match row {
   EfRow(p, a, t) => if any(name_holds_var, p) || any(name_holds_var, a) {
-    ef_make(map(name_read, p), map(name_read, a), t)
+    // Reading two instance variables can make two entries name one member.
+    ef_make(name_set_canonicalize(map(name_read, p)), name_set_canonicalize(map(name_read, a)), t)
   } else {
     row
   },
@@ -648,16 +670,25 @@ fn resolve_edge(acc, e) = match acc {
 // chase-face, subst, the stored flatten). The residual set unions in
 // order (the sorted-set invariant), and a universe content narrows the
 // universe mask the fold carries: (ALL ∖ X) ∪ (ALL ∖ Y) = ALL ∖ (X ∩ Y).
+// The chase and the substitution start the fold from presents they renamed,
+// and an edge's mask can be renamed the same way, so either may repeat a
+// name: both are made sets before the algebra reads them.
 fn edge_content_into(ref p, am, ref res, saw_all, m, ri) = match ri {
   EfRow(cp, ca, ct) => {
-    let p2 = name_set_union(p, name_set_diff(cp, m))
+    let p2 = name_set_union(name_set_canonicalize(p), name_set_diff(cp, name_set_canonicalize(m)))
     match ct {
       EtClosed => (p2, am, res, saw_all, true),
       EtAll => {
-        let um = name_set_union(ca, m)
+        let um = name_set_union(ca, name_set_canonicalize(m))
         (p2, if saw_all { name_set_intersect(am, um) } else { um }, res, true, true)
       },
-      EtOpen(ws) => (p2, am, tail_set_union(res, edges_masked(ws, name_set_union(ca, m))), saw_all, true),
+      EtOpen(ws) => (
+        p2,
+        am,
+        tail_set_union(res, edges_masked(ws, name_set_union(ca, name_set_canonicalize(m)))),
+        saw_all,
+        true
+      ),
     }
   },
 }
@@ -865,21 +896,27 @@ fn union_row(ref a, ref b) = match a {
 // meet by INTERSECTION — a name one side lets through is in the union —
 // which is why the absents are never unioned here: the union of two masks
 // claimed an absence neither side proved (`!E ∪ !F` read as `!E + !F`).
+// The presents are deduped here because the lattice join hands in the
+// fragment union, which keeps same-named instances side by side.
 fn rows_joined(p, aa, ta, ab, tb) = match ta {
   EtClosed => match tb {
-    EtClosed => ef_make(p, [], EtClosed),
-    EtOpen(ws) => ef_make(p, ab, EtOpen(ws)),
-    EtAll => ef_make(p, ab, EtAll),
+    EtClosed => ef_make(name_set_canonicalize(p), [], EtClosed),
+    EtOpen(ws) => ef_make(name_set_canonicalize(p), ab, EtOpen(ws)),
+    EtAll => ef_make(name_set_canonicalize(p), ab, EtAll),
   },
   EtOpen(vs) => match tb {
-    EtClosed => ef_make(p, aa, EtOpen(vs)),
-    EtOpen(ws) => ef_make(p, [], EtOpen(tail_set_union(edges_masked(vs, aa), edges_masked(ws, ab)))),
-    EtAll => ef_make(p, edges_mask_meet(edges_masked(vs, aa), ab), EtAll),
+    EtClosed => ef_make(name_set_canonicalize(p), aa, EtOpen(vs)),
+    EtOpen(ws) => ef_make(
+      name_set_canonicalize(p),
+      [],
+      EtOpen(tail_set_union(edges_masked(vs, aa), edges_masked(ws, ab)))
+    ),
+    EtAll => ef_make(name_set_canonicalize(p), edges_mask_meet(edges_masked(vs, aa), ab), EtAll),
   },
   EtAll => match tb {
-    EtClosed => ef_make(p, aa, EtAll),
-    EtOpen(ws) => ef_make(p, edges_mask_meet(edges_masked(ws, ab), aa), EtAll),
-    EtAll => ef_make(p, name_set_intersect(aa, ab), EtAll),
+    EtClosed => ef_make(name_set_canonicalize(p), aa, EtAll),
+    EtOpen(ws) => ef_make(name_set_canonicalize(p), edges_mask_meet(edges_masked(ws, ab), aa), EtAll),
+    EtAll => ef_make(name_set_canonicalize(p), name_set_intersect(aa, ab), EtAll),
   },
 }
 
@@ -1211,14 +1248,23 @@ fn gate_present(gs: [Gate], g: Gate) = match gs {
 // The gate as it reaches a terminal through the edge's mask: a negation
 // forgets the masked names (an absorbed name never reaches the row); a
 // closed cap admits them. A gate whose forbidden set the mask exhausts is
-// satisfied by the mask alone and pushes nothing.
+// satisfied by the mask alone and pushes nothing. The mask can be one the
+// chase or a substitution renamed, which may repeat a name, so it is made a
+// set before the algebra reads it.
 fn gate_through_mask(g: Gate, m) = match gate_row(g) {
   EfRow(p, a, t) => match t {
     EtAll => {
-      let a2 = name_set_diff(a, m)
+      let a2 = name_set_diff(a, name_set_canonicalize(m))
       if len(a2) == 0 { None } else { Some(mk_gate(ef_make(p, a2, EtAll), gate_reason(g))) }
     },
-    EtClosed => Some(mk_gate(ef_make(name_set_union(p, m), name_set_diff(a, m), EtClosed), gate_reason(g))),
+    EtClosed => Some(mk_gate(
+      ef_make(
+        name_set_union(p, name_set_canonicalize(m)),
+        name_set_diff(a, name_set_canonicalize(m)),
+        EtClosed
+      ),
+      gate_reason(g)
+    )),
     EtOpen(_) => None,
   },
 }
@@ -1399,7 +1445,7 @@ fn bind_edges_to(ref ws: [RowEdge], row, ref span, ref reason) = match ws {
 fn bind_edges_neg(ws: [RowEdge], forbidden, span, reason) = match ws {
   [] => (),
   [w, ...rest] => {
-    let f2 = name_set_diff(forbidden, edge_mask(w))
+    let f2 = name_set_diff(forbidden, name_set_canonicalize(edge_mask(w)))
     if len(f2) == 0 {
       ()
     } else {
@@ -1835,12 +1881,11 @@ fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
 // pass; this family is on the inf_add_row hot path.
 fn name_set_canonicalize(ref names) = {
   let n = len(names)
-  // Identity fast path — a duplicate-free input IS its canonical form, so
-  // return it UNSHARED-COPY-FREE. Rows are 0–3 names almost everywhere; the
-  // check is a scan with zero allocation, and the rebuild runs only when a
-  // duplicate actually exists. This is the churn fix for the 4GB bump image:
-  // ef_make canonicalizes at every algebra op, and before this path each op
-  // paid make_list + slice even for [] and singletons.
+  // A writer whose list may repeat a name calls this to make it a set; the
+  // set algebra never does, since its operands are already sets. A list with
+  // no colliding pair is already its own set, so it is returned unchanged.
+  // Rows hold 0 to 3 names almost everywhere, so the check is a short scan
+  // that allocates nothing, and the rebuild runs only when a name repeats.
   if n <= 1 {
     names
   } else if name_set_is_dedup(names, 0, n) {
@@ -1987,58 +2032,57 @@ else if row_entry_collides(list_index(buf, i), name) {
   name_set_prefix_contains_loop(buf, name, i + 1, n)
 }
 
+// The union of two sets. Both operands are already sets: no two entries of
+// either one collide, because every writer builds its list through this
+// algebra or through name_set_canonicalize. So the union of an empty set
+// with a set is that set, unchanged. Otherwise the buffer starts as a copy
+// of a, and each name of b is compared with a's entries only, since b's
+// names never collide with each other.
 fn name_set_union(ref a, ref b) = {
   let na = len(a)
   let nb = len(b)
-  // Identity fast paths: X ∪ ∅ = canonical X (zero-alloc when X already is).
   if na == 0 {
-    name_set_canonicalize(b)
+    b
   } else if nb == 0 {
-    name_set_canonicalize(a)
+    a
   } else {
-    let buf = make_list(na + nb)
-    let ca = name_set_dedup_count(a, 0, na, buf, 0)
-    name_set_union_rest(b, 0, nb, buf, ca)
+    let buf = list_copy_into(a, make_list(na + nb), 0, na)
+    name_set_union_rest(b, 0, nb, na, buf, na)
   }
 }
 
-// Phase 1 of union: dedup a into the buffer, RETURN the raw (buf-mutating)
-// count — the caller continues appending into the same buffer.
-// The union loops share dedup_into's collision law: a same-named arrival
-// UPGRADES a held bare to the parameterized instance (bare ∪ instance =
-// instance) — one law at every dedup twin, or the instance args die on
-// whichever accumulation path a bare reaches first.
-fn name_set_dedup_count(ref names, i, n, own buf, count) = if i >= n {
-  count
-} else {
-  let x = list_index(names, i)
-  let at = name_set_prefix_index(buf, count, x)
-  if at >= 0 {
-    let held = list_index(buf, at)
-    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
-    name_set_dedup_count(names, i + 1, n, upgraded, count)
-  } else {
-    name_set_dedup_count(names, i + 1, n, list_set(buf, count, x), count + 1)
-  }
-}
-
-fn name_set_union_rest(ref b, i, n, own buf, count) = if i >= n {
+// Adds b's names to a buffer whose first na entries are a. A name of b that
+// collides with an entry of a (row_entry_collides) is one member with it, and
+// collision_upgrades decides which of the two the set keeps; that is the
+// same law name_set_dedup_into applies, so a bare name meeting its instance
+// keeps the instance on every path. A name of b that collides with none of
+// a's entries is appended.
+fn name_set_union_rest(ref b, i, n, na, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   let x = list_index(b, i)
-  let at = name_set_prefix_index(buf, count, x)
+  let at = name_set_prefix_index(buf, na, x)
   if at >= 0 {
     let held = list_index(buf, at)
     let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
-    name_set_union_rest(b, i + 1, n, upgraded, count)
+    name_set_union_rest(b, i + 1, n, na, upgraded, count)
   } else {
-    name_set_union_rest(b, i + 1, n, list_set(buf, count, x), count + 1)
+    name_set_union_rest(b, i + 1, n, na, list_set(buf, count, x), count + 1)
   }
 }
 
+// The intersection keeps the entries of a that b contains, so it is a set
+// whenever a is. Where either operand is empty, the answer is that empty
+// operand and nothing is allocated.
 fn name_set_intersect(ref a, ref b) = {
   let n = len(a)
-  name_set_intersect_into(a, b, 0, n, make_list(n), 0)
+  if n == 0 {
+    a
+  } else if len(b) == 0 {
+    b
+  } else {
+    name_set_intersect_into(a, b, 0, n, make_list(n), 0)
+  }
 }
 
 fn name_set_intersect_into(ref a, ref b, i, n, own buf, count) = if i >= n {
@@ -2054,15 +2098,10 @@ fn name_set_intersect_into(ref a, ref b, i, n, own buf, count) = if i >= n {
 
 fn name_set_diff(ref a, ref b) = {
   let n = len(a)
-  // Identity fast paths: ∅ ∖ Y = ∅; X ∖ ∅ = canonical X (zero-alloc when
-  // X already is — ef_make's absent-minus-present with empty present).
-  if n == 0 {
-    a
-  } else if len(b) == 0 {
-    name_set_canonicalize(a)
-  } else {
-    name_set_diff_into(a, b, 0, n, make_list(n), 0)
-  }
+  // The difference keeps the entries of a that b does not absorb, so it is a
+  // set whenever a is. An empty a answers the empty set, and an empty b
+  // answers a unchanged; neither allocates.
+  if n == 0 { a } else if len(b) == 0 { a } else { name_set_diff_into(a, b, 0, n, make_list(n), 0) }
 }
 
 fn name_set_diff_into(ref a, ref b, i, n, own buf, count) = if i >= n {

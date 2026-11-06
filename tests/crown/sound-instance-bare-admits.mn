@@ -1,12 +1,13 @@
+// check: accepted
 // CROWN instance (§11 6.2) — the admission's instance law: a BARE
 // declared `with Sample` admits every instance of its name (the
 // declaration constrains the NAME; the instance stays the body's own).
 // Expect NO E_EffectMismatch.
 effect Sample(rate: Int) { tick() -> Int }
 fn inner() with Sample(44100) = tick()
-fn ok() with Sample = inner()
+fn admits() with Sample = inner()
 // The handler at main makes the program EXECUTABLE (the root gate reads
 // the row alone, 2026-09-27; an instance-unpinned handler bridges the
 // pinned instance — SYNTAX's explicit handler bridge).
 handler h { tick() => resume(1) }
-fn main() = (ok()) ~> h
+fn main() = (admits()) ~> h

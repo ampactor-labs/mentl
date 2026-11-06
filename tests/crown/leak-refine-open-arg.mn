@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0, 2026-10-01): `inv` is total only on its domain —
 // its division is proven by its parameter's precondition — so a call whose
 // argument claim is OPEN is a call outside the proven domain, and the row

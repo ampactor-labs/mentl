@@ -1,10 +1,11 @@
+// check: accepted
 // CROWN instance (§11 6.2) — !Sample(44100) ADMITS a provably distinct
 // instance: the body reaches Sample(48000) only. Expect NO
 // E_EffectMismatch.
 effect Sample(rate: Int) { tick() -> Int }
 fn inner() with Sample(48000) = tick()
-fn ok() with !Sample(44100) = inner()
+fn admits() with !Sample(44100) = inner()
 // The handler at main makes the program EXECUTABLE (the root gate reads
 // the row alone, 2026-09-27).
 handler h { tick() => resume(1) }
-fn main() = (ok()) ~> h
+fn main() = (admits()) ~> h

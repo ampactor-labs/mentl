@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN env (E1) — `!Env("A")` ADMITS `env("B")`: the perform's literal
 // grounds the instance at "B", provably distinct from "A". Expect NO
 // E_EffectMismatch.

@@ -1,0 +1,24 @@
+// expect: 3
+// `gather` installs the collector itself, so the answer of `gathered` is
+// the collector's state field, bound at that install from the init `[]`.
+// The judgment reads the answer as memory the call made, and `mentl query`
+// on this file with "claim gather" says the function returns fresh memory.
+// The pinned boot read every op's answer as older memory.
+effect Gather {
+  add(x: Int)
+  gathered() -> [Int]
+}
+
+handler collect with acc = [] {
+  add(x) => resume() with acc = push(acc, x),
+  gathered() => resume(acc),
+}
+
+fn gather() = {
+  add(1)
+  add(2)
+  add(3)
+  gathered()
+} ~> collect
+
+fn main() = len(gather())

@@ -1,3 +1,4 @@
+// check: refuse E_EffectUnhandled
 // The callback face of leak-root-instance-foreign-install: `run` installs the
 // 48 kHz clock over a callback whose row is open while `run` is judged, so
 // the install's absorption rides the open row as a mask that subtracts only

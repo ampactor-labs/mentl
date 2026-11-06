@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the list sibling's other half: a closure performing E resumed
 // out inside a TUPLE, destructured and called under `with !E`. The
 // result's cap is structural, so the tuple's element carries it.

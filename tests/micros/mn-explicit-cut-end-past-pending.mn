@@ -1,0 +1,9 @@
+// check: refuse E_EffectMismatch
+// A cut whose end a call hands past the list stays open. The guard proves
+// `0 <= b`, so the start and the order of the bounds hold, but the one call
+// hands `b` the value 5 for a list of three. A call that fails a bound
+// refutes nothing, since the guard may keep it from reaching the cut, so the
+// cut keeps the Trap its check can raise and `!Trap` is refused.
+fn upto(xs, b) with !Trap = if 0 <= b { slice(xs, 0, b) } else { [] }
+
+fn main() = len(upto([1, 2, 3], 5))

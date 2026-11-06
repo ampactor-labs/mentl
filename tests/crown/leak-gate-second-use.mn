@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — two uses of one gated HOF: the quiet callback passes, the
 // performing one refuses at ITS argument edge (each use instantiates the
 // gated cell fresh, so the first use's binding never reaches the second).

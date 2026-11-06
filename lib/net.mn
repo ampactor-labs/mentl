@@ -1,0 +1,14 @@
+// The Network capability: the effect a program's row names when it asks for
+// the network. Like Filesystem (lib/fs.mn) it is a module of its own, so any
+// program can promise with !Network that a function never asks for the
+// network, through every function it calls.
+//
+// The library ships no handler for it yet, and no program can write one that
+// reaches a network: the WebAssembly the compiler emits targets WASI preview
+// 1, which offers no outbound connection, so the emitted code imports no
+// socket. A real handler needs the compiler to emit a WASI 0.2 component,
+// whose sockets and HTTP interfaces a host can grant.
+effect Network {
+  // the text at a web address
+  fetch(url: String) -> String
+}

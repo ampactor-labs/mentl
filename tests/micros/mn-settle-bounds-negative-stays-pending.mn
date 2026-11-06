@@ -1,0 +1,7 @@
+// check: pending 5:33
+// The read xs[i] has only the upper guard, and the one call hands i the
+// value -1, so the lower face 0 <= i does not hold: mentl check leaves the
+// claim pending and the run traps at the read.
+fn at(xs, i) = if i < len(xs) { xs[i] } else { 0 }
+
+fn main() = at([4, 5], 0 - 1)

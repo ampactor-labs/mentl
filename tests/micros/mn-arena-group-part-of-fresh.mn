@@ -1,0 +1,19 @@
+// expect: 7
+// A part of a fresh answer inside a group: hold answers a new list holding
+// o, and get answers its first element, which is o itself.
+import arena
+
+fn hold(o, n) = if n == 0 { push([], o) } else { push([], get(o, n - 1)) }
+
+fn get(o, n) = hold(o, n)[0]
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  {
+    list_set(get(older, 3), 0, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

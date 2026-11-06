@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN modal (§11 6.3's crucible sweep): DOUBLE-HOF threading — the
 // effect crosses two lambda layers (the op inside a lambda, wrapped by
 // wrap's returned thunk) and the enclosing install still absorbs it,

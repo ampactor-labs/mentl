@@ -26,7 +26,7 @@
 # that this table does not carry.
 #   variable              default                          read by
 #   MENTL_HOME            the checkout holding tools/     install.sh (the shim), verify.sh
-#   MENTL_BOOT            boot/mentl.wasm                  the shim, run-micro.sh, crown-gate.sh, effect-identity-gate.sh, verify.sh
+#   MENTL_BOOT            boot/mentl.wasm                  the shim, run-micro.sh, effect-identity-gate.sh, verify.sh
 #   MENTL_WASMTIME        .build/wasmtime, then PATH       wt-env.sh, wasmtime-get.sh, verify.sh
 #   MENTL_WT_EXTRA        (none)                           wt-env.sh — extra engine flags, e.g. --profile=perfmap
 #   MENTL_RT_LIBS         (set here, never read in)        wt-env.sh, verify.sh, march-gate.sh — the runtime floor's modules

@@ -1,0 +1,11 @@
+// check: refuse E_EffectMismatch
+// The why verb through an answering arm: `quiet` declares `!WASI` and
+// performs only `print`, so its own row never names WASI, but the
+// `stdout_console` install in `main` answers that print with a write to the
+// host. The check refuses `quiet` with the path through the arm, and
+// `mentl why` on quiet and WASI prints that same path.
+import io
+
+fn quiet() with !WASI = print("hi\n")
+
+fn main() = quiet() ~> stdout_console

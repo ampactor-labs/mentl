@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a two-edge body row: `f() + g()` chases to no single terminal,
 // so the first form of the exit check (a chase to NRowFree) never fired
 // for it; the install walks EVERY free terminal of the resolved row and

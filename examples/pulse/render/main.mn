@@ -47,7 +47,7 @@ import io
 
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

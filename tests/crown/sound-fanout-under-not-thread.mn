@@ -1,3 +1,4 @@
+// check: accepted
 // The real-time claim (SYNTAX ><): a bare fanout inside a !Thread
 // region ACCEPTS — the verb is pure topology contributing zero
 // effects; with no Schedule installed the branches run Seq.

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — latency rides the record REST: a closure performing E sits in a
 // field that a `{keep, ...rest}` pattern moves into the residual, and the
 // call comes through THAT binding. The row must survive the residual.

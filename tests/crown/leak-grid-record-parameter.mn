@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the controller shape: the closure that reads the network arrives
 // inside a record built outside the decision, and the decision reads the
 // field and calls it. The row rides the field to the call.

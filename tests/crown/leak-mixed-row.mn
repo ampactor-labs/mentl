@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN modal (§11 6.3's crucible sweep): the MIXED ROW's leak face —
 // F + !E licenses F, but the same body also performing E violates the
 // negation half; the license for one name never launders the other.

@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN instance (RESIDUE effarg-node D2) — an EFFECT NAME standing at an
 // instance-argument position (the Flow(Secret, WASI) shape): EAEffect
 // carries the effect's interned name handle, and handle inequality IS
@@ -7,8 +8,8 @@ effect Store { put(x: Int) -> Int }
 effect Log { note(x: Int) -> Int }
 effect Flow(src: Int, sink: Int) { move(x: Int) -> Int }
 fn inner() with Flow(1, Store) = move(1)
-fn ok() with !Flow(1, Log) = inner()
+fn admits() with !Flow(1, Log) = inner()
 // The handler at main makes the program EXECUTABLE (the root gate reads
 // the row alone, 2026-09-27).
 handler h { move(x) => resume(x) }
-fn main() = (ok()) ~> h
+fn main() = (admits()) ~> h

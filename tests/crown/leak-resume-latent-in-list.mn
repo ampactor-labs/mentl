@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the result's cap must be STRUCTURAL. A closure performing E,
 // resumed out inside a LIST, indexed and called under `with !E`. The bare
 // `give() -> (() -> Int)` refused from the first cut of this rule; this

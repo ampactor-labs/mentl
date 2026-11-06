@@ -1,0 +1,40 @@
+// at 38:11: ~> arena Alloc free
+// Two functions that call each other hand a buffer back and forth, as the
+// lexer's lex_from and scan_string do: `fill` hands its buffer to
+// `splice`, and `splice` hands what `fill` returns back to `fill`. Every
+// store lands in the buffer each was handed, and `start` hands them a list
+// it allocated inside the arena. So the extent the arena opens is free of
+// roots, and the caret says so. The pinned boot read a call into the other
+// member as memory older than the caller, and said the roots were unknown.
+import arena
+
+fn put(buf, count, t) = {
+  let extended = list_extend_to(buf, count + 1)
+  let written = list_set(extended, count, t)
+  (written, count + 1)
+}
+
+fn fill(own buf, count, k) = if k == 0 {
+  (buf, count)
+} else if k == 5 {
+  match splice(buf, count, k - 1) {
+    (b1, c1) => fill(b1, c1, k - 2),
+  }
+} else {
+  match put(buf, count, k) {
+    (b1, c1) => fill(b1, c1, k - 1),
+  }
+}
+
+fn splice(own buf, count, k) = match fill(buf, count, k) {
+  (b1, c1) => put(b1, c1, 9),
+}
+
+fn start() = match fill(make_list(4), 0, 6) {
+  (_, c) => c,
+}
+
+fn main() = {
+  start() ~> arena
+  0
+}

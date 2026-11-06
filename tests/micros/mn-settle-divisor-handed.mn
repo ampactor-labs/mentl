@@ -1,0 +1,7 @@
+// check: clean
+// A divisor that is a parameter is what its calls hand it: every call of
+// half passes a nonzero literal, so mentl check proves the division for this
+// program and prints nothing pending.
+fn half(total, parts) = total / parts
+
+fn main() = half(10, 2) + half(7, 5)

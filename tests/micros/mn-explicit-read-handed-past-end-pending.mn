@@ -1,0 +1,7 @@
+// check: pending 5:28
+// An explicit read owes its bounds claim at the call, as `xs[i]` owes its
+// own. The guard proves `0 <= i`, but the second call hands `i` the value 2
+// for a list of two, so the claim that `i < len(xs)` stays open there.
+fn at(xs, i) = if 0 <= i { list_index(xs, i) } else { 0 }
+
+fn main() = at([1, 2, 3], 2) + at([1, 2], 2) - 3

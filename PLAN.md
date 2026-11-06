@@ -331,8 +331,8 @@ line of work by Tang and Lindley, POPL 2026, arXiv 2507.10301, which proves
 rows equivalent to capabilities) is the target for the unsurpassable tier.
 What it still leaves open is the negation half. Rows are represented as
 `EfRow(present, absent, tail)` with `EffTail = EtClosed | EtVar | EtAll`, and
-negation is the absent field. The crown battery (`tests/crown/`,
-`bash tools/crown-gate.sh`) is the soundness gate. The time axis is
+negation is the absent field. The crown battery (`tests/crown/`, run by
+`wt_battery` like every test directory) is the soundness gate. The time axis is
 `TCont(R, S, ResumeDiscipline, EffRow)`: the continuation carries its effect
 world, unified as a row, and a mismatch in resume discipline is refused
 (`E_ResumeWorldMismatch`). The modality is inferred and shown at the cursor,
@@ -827,7 +827,7 @@ as unknown, never as passing.
   whose list-slot and raw stores never target memory older than it,
   carries a witness at its exit: with the yield flag clear, a journal that
   moved since the extent opened stops the program and names the install.
-  The census shapes `arena-unknown` (on the board at 29) and
+  The census shapes `arena-unknown` (on the board at 23) and
   `arena-rooted` count the installs, and the caret at `~> arena` says which
   case it is. The micros that never yield lose three barriers each and
   carry the witness; the wheel yields, so its 196 list-store barriers stay,
@@ -909,10 +909,10 @@ as unknown, never as passing.
   own parameter, a call into a member of the same group before the group's
   claims are said, or a call storing into memory older than the extent
   that no claim names; `census arena-unknown` says the same beside each
-  site (tests/micros/mn-arena-unknown-says-why.mn). On the wheel 27 of the
-  28 unknown installs are the last kind, callees writing the graph's
-  state, which the exit reads off the install chain since N1, and one is a
-  function applied through a value. `census unplaced` says what stopped
+  site (tests/micros/mn-arena-unknown-says-why.mn). On the wheel 20 of the
+  23 unknown installs are the last kind, one applies a function whose
+  writes the judgment cannot name, and two apply a parameter whose writes
+  only their callers know (2026-11-06). `census unplaced` says what stopped
   the verifier's walk at each value, and a Bool, a nominal type with no
   payload or a refined word no longer counts as memory (`holds_memory`,
   src/verify.mn). The judgment reads a constructor call as the fresh
@@ -924,6 +924,99 @@ as unknown, never as passing.
   built in sight as the value put there. `census unplaced` on the wheel
   fell from 48,122 to 38,694; the candidate compiled the wheel to the
   boot's bytes.
+- **A perform names the install that answers it, and an operation's answer is
+  the install's state** (2026-11-06). Where the judgment charges an
+  operation's effect inside an install written in the same declaration, it
+  writes an edge from the perform to that install, and the caret at the
+  perform says which install answers it
+  (tests/micros/mn-perform-names-its-install.mn: `perform gathered ~>
+  collect 16`). The memory walk follows the edge: an operation's answer is
+  what the install's arm resumes, read in the arm's scope, so a collector's
+  answer is fresh memory, and `map` and `filter` claim a fresh answer
+  (`mentl query src/main.mn "claim map"` says `returns: fresh`). A store's
+  reach says which of three it is (`Beyond`: nothing older, a handler's
+  state, other older memory). On the wheel the arena installs whose roots
+  the judgment left unknown fell from 28 to 23.
+- **A part of a value is its contents, and the face says what its answer
+  holds** (2026-11-06). The judgment read a part taken off a value as the
+  whole's memory, so a part of fresh memory read as fresh and a store
+  through it got no barrier: a young list stored through `holder[0]` into an
+  older list was reclaimed at its arena's exit
+  (tests/micros/mn-arena-store-through-indexed-holder.mn answers 7 where the
+  pin before this one answered 0). Now a record, tuple or constructor built
+  in sight gives the value put there, and any other part, a list's element
+  above all, is older memory until the graph carries what was stored into
+  an allocation (§11.8). A recursive group's answers settle at its close
+  from "not read yet", and a declaration's claim says, beside what its
+  answer is, what a store into a part of it reaches (`holds`), which closed
+  two more false proofs (mn-arena-group-part-of-fresh.mn and
+  mn-arena-part-of-param-or-fresh.mn answer 7 where the pin before this one
+  trapped). The values whose memory the verifier's walk cannot place fell
+  from 38,694 to 35,936 on the wheel.
+- **A claim every call proves leaves the program's debt** (2026-11-06). After
+  the judgment, the settle pass asks each open claim again with every
+  reference linked, reading a parameter as what each call hands it, each
+  call whole (every parameter replaced by that call's argument at once, only
+  that call's path facts applied), and the recursive call under the body's
+  own hypothesis. A claim so decided leaves what `mentl check` prints and
+  stays owed by the declaration's face, so `mentl teach` still proposes the
+  refinement a future caller needs. The editor's strip marks it "proven by
+  its calls" at its site, beside the teach cell's need, and `mentl query
+  FILE traps` says its place is proven only through the program's calls;
+  both read one list of the ledger (`verify_handed`). The row still carries
+  the `Trap` the judgment charged where the claim was open (§11.3). `main`,
+  and in a link with no `main` every declaration at module level, has a call
+  no reference records, the host's, so its parameters decide nothing
+  (tests/micros/mn-settle-*.mn, with the contract `// check: pending L:C`).
+  On the wheel the board's open obligations fell from 135 to 92.
+- **Every place a program can stop with a trap is listed with its claim**
+  (2026-11-06). An explicit call of `list_index`, `byte_at`, `slice` or
+  `str_slice` owes its bounds where it stands, as `xs[i]` owes its own.
+  `mentl query FILE traps` lists every place where `Trap` reaches `main`'s
+  row, each with its claim: proven, proven only through the program's
+  calls, pending, refused, or none. A claim stands at the node that charges
+  its `Trap`, so a destructure's claim and a parameter pattern's stand at
+  the pattern, and the facet reads each place's own claim. `mentl check`
+  ends with how many places can trap and how many of them are inside the
+  library (on the wheel: 3,987 places, 3,931 of them inside the library
+  through the program's calls), and the proof gate heads its answer PROVEN
+  only when nothing is pending and no place can trap. The board bounds the
+  places with no claim at 3,375 and the open claims at explicit calls at
+  664.
+- **The lowering calls the form beneath a check only where the judgment
+  proved its claim** (2026-11-06). It used to call `slice_raw` or
+  `list_index_unchecked` wherever a call's node carried no `Trap` note, and
+  a stage a pipe completes raises no claim, so `xs |> slice(??, 5, 9)` on a
+  list of three answered four elements read past its end. The judgment now
+  links a call whose claim it proved to the form beneath the check, and the
+  lowering calls only what the link names
+  (tests/micros/mn-pipe-cut-keeps-its-check.mn and four more stop with a
+  trap where the pin before this one read past the end). A pipe's stage
+  owes no claim of its own yet (§11, a stage is the call it completes).
+- **The crown is a battery** (2026-11-06). Each of the 191 crucibles in
+  tests/crown states its contract on its first line, `// check: refuse
+  E_EffectMismatch` (or the class it tests) for a leak and `// check:
+  accepted`, no error at all, for its sound twin, and `wt_battery` judges
+  them as it judges every test directory, so the crown has no script of its
+  own. Six
+  sound crucibles had been refused for reasons beside the one they test (a
+  name colliding with the library's, an effect named without its import),
+  which the script's count could not see; they are fixed.
+- **Each capability is a module** (2026-11-06). The Network effect moved out
+  of lib/dsp/signal.mn into lib/net.mn, which ships no handler, since the
+  emitted WebAssembly can reach no network. The time effects (Clock, Tick,
+  Sample, Deadline) moved from lib/dsp/clock.mn into lib/clock.mn, whose
+  real handlers do not build yet and whose test handlers answer the same
+  values on every run (§11, the host's clock, randomness and sleep).
+- **Smaller corrections** (2026-11-06). An effect whose handlers' arms
+  differ, one resuming once and one never, keeps a live continuation where
+  it was lowered as never resuming
+  (tests/micros/mn-resume-mixed-handlers.mn answers 7 where the pin before
+  this one stopped with "the compiler broke its own invariant"). The
+  caret's Why at a library declaration names that declaration's module
+  (`declared len, at lists:167`). A census counts the match arms that list
+  three or more constructors with only wildcards, bounded on the board at
+  1,369, so no commit adds one.
 - **A `with` clause states decisions and never lists the row**
   (2026-10-30). A declaration's clause leaves every effect it does not
   mention to the body: `fn rate() with Sample(48000) = { print(…);
@@ -1311,7 +1404,7 @@ mentl map [<id, title or word>]     # the read path by part: PLAN and SYNTAX by 
 bash tools/march.sh                 # the fixed point: boot→m2→m3, m4 on a difference, TRANSITION or BROKEN; MARCH_REPIN=1 pins
 bash tools/march-gate.sh --micros   # the rungs and the micro battery through the boot's m2
 bash tools/frontier-gate.sh         # what no fixture contract names yet: the verbs' text, the authoring workflows, the project routes (--compiler fresh for the current wheel)
-bash tools/crown-gate.sh            # leaks refuse, sounds accept
+wt_battery C.wasm tests/crown       # each leak refuses with its class, each sound twin is accepted
 bash tools/proof-exactness-gate.sh  # a hole refuses, debt surfaces, a suspension runs
 bash tools/ide-gate.sh              # the resident session: the node twin, then headless Chrome over the page
 bash tools/verify.sh                # what no verb has absorbed: micros through the host, the sha chain, doc-truth
@@ -1462,7 +1555,9 @@ and spans into every node). And the lowered program (`LowExpr`, a second tree
 whose walks read names). The keystone (step 2) and the face (step 3) remove
 the last three.
 
-**THE STANDING CURSOR**: the order in which the work runs.
+**THE STANDING CURSOR**: the order in which the work runs. Steps 10 to 13
+run before step 1, in that order, and steps 14 and 15 run after step 1 and
+before step 2 (2026-11-06): each reads only facts the steps before it carry.
 
 1. **The soundness core: the crown modal, the row whole, the reach one
    walk.** (a) The crown, made modal (`Hβ.effects.modal-world-index`). A row
@@ -1624,14 +1719,10 @@ the last three.
    are a table in the judgment (`seq_op_sig`). Each becomes the primitive's
    own signature, with its body typed through it, once a list's element
    crosses its slot at its own width (step 2). Its precondition is a claim on
-   that face, decided at every explicit call the way `xs[i]`'s is. A read's
-   (`list_index`, `byte_at`) and a cut's (`slice`, `str_slice`) are, since
-   2026-10-28: a call with its arguments in place that the fragment proves in
-   range calls the form beneath the check and charges no `Trap`, a refuted
-   one is refused, and an open one keeps the primitive's row and owes the
-   ledger nothing. `make_list`'s count, `list_set`'s index and a call that a
-   pipe completes still charge the `Trap` their body's check can raise. A
-   call's answer
+   that face, owed at every explicit call the way `xs[i]`'s is (a read's and
+   a cut's, §7). `make_list`'s count and `list_set`'s index raise no claim
+   yet, and a stage a pipe completes raises none until it is judged as the
+   call it completes (step 10). A call's answer
    read off a tee (a fold's accumulator, a handler's answer) is placed by the
    install's arms, as the value walk already reads them
    (`Hβ.effects.tee-answer-is-the-arms`). Today a function threading a table
@@ -1642,11 +1733,11 @@ the last three.
    predicate's nodes and a called function's contract and body. So a
    predicate that calls a function, or that performs an op answered by an
    install in sight (lesson 6's Nyquist bound), is decided. A parameter is
-   what its calls pass it (`Hβ.verify.parameter-is-what-its-calls-hand`).
-   Each call's hand-off is recorded where its edge is drawn and read under
-   that call's path, and the recursive call is read under the body's own
-   hypothesis. So `0 <= i`, where every call passes `0` or `i + 1`, is a
-   hypothesis of the body, and the wheel's index loops are proven. A label's
+   read as what its calls pass it (`Hβ.verify.parameter-is-what-its-calls-hand`,
+   §7), and a claim every call proves leaves the program's debt. What
+   remains is the row, which still carries the `Trap` the judgment charged
+   where the claim was open, so a `with !Trap` cannot yet rest on a proof
+   through the calls. A label's
    claim on a part read off a call's answer is read through the callee's
    return tails. It is proven where the callee built the part in sight, and
    owed, naming the site, where it did not
@@ -1998,9 +2089,15 @@ the last three.
    roots an extent through the journal (built 2026-11-05, §7); an extent is
    root-free through the journal when no list-slot or raw store it makes
    targets older memory, and no arena in the compiler is yet, since each
-   stores nodes into the graph's columns. The next fall is the placement
-   that allocates a published value where it will live (MENTL_MEMORY's
-   M8), after which the journal holds the unknown-edge residue alone. A handle becomes an
+   stores nodes into the graph's columns. Placement first needs what each
+   allocation holds: the judgment decides every store into an allocation
+   and keeps nothing of what the store put there, so a list's element out
+   of sight reads as older memory (§7); a column of the values each store
+   puts into an allocation, written where the store is judged, places the
+   element and lets `list_index` answer a part of its list. The next fall
+   is the placement that allocates a published value where it will live
+   (MENTL_MEMORY's M8), after which the journal holds the unknown-edge
+   residue alone. A handle becomes an
    `{arena, offset}` product
    (one word, by a repr pin) that is deterministic under any order. The
    demand walk that twins a direct callee by the install's schedule follows a
@@ -2066,6 +2163,73 @@ the last three.
    start (built 2026-10-30 for a program that allocates nothing after its
    start; a size the program computes waits for step 2's evaluator, and
    running out of memory as a row fact is step 1's).
+
+10. **A stage is the call it completes.** The judgment writes a stage's
+    completed product once at the pipe, the piped value in its hole or its
+    next open slot with labels resolved and defaults filled, and judges that
+    call with the one call judgment, so a stage's claims, row, store ages and
+    hand-offs are the call's. A share's branches complete against the
+    borrowed input the same way, and the merge fills the product's parts.
+    The lowering lowers that product as a call, and the readers that rebuild
+    the completed call (`stage_application`, `completed_args`) and the
+    lowering's splice go. The call's product also says when the judgment
+    proved a primitive's claim, in place of the reference edge such a call
+    carries since 2026-11-06. Red today: `10 |> minus(b = 3)` runs as
+    minus(3, 10), and a pipe into `slice` owes no claim, so a guarded one
+    still charges `Trap`.
+
+11. **The host's clock, randomness and sleep are real.** The WASI boundary
+    leaves lib/io.mn for a module of its own. The emitter imports
+    `clock_time_get`, `random_get` and `poll_oneoff`; `clock_host` reads the
+    hour, `sleep` waits, and a deadline counts down from the clock it reads.
+    lib/random.mn gives the host's randomness and a seeded generator that
+    names its algorithm. Every capability module holds the host's handler, a
+    recorder, a replayer and models that say they are models, and no handler
+    answers from a table in place of the host. `mentl audit` calls a
+    function whose row reaches no host input deterministic. A row can name
+    the directory a function may touch (`with Filesystem("data")`), and a
+    file is an owned handle closed when the extent that opened it ends.
+
+12. **An extent can end early, and leaves older memory as it found it.** A
+    perform is answered by its nearest install, and the machine is only the
+    root: one fact says who answers each operation, read by the judgment and
+    by the lowering alike. A handler of `Trap` ends its extent: the memory
+    the extent allocated is reclaimed, its stores into older memory are
+    undone from the journal, which then keeps each old value, and the
+    install answers its value. So `main with !Trap` holds over a request
+    that fails, and the state the request wrote is the state before it. A
+    passed deadline and a failed branch of a split end their extents the
+    same way. The first measurement is whether the engine runs
+    WebAssembly's exception handling, which costs nothing when nothing
+    fails. Red today: a handler of `trap` takes `Trap` out of the row while
+    `trap` still stops the machine, so `!Trap` is accepted and the run
+    stops.
+
+13. **The roster leaves the page, and the index walks become stages.** A
+    default arm over a sum is accepted where it answers the empty value of
+    the match's type, and refused otherwise. When an edit adds a
+    constructor, `mentl check` says so once at each default over it, and
+    `mentl tighten` writes defaults instead of rosters. The syntax tree's
+    products of more than two fields become records. Each sequence stage of
+    the library keeps its index walk in a nested function whose claims
+    settle at the stage's close, so its face says it never traps, and the
+    378 functions `census iteration` names become pipelines over their
+    sequences. The census of rosters (1,369 arms) and of iteration costumes
+    (378 functions) fall with it.
+
+14. **The WASI 0.2 component target, and a real network.** Mentl emits the
+    component itself, the canonical ABI's lifting and lowering included, one
+    effect per WASI interface, and imports exactly what `main`'s row
+    reaches. `fetch` is answered over `wasi:http`, so a program can reach the
+    network and a negation of `Network` means something. A row names the
+    hosts a function may reach (`with Network("api.weather.gov")`), a socket
+    and a body are owned handles, and an asynchronous host call is a perform
+    resumed later.
+
+15. **A seeded world.** Each capability has a model that takes a seed and a
+    fault plan (delays, skew, failures). A verb runs `main` under the
+    models, checks the program's claims and stated properties at each step,
+    and on a failure prints the seed that replays the run exactly.
 
 ---
 

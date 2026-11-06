@@ -1,0 +1,8 @@
+// check: pending 6:48
+// The read xs[2] stays pending. Its guard 2 < len(ys) speaks of ys, and the
+// recursive call swaps xs and ys, so the guard read in the next activation
+// names the list the caller handed as xs. The second activation reads [1]
+// at index 2.
+fn g(xs, ys, n) = if n == 0 { if 2 < len(ys) { xs[2] } else { 0 } } else { g(ys, xs, n - 1) }
+
+fn main() = g([1, 2, 3, 4], [1], 1) - 3

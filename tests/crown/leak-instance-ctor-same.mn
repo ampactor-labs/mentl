@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN instance — the ctor fold's guard: folding a nullary ctor to its
 // value-distinct form must never admit the SAME instance. !Flow(1, Store)
 // refuses the body's Flow(1, Store). Expect E_EffectMismatch.

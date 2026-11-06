@@ -1,7 +1,10 @@
-// A program with ONE open obligation of its own: `100 / n` owes `n != 0`
-// and nothing bounds `n`. Its compile surfaces exactly that one — never the
+// A program with ONE open obligation of its own: `100 / n` owes `n != 0`,
+// and n is how many of seven numbers pass a filter, a count the compiler
+// does not work out. Its compile surfaces exactly that one, never the
 // runtime library's own open claims beside it (the frontier's user-link
 // leg). It runs to 20.
 fn inv(n) = 100 / n
 
-fn main() = inv(5)
+fn big(x) = x > 2
+
+fn main() = inv(len(filter(big, [1, 2, 3, 4, 5, 6, 7])))

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — a handler's config DEFAULT performs where the arms perform: at
 // the install, in the installer's world. So a default that performs E must
 // reach the installer's row and meet its `!E`. Expect E_EffectMismatch.

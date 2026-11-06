@@ -38,7 +38,7 @@ find_browser() {
   for c in google-chrome chromium chromium-browser; do
     if command -v "$c" >/dev/null 2>&1; then command -v "$c"; return; fi
   done
-  for c in "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"/chromium-*/chrome-linux/chrome; do
+  for c in "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"/chromium-*/chrome-linux*/chrome; do
     if [ -x "$c" ]; then echo "$c"; return; fi
   done
 }

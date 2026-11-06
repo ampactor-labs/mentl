@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — the control for leak-negation-callback: `run2` is declared
 // `with !F` too, but its body installs `hf` around the callback, so the F the
 // callback performs is answered inside and never reaches the negation; and

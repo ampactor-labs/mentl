@@ -1,0 +1,8 @@
+// check: pending 6:30
+// An explicit cut owes its bounds claim at the call. Its guard bounds the
+// start and orders the bounds, but nothing bounds the end by the list's
+// length, and the call hands it 4 for a list of three, so the claim that
+// `b <= len(xs)` stays open at the cut.
+fn upto(xs, b) = if 0 <= b { slice(xs, 0, b) } else { [] }
+
+fn main() = len(upto([1, 2, 3], 4))

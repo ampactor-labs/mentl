@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a function handed on as a value inside its own body recurses
 // through whatever it is handed to, where no argument of it can be read for
 // a measure. again says it always finishes and hands itself to apply.

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the result's cap peels a type ALIAS. `type Thunk = () -> Int`
 // names a fn type, and an op declaring `give() -> Thunk` carries the same
 // covariant promise as declaring the arrow inline. The alias arm is one of

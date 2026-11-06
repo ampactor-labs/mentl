@@ -234,7 +234,7 @@ bash tools/verify.sh                 # the micro battery through the pinned boot
 bash tools/march.sh                  # boot → m2 → m3, assert the fixed point (m4 on a mismatch: TRANSITION or BROKEN); the
                                      # candidate's wall and image line peak are held against the boot on the same wheel
 bash tools/frontier-gate.sh          # contracts over tests/frontier and the ?? authoring workflows; a green run stamps the boot
-bash tools/crown-gate.sh             # !E soundness: every leak-* crucible refuses, every sound-* crucible is accepted
+source tools/wt-env.sh; wt_battery boot/mentl.wasm tests/crown   # !E soundness: every leak-* crucible refuses, every sound-* crucible is accepted
 bash tools/proof-exactness-gate.sh   # a value-position hole refuses, pending debt is reported, a suspension runs
 bash tools/effect-identity-gate.sh   # Fail and Abort dispatch separately
 bash tools/instrument-gate.sh        # the diagnostics instrument can go red, and a clean program still emits

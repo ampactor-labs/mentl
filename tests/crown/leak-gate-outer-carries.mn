@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the gate propagates OUTWARD: `outer(k) = run(k)` copies run's
 // gated cell and binds the copy to k's row, so k's cell carries `!E` in
 // outer's published scheme (`∀r. (E ∉ r) ⇒ …`, Gaster–Jones `lacks`), and

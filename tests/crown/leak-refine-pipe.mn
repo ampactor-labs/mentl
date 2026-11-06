@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0·H, 2026-10-01): a pipe stage is an APPLICATION, so
 // the stage's precondition claims of the piped value exactly as a call's
 // does. `ratio` pipes `k + 1` — nothing proves it Positive — into `inv`,

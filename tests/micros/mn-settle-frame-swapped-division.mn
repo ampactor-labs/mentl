@@ -1,0 +1,8 @@
+// check: pending 6:43
+// The division a / b stays pending. The recursive call swaps the operands,
+// so a fact about the divisor is no fact about the next dividend. The first
+// call divides -1 by INT_MIN, and the second divides INT_MIN by -1, which
+// does not fit the word.
+fn swap(a, b, n) = if n == 0 { 0 } else { a / b + swap(b, a, n - 1) }
+
+fn main() = swap(-1, -2147483648, 2)

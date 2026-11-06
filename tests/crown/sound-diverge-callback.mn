@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN, the sound twin: the function handed to apply descends its list to
 // the end, each call handing on the rest of the list it matched, so every call
 // of it ends, and settle, which says it always finishes, is accepted.

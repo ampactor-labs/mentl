@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN partiality (TRAP, 2026-10-06): a read whose index and length the
 // text fixes is proven in range — a constant index into a list literal,
 // into a let bound to one, through every tail of a join, and a byte read of

@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN A5 (LENS §2.4, the arm-world rule): resuming inside an arm of h
 // continues the REMAINDER under h, so a handler's own declared negation
 // binds what the remainder performs minus what h absorbs. h declares !F

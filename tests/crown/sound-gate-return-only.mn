@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN — a callback RETURNED uncalled performs nothing in make's
 // evaluation: f's cell is no terminal of make's body row (abstraction is
 // pure), so `!E` gates nothing and the performing callback is admitted —

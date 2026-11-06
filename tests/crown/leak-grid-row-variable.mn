@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the controller shape: a higher-order function with a written row
 // variable, so its row is exactly its callback's. The decision passes it a
 // callback that reads the network, and the variable is filled in with Net.

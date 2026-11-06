@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN — the controller shape: a closure that reads the network is passed
 // into the decision as an argument and called there. The negation on
 // `decide` gates its parameter's row at the call. Expect E_EffectMismatch.

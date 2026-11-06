@@ -29,7 +29,7 @@
 // unhandled. The negation on `frame` states the rule where the frame is.
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

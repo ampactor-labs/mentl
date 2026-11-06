@@ -1,0 +1,6 @@
+// expect: 134
+// A string piped into the first slot of `byte_at` completes the read, so an
+// index past a three-byte string keeps its bounds check and stops the run.
+fn byte_past(s, i) = s |> byte_at(??, i)
+
+fn main() = byte_past("abc", 60)

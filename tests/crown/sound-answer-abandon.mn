@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN, a sound twin: an arm that never resumes ends decide at the
 // perform, so its fetch runs after decide has stopped, outside every
 // negation decide states. Accepted.

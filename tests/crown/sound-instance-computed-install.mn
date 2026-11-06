@@ -1,3 +1,4 @@
+// check: accepted
 // The computed face of sound-instance-own-install: `run` installs the clock
 // at a rate its caller hands, and a stage that names no rate runs at the
 // rate of the clock around it — the install binds its instance to the

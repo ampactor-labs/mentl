@@ -19,7 +19,7 @@
 //   mentl where examples/pulse/course/04-rack.mn rack
 import audio/wav
 
-import dsp/clock
+import clock
 
 import dsp/envelope
 

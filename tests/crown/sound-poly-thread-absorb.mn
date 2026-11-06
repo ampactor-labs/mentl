@@ -1,3 +1,4 @@
+// check: accepted
 // CROWN modal (§11 6.3's walk): the install absorbs THROUGH an
 // effect-polymorphic HOF — run_it's row var carries the lambda's E to
 // the call site, and the enclosing install subtracts it, so the

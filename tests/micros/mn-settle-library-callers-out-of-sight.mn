@@ -1,0 +1,5 @@
+// check: pending 5:60
+// A library: no main, so any program may call walk with any list and index.
+// Its own call hands the index back unchanged, which proves nothing about
+// the callers out of sight, so the read stays pending.
+fn walk(xs, i, n) = if n > 0 { walk(xs, i, n - 1) } else { xs[i] }

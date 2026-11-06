@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: the negation binds the arm through a callee. decide never uses
 // Net, and the helper it calls performs price(), which online's arm
 // answers with a fetch, so the fetch would run while decide runs. Expect

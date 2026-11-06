@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN: a partial application handed a function of its own recursive
 // group carries that function's effects. r and e call each other; r pipes
 // its argument into apply_to(e), and e asks for a name, so r asks for one

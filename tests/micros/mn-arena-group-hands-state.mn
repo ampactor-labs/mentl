@@ -1,0 +1,31 @@
+// at 29:10: ~> arena Alloc state
+// An op's answer handed to a function that stores into its parameter, where
+// the two functions call each other: `put` hands `cells()` to `write_n`, and
+// `write_n` calls `put` again. The handler that answers `cells` resumes its
+// state field, so every store lands in handler state, which the install
+// chain and the journal root. So the extent the arena opens is rooted in
+// state, and the caret says so. The pinned boot read what `put` handed as
+// memory nothing names and said the roots were unknown.
+import arena
+
+effect Cells {
+  cells() -> [Int]
+}
+
+handler cell_store with xs = make_list(2) {
+  cells() => resume(xs),
+}
+
+fn write_n(ys, n) = if n == 0 {
+  0
+} else {
+  list_set(ys, 0, n)
+  put(n - 1)
+}
+
+fn put(n) = write_n(cells(), n)
+
+fn main() = {
+  put(3) ~> arena
+  cells()[0] - 1
+} ~> cell_store

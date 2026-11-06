@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN refinement (P0, 2026-10-01): an UNANNOTATED parameter handed
 // straight to a refined one acquires that precondition (the inference the
 // wheel leans on), and with it the guard. `caller`'s `m` is inferred

@@ -1,0 +1,23 @@
+// expect: 7
+// Two functions that call each other answer the list they were handed:
+// `pass` answers its parameter or what `relay` answers, and `relay` answers
+// what `pass` answers. Inside the arena the young list [7, 8, 9] is stored
+// into what `pass` answers, which is the list older, a list built before the arena
+// opened. So the store keeps its barrier, and the young list survives the
+// arena's exit. The answer must be 7 on every compiler.
+import arena
+
+fn pass(xs, n) = if n == 0 { xs } else { relay(xs, n - 1) }
+
+fn relay(xs, n) = pass(xs, n)
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  {
+    list_set(pass(older, 3), 0, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

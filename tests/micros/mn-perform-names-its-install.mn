@@ -1,0 +1,20 @@
+// at 19:7: perform gathered ~> collect 16
+// The caret on a perform names the install that answers it: gathered() in
+// main's body is answered by the collect installed at the body's foot, and
+// the edge the judgment wrote where the perform's row was charged is what
+// the caret reads. The pinned boot's caret had no shape for a perform.
+effect Gather {
+  add(x: Int)
+  gathered() -> [Int]
+}
+
+handler collect with acc = [] {
+  add(x) => resume() with acc = push(acc, x),
+  gathered() => resume(acc),
+}
+
+fn main() = {
+  add(1)
+  add(2)
+  len(gathered()) - 2
+} ~> collect

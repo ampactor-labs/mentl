@@ -1,3 +1,4 @@
+// check: refuse E_EffectMismatch
 // CROWN instance — the effect-name arm's guard: the SAME effect at the
 // same argument position is the SAME instance. !Flow(1, Store) refuses
 // the body's Flow(1, Store). Expect E_EffectMismatch.
