@@ -1671,7 +1671,23 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    decades and its power countdowns), and every list stage's walk by an
    index still perform `Diverge`. The list walk's index goes when a stage
    reuses the owned list it consumes, and the float printer's when it reads
-   digits off a float's bits. (c) The reach is one walk
+   digits off a float's bits. A refinement claim left pending is assumed,
+   and nothing checks it when the program runs. Inside a function a
+   parameter's refinement is assumed, so a read or a cut it proves runs
+   without its check, and a caller that cannot prove the refinement carries
+   the read's `Trap` (2026-11-06, §7); but the run never stops there, so
+   with no `!Trap` promise it reads outside the list:
+   `fn at(xs, i: NonNeg) = if i < len(xs) { list_index(xs, i) } else { 0 }`
+   called as `at([4, 5], k - 3)` with k = 1 answers 2, the list's length
+   word. Where no proof leans on the refinement, the type holds a value it
+   excludes: `fn keep_small(n: Small) = n` under `type Small = Int where 0
+   <= self && self < 10`, called as `keep_small(x + 1)` with x = 12, answers
+   13, and `mentl query FILE traps` says nothing can trap (both measured
+   2026-11-06). A claim left pending is checked where it is pending when
+   the program runs, wherever its predicate performs no effect, and the run
+   stops there when it fails, so each pending site carries `Trap` and that
+   `Trap` is the one that happens; a label, whose predicate is an effect's
+   operation, stays a claim the flow walk decides. (c) The reach is one walk
    (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
    columns, answers absence, the effect-enters chain, the race rule, the
    schedule's demand, the edit cone, `refs of`, `unreachable` and the

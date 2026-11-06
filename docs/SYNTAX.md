@@ -353,7 +353,11 @@ value that runs). Proof debt follows a different rule. An executable with
 undischarged `V_Pending` obligations reports them (one ledger projection on
 stderr) and compiles. This is the sound-incomplete choice (`PLAN.md §0`):
 undecidable residue accumulates where it can be seen, is never assumed true,
-and never causes a blanket refusal. The wheel's own self-compile carries
+and never causes a blanket refusal. One case still breaks the second clause:
+a parameter's refinement is assumed inside its function while a caller's
+claim on it stays pending, and nothing checks that claim when the program
+runs, so a read the refinement proves can read outside its list (PLAN §11,
+the soundness core). The wheel's own self-compile carries
 obligations that are undecidable by their structure, so refusing on pending
 obligations would refuse the medium itself. A claim that is decidably false is
 still refused at the claim site (`E_RefinementRejected`).
