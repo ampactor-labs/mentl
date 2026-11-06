@@ -1,8 +1,8 @@
 # Mentl
 
-Mentl closes the gap between what a person means and what they are forced to write. You usually know what a piece of code must never do: the frame that renders each block of audio must never allocate memory, and the decision a grid controller makes must never wait on the network. Most languages give you no way to write that down, and make you write everything else instead: types, borrows, lifetimes and error plumbing that a compiler could work out for itself. In Mentl you write three things: the shape of each flow, with five operators; the rules each part keeps, such as `with !Alloc` or the range a number stays in; and the handlers that say what each effect does. The compiler works out the rest, every type, effect, ownership and width. It checks each rule through every function the code calls, on every build, and a version that breaks a rule does not build. So nobody reviews the code for that rule again, whoever or whatever edits it next.
+Mentl closes the gap between what a person means and what they are forced to write. You usually know what a piece of code must never do: the frame that renders each block of audio must never allocate memory, and the decision a grid controller makes must never wait on the network. Most languages give you no way to write that down, and make you write everything else instead: types, borrows, lifetimes and error plumbing that a compiler could work out for itself. In Mentl you write three things: the shape of each flow, with five operators named for what they do (pipe, share, split, install and feedback); the rules each part keeps, such as `with !Alloc` or the range a number stays in; and the handlers that say what each effect does. The compiler works out the rest, every type, effect, ownership and width. It checks each rule through every function the code calls, on every build, and a version that breaks a rule does not build. So nobody reviews the code for that rule again, whoever or whatever edits it next.
 
-The programs in this repository show it working today: a course of twelve audio lessons that build one signal chain, two complete pieces rendered from code, a controller for a model flywheel and battery on the power grid, and the compiler itself, which is written in Mentl and compiles itself to the same bytes. Every output on this page is what the pinned compiler, `boot/mentl.wasm` (pin `6b2ecca8bf70`, recorded in `boot/PROVENANCE.md`), printed when the command was run for this page.
+The programs in this repository show it working today: a course of twelve audio lessons that build one signal chain, two complete pieces rendered from code, a controller for a model flywheel and battery on the power grid, and the compiler itself, which is written in Mentl and compiles itself to the same bytes. Every output on this page is what the pinned compiler, `boot/mentl.wasm` (pin `47767c1238b2`, recorded in `boot/PROVENANCE.md`), printed when the command was run for this page.
 
 ## Start with nothing
 
@@ -17,7 +17,7 @@ frame: → `per_note: Rate` or `per_note: Positive` — either way the division 
 nothing to unlock in seconds, build_rig, main
 ```
 
-`note_hz` already allocates nothing. One clause, `with !Alloc`, turns that into a rule the compiler holds it to on every build, and `frame`, which calls it, can then rely on it. Each of the two divisions could be made safe by either of two annotations: the count is a sample rate (`Rate`) or it is any positive number (`Positive`). Those mean different things, so the compiler asks which one you mean instead of picking. The line for `cutoff_at` is rougher: it states the range a conversion needs as a bare predicate. The design offers one step at a time, the one that unlocks the most for the code you are working on, and today `teach` lists one step for every function at once (PLAN §11, "A refusal is a hole").
+`note_hz` already allocates nothing. One clause, `with !Alloc`, turns that into a rule the compiler holds it to on every build, and `frame`, which calls it, can then rely on it. Each of the two divisions could be made safe by either of two annotations: the count is a sample rate (`Rate`) or it is any positive number (`Positive`). Those mean different things, so the compiler asks which one you mean instead of picking. The line for `cutoff_at` is rougher: it states the range a conversion needs as a bare predicate. Working out a step for every function is what lets the compiler choose the single step worth writing first, the one that unlocks the most for the code you are working on. That choice is not made yet: `teach` lists the steps in the order the functions are written, and ranking them by what each unlocks is open work (PLAN §11, "A refusal is a hole").
 
 ## Leave a hole
 
@@ -29,9 +29,9 @@ Query: ?? : (Float) -> Float with e
 Propose: brighten  — inferred from the in-scope function brighten — row Pure admitted by !Alloc
 Topology: stage 1 of 2 of the |> at examples/pulse/course/08-hole:50:14
 Effects: whatever its position permits — a hole states no row
-Why: through |>, at examples/pulse/course/08-hole:50
-     target
-     its type: through |>, at examples/pulse/course/08-hole:50
+Why: the call to ??, at examples/pulse/course/08-hole:50
+     unification
+     its type: the call to ??, at examples/pulse/course/08-hole:50
      expected
 ```
 
@@ -104,7 +104,7 @@ No rule guards that check yet, so it stays a place the program can stop (PLAN §
 
 ## The shape you write is the shape it keeps
 
-Every flow is written with five operators. `examples/hello/five.mn` uses each once:
+Every flow is written with five operators, each named for what it does to a value: the pipe `|>`, the share `<|`, the split `><`, the install `~>` and the feedback `<~`. `examples/hello/five.mn` uses each once:
 
 ```
 // hello: Mentl's five operators, once each.
@@ -117,7 +117,7 @@ import io
 
 fn double(n) = n * 2
 
-// <~ adds each number to the total before it.
+// The feedback, <~, adds each number to the total before it.
 // `!Alloc` is checked on every build: a version
 // of this stage that allocates does not build.
 fn add(x) with !Alloc = { t => t + x } <~ delay(1)
@@ -126,14 +126,14 @@ fn bar(n) = join("", repeat(n, "*"))
 
 fn say(n, b) = print("{n} {b}\n")
 
-// <| sends each total to two stages, and |>
-// hands both answers to `say`.
+// The share, <|, sends each total to two stages, and
+// the pipe, |>, hands both answers to `say`.
 fn row(x) = (add(x) <| (int_to_str, bar)) |> say
 
-// ~> sends what `print` writes to the screen.
+// The install, ~>, sends what `print` writes to the screen.
 fn main() = {
   print("hello\n")
-  // >< doubles every number, each a branch.
+  // The split, ><, doubles every number, each a branch.
   each(row, [1, 2, 3] >< double)
   0
 } ~> stdout_console
@@ -141,11 +141,11 @@ fn main() = {
 
 `mentl run examples/hello/five.mn` prints the four lines its comment shows. Put the cursor on an operator, and the compiler says in one sentence what it holds there. The Topology line at each:
 
-- `<~` feeds back a value from the previous step. At `examples/hello/five.mn:14:40`: "the <~ feeds back the output 1 tick ago; its line is owned by `add` and allocated once". That is why `add` can say `!Alloc` while it keeps a running total.
-- `<|` sends one input to several branches. At `22:21`: "the <| shares its input with 2 branches, borrowed, so they cannot race, inside the source of the |> at examples/hello/five:22:13".
-- `|>` runs stages in sequence. At `22:43`: "the |> runs 1 stage in sequence, and the fanout's product fills the first stage's open slots", so the two answers fill both of `say`'s parameters.
-- `><` runs independent branches side by side. At `28:23`: "the >< applies one stage to every element of the list on its left, each element a branch of its own, in sequence, since no schedule is installed over it, inside the body the ~> governs at examples/hello/five:25:13". Under a schedule handler the same branches run on threads: lesson 10 renders four voices with `~> parallel_compose`, and `mentl where examples/pulse/course/10-voices.mn render` prints `fanout [Thread, a branch per element] at 65:25-65:60`.
-- `~>` installs a handler over everything to its left. At `30:3`: "the ~> installs `stdout_console` over everything to its left, answering Console". What `print` does is decided there, at the right edge, and nowhere in the body.
+- The feedback, `<~`, feeds back a value from the previous step. At `examples/hello/five.mn:14:40`: "the <~ feeds back the output 1 tick ago; its line is owned by `add` and allocated once". That is why `add` can say `!Alloc` while it keeps a running total.
+- The share, `<|`, sends one input to several branches, each borrowing it. At `22:21`: "the <| shares its input with 2 branches, borrowed, so they cannot race, inside the source of the |> at examples/hello/five:22:13".
+- The pipe, `|>`, runs stages in sequence. At `22:43`: "the |> runs 1 stage in sequence, and the fanout's product fills the first stage's open slots", so the two answers fill both of `say`'s parameters.
+- The split, `><`, runs independent branches side by side, each owning its input. At `28:23`: "the >< applies one stage to every element of the list on its left, each element a branch of its own, in sequence, since no schedule is installed over it, inside the body the ~> governs at examples/hello/five:25:13". Under a schedule handler the same branches run on threads: lesson 10 renders four voices with `~> parallel_compose`, and `mentl where examples/pulse/course/10-voices.mn render` prints `fanout [Thread, a branch per element] at 65:25-65:60`.
+- The install, `~>`, puts a handler over everything to its left. At `30:3`: "the ~> installs `stdout_console` over everything to its left, answering Console". What `print` does is decided there, at the right edge, and nowhere in the body.
 
 docs/SYNTAX.md's "Composing the five" uses all five together in lesson 3 of the course, with the compiler's answer at each operator.
 
@@ -204,7 +204,7 @@ fn slope(a, x, yprev, want) = {
 
 ## The compiler is the first Mentl program
 
-The compiler is written in Mentl, in `src/` and `lib/`. The pinned binary compiles that source into a second compiler, which compiles the same source again, and the two outputs must be identical byte for byte. For the current pin that self-compile took 8.76 s of wall time at a peak of 269 MB of resident memory (`boot/PROVENANCE.md`). The hand-written seed that first built the compiler was deleted on 2026-07-10, so the pinned binary is the only way to build it, and `boot/PROVENANCE.md` records every pin with the sha256 read from the file. `mentl verify` holds the counts the compiler keeps about its own source as ceilings that only fall. On this pin 37 of them hold, among them the places in the compiler that can stop with an error and no rule guarding them (3,375) and the values whose memory the verifier cannot place yet (35,936).
+The compiler is written in Mentl, in `src/` and `lib/`. The pinned binary compiles that source into a second compiler, which compiles the same source again, and the two outputs must be identical byte for byte. For the current pin that self-compile took 9.65 s of wall time at a peak of 268 MB of resident memory (`boot/PROVENANCE.md`). The hand-written seed that first built the compiler was deleted on 2026-07-10, so the pinned binary is the only way to build it, and `boot/PROVENANCE.md` records every pin with the sha256 read from the file. `mentl verify` holds the counts the compiler keeps about its own source as ceilings that only fall. On this pin 37 of them hold, among them the places in the compiler that can stop with an error and no rule guarding them (3,373) and the values whose memory the verifier cannot place yet (35,903).
 
 ## What is not proven
 
@@ -214,7 +214,6 @@ Never claimed: that a program does what its author meant. What the compiler cann
 - A function that says `!Trap` can still run out of stack when it recurses deeply enough, because no effect row shows running out of stack yet. `fn depth(n) with !Trap = if n == 0 { 0 } else { 1 + depth(n - 1) }` checks clean and stops with "call stack exhausted" a million calls deep ("The keystone: lowering is a column, and the graph gains its evaluator").
 - An effect can slip past a negation through a function of the caller's own recursive group when that function is first used where its row meets a pure one: such a program checks clean while the effect runs ("The soundness core: the crown modal, the row whole, the reach one walk").
 - A program's own handler of `trap` takes `Trap` out of its row while a failed check still stops the machine, so `main with !Trap` is accepted and the run stops ("An extent can end early, and leaves older memory as it found it").
-- A stage that a pipe completes owes no claim of its own, and `10 |> minus(b = 3)` computes `minus(3, 10)` ("A stage is the call it completes").
 - No program can reach a network or read the host's clock or randomness yet ("The WASI 0.2 component target, and a real network"; "The host's clock, randomness and sleep are real").
 - A program shares one namespace with everything it links, so it cannot declare a name the library declares: `fn count(x) = x + 1` is refused with `E_DuplicateFnName` ("A module is a scope, and a package carries its judgment").
 - The browser page cannot play a lesson yet, the compile runs on one core, and there is no native backend ("Edits cost what they change, and the page plays the course"; "Forks on every core"; "`!Outside` closes").
@@ -248,7 +247,7 @@ The commands, in brief (`mentl help` lists them all):
 
 ## What Mentl is
 
-For the engineer: Mentl is a programming language with algebraic effects, compiled to WebAssembly, whose compiler is written in Mentl. An `effect` declares operations, and code calls them like functions. A `handler` gives them meaning, and `~>` installs it around the code to its left, so no body says how an effect is done and swapping the handler changes the behaviour without touching the body. Every function has a row, the set of effects it can perform, which the compiler infers; the row has a Boolean algebra, and `!E` says a function never performs `E` through everything it calls. Types are inferred in the Hindley-Milner style, each fact with a Reason. Ownership is an effect the compiler infers from how often a value is used. Refinement types add predicates the verifier decides where it can: the controller's `type SpinW = Int where -100000 <= self && self <= 100000` is a power the flywheel can give. PLAN.md §0 states the thesis in full, and docs/SYNTAX.md is the authority on how the language is written.
+For the engineer: Mentl is a programming language with algebraic effects, compiled to WebAssembly, whose compiler is written in Mentl. An `effect` declares operations, and code calls them like functions. A `handler` gives them meaning, and the install operator, `~>`, puts it around the code to its left, so no body says how an effect is done and swapping the handler changes the behaviour without touching the body. Every function has a row, the set of effects it can perform, which the compiler infers; the row has a Boolean algebra, and `!E` says a function never performs `E` through everything it calls. Types are inferred in the Hindley-Milner style, each fact with a Reason. Ownership is an effect the compiler infers from how often a value is used. Refinement types add predicates the verifier decides where it can: the controller's `type SpinW = Int where -100000 <= self && self <= 100000` is a power the flywheel can give. PLAN.md §0 states the thesis in full, and docs/SYNTAX.md is the authority on how the language is written.
 
 ## Documents
 

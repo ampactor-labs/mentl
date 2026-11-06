@@ -1,0 +1,11 @@
+// expect: 0
+// A partial given its second parameter by label keeps the first slot open:
+// `minus(b = 3)` is the function waiting for `a`, so applied to 10 it is
+// minus(10, 3), which is 7. The pin before this landing read the label's
+// value as `a` and answered minus(3, 10).
+fn minus(a, b) = a - b
+
+fn main() = {
+  let f = minus(b = 3)
+  f(10) - 7
+}

@@ -695,13 +695,16 @@ fn edge_content_into(ref p, am, ref res, saw_all, m, ri) = match ri {
 
 // The compressing resolve — union-find's other half at the row sort:
 // folding a chain REBINDS the var to its resolved terminal (a write of the
-// instance's own, semantically equal), so every later read is one hop. UNIFY-ONLY: the
-// graph has one writer, so only unify_row (inference's own bind site)
-// compresses; every other reader takes resolve_row and rides the web
-// unify already compressed. The write goes through graph_compress_row —
-// the OPTIMIZATION op, whose branch-cursor arm skips it (a branch
-// rebinding shared chain cells makes sibling chases schedule-dependent;
-// the root's sequential walks compress the web).
+// instance's own, semantically equal), so every later read is one hop. Only
+// the judgment compresses, since the graph has one writer: unify_row, and the
+// end of a recursive group's judgment (its check for late writes and its
+// completion fold), where the members' rows reach each other along every call
+// and a resolve that does not compress visits a member once per path to it.
+// Every other reader takes resolve_row and rides the web the judgment
+// compressed. The write goes through graph_compress_row — the OPTIMIZATION
+// op, whose branch-cursor arm skips it (a branch rebinding shared chain cells
+// makes sibling chases schedule-dependent; the root's sequential walks
+// compress the web).
 fn resolve_row_compress(row) = match row {
   EfRow(p, a, t) => match t {
     EtOpen(vs) => match resolve_edges_compress(edges_masked(vs, a), (p, [], [], false, false)) {

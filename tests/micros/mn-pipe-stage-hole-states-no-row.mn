@@ -1,0 +1,9 @@
+// waits 9:32: none
+// A hole standing as a stage of a pipe is an absence: running the pipe runs
+// whatever fills it, so the caret's Effects line says a hole states no row
+// and names no value that row waits on. Pin e99f1621510b read the hole as a
+// slot the pipe had filled and said "whatever `??` performs when called".
+fn double(x: Int) -> Int = x * 2
+
+// The hole is the first of the two stages.
+fn twice(x: Int) -> Int = x |> ?? |> double

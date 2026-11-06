@@ -1,0 +1,6 @@
+// expect: 0
+// An authored `??` marks the slot the pipe fills, and a labeled argument
+// fills its own: `2 |> span(??, hi = 9)` is span(2, 9), which is 7.
+fn span(lo, hi) = hi - lo
+
+fn main() = (2 |> span(??, hi = 9)) - 7

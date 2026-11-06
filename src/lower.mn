@@ -802,10 +802,6 @@ fn call_product_at(handle, args) = match graph_product_at(handle) {
   },
 }
 
-fn call_product_nodes(handle, args) = match call_product_at(handle, args) {
-  (nodes, _, _) => nodes,
-}
-
 // The `CallExpr` dispatch falls back to this when the callee isn't a
 // `SchemeKind`-recognized constructor or effect op. Every call is BARE:
 // the callee's performs dispatch through the LIVE WORLD CHAIN
@@ -852,19 +848,22 @@ fn lower_call_of(handle, lo_f, lo_args) = match lo_f {
 // op, a constructor, an intrinsic): a parameter named `result`, called, was
 // lowered as the `Iterate` op of that name and trapped at the root (measured
 // 2026-09-28 in derive.mn's jvp_pair).
-fn lower_call_dispatch(handle, f, fbody, r_args) = {
-  let lo_args = lower_expr_list(r_args)
-  match fbody {
-    NExpr(VarRef(name)) => match ls_resolve(name) {
-      (RGlobal, _) => {
-        site_schedule_seed(f)
-        lower_global_call(handle, f, name, r_args, lo_args)
-      },
-      (res, local_h) => lower_call_of(handle, lower_resolved_ref(f, name, res, local_h), lo_args),
+fn lower_call_dispatch(handle, f, fbody, r_args) =
+  lower_call_lowered(handle, handle, f, fbody, r_args, lower_expr_list(r_args))
+
+// A call whose arguments are lowered: `handle` carries the value it answers,
+// and `site` is the node the judgment wrote the call's facts at — the call
+// itself, or a stage's pipe or share branch (`lower_stage_call`).
+fn lower_call_lowered(handle, site, f, fbody, r_args, lo_args) = match fbody {
+  NExpr(VarRef(name)) => match ls_resolve(name) {
+    (RGlobal, _) => {
+      site_schedule_seed(f)
+      lower_global_call(handle, site, f, name, r_args, lo_args)
     },
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => lower_call_default(handle, f, lo_args),
-  }
+    (res, local_h) => lower_call_of(handle, lower_resolved_ref(f, name, res, local_h), lo_args),
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => lower_call_default(handle, f, lo_args),
 }
 
 // A global call site notes the schedule its own frame installs, keyed by the
@@ -886,10 +885,11 @@ fn site_schedule_seed(fh) = match lower_site_schedule() {
 // (`calls_form`), and the call is lowered to what the edge reaches, directly
 // at its own signature. A call the judgment did not link, because its claim
 // stayed open or was never raised, is the call as written, its check in its
-// body.
-fn lower_global_call(handle, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
+// body. The link stands at the call's site, which for a share's branch is
+// not the node its value answers at.
+fn lower_global_call(handle, site, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
   Some(PrimitiveKind(p)) => LPrim(handle, p, lo_args),
-  Some(_) | None => match graph_ref_decl(handle) {
+  Some(_) | None => match graph_ref_decl(site) {
     Some(form) => LDirectCall(handle, fh, DeclaredAt(form), false, lo_args),
     None => lower_named_call(handle, fh, name, r_args, lo_args),
   },
@@ -1004,49 +1004,44 @@ fn partial_unfilled(fh, shape) = match shape {
 // A supplied slot's arg lowers HERE, in arg order (evaluation-once —
 // product fields are constructed at the product's mint, filling a hole
 // RESUMES and never re-evaluates), rides the closure record, and is read
-// back by its capture ordinal (LUpval). An unfilled slot (authored `??`,
-// or a hole-adjacent short tail) becomes a param of the synthesized fn
-// (LLocal), typed by its own cell — the hole node's handle for an authored
-// `??`, and for a tail slot the cell the judgment bound beside the product
-// (`open_slot_cells`, infer.mn) — so each open slot reads at its own width.
-// The descent's fourth projection is that cell per open slot, in order: the
-// synthesized fn's signature. A tail slot used to carry the partial node's
-// handle, the arrow's word, so a wide tail parameter's local was declared
-// at the word and never defined (`fadd(1.5)` over a Float pair did not
-// assemble, measured 2026-09-30).
-fn partial_split(r_args, open, n_args, n_ps, handle, i, ci) = if i >= n_ps {
+// back by its capture ordinal (LUpval). An open slot (an authored `??`, or a
+// slot nothing fills, wherever it stands) becomes a param of the synthesized
+// fn (LLocal), typed by its own cell — the hole node's handle for an
+// authored `??`, and otherwise the cell the judgment put in the product
+// (infer.mn's open_slot_cell) — so each open slot reads at its own width.
+// Which slots are open is the product's own list, so `minus(b = 3)` leaves
+// `a` open and keeps 3 as `b`. The descent's fourth projection is that cell
+// per open slot, in order: the synthesized fn's signature. An open slot used
+// to carry the partial node's handle, the arrow's word, so a wide parameter's
+// local was declared at the word and never defined (`fadd(1.5)` over a Float
+// pair did not assemble, measured 2026-09-30).
+fn partial_split(r_args, open, n_ps, handle, i, ci) = if i >= n_ps {
   ([], [], [], [])
-} else if i >= n_args {
-  let pn = "__part_{int_to_str(i)}"
-  let cell = open_slot_handle(open, i - n_args, handle)
-  match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci) {
-    (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(cell, pn)] ++ bargs, [cell] ++ cells),
-  }
 } else {
-  let arg = list_index(r_args, i)
-  match graph_node_body(arg) {
-    NHole(_) => {
-      let pn = "__part_{int_to_str(i)}"
-      match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci) {
-        (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(arg, pn)] ++ bargs, [arg] ++ cells),
-      }
-    },
-    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
-      let e = lower_expr(arg)
-      match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci + 1) {
-        (caps, names, bargs, cells) => ([e] ++ caps, names, [LUpval(lexpr_handle(e), ci)] ++ bargs, cells),
-      }
-    },
+  let pn = "__part_{int_to_str(i)}"
+  let slot = partial_slot_at(r_args, i, handle)
+  if slot == handle || handles_contain(open, slot) {
+    match partial_split(r_args, open, n_ps, handle, i + 1, ci) {
+      (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(slot, pn)] ++ bargs, [slot] ++ cells),
+    }
+  } else {
+    let e = lower_expr(slot)
+    match partial_split(r_args, open, n_ps, handle, i + 1, ci + 1) {
+      (caps, names, bargs, cells) => ([e] ++ caps, names, [LUpval(lexpr_handle(e), ci)] ++ bargs, cells),
+    }
   }
 }
 
-// The cell typing the k-th open tail slot, written by the judgment beside
-// the product. A slot past the cells is the invariant broken — reported,
-// the partial node's own handle the productive stand-in.
-fn open_slot_handle(open, k, handle) = if k < len(open) {
-  list_index(open, k)
+// The node in a partial's slot `i`: the product holds one per parameter. A
+// slot past the product is the invariant broken — reported, the partial
+// node's own handle the productive stand-in, read as an open slot.
+fn partial_slot_at(r_args, i, handle) = if i < len(r_args) {
+  list_index(r_args, i)
 } else {
-  report(EInternalInvariant("a partial's open slot has no cell typing it", graph_span_of(handle)))
+  report(EInternalInvariant(
+    "a partial's product has no node for one of its parameters",
+    graph_span_of(handle)
+  ))
   handle
 }
 
@@ -1244,7 +1239,12 @@ fn project_thunk_fn(thunk_name, cap_pairs, branch_node, result_h, carrier_h, sha
     // the branch is a stage applied to the input riding capture slot 0 —
     // the same completion the in-frame form runs, so a spawned branch costs
     // what the sequential one does inside its thunk
-    Some(input_h) => lower_pipe_complete(LUpval(input_h, 0), branch_node, result_h),
+    Some(input_h) => lower_stage_call(
+      result_h,
+      share_site(branch_node, result_h),
+      branch_node,
+      [(input_h, LUpval(input_h, 0))]
+    ),
     None => lower_expr(branch_node),
   }
   let lo_body = capture_frame(LMakeTuple(carrier_h, [inner]), Some(lookup_ty(carrier_h)))
@@ -1277,7 +1277,7 @@ fn lower_call_partial(handle, fbody, fh, r_args, open, n_ps) = match partial_cal
   None => LInvariantFailure(handle, PartialCalleeShape(fh)),
   Some(form) => {
     let flat_args = list_to_flat(r_args)
-    match partial_split(flat_args, open, len(flat_args), n_ps, handle, 0, 0) {
+    match partial_split(flat_args, open, n_ps, handle, 0, 0) {
       (captures, param_names, body_args, slot_cells) => {
         // The record: the supplied fields in slot order, then a local
         // callee's value (`partial_callee_capture`), so the body reaches
@@ -2354,7 +2354,7 @@ fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
     // Not a function type: the reference IS the value — a nullary
     // variant, the sentinel form emit already knows.
     NoProduct => LMakeVariant(handle, tag_id, []),
-    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+    ProductOf(slots, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, slots, open, len(slots)),
   },
   Some(EffectOpScheme(_, _, _)) => match graph_product_at(handle) {
     // An op's declared scheme is always a signature, zero-arg
@@ -2362,13 +2362,13 @@ fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
     // typed floor is the honest answer — lower_call_partial's own
     // None path, reached with the arity the graph actually proved.
     NoProduct => LInvariantFailure(handle, PartialCalleeShape(handle)),
-    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+    ProductOf(slots, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, slots, open, len(slots)),
   },
   // A primitive as a value has no symbol to reach: it is the partial with
   // every slot open, whose body applies the instruction.
   Some(PrimitiveKind(_)) => match graph_product_at(handle) {
     NoProduct => LInvariantFailure(handle, PartialCalleeShape(handle)),
-    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+    ProductOf(slots, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, slots, open, len(slots)),
   },
   // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
   // the PTee guard): the bare LGlobal — emit resolves it to the fn's static
@@ -2378,7 +2378,7 @@ fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
   // reference is the partial whose body folds.
   Some(FnScheme) => match graph_product_at(handle) {
     NoProduct => LGlobal(handle, DeclaredAt(d)),
-    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+    ProductOf(slots, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, slots, open, len(slots)),
   },
   // Found, some other kind (a value binding, a record) — the global read
   // is the right projection.
@@ -2625,22 +2625,43 @@ fn lower_expr_body(e, handle, span) = match e {
 }
 
 // `|>` is HOLE-COMPLETION (SYNTAX.md §«Partial application — the product
-// with a hole»), never a positional rewrite: the piped value fills the
-// right call's one remaining hole — the authored `??` slot when present,
-// else the first unfilled declaration-order param (the trailing hole of a
-// positional-prefix partial). A SATURATED call is a closure-producing
-// stage; the piped value applies to its result. The callee's arity is
-// read LIVE from its graph type (lookup_ty → TFun) — Carried-Truth,
-// never a second arity table. Factored from PForward so the k remainder
-// builder can complete a stage with the RESUME HOLE as the piped value
-// (band B M1.3) — one completion, two callers.
-fn lower_pipe_complete(lo_l, right, handle) = lower_pipe_complete_many([lo_l], right, handle)
+// with a hole»), never a positional rewrite: the judgment completed the
+// stage's call and wrote its product at the application's site — the pipe,
+// or a share's branch — the piped value in the slot it fills, labels and
+// defaults in theirs (infer.mn's infer_stage_applied). The lowering lowers
+// that product as the call it is, in slot order, and the value it answers
+// carries `answer`'s handle. `given` holds the slots whose values are lowered
+// already: a share's borrowed input in its local or its capture, the merge's
+// parts in their registers. A literal standing as the stage is applied in
+// place, and any other stage's value is called.
+fn lower_stage_call(answer, site, stage, given) = {
+  let slots = stage_product_slots(site)
+  let lo_args = map(given_or_lowered(given, ??), slots)
+  match inlinable_lambda_arity(stage, len(slots)) {
+    Some((params, body)) => lower_applied_in_place(lo_args, params, body, answer),
+    None => {
+      let callee = stage_callee_of(stage, site)
+      lower_call_lowered(answer, site, callee, graph_node_body(callee), slots, lo_args)
+    },
+  }
+}
 
-// The values a pipe gives its stage: one, or the parts of a product the site
-// builds, which the merge hands to the stage's N open slots.
-fn lower_pipe_complete_many(lo_ls, right, handle) = match inlinable_lambda_arity(right, len(lo_ls)) {
-  Some((params, body)) => lower_applied_in_place(lo_ls, params, body, handle),
-  None => lower_pipe_stage(lo_ls, right, handle),
+// The completed call's slots, read where the judgment wrote them. A stage the
+// judgment never completed is the compiler's own invariant broken, reported.
+fn stage_product_slots(site) = match graph_product_at(site) {
+  ProductOf(slots, _, _) => slots,
+  NoProduct => {
+    report(EInternalInvariant(
+      "a stage's call was never judged: the lowering reached a pipe the judgment did not complete",
+      graph_span_of(site)
+    ))
+    []
+  },
+}
+
+fn given_or_lowered(given, slot) = match find({ (n, _) => n == slot }, given) {
+  Some((_, lo)) => lo,
+  None => lower_expr(slot),
 }
 
 // A literal standing as a pipe's stage IS the piped values bound to its
@@ -2667,117 +2688,6 @@ fn bind_stage_param(pair) = match pair {
   },
 }
 
-fn lower_pipe_stage(lo_ls, right, handle) = {
-  let rbody = graph_node_body(right)
-  match stage_global_name(right, rbody) {
-    // A bare reference to a module-level function or op standing as the
-    // stage is the call `f(x)` in the frame the pipe stands in — applied,
-    // never minted, one graph with the call it spells: an op has no static
-    // record a value could reach (`x |> put` under `!Alloc`,
-    // tests/micros/mn-pipe-into-op.mn), and a function's record is reached
-    // through a direct call, never dispatched through as a value.
-    Some(name) => lower_global_call(handle, right, name, [], lo_ls),
-    None => lower_pipe_stage_value(lo_ls, right, handle, rbody),
-  }
-}
-
-// The declaration a bare reference stage names, when its edge reaches a
-// function or an effect op at module scope; a local or a constructor is the
-// value it is.
-fn stage_global_name(right, rbody) = match rbody {
-  NExpr(VarRef(name)) => match ls_resolve(name) {
-    (RGlobal, _) => match published_kind(graph_ref_decl(right)) {
-      Some(EffectOpScheme(_, _, _)) | Some(FnScheme) => Some(name),
-      None | Some(_) => None,
-    },
-    _ => None,
-  },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
-}
-
-fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
-  // THE MERGE: a product the site built fills the stage's N open slots —
-  // the trailing holes the Stage Law puts the datum in — so the tuple is
-  // never built and the call is the one its let-spelling writes. One value
-  // is the ordinary pipe, below.
-  let lo_l = list_index(lo_ls, 0)
-  // A pipe-right CALL dispatches fork-free (lower_call_dispatch): the pipe
-  // owns its hole and completes it below by inline splice, so a raw
-  // hole-bearing call in stage position never mints a partial closure.
-  let lo_r = match rbody {
-    NExpr(CallExpr(f2, args2)) => lower_call_dispatch(right, f2, graph_node_body(f2), call_product_nodes(right, args2)),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => lower_expr(right),
-  }
-  let hole_at = match rbody {
-    NExpr(CallExpr(_, cargs)) => pipe_hole_index(cargs, 0),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => -1,
-  }
-  // The pipe owns its hole: the slot lowered above (the column note
-  // fired at the visit) and the splice below consumes it — retract the
-  // pending note so a consumed hole never reads as a survival.
-  match rbody {
-    NExpr(CallExpr(_, cargs2)) => if hole_at >= 0 { graph_hole_unnote(list_index(cargs2, hole_at)) } else { () },
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => (),
-  }
-  let is_partial = match rbody {
-    NExpr(CallExpr(f, cargs)) => len(cargs) < callee_arity_of(f),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => false,
-  }
-  // The completed application is the PIPE's value, so it carries the pipe
-  // node's handle, whose type is the stage's result. It carried the
-  // stage's, whose type is the partial's arrow, and every reader of the
-  // value's type read a function: `(xs |> map(f)) ++ [7]` refused as a
-  // shape it could not prove, `(2.0 |> scale(3.0)) > 5.0` checked clean
-  // and did not assemble, and `(2 |> wrap(3)) == [3, 2]` compared two
-  // addresses and answered false (boot e23392f6).
-  match lo_r {
-    LDirectCall(_, dfh, dn, dt, dargs) => if hole_at >= 0 && len(lo_ls) == 1 {
-      LDirectCall(handle, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
-    }
-    // drift-audit: ignore — one completion per pipe node, not a loop accumulator
-    else if is_partial {
-      LDirectCall(handle, dfh, dn, dt, dargs ++ lo_ls)
-    } else {
-      LCall(handle, lo_r, lo_ls)
-    },
-    LCall(_, fn_, args) => if hole_at >= 0 && len(lo_ls) == 1 {
-      LCall(handle, fn_, splice_at(args, hole_at, lo_l))
-    }
-    // drift-audit: ignore — one completion per pipe node, not a loop accumulator
-    else if is_partial {
-      LCall(handle, fn_, args ++ lo_ls)
-    } else {
-      LCall(handle, lo_r, lo_ls)
-    },
-    LMakeVariant(_, tag, vargs) => if hole_at >= 0 && len(lo_ls) == 1 {
-      LMakeVariant(handle, tag, splice_at(vargs, hole_at, lo_l))
-    }
-    // drift-audit: ignore — one completion per pipe node
-    else if is_partial {
-      LMakeVariant(handle, tag, vargs ++ lo_ls)
-    } else {
-      LCall(handle, lo_r, lo_ls)
-    },
-    // A bare fn-VALUE stage (`7 |> outer`): the completion call is a call
-    // like any other — the callee's performs dispatch through the world
-    // chain, and a stage that resumes reads the k its record carries.
-    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
-    | LUnaryOp(_, _, _) | LTailCall(_, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
-    | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LIf(_, _, _, _)
-    | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _)
-    | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _)
-    | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _)
-    | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _)
-    | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
-    | LInvariantFailure(_, _) | LWasiCall(_, _, _) => LCall(handle, lo_r, lo_ls),
-  }
-}
-
 // ── A PRODUCT CONSUMED WHERE IT IS BUILT ──────────────────────────────
 //
 // The parts are evaluated where the product stands, each into a register of
@@ -2789,22 +2699,22 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
 fn lower_product_destructure(handle, ph, subs, body) = {
   let values = lower_product_parts(ph)
   let cp = ls_push_scope()
-  let regs = map(bind_destructured_part, zip(subs, part_handles_of(ph)))
+  let regs = map(bind_destructured_part, zip(subs, product_part_handles(ph)))
   let fill = fill_product_parts(ph, regs, values)
   let lo_body = lower_expr(body)
   ls_pop_scope(cp)
   LBlock(handle, [fill, lo_body])
 }
 
-// The merge: the parts into registers, then the stage applied to them.
+// The merge: the parts into registers, then the stage's call, whose open
+// slots the judgment filled with the parts, reading each from its register.
 fn lower_product_merge(handle, ph, right) = {
   let values = lower_product_parts(ph)
   let cp = ls_push_scope()
-  let hs = part_handles_of(ph)
+  let hs = product_part_handles(ph)
   let regs = map(bind_merge_slot(ph), enumerate(hs))
   let fill = fill_product_parts(ph, regs, values)
-  let args = map(read_part_reg, zip(regs, hs))
-  let call = lower_pipe_complete_many(args, right, handle)
+  let call = lower_stage_call(handle, handle, right, map(given_part, zip(regs, hs)))
   ls_pop_scope(cp)
   LBlock(handle, [fill, call])
 }
@@ -2824,23 +2734,10 @@ fn bind_merge_slot(ph, indexed) = match indexed {
   (i, part_h) => ls_bind_local("__merge_{int_to_str(i)}_{int_to_str(ph)}", part_h),
 }
 
-fn read_part_reg(pair) = match pair {
-  (reg, part_h) => LLocal(part_h, reg),
-}
-
-// THE PARTS, each at its own handle: a tuple literal's elements, a fanout's
-// branch results (the boundary edges inference drew).
-fn part_handles_of(ph) = match graph_node_body(ph) {
-  NExpr(MakeTupleExpr(elems)) => elems,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => match fanout_boundaries(ph) {
-    Ok(boundaries) => map(boundary_result_handle, boundaries),
-    Err(_) => [],
-  },
-}
-
-fn boundary_result_handle(edge) = match edge {
-  BoundaryEdge(result_h, _, _, _, _, _) => result_h,
+// A part the merge hands its stage: the slot the part fills, read from the
+// register it was evaluated into.
+fn given_part(pair) = match pair {
+  (reg, part_h) => (part_h, LLocal(part_h, reg)),
 }
 
 // A tuple literal's parts are lowered where they stand; a fanout's are the
@@ -2877,12 +2774,12 @@ fn lower_pipe(kind, left, right, handle) = match kind {
   // THE MERGE (PLAN §4②): a product the site builds fills the stage's N
   // open slots. The parts are bound to registers where they are computed
   // and handed to the stage, so `(a) >< (b) |> f` is `f(a, b)` — no tuple
-  // at any schedule (`product_fills_stage`, graph.mn, the judgment's own
-  // rule for the expectation it unified).
-  PForward => if product_fills_stage(left, right) {
+  // at any schedule: the judgment filled the stage's open slots with the
+  // parts, and its product says so (`pipe_merges`).
+  PForward => if pipe_merges(handle, left) {
     lower_product_merge(handle, left, right)
   } else {
-    lower_pipe_complete(lower_expr(left), right, handle)
+    lower_stage_call(handle, handle, right, [])
   },
   PTee => match installed_handler(right) {
     Some(hd) => lower_install(left, right, hd, handle),
@@ -2971,34 +2868,6 @@ fn feedback_line_depth(spec) = match feedback_depth(spec) {
 }
 
 // (LF.B) Lower the LHS of a `<~`. A single-param lambda `(prev) => body`
-// The `??` hole's declaration-order index among a call's RAW args — the
-// pipe's completion target (SYNTAX §«Partial application»: `x |> clamp(0,
-// ??, 255)` names the hole; the first authored hole is the one completed).
-fn pipe_hole_index(args, i) = if i >= len(args) {
-  -1
-} else {
-  match graph_node_body(list_index(args, i)) {
-    NHole(_) => i,
-    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => pipe_hole_index(args, i + 1),
-  }
-}
-
-// The callee's declared arity, read LIVE from its inferred TFun (the graph
-// already proves it — never a second arity table). -1 when the graph holds
-// no fn type at the callee (the unresolved callee already carries its own
-// diagnostic); the pipe then treats the right side as a saturated stage.
-fn callee_arity_of(f) = match lookup_ty(f) {
-  TFun(ps, _, _) => len(ps),
-  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => -1,
-}
-
-// Replace the completed hole's slot in a lowered args list — the product's
-// one absent field filled by the piped value.
-//
-// drift-audit: ignore — one three-way splice per completed hole, not a loop accumulator
-fn splice_at(xs, i, v) = slice(xs, 0, i) ++ [v] ++ slice(xs, i + 1, len(xs))
-
 // Whether a callee is the declaration a vocabulary name resolves to at the
 // link's scope — the callee's identity compared, never its spelling.
 fn callee_is_vocabulary(c, n: String) = match c {
@@ -3059,7 +2928,7 @@ fn lower_feedback_body(left, fb_handle) = match inlinable_lambda(left) {
 // branches' results; `FdRegs(regs)` is the parts bound to the registers a
 // positional destructure or a merge took, with no tuple built at all — the
 // product's own law, read at the consumer (`destructure_subs`,
-// `product_fills_stage`).
+// `pipe_merges`).
 fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries(handle) {
   Ok(boundaries) => match fan_own {
     // The N-ary carrier owns `><` (Hβ.parser.pcompose-nary); the
@@ -3129,7 +2998,7 @@ fn fanout_at(handle, branch_nodes, share, boundaries, dest) = {
 
 // A branch evaluated where the fanout stands: a `><` branch is its own
 // value; a `<|` branch is a STAGE applied to the borrowed input exactly as a
-// `|>` stage is (`lower_pipe_complete`) — a call completed in place, a
+// `|>` stage is (`lower_stage_call`) — the call the judgment completed, a
 // literal's parameter bound to the input and its body lowered right here.
 fn fanout_inframe_walk(branch_nodes, share, boundaries, i, n) = if i >= n {
   []
@@ -3144,7 +3013,12 @@ fn fanout_inframe_walk(branch_nodes, share, boundaries, i, n) = if i >= n {
 
 fn fanout_inframe_value(branch, result_h, share) = match share {
   NoShare => lower_expr(branch),
-  Shared(input_h, input_local_name) => lower_pipe_complete(LLocal(input_h, input_local_name), branch, result_h),
+  Shared(input_h, input_local_name) => lower_stage_call(
+    result_h,
+    share_site(branch, result_h),
+    branch,
+    [(input_h, LLocal(input_h, input_local_name))]
+  ),
 }
 
 fn fanout_thunk_walk(handle, branch_nodes, share, boundaries, i, n) = if i >= n {
@@ -5644,13 +5518,13 @@ fn ref_scope(hole: String, onpath) =
 fn ref_walk(mode, e, sc) = match e {
   LLocal(h, n) => if string_in_list(sc.bound, n) { (e, sc) } else { ref_outer(mode, e, CapLocal(n, h), sc) },
   LUpval(h, slot) => ref_outer(mode, e, CapUpval(slot, h), sc),
-  LFeedbackPrior(fh) => if any({ g => g == fh }, sc.fb) { (e, sc) } else { ref_outer(mode, e, CapPrior(fh), sc) },
+  LFeedbackPrior(fh) => if handles_contain(sc.fb, fh) { (e, sc) } else { ref_outer(mode, e, CapPrior(fh), sc) },
   LFeedback(fh, d, home, b, s) => {
     let sc1 = match mode {
       Collecting => {...sc, lines: ring_added(sc.lines, (fh, d, home))},
       Converting(_, _) => sc,
     }
-    let inner = if any({ g => g == fh }, sc1.onpath) { sc1.fb } else { sc1.fb ++ [fh] }
+    let inner = if handles_contain(sc1.onpath, fh) { sc1.fb } else { sc1.fb ++ [fh] }
     match ref_walk(mode, b, {...sc1, fb: inner}) {
       (b2, sc2) => match ref_walk(mode, s, {...sc2, fb: sc1.fb}) {
         (s2, sc3) => (LFeedback(fh, d, ref_home(mode, fh, home), b2, s2), sc3),
@@ -5737,7 +5611,7 @@ fn ref_home(mode, fh, home) = match mode {
 fn ref_dispatch(mode, d, sc) = match mode {
   Collecting => d,
   Converting(_, _) => match d {
-    PdFrame(ih, _, op) => if any({ i => i == ih }, sc.installs) { d } else { perform_dispatch_of(op, None) },
+    PdFrame(ih, _, op) => if handles_contain(sc.installs, ih) { d } else { perform_dispatch_of(op, None) },
     PdWalk(_, _, _, _) => d,
     PdDriver(_, _) => d,
   },

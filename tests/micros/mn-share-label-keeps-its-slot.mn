@@ -1,0 +1,11 @@
+// expect: 63
+// A share applies each branch to its one input as a pipe applies its stage,
+// so each labeled argument keeps its slot: `10 <| (minus(b = 3), minus(a = 3))`
+// answers minus(10, 3) and minus(3, 10), which are 7 and -7, and
+// 7 * 10 - 7 is 63.
+fn minus(a, b) = a - b
+
+fn main() = {
+  let (x, y) = 10 <| (minus(b = 3), minus(a = 3))
+  x * 10 + y
+}

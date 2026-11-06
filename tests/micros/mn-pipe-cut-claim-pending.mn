@@ -1,0 +1,6 @@
+// check: pending 4:19
+// A pipe that completes a call of `slice` owes the cut's bounds where the pipe
+// stands, as the explicit call does, and `mentl check` prints the claim.
+fn cut_past(xs) = xs |> slice(??, 5, 9)
+
+fn main() = len(cut_past([1, 2, 3]))

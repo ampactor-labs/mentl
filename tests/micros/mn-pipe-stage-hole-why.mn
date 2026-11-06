@@ -1,0 +1,9 @@
+// why 9:32: the call to ??
+// A hole standing as a stage of a pipe is the callee of the call the pipe
+// completes, so the caret's Why at the hole names that call by the hole's own
+// spelling. Pin e99f1621510b printed "the call to <expr>", a placeholder no
+// reader can act on.
+fn double(x: Int) -> Int = x * 2
+
+// The hole is the first of the two stages.
+fn twice(x: Int) -> Int = x |> ?? |> double

@@ -1,0 +1,7 @@
+// expect: 0
+// A labeled argument keeps its parameter's slot, so the pipe fills the slot
+// the label left open: `10 |> minus(b = 3)` is minus(10, 3), which is 7. The
+// pin before this landing dropped the open slot and answered minus(3, 10).
+fn minus(a, b) = a - b
+
+fn main() = (10 |> minus(b = 3)) - 7

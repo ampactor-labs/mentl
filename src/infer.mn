@@ -2302,6 +2302,11 @@ fn group_completion_fold(ref stmts, ref members, j) = if j >= len(members) {
   group_completion_fold(stmts, members, j + 1)
 }
 
+// The fold reads each member's row with the compressing resolve. A cycle's
+// rows reach each other along every call between its members, so a resolve
+// that does not write back what it read visits a member once for every path
+// to it, which grows exponentially with the cycle. The fold runs after every
+// late write of the group, so no cell it compresses grows again.
 fn fold_member_cells(ref vs: [RowEdge], ref span) = match vs {
   [] => (),
   [e, ...rest] => {
@@ -2311,7 +2316,7 @@ fn fold_member_cells(ref vs: [RowEdge], ref span) = match vs {
         // A residual edge chasing back to v contributes nothing
         // (R ∪ R = R) and, stored, would be a self-loop the unguarded
         // resolve recursion could ride — cut it before the store.
-        let folded = match resolve_row(stored) {
+        let folded = match resolve_row_compress(stored) {
           EfRow(fp, fa, EtOpen(ws)) => {
             let others = edges_without_self(ws, graph_chase_handle(v))
             if len(others) == 0 { ef_make(fp, fa, EtClosed) } else { ef_make(fp, fa, EtOpen(others)) }
@@ -4240,7 +4245,7 @@ fn foreign_op_charge(opname: String, en: String) = match effect_store(en) {
 // on the path is no site for any effect but Diverge: the walk answers None
 // and the caller tries its next carrier. For Diverge the call back is the
 // site, a recursion the measure did not bound.
-fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, seen) {
+fn decl_entry(eff, name: String, dh, arg_hs, seen) = if handles_contain(seen, dh) {
   if names_diverge(eff) { Some(Inferred(recursion_words(name, dh, seen))) } else { None }
 } else {
   match graph_node_body(dh) {
@@ -4751,7 +4756,7 @@ fn infer_expr(ref handle) = {
       // apart where it is built — a positional destructure, the N-ary stage
       // a `|>` fills — is its parts in registers, which is what its `let`
       // spelling costs (`product_fate`, graph.mn; the lowering reads the same
-      // facts, `destructure_subs` and `product_fills_stage`, to bind them).
+      // facts, `destructure_subs` and the pipe's product, to bind them).
       charge_product(handle)
       graph_bind(handle, TTuple(collect_tvar_types(elems)), Located(span, Inferred("tuple literal")))
       tag_alloc_join(handle, elems)
@@ -5039,8 +5044,7 @@ fn infer_expr(ref handle) = {
       PFanout(fan_own) => infer_fanout(fan_own, left, right, handle, span),
       PForward => {
         infer_expr(left)
-        infer_stage(right, pipe_stage_arity(left))
-        infer_pipe(kind, left, right, handle, span)
+        infer_stage_applied(PipedValue(left), right, handle, handle, span)
       },
       PTee => infer_pipe_tee(left, right, handle, span),
       PFeedback => {
@@ -5205,7 +5209,8 @@ fn infer_callee(func) = match graph_node_body(func) {
 // constructor's reference is the value itself, not an arrow, and writes none.
 fn bare_reference_product(handle, ty, span: ValidSpan, use) = match ty {
   TFun(ps, _, _) => {
-    graph_product_note(handle, [], open_slot_cells(ps, 0, span), CallSuspended)
+    let cells = map(open_slot_cell(span, ??), ps)
+    graph_product_note(handle, cells, cells, CallSuspended)
     match use {
       RefValued => inf_add_row_at(handle, construction_row()),
       RefStaged | RefCalled => (),
@@ -5367,17 +5372,19 @@ fn check_consume_at_use(name, kind, span: ValidSpan) = match kind {
   | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => consume(name, Unmarked, span),
 }
 
-// RX.4 — extract callee name from func node for Why chain.
+// The name a call gives its callee in its reasons and its messages: a
+// reference's name, a field's, and `??` for a hole, which is how the source
+// spells it. Any other expression has no name and is said as `<expr>`.
 fn callee_name(func_node) = match graph_node_body(func_node) {
   NExpr(VarRef(name)) => name,
   NExpr(FieldExpr(_, field)) => field,
-  // A config handler `~> h(args)` is a CallExpr; the handler's name IS
-  // the callee. Recurse so handler_e_r resolves its HandlerKind and the
-  // residual row applies — without this every config handler
-  // (map_collector(f), fold_handler(f,init)) silently loses its arm effects.
+  // A configured handler, `~> h(args)`, is a call whose callee is the
+  // handler's name. Following the callee lets the judgment find the handler
+  // and the effects its arms perform; before it did, every configured
+  // handler, such as map_collector(f), lost its arms' effects.
   NExpr(CallExpr(callee, _)) => callee_name(callee),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => "<expr>",
+  NHole(_) => "??",
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => "<expr>",
 }
 
 // A callee's declared parameters, read off the callee NODE's own type — the
@@ -5475,13 +5482,13 @@ fn seq_force_list(ah, ptys, i, span: ValidSpan) = if i >= len(ptys) {
 // A saturated call of a sequence primitive, judged by its face. The answer
 // says whether it is a list store into a list its own extent allocated
 // (`ages_list_store`), which the call's shape carries.
-fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
+fn infer_seq_op(cname, fh, args, handle, answer, span: ValidSpan) = {
   let elem = TVar(mint(Inferred("sequence element")))
   let fresh = match seq_op_sig(cname, elem) {
     Some(sig) => match sig {
       (ptys, ret) => {
         seq_force_list(args, ptys, 0, span)
-        graph_bind(handle, ret, Located(span, Inferred("substrate face of '{cname}'")))
+        graph_bind(answer, ret, Located(span, Inferred("substrate face of '{cname}'")))
         // A hash folds its argument, which pays for a type that nests.
         if cname == "hash" && len(args) == 1 {
           fold_spill_charge(handle, list_index(args, 0), span)
@@ -5502,7 +5509,7 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
     // (is_seq_op and seq_op_sig enumerate the same names); the floor keeps
     // productive-under-error alive if they ever diverge.
     None => {
-      graph_bind(handle, TList(elem), Located(span, Inferred("sequence")))
+      graph_bind(answer, TList(elem), Located(span, Inferred("sequence")))
       false
     },
   }
@@ -5589,34 +5596,42 @@ fn substrate_row(fh) = match graph_chase(fh) {
 // the closure a partial application mints wherever it is not completed in
 // place — or a holed substrate call, which the lowering never mints (its pipe
 // completes it, and a hole left in value position is refused as a hole). A
-// holed form carries the cells typing the slots left open past the
-// arguments (`open_slot_cells`), which ride the call node's product. An
-// applied `list_set` into a list its own extent allocated is saturated
-// fresh, which the call's shape carries to the emitter (`CallAppliedFresh`).
-type CallForm = CallSaturated | CallSaturatedFresh | CallPartial([Int]) | CallSubstrateHoled([Int])
+// holed form carries its product: a node per parameter, the cells typing the
+// slots nothing fills among them, and the open slots, which ride the call
+// node's product. An applied `list_set` into a list its own extent allocated
+// is saturated fresh, which the call's shape carries to the emitter
+// (`CallAppliedFresh`).
+type CallForm = CallSaturated | CallSaturatedFresh | CallPartial([Int], [Int]) | CallSubstrateHoled([Int], [Int])
 
-// Where a call stands. A call at a STAGE — a `|>`'s right side, a `<|`
-// branch — is handed the piped value, and where its callee's arrow is not
-// yet known the Stage Law fixes its product: the arguments written, then
-// the datum's slot. A call at an OPERAND — of `+`, `==`, a unary `-` — can
-// be handed nothing later, so an authored `??` among its arguments is a
+// Where a call stands. A call at an OPERAND — of `+`, `==`, a unary `-` —
+// can be handed nothing later, so an authored `??` among its arguments is a
 // VALUE hole the proposer fills under the slot's contract, never the field a
 // partial suspends at: `choose(??) + 1` is the applied call, while
 // `f(choose(??))` and `let c = choose(??)` keep the suspension (2026-10-13;
 // before that the operand form was the product with a hole, and `+` refused
-// it as arithmetic on a function).
-type CallSite = AtCall | AtStage | AtOperand
+// it as arithmetic on a function). A stage is not a site of its own: the
+// pipe completes it and judges the call it completes (`infer_stage_applied`).
+type CallSite = AtCall | AtOperand
 
 fn site_is_operand(site) = match site {
   AtOperand => true,
   AtCall => false,
-  AtStage => false,
 }
 
-fn form_holes(form) = match form {
+// The product a call's judgment built: an applied call's slots are the nodes
+// that fill them, and a holed form carries its own, open cells included.
+fn form_slots(form, slots) = match form {
+  CallSaturated | CallSaturatedFresh => slot_fillers(slots),
+  CallPartial(nodes, _) => nodes,
+  CallSubstrateHoled(nodes, _) => nodes,
+}
+
+// The slots a holed form leaves open, in slot order; an applied call leaves
+// none.
+fn form_open(form) = match form {
   CallSaturated | CallSaturatedFresh => [],
-  CallPartial(cells) => cells,
-  CallSubstrateHoled(cells) => cells,
+  CallPartial(_, open) => open,
+  CallSubstrateHoled(_, open) => open,
 }
 
 // The shape the judgment decided, written on the product for the lowering
@@ -5624,8 +5639,18 @@ fn form_holes(form) = match form {
 fn form_shape(form) = match form {
   CallSaturated => CallApplied,
   CallSaturatedFresh => CallAppliedFresh,
-  CallPartial(_) => CallSuspended,
-  CallSubstrateHoled(_) => CallSuspended,
+  CallPartial(_, _) => CallSuspended,
+  CallSubstrateHoled(_, _) => CallSuspended,
+}
+
+// Whether a call leaves a slot open: a slot nothing fills, or an authored
+// `??` where something can fill it later. At an operand nothing can, so
+// there the `??` is the value the proposer fills (`CallSite`).
+fn slots_open(slots, site) = any(slot_open_at(site, ??), slots)
+
+fn slot_open_at(site, s) = match s {
+  SlotOpen => true,
+  SlotFilled(n) => is_authored_hole(n) && !site_is_operand(site),
 }
 
 // A call judged where it stands, the closure a partial mints charged to the
@@ -5636,9 +5661,9 @@ fn infer_call_expr(func, args, handle, span: ValidSpan, site) = match infer_call
   // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
   // is completed in place and mints nothing, which is why the pipe judges
   // its stage through `infer_call_node` alone.
-  CallPartial(_) => inf_add_row_at(handle, construction_row()),
+  CallPartial(_, _) => inf_add_row_at(handle, construction_row()),
   CallSaturated | CallSaturatedFresh => (),
-  CallSubstrateHoled(_) => (),
+  CallSubstrateHoled(_, _) => (),
 }
 
 // An operator's operand: a call standing there is judged at the operand,
@@ -5653,13 +5678,14 @@ fn infer_operand(node) = match graph_node_body(node) {
 // A call node's judgment, returning which form it built.
 fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   infer_callee(func)
-  // The arg list is the callee's positional product: resolve labeled args
-  // to positional order and fill absent fields with param defaults, against
-  // the parameters the callee NODE carries. The LabeledArg wrappers never
-  // reach infer_expr — resolution strips them.
+  // The arg list is the callee's positional product: labeled args take
+  // their parameters' slots, absent fields take their defaults, and a slot
+  // neither fills stays open in its place, against the parameters the
+  // callee NODE carries. The LabeledArg wrappers never reach infer_expr —
+  // resolution strips them.
   let cname = callee_name(func)
   let params = callee_params_at(func)
-  let pos_args = resolve_call_args(params, args, cname)
+  let slots = resolve_call_args(params, args, cname)
   // A named callee that MISSES env already reported (one miss, one
   // diagnostic); its parameter product is unreadable, so the move-vs-
   // borrow read has no ground. Compounding the miss with a move default
@@ -5668,38 +5694,48 @@ fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   // lambda callees keep normal inference (their schemes resolve).
   if callee_missing_in_env(func) {
     borrow_enter()
-    infer_call_arg_list(pos_args, params, 0)
+    judge_slot_args(params, slots)
     borrow_exit()
   } else {
-    infer_call_arg_list(pos_args, params, 0)
+    judge_slot_args(params, slots)
   }
-  let form = infer_call(func, pos_args, handle, span, site)
+  let form = infer_call(func, slots, handle, handle, span, site)
   // The product is a fact of the call node: written once, here, and read
-  // by the lowering (the call-product column) — the nodes in declaration
-  // order, the cells typing the slots a partial leaves open past them, and
-  // the shape decided here, applied or suspended.
-  graph_product_note(handle, pos_args, form_holes(form), form_shape(form))
+  // by the lowering (the call-product column) — a node per slot in
+  // declaration order, the open slots among them, and the shape decided
+  // here, applied or suspended.
+  graph_product_note(handle, form_slots(form, slots), form_open(form), form_shape(form))
   // H4: constructor calls allocate a heap record. Tag the
   // resulting handle so check_escape at fn return can verify
   // the value doesn't outlive its region. H4.1: constructor
   // ARGS ARE the fields — the resulting record's region pins
   // to the deepest field region.
-  if call_is_alloc_returning(func) { tag_alloc_join(handle, pos_args) }
+  if call_is_alloc_returning(func) { tag_alloc_join(handle, slot_fillers(slots)) }
   form
 }
 
-fn infer_call(func, args, handle, span: ValidSpan, site) = {
+// A call judged at `handle`, the node where its row, claims and store ages are
+// written, and answering at `answer`, the node bound to its value: the same
+// node for a call as it is written, and the boundary's result cell for a
+// share's branch, whose value the share collects (`infer_stage_applied`).
+fn infer_call(func, slots, handle, answer, span: ValidSpan, site) = {
   let cname = callee_name(func)
-  // The substrate fast-path fires only for a SATURATED, hole-free call —
-  // both facts read live (the hole from the arg's own body, the arity from
-  // the callee's declared product) — and for a saturated call at an
-  // operand, where the hole is a value. It previously fired on
+  // The arguments of a call that leaves no slot open, in slot order.
+  let args = slot_fillers(slots)
+  // The substrate fast-path fires only for a SATURATED call that leaves no
+  // slot open — both facts read live (an open slot or an authored hole from
+  // the slots, the arity from the callee's declared product) — and for a
+  // saturated call at an operand, where the hole is a value. It previously fired on
   // shape-of-name alone, so `list_set(??, i, v)` was typed saturated: the
   // `??` never became the partial the pipe completes, and every seq-op
   // pipe stage mismatched (14 census sites). An under-applied or holed
   // seq-op call is the product-with-holes like any other call.
-  if reaches_substrate(func) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(func)) {
-    if infer_seq_op(cname, func, args, handle, span) { CallSaturatedFresh } else { CallSaturated }
+  if reaches_substrate(func) && !slots_open(slots, site) && len(slots) == len(callee_params_at(func)) {
+    if infer_seq_op(cname, func, args, handle, answer, span) {
+      CallSaturatedFresh
+    } else {
+      CallSaturated
+    }
   }
   // A HOLED/under-applied substrate call is the product-with-holes built
   // from the FACE (seq_op_sig — the same one home the saturated path
@@ -5714,21 +5750,24 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
     let elem = TVar(mint(Inferred("sequence element")))
     match seq_op_sig(cname, elem) {
       Some(sig) => match sig {
-        (ptys, ret) => CallSubstrateHoled(infer_call_partial(
-          args,
+        (ptys, ret) => match infer_call_partial(
+          slots,
           build_ctor_params(ptys, 0),
           ret,
           union_row(substrate_row(func), fold_face_value_row(cname, ptys)),
           handle,
           span,
+          site,
           cname
-        )),
+        ) {
+          (nodes, open) => CallSubstrateHoled(nodes, open),
+        },
       },
       // A table member with no face row is unreachable by construction
       // (the two enumerate the same names); the floor keeps
       // productive-under-error alive if they ever diverge.
       None => {
-        graph_bind(handle, TList(elem), Located(span, Inferred("sequence")))
+        graph_bind(answer, TList(elem), Located(span, Inferred("sequence")))
         CallSaturated
       },
     }
@@ -5743,73 +5782,39 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
     // machinery does the rest.
     match record_ctor_arrow_view(func, cname, span) {
       Some(vh) => {
-        infer_call_saturated(args, vh, handle, span, cname)
+        infer_call_saturated(args, vh, handle, answer, span, cname)
         CallSaturated
       },
       // HOLE-COMPLETION (SYNTAX §«Partial application — the product with a
-      // hole»): a call whose args leave declaration-order params unfilled — a
-      // positional-prefix k<n, or an authored `??` slot — IS the product with
-      // holes: its type is the fn of the UNFILLED params. The callee's TParam
+      // hole»): a call that leaves a parameter's slot open — a slot no
+      // argument, label or default fills, or an authored `??` — IS the
+      // product with holes: its type is the fn of the OPEN slots' params. The callee's TParam
       // nodes are reused whole (the param product's identity carries); the row
       // rides the result fn — a partial performs nothing, and forming it
       // mints the closure its caller is charged for. At an operand the `??`
       // is a value hole and the call applies (`CallSite`).
       None => match graph_chase(func) {
-        GNode(NBound(TFun(ps, pret, prow)), _) => if len(args) < len(ps) || call_hole_index(args, 0) >= 0 && !site_is_operand(site) {
-          CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname))
+        GNode(NBound(TFun(ps, pret, prow)), _) => if len(slots) < len(ps) || slots_open(slots, site) {
+          partial_form(infer_call_partial(slots_for(ps, slots, cname), ps, pret, prow, handle, span, site, cname))
         } else {
-          infer_call_saturated(args, func, handle, span, cname)
+          infer_call_saturated(args, func, handle, answer, span, cname)
           CallSaturated
         },
-        // A stage whose callee's arrow is not yet known — a field of an
-        // unannotated record, a parameter, a forward local. Judged as an
-        // ordinary call it read COMPLETE and its result as the function the
-        // pipe applies, so `x |> rig.tone(320.0)` typed the field `(Float)
-        // -> (Float) -> Float`: the curried reading SYNTAX says the medium
-        // has no mechanism for. Pulse's filter field, built `(Hz, Float) ->
-        // Float`, was then called with one argument and trapped at the
-        // indirect call (2026-10-06).
-        GNode(_, _) => match site {
-          AtStage => if call_hole_index(args, 0) < 0 {
-            bind_stage_product(func, args, span, cname)
-            match graph_chase(func) {
-              GNode(NBound(TFun(ps, pret, prow)), _) => CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname)),
-              GNode(_, _) => {
-                infer_call_saturated(args, func, handle, span, cname)
-                CallSaturated
-              },
-            }
-          } else {
-            infer_call_saturated(args, func, handle, span, cname)
-            CallSaturated
-          },
-          AtCall => {
-            infer_call_saturated(args, func, handle, span, cname)
-            CallSaturated
-          },
-          AtOperand => {
-            infer_call_saturated(args, func, handle, span, cname)
-            CallSaturated
-          },
+        // A callee whose arrow is not yet known — a field of an unannotated
+        // record, a parameter, a forward local — is called with the
+        // arguments it is given, and its arrow is what they say. A stage
+        // completes such a callee with the piped value last (the Stage Law,
+        // `stage_call`), so `x |> rig.tone(320.0)` types the field
+        // `(Float, Float) -> Float`, never the curried reading SYNTAX says
+        // the medium has no mechanism for (Pulse's filter field trapped at
+        // the indirect call, 2026-10-06).
+        GNode(_, _) => {
+          infer_call_saturated(args, func, handle, answer, span, cname)
+          CallSaturated
         },
       },
     }
   }
-}
-
-// A stage's free callee takes the product the Stage Law reads: a parameter
-// per argument written, then the piped value's slot, last.
-fn bind_stage_product(fh, args, span: ValidSpan, cname) = {
-  let slot = mk_param("_", TVar(mint(InferredCallReturn(cname, Inferred("the piped value's slot")))))
-  let ps = build_inferred_params_masked(args, []) ++ [slot]
-  let row = mk_ef_open([], graph_fresh_row(InferredCallReturn(cname, Inferred("effects"))))
-  let ret = TVar(mint(InferredCallReturn(cname, Inferred("result"))))
-  unify_types(
-    TVar(fh),
-    TFun(ps, ret, row),
-    span,
-    InferredCallReturn(cname, Inferred("a stage: its arguments, then the piped value"))
-  )
 }
 
 // The record ctor's arrow VIEW, minted at the read — Some(handle bound to
@@ -5836,12 +5841,13 @@ fn record_ctor_arrow_view(func, cname: String, span: ValidSpan) = match callee_b
   None => None,
 }
 
-fn infer_call_arg_list(args, params, i) = if i >= len(args) {
-  ()
-} else {
-  let arg = list_index(args, i)
-  if i < len(params) { infer_call_arg(arg, list_index(params, i)) } else { infer_expr(arg) }
-  infer_call_arg_list(args, params, i + 1)
+// A call's written arguments, each judged against the parameter whose slot
+// it fills; an open slot has nothing to judge.
+fn judge_slot_args(params, slots) = enumerate(slots) |> each(infer_slot_arg(params, ??))
+
+fn infer_slot_arg(params, entry) = match entry {
+  (i, SlotFilled(arg)) => if i < len(params) { infer_call_arg(arg, list_index(params, i)) } else { infer_expr(arg) },
+  (_, SlotOpen) => (),
 }
 
 fn infer_call_arg(arg, param) = match graph_node_body(arg) {
@@ -5874,83 +5880,93 @@ fn call_hole_index(args, i) = if i >= len(args) {
   }
 }
 
-// Each arg — the `??` holes included, so a hole learns its expected type
-// (the gradient's food at the absence) — unifies with its declaration-
-// position param; the call's type is the fn of the params left unfilled.
-fn infer_call_partial(args, params, pret, prow, handle, span: ValidSpan, cname) = {
-  args |> enumerate |> each(fill_partial_slot(params, span, handle, ??))
-  let remaining = unfilled_params(args, params)
+// The product with holes, typed: every parameter keeps its slot. A slot
+// nothing fills takes a cell typed at its parameter, and so does a parameter
+// past the written arguments of a callee whose parameters were not known
+// when they were written; an authored `??` is typed by its own node, so it
+// learns its expected type (the gradient's food at the absence). Each filled
+// slot unifies with its parameter and raises what the parameter claims. The
+// call's type is the fn of the open slots' params, in slot order. Answers
+// the product's nodes and its open slots.
+fn infer_call_partial(slots, params, pret, prow, handle, span: ValidSpan, site, cname) = {
+  let placed = zip(slots, params) |> map(placed_slot(span, handle, ??))
+  let open = placed |> filter(placed_open(site, ??))
   graph_bind(
     handle,
-    TFun(remaining, pret, prow),
+    TFun(map(placed_param, open), pret, prow),
     Located(
       span,
       InferredCallReturn(cname, Inferred("partial application — the product with a hole"))
     )
   )
-  open_slot_cells(params, len(args), span)
+  (map(placed_slot_node, placed), map(placed_slot_node, open))
 }
 
-// The cells typing the slots a partial leaves open PAST its arguments — one
-// per tail parameter, bound to that parameter's type here, so the lowering
-// reads each open slot at its own width (a slot an authored `??` holds is
-// typed by the hole node itself). A tail slot used to be typed by the
-// partial node, whose type is the product's own arrow, so a wide tail
-// parameter's local was declared at the arrow's word and never defined:
-// `fadd(1.5)` over a Float pair checked clean and did not assemble
+fn partial_form(product) = match product {
+  (nodes, open) => CallPartial(nodes, open),
+}
+
+// A callee whose parameters were not known when its arguments were written
+// takes those arguments in order, and each parameter past them keeps its
+// slot open or takes its default.
+fn slots_for(ps, slots, cname) =
+  if len(slots) < len(ps) { resolve_call_args(ps, slot_fillers(slots), cname) } else { slots }
+
+// A parameter's slot in a partial's product, paired with what fills it: the
+// node written there, judged against the parameter, or the cell typing the
+// slot where nothing fills it.
+fn placed_slot(span: ValidSpan, call_h, entry) = match entry {
+  (SlotFilled(n), p) => {
+    judge_filled_slot(span, call_h, n, p)
+    (entry, n)
+  },
+  (SlotOpen, p) => (entry, open_slot_cell(span, p)),
+}
+
+fn placed_open(site, placed) = match placed {
+  ((slot, _), _) => slot_open_at(site, slot),
+}
+
+fn placed_param(placed) = match placed {
+  ((_, p), _) => p,
+}
+
+fn placed_slot_node(placed) = match placed {
+  (_, n) => n,
+}
+
+// The cell typing a slot a partial leaves open, bound to its parameter's type
+// here, so the lowering reads each open slot at its own width (a slot an
+// authored `??` holds is typed by the hole node itself). An open slot used
+// to be typed by the partial node, whose type is the product's own arrow, so
+// a wide parameter's local was declared at the arrow's word and never
+// defined: `fadd(1.5)` over a Float pair checked clean and did not assemble
 // (measured 2026-09-30 on boot 523f1732).
-fn open_slot_cells(params, from, span: ValidSpan) = if from >= len(params) {
-  []
-} else {
-  map(open_slot_cell(span, ??), slice(params, from, len(params)))
-}
-
 fn open_slot_cell(span: ValidSpan, p) = {
   let c = mint(Inferred("a slot the call leaves open"))
   graph_bind(c, param_ty(p), Located(span, Inferred("declaration-order param")))
   c
 }
 
-// One argument of a partial against its declaration-order param: unified,
+// One filled slot of a partial against its declaration-order param: unified,
 // then raised as a claim of the call. A SUPPLIED slot is a refinement
 // construction site like any call arg. A hole holds no value yet, so it
 // raises nothing — its obligation lands when the suspension is filled — but
 // the slot's contract is noted on it, so what the medium proposes there
 // satisfies what the parameter demands: `choose(??)` over `n: Positive`
 // proposed `0` before, the hole's claims being empty.
-fn fill_partial_slot(params, span: ValidSpan, call_h, entry) = match entry {
-  (i, ah) => if i < len(params) {
-    let p = list_index(params, i)
-    unify_slot(ah, p, span)
-    match graph_node_body(ah) {
-      NHole(_) => note_contract(param_ty(p), ah),
-      NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => discharge_arg(p, ah, span, call_h),
-    }
-  },
+fn judge_filled_slot(span: ValidSpan, call_h, ah, p) = {
+  unify_slot(ah, p, span)
+  match graph_node_body(ah) {
+    NHole(_) => note_contract(param_ty(p), ah),
+    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => discharge_arg(p, ah, span, call_h),
+  }
 }
 
 fn unify_slot(ah, p, span: ValidSpan) = {
   let pty_h = mint(Inferred("declared param at partial call"))
   graph_bind(pty_h, param_ty(p), Located(span, Inferred("declaration-order param")))
   unify(ah, pty_h, span, Inferred("argument fills its declaration-order param"))
-}
-
-// The unfilled params: the authored `??` slots among the given prefix, then
-// every param past the given count — declaration order preserved.
-fn unfilled_params(args, params) =
-  hole_params(args, params, 0) ++ slice(params, len(args), len(params))
-
-fn hole_params(args, params, i) = if i >= len(args) {
-  []
-} else {
-  match graph_node_body(list_index(args, i)) {
-    NHole(id) => if id == 0 {
-      hole_params(args, params, i + 1)
-    } else {
-      [list_index(params, i)] ++ hole_params(args, params, i + 1)
-    },
-    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => hole_params(args, params, i + 1),
-  }
 }
 
 // ─── The directional fn-arg edge (Hβ.effects.directional-fn-row-edge) ──
@@ -6195,7 +6211,7 @@ fn report_owns_across(ref owns, ref frees, span: ValidSpan) = each(
 fn across_replay_msg(name: String) =
   "'{name}' is an open own captured across a replay boundary — a resumed run consumes it again; finish it before the persist, or move its whole lifetime inside the thunk"
 
-fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
+fn infer_call_saturated(args, fh, handle, answer, span: ValidSpan, cname) = {
   // drift-audit: ignore — "return" is a Reason string, not an imperative keyword
   let ret_h = mint(InferredCallReturn(cname, Inferred("return")))
   // THE ONE-WAY CALL EDGE (D9 rung 1's B1+B3+charge arc). One pre-unify
@@ -6239,7 +6255,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   let expected_h = mint(InferredCallReturn(cname, Inferred("expected function type")))
   graph_bind(expected_h, expected, Located(span, InferredCallReturn(cname, Inferred("expected"))))
   unify(fh, expected_h, span, InferredCallReturn(cname, Inferred("unification")))
-  graph_bind(handle, TVar(ret_h), Located(span, InferredCallReturn(cname, Inferred("result"))))
+  graph_bind(answer, TVar(ret_h), Located(span, InferredCallReturn(cname, Inferred("result"))))
   // THE CHARGE IS THE CALLEE'S ROW VERBATIM — its live tail edges
   // intact, never a resolve's fold (the B1 revert's payment: a resolve
   // at charge time folds a possibly-unjudged callee's row to a bare
@@ -6723,52 +6739,198 @@ fn inlinable_lambda_arity(node, n) = match graph_node_body(node) {
   | NRow(_) | NParam(_) => None,
 }
 
-// A STAGE — a `|>`'s right side, and each branch a `<|` applies to its one
-// borrowed input — is APPLIED where it stands: a call there is completed in
-// place, the value filling its hole, so it mints no partial; a literal there
-// is the value bound to its parameters, so it mints no closure. The
-// lowering applies it the same way (lower.mn's lower_pipe_complete_many), which is
-// what keeps the stage's cost in the row exactly what the emit builds.
-fn infer_stage(stage, arity) = match graph_node_body(stage) {
-  NExpr(CallExpr(rf, rargs)) => match infer_call_node(rf, rargs, stage, graph_span_of(stage), AtStage) {
-    CallPartial(_) => (),
-    CallSaturated | CallSaturatedFresh => (),
-    CallSubstrateHoled(_) => (),
+// What a stage is handed: a `|>`'s piped value, which may be a product the
+// site builds whose parts fill the stage's open slots (the merge), or a `<|`
+// branch's borrowed input, which a branch always takes whole.
+type StageInput = PipedValue(Int) | SharedInput(Int)
+
+// A STAGE IS THE CALL IT COMPLETES (SYNTAX §«Partial application»: the pipe
+// fills a hole and does not rewrite the call). What the stage is handed fills
+// its open slots in slot order, and the completed call is judged once, by
+// the one call judgment, at the node that is the application: `site`, where
+// the call's product, row, claims and store ages are written (the pipe, or
+// the share's branch), and `answer`, the node bound to the value it answers
+// (the pipe, or the boundary's result cell for a branch). So a stage's
+// claims, row, ages and hand-offs are a call's, and every reader and the
+// lowering read the one product. A literal standing as the stage is applied
+// in place, and any other stage is a value the call applies.
+fn infer_stage_applied(input, stage, site, answer, span: ValidSpan) = match graph_node_body(stage) {
+  NExpr(CallExpr(func, written)) => {
+    infer_callee(func)
+    stage_call(input, func, written, stage, site, answer, span)
   },
-  // A bare name standing as a stage is its call (SYNTAX §«|> — converge»).
-  NExpr(VarRef(name)) => infer_var_ref(name, stage, graph_span_of(stage), RefStaged),
+  // A bare name standing as a stage is its call with no argument written
+  // (SYNTAX §«|> — converge»).
+  NExpr(VarRef(name)) => {
+    infer_var_ref(name, stage, graph_span_of(stage), RefStaged)
+    stage_call(input, stage, [], stage, site, answer, span)
+  },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => match inlinable_lambda_arity(stage, arity) {
-    Some((params, body)) => infer_lambda(params, body, stage, graph_span_of(stage), BoundByCallers, AppliedInPlace),
-    None => infer_expr(stage),
+  | NRow(_) | NParam(_) => {
+    let values = stage_handed_values(input, stage_literal_arity(stage))
+    match inlinable_lambda_arity(stage, len(values)) {
+      Some((params, body)) => {
+        infer_lambda(params, body, stage, graph_span_of(stage), BoundByCallers, AppliedInPlace)
+        literal_stage_applied(values, stage, site, answer, span)
+      },
+      None => {
+        infer_expr(stage)
+        value_stage_applied(values, stage, site, answer, span)
+      },
+    }
   },
 }
 
-// How many values a pipe's stage is given: one, or the parts of a product
-// the site builds (the merge). The literal standing as that stage takes
-// exactly that many parameters and is applied in place, minting nothing.
-fn pipe_stage_arity(left) = {
-  let n = product_arity_at(left)
-  if n > 1 { n } else { 1 }
+// The parameters a literal stage writes on the page, which say how many
+// values it takes before it is judged: the merge's parts, or one.
+fn stage_literal_arity(stage) = match graph_node_body(stage) {
+  NExpr(LambdaExpr(params, _)) => len(params),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => 1,
 }
 
-// The parameters a pipe's stage is expected to take: the piped value's one,
-// or — where the left is a product the site builds and the stage's open
-// slots are exactly its parts — one per part, which is the merge.
-fn pipe_stage_params(lh, right) = if product_fills_stage(lh, right) {
-  match lookup_ty(lh) {
-    TTuple(ts) => map(product_slot_param, ts),
-    other @ (
-      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
-      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
-      | TAlias(_, _) | TValue(_)
-    ) => [mk_param("_", other)],
+// The values a stage is handed for `open` open slots: the parts of a product
+// the pipe's site builds when they are exactly as many as the open slots,
+// which is the merge and builds no record (`(a) >< (b) |> f` is `f(a, b)`);
+// otherwise the input whole, and a product taken whole is the record it was,
+// built where it stands.
+fn stage_handed_values(input, open) = match input {
+  PipedValue(left) => {
+    let n = product_arity_at(left)
+    if n > 1 && n == open {
+      product_part_handles(left)
+    } else {
+      if n > 1 { inf_add_row_at(left, construction_row()) } else { () }
+      [left]
+    }
+  },
+  SharedInput(h) => [h],
+}
+
+// A stage that names a callee: its arguments take their parameters' slots,
+// and the values handed fill the slots left open, in slot order. A callee
+// whose parameters are not known when its arguments are written takes them,
+// then the values, last (the Stage Law). A call that leaves no slot open is
+// complete where it stands, and its value is the function the stage applies.
+// Any other count is refused where the stage stands: the stage is not a
+// function of the values the pipe hands it (tests/micros/
+// mn-pipe-into-complete-refuses.mn, mn-pipe-hole-ambiguous-refuses.mn).
+fn stage_call(input, func, written, stage, site, answer, span: ValidSpan) = {
+  let cname = callee_name(func)
+  let params = callee_params_at(func)
+  let slots = resolve_call_args(params, written, cname)
+  judge_slot_args(params, slots)
+  let open = len(filter(slot_open_at(AtCall, ??), slots))
+  let values = stage_handed_values(input, open)
+  if len(params) == 0 {
+    stage_call_judged(func, resolve_call_args([], written ++ values, cname), site, answer, span)
+    stage_arrow_note(stage, func, values, answer, span)
+  } else if open == len(values) {
+    stage_call_judged(func, stage_slots_filled(slots, values), site, answer, span)
+    stage_arrow_note(stage, func, values, answer, span)
+  } else if open == 0 && stage != func {
+    // The complete call is judged where it stands, and the value it answers
+    // is applied at the site; a share's branch is its own site, so there the
+    // application stands at the boundary's result cell (`share_site`).
+    stage_call_judged(func, slots, stage, stage, graph_span_of(stage))
+    value_stage_applied(values, stage, if site == stage { answer } else { site }, answer, span)
+  } else {
+    report(EFnArityMismatch(open, len(values), span))
+    graph_bind(
+      answer,
+      TVar(mint(Inferred("a stage its pipe cannot complete"))),
+      Located(span, Inferred("a stage its pipe cannot complete"))
+    )
+  }
+}
+
+// The slots of a stage with the values it is handed in its open ones, in
+// slot order.
+fn stage_slots_filled(slots, values) = match fold(([], values), fill_stage_slot, slots) {
+  (filled, _) => filled,
+}
+
+fn fill_stage_slot(acc, s) = match acc {
+  (filled, left) => match stage_slot_taking(s, left) {
+    (slot, rest) => (push(filled, slot), rest),
+  },
+}
+
+// What one slot of a stage holds once filled, with the values left: an open
+// slot takes the next value, and any other slot keeps what was written.
+fn stage_slot_taking(s, left) = if slot_open_at(AtCall, s) {
+  match left {
+    [v, ...more] => (SlotFilled(v), more),
+    [] => (s, []),
   }
 } else {
-  [mk_param("_", TVar(lh))]
+  (s, left)
 }
 
-fn product_slot_param(t) = mk_param("_", t)
+// The stage as written is a function of the values its pipe hands it: its
+// node carries that arrow, from the values to the call's answer, so the caret
+// at the stage reads what the pipe applies there, while the call itself is
+// judged and charged at its site. A bare name standing as the stage is the
+// callee's own reference, already bound to the callee's type.
+fn stage_arrow_note(stage, func, values, answer, span: ValidSpan) = if stage == func {
+  ()
+} else {
+  graph_bind(
+    stage,
+    TFun(build_inferred_params(values), TVar(answer), callee_row(func)),
+    Located(span, Inferred("a stage, as the function of the values its pipe hands it"))
+  )
+}
+
+// The row a callee's arrow carries, or a fresh one where the callee is no
+// function the judgment could read.
+fn callee_row(func) = match graph_chase(func) {
+  GNode(NBound(TFun(_, _, crow)), _) => crow,
+  GNode(_, _) => mk_ef_open([], graph_fresh_row(Inferred("the row of a stage whose callee is not a function"))),
+}
+
+// The completed call, judged by the one call judgment at its site, its
+// product written there for every reader and the lowering.
+fn stage_call_judged(func, slots, site, answer, span: ValidSpan) = {
+  let form = infer_call(func, slots, site, answer, span, AtCall)
+  graph_product_note(site, form_slots(form, slots), form_open(form), form_shape(form))
+  if call_is_alloc_returning(func) { tag_alloc_join(answer, slot_fillers(slots)) }
+}
+
+// A stage that is a value — a field, a call answering a function, any
+// expression — applied to the values as a call through a value is.
+fn value_stage_applied(values, stage, site, answer, span: ValidSpan) = {
+  infer_call_saturated(values, stage, site, answer, span, callee_name(stage))
+  graph_product_note(site, values, [], CallApplied)
+}
+
+// A literal standing as the stage is the values bound to its parameters
+// where the pipe stands (lower.mn's lower_applied_in_place): its body was
+// judged in this frame, so what it writes is already this frame's, and the
+// pipe meets its arrow with the values and charges its body's row, mints no
+// closure and asks what its parameters claim of the values.
+fn literal_stage_applied(values, stage, site, answer, span: ValidSpan) = {
+  // drift-audit: ignore — "return" is a Reason string, not an imperative keyword
+  let ret_h = mint(InferredPipeResult("|>", Inferred("return")))
+  let erow = match graph_chase(stage) {
+    GNode(NBound(TFun(_, _, srow0)), _) => srow0,
+    GNode(_, _) => mk_ef_open([], graph_fresh_row(InferredPipeResult("|>", Inferred("effects")))),
+  }
+  let expected_h = mint(InferredPipeResult("|>", Inferred("expected fn")))
+  graph_bind(
+    expected_h,
+    TFun(build_inferred_params(values), TVar(ret_h), erow),
+    Located(span, InferredPipeResult("|>", Inferred("expected")))
+  )
+  unify(stage, expected_h, span, InferredPipeResult("|>", Inferred("target")))
+  graph_bind(answer, TVar(ret_h), Located(span, InferredPipeResult("|>", Inferred("result"))))
+  call_owes(fn_leaves(stage), values, site, span)
+  match graph_chase(stage) {
+    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(site, crow),
+    GNode(_, _) => (),
+  }
+  graph_product_note(site, values, [], CallApplied)
+}
 
 // An install whose right side names a HANDLER CHAIN becomes its members'
 // installs by one write at the install node (`infer_chain_install`); every
@@ -7808,7 +7970,17 @@ fn note_bare_handler_product(right) = match graph_node_body(right) {
     if len(params) == 0 {
       ()
     } else {
-      graph_product_note(right, resolve_call_args(params, [], name), [], CallApplied)
+      let slots = resolve_call_args(params, [], name)
+      // A configuration parameter with no default leaves its slot open, and a
+      // bare install has nothing to fill it with, so the install is refused
+      // where it stands. It compiled before, and its handler ran with no value
+      // in that slot: the run stopped at "a perform found no handler".
+      if slots_open(slots, AtCall) {
+        report(EFnArityMismatch(len(params), len(slot_fillers(slots)), graph_span_of(right)))
+      } else {
+        ()
+      }
+      graph_product_note(right, slot_fillers(slots), [], CallApplied)
     }
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
@@ -8095,64 +8267,12 @@ fn instances_in_names(names, ename: String) = {
 // `PFanout` (`<|`/`><`) and `PTee` are handled BEFORE `infer_pipe` fires
 // (see `PipeExpr` arm in `infer_expr`); their arms here are unreachable stubs.
 fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
-  // |> converge — right applied to left. Transparent wire;
-  // unification pairs slots structurally (Parameters ARE tuples).
-  // THE ONE-WAY PIPE EDGE (the call edge's twin — D9 rung 1's
-  // B1+B3+charge arc): on the bound path the expectation's row IS
-  // the stage's own row, so unify_row meets identical rows and
-  // no-ops — a pipe never teaches its stage's cell (D5) — and the
-  // charge is the stage's row VERBATIM, live edges intact, folding
-  // at read time. A pre-free stage (a lambda, a local, a loose
-  // forward) binds to the expectation wholesale, so the fresh row
-  // cell becomes its own row cell and the same charge arm carries
-  // the polymorphic share; the old FnScheme share-guard dissolves —
-  // one-way discipline makes the shared cell read-only to callers,
-  // and a loose forward's edge now resolves late instead of
-  // charging nothing. The unify-failure path charges nothing.
-  PForward => {
-    // drift-audit: ignore — "return" is a Reason string; "|>" is a string literal key, not a pipe verb
-    let ret_h = mint(InferredPipeResult("|>", Inferred("return")))
-    let erow = match graph_chase(right) {
-      GNode(NBound(TFun(_, _, srow0)), _) => srow0,
-      GNode(_, _) => mk_ef_open([], graph_fresh_row(InferredPipeResult("|>", Inferred("effects")))),
-    }
-    // THE MERGE (PLAN §4②, Faust's `,` then `:`): a product the site
-    // BUILDS, piped into a stage whose N slots are open, fills them —
-    // `(a) >< (b) |> f` is `f(a, b)` and costs what it costs, since the
-    // tuple is never built (`product_fills_stage`, graph.mn, read here
-    // for the expectation and at lower for the splice). A stage with ONE
-    // open slot takes the product whole, as any value does.
-    let expected = TFun(pipe_stage_params(left, right), TVar(ret_h), erow)
-    let expected_h = mint(InferredPipeResult("|>", Inferred("expected fn")))
-    graph_bind(expected_h, expected, Located(span, InferredPipeResult("|>", Inferred("expected"))))
-    unify(right, expected_h, span, InferredPipeResult("|>", Inferred("target")))
-    graph_bind(handle, TVar(ret_h), Located(span, InferredPipeResult("|>", Inferred("result"))))
-    // A stage is APPLIED to the piped value, so the pipe is a refinement
-    // construction site as a call's argument is: the stage's parameter
-    // claims of the value what its contract demands, pays the row the
-    // precondition guards where the claim is open, and a parameter stage
-    // learns what it is handed. The pipe raised nothing until P0·H:
-    // `0 |> inv` under `!Trap` checked clean and divided by zero (boot
-    // 13e8484a and the P0 tree alike).
-    // The left product's own charge, decided here because the stage's
-    // arrow is what decides it: a merge builds nothing, and a product
-    // the stage takes WHOLE is the record it was (`product_fate`'s
-    // `PfByPipe`, graph.mn).
-    if product_arity_at(left) > 1 && !product_fills_stage(left, right) {
-      inf_add_row_at(left, construction_row())
-    } else {
-      ()
-    }
-    call_owes(fn_leaves(right), [left], handle, span)
-    stage_teaches(right, left)
-    match graph_chase(right) {
-      GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(
-        handle,
-        if product_fills_stage(left, right) { crow } else { stage_row(handle, right, left, crow) }
-      ),
-      GNode(_, _) => (),
-    }
-  },
+  // |> converge is judged before `infer_pipe` fires (the PipeExpr arm in
+  // infer_expr): its stage is the call it completes, judged by the one call
+  // judgment (`infer_stage_applied`).
+  //
+  // unreachable; handled in infer_stage_applied
+  PForward => (),
   // PFanout (<| and ><) is handled BEFORE infer_pipe fires (see the
   // PipeExpr arm in infer_expr → infer_fanout). Its branches run under
   // a branching-ledger scope so parallel consumes collide correctly.
@@ -8374,7 +8494,7 @@ fn infer_fanout_seq(xs, stage, handle, span: ValidSpan) = {
     },
     None => graph_bind_hole(fh, Located(span, MissingVar("map"))),
   }
-  infer_call_saturated([stage, xs], fh, handle, span, "><")
+  infer_call_saturated([stage, xs], fh, handle, handle, span, "><")
   graph_boundary_set(handle, SequenceFanout(fh))
 }
 
@@ -8536,9 +8656,6 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
   let thread_ticket_h = mint(InferredPipeResult("<|", Inferred("thread schedule ticket")))
   let persist_ticket_h = mint(InferredPipeResult("<|", Inferred("persist schedule ticket")))
   let thunk_row_h = graph_fresh_row(InferredPipeResult("<|", Inferred("boundary effects")))
-  let call_row_h = graph_fresh_row(InferredPipeResult("<|", Inferred("implicit application effects")))
-  let expected = TFun(build_inferred_params([input_h]), TVar(ret_h), mk_ef_open([], call_row_h))
-  let expected_h = mint(Inferred("<| branch expected fn"))
   // Infer the authored stage and its implicit application inside the boundary's
   // row frame. The frame closes onto thunk_row_h; only that exact row is then
   // projected into the enclosing function.
@@ -8547,29 +8664,13 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
   inf_enter_fn(thunk_row_h, span, [])
   inf_mark_transparent()
   ages_branch_open(branch)
-  // The branch is a STAGE applied to the borrowed input, judged as a `|>`
-  // stage is: completed or bound in place, minting nothing.
-  infer_stage(branch, 1)
-  graph_bind(expected_h, expected, Located(span, Inferred("<| branch applied to the borrowed input")))
-  unify(branch, expected_h, span, Inferred("<| branch borrows the shared input"))
-  // Applied to the input as a pipe's stage is, the branch owes what its
-  // parameter demands of the input, pays the guard where the claim is open,
-  // and teaches a learning parameter the whole product it completes. The
-  // fanout raised nothing until 2026-10-21: `0 <| (inv, inv)` under `!Trap`
-  // checked clean and divided by zero.
-  call_owes(fn_leaves(branch), [input_h], branch, span)
-  stage_teaches(branch, input_h)
-  // The branch call's row flows into the boundary frame — the same
-  // read-the-callee's-own-row discipline infer_call_saturated uses — and
-  // what the stage writes is asked of the input it is handed.
-  match graph_chase(branch) {
-    GNode(NBound(TFun(_, _, brow)), _) => inf_add_row_unified_at(branch, stage_row(branch, branch, input_h, brow)),
-    GNode(_, _) => match graph_chase(call_row_h) {
-      GNode(NRowBound(row), _) => inf_add_row_unified_at(branch, row),
-      GNode(NRowFree(_), _) => inf_add_row_at(branch, mk_ef_open([], call_row_h)),
-      GNode(_, _) => (),
-    },
-  }
+  // The branch is a STAGE applied to the borrowed input: the call it
+  // completes is judged where the branch stands, by the one call judgment,
+  // so it owes what its parameters demand of the input and pays the guard
+  // where a claim is open, and its value is the boundary's result
+  // (`infer_stage_applied`). The fanout raised nothing until 2026-10-21:
+  // `0 <| (inv, inv)` under `!Trap` checked clean and divided by zero.
+  infer_stage_applied(SharedInput(input_h), branch, branch, ret_h, span)
   let older_stores = ages_branch_close()
   exit_frame()
   let thunk_row = mk_ef_open([], thunk_row_h)
@@ -11058,7 +11159,7 @@ fn ages_note_record() = match ages_top() {
 }
 
 fn ages_note_capture(b) = match ages_top() {
-  Some(AgeScope(r)) => if any(handle_is(b, ??), r.captures) {
+  Some(AgeScope(r)) => if handles_contain(r.captures, b) {
     ()
   } else {
     ages_put(AgeScope({...r, captures: push(r.captures, b)}))
@@ -11174,7 +11275,7 @@ fn branch_binder_settle(site, b, scope, entry) = match entry {
 
 fn ages_note_mutated(b) = match ages_top() {
   Some(scope) => match scope {
-    AgeScope(r) => if any(handle_is(b, ??), r.mutated) {
+    AgeScope(r) => if handles_contain(r.mutated, b) {
       ()
     } else {
       ages_put(AgeScope({...r, mutated: push(r.mutated, b)}))
@@ -11293,7 +11394,7 @@ type WriteClaim
   | ClaimAbsent
   | ClaimNone
 
-type LeafSlots = SlotsInOrder | SlotsOfPartial([Node])
+type LeafSlots = SlotsInOrder | SlotsOfPartial([Node], [Int])
 
 fn callee_claim(callee_h) = match binder_read_by(callee_h) {
   Some(b) => match own_param_position(b) {
@@ -11383,9 +11484,9 @@ fn leaf_claim(leaf, value_h, depth) = if depth > 8 {
       },
     },
     NExpr(CallExpr(callee, _)) => match graph_product_at(leaf) {
-      ProductOf(nodes, _, CallSuspended) => match partial_decl(callee) {
+      ProductOf(nodes, open, CallSuspended) => match partial_decl(callee) {
         Some(d) => match graph_store_claim_of(d) {
-          Some(claim) => Some([{claim, slots: SlotsOfPartial(nodes), value: value_h}]),
+          Some(claim) => Some([{claim, slots: SlotsOfPartial(nodes, open), value: value_h}]),
           None => None,
         },
         None => None,
@@ -11433,22 +11534,22 @@ fn partial_decl(callee) = match binder_read_by(callee) {
 }
 
 // The node a call hands the leaf's parameter `i`, through the leaf's slots:
-// a partial's supplied slot is its node, its holes take the applied values in
-// order, and the parameters past its product take the rest. None where the
-// call hands the parameter nothing this frame can see.
+// a partial's supplied slot is its node, its open slots take the applied
+// values in order, and the parameters past its product take the rest. None
+// where the call hands the parameter nothing this frame can see.
 fn leaf_arg(leaf, i, args) = slot_arg(leaf.slots, i, args)
 
 fn slot_arg(slots, i, args) = match slots {
   SlotsInOrder => applied_at(args, i),
-  SlotsOfPartial(nodes) => if i < len(nodes) {
+  SlotsOfPartial(nodes, open) => if i < len(nodes) {
     let n = list_index(nodes, i)
-    if is_authored_hole(n) {
-      applied_at(args, len(filter(is_authored_hole, slice(nodes, 0, i))))
+    if handles_contain(open, n) {
+      applied_at(args, len(filter(handles_contain(open, ??), slice(nodes, 0, i))))
     } else {
       Some(n)
     }
   } else {
-    applied_at(args, len(filter(is_authored_hole, nodes)) + (i - len(nodes)))
+    applied_at(args, len(open) + (i - len(nodes)))
   },
 }
 
@@ -11626,8 +11727,12 @@ fn charge_applied(site, leaf, args, depth, acc, entry) = match entry {
 fn charge_applied_fn(site, leaf, args, handed, depth, acc, fn_node) = fate_meet(
   acc,
   match partial_over_member(fn_node) {
-    Some((d, nodes)) => {
-      ages_note_deferred_aged(site, d, partial_handed(nodes, map(handed_plain(leaf, args, ??), handed)))
+    Some((d, nodes, open)) => {
+      ages_note_deferred_aged(
+        site,
+        d,
+        partial_handed(nodes, open, map(handed_plain(leaf, args, ??), handed))
+      )
       FateCarried
     },
     None => match callee_claim(fn_node) {
@@ -11672,10 +11777,10 @@ fn applied_nodes(leaf, args, path) = match path {
 // and what the applier hands its holes.
 fn partial_over_member(h) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => match graph_product_at(h) {
-    ProductOf(nodes, _, CallSuspended) => match binder_read_by(callee) {
+    ProductOf(nodes, open, CallSuspended) => match binder_read_by(callee) {
       Some(_) => None,
       None => match graph_ref_decl(callee) {
-        Some(d) => if ages_in_group(d) { Some((d, nodes)) } else { None },
+        Some(d) => if ages_in_group(d) { Some((d, nodes, open)) } else { None },
         None => None,
       },
     },
@@ -11686,9 +11791,9 @@ fn partial_over_member(h) = match graph_node_body(h) {
 }
 
 // The member's arguments, one per parameter: the partial's supplied slots and
-// the applied values in its holes and past its product.
-fn partial_handed(nodes, applied) =
-  range(0, len(nodes) + len(applied) - len(filter(is_authored_hole, nodes))) |> map(slot_arg(SlotsOfPartial(nodes), ??, HandedList(applied)))
+// the applied values in its open slots and past its product.
+fn partial_handed(nodes, open, applied) =
+  range(0, len(nodes) + len(applied) - len(open)) |> map(slot_arg(SlotsOfPartial(nodes, open), ??, HandedList(applied)))
 
 fn charge_inner(site, leaf, args, handed, depth, acc, inner) = fate_meet(
   acc,
@@ -12180,19 +12285,6 @@ fn written_params(ages, i) = if i < len(ages) {
 
 fn mutation_transport(site, args, i) =
   if i < len(args) { ages_mutation(site, list_index(args, i)) } else { ages_mutate_older(site) }
-
-// A stage names a declared function — a bare reference, a call completed in
-// place — and its application is a call of that function with the piped
-// value in the open slot (`stage_application`): the row it charges and the
-// writes it makes are a call's. A literal applied in place was judged in the
-// frame's own scope.
-fn stage_row(site, stage, piped, crow) = match stage_application(stage, [piped]) {
-  Some((callee, args)) => {
-    ages_mutation_call(site, callee, args)
-    mutation_masked(site, callee, crow, args)
-  },
-  None => crow,
-}
 
 // A tick stores the output into the line its record owns, older than every
 // call of its owner, which performs Mutate for it. A declared function's
@@ -15615,11 +15707,16 @@ fn param_owed_late(p) = match param_row(p) {
 
 // A member whose row grows past its exit takes the growth into its row and
 // is judged again against its declaration; a row that already carries every
-// name grows nothing, and was judged when those names entered it.
+// name grows nothing, and was judged when those names entered it. The row is
+// read compressing, as the completion fold reads it, since the cycle's rows
+// reach each other along every call. A cell the read compresses keeps what it
+// holds now and no later write of this group reaches it through that cell,
+// which costs nothing a member owes: each member that writes takes its late
+// Mutate here by its own claim, and a late guard is written into every member.
 fn member_takes(handle, owed, why: String) = match graph_node_body(handle) {
   NStmt(FnStmt(name, _, _, effs, _)) => match graph_chase(handle) {
     GNode(NBound(TFun(_, _, frow)), _) => match frow {
-      EfRow(_, _, EtOpen([e])) => if row_holds_names(resolve_row(mk_ef_open([], edge_cell(e))), owed) {
+      EfRow(_, _, EtOpen([e])) => if row_holds_names(resolve_row_compress(mk_ef_open([], edge_cell(e))), owed) {
         ()
       } else {
         let span = graph_span_of(handle)
@@ -16024,18 +16121,6 @@ fn learned_result(ret, demand) = if ty_carries_contract(ret) {
 // function it handed in, for a division by 5.
 fn learn_provision(callee_h, arg_handles) = match learning_path(callee_h) {
   Some(at) => applied_by_choice(at, arg_handles),
-  None => (),
-}
-
-// A stage completed in place is one application of its callee with the
-// whole product (`stage_application`), so a learning parameter the callee
-// is learns every slot where the pipe completes it — the configuration the
-// partial was handed and the piped value. The partial alone hands too few
-// slots to teach anything, so a frame piping a sample through its rig's
-// filter at 300 Hz taught the rig nothing, and the filter's cutoff bound
-// stood open at every rig a frame was handed.
-fn stage_teaches(stage, piped) = match stage_application(stage, [piped]) {
-  Some((callee, args)) => if callee == stage { () } else { fn_leaves(callee) |> each(learn_provision(??, args)) },
   None => (),
 }
 
@@ -17168,8 +17253,8 @@ fn source_leaf(src) = match src {
 }
 
 // The callee and the arguments a node applies: an applied call's product
-// (the shape the judgment decided, read off the product), or a pipe stage
-// completed by the piped value.
+// (the shape the judgment decided, read off the product), or the call a pipe
+// completed, read off the pipe's (`pipe_application`).
 fn application_of(h) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => match graph_product_at(h) {
     ProductOf(nodes, _, CallApplied) | ProductOf(nodes, _, CallAppliedFresh) => match fn_leaves(callee) {
@@ -17179,9 +17264,12 @@ fn application_of(h) = match graph_node_body(h) {
     ProductOf(_, _, CallSuspended) => None,
     NoProduct => None,
   },
-  NExpr(PipeExpr(PForward, left, stage)) => match fn_leaves(stage) {
-    [one] => stage_application(one, [left]),
-    _ => None,
+  NExpr(PipeExpr(PForward, _, _)) => match pipe_application(h) {
+    Some((callee, slots)) => match fn_leaves(callee) {
+      [one] => Some((one, slots)),
+      _ => None,
+    },
+    None => None,
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => None,
@@ -17223,12 +17311,12 @@ fn declared_scheme(callee_h) = match graph_ref_decl(callee_h) {
 fn channel_crossing(callees, applied, call_h, span: ValidSpan) =
   callees |> each(channel_leaf(applied, call_h, span, ??))
 
-// A reference is applied to the arguments as they stand; a partial stage
-// is completed by them first (`stage_application`).
+// A reference is applied to the arguments as they stand; a partial is
+// completed by them first (`partial_completed`).
 fn channel_leaf(applied, call_h, span: ValidSpan, leaf) = match graph_node_body(leaf) {
   NExpr(VarRef(_)) => channel_application(leaf, applied, call_h, span),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => match stage_application(leaf, applied) {
+  | NRow(_) | NParam(_) => match partial_completed(leaf, applied) {
     Some(app) => match app {
       (callee_h, args) => channel_application(callee_h, args, call_h, span),
     },
@@ -17966,8 +18054,9 @@ fn construction_row() = alloc_only_row
 // product apart where it stands — a one-arm positional destructure, the
 // N-ary stage a `|>` fills — reads its parts out of registers, so nothing is
 // built and nothing is charged. The lowering reads the SAME facts
-// (`destructure_subs`, `product_fills_stage`) to bind those registers, which
-// is what keeps the row and the emit from disagreeing about the cost.
+// (`destructure_subs`, the pipe's product through `pipe_merges`) to bind
+// those registers, which is what keeps the row and the emit from disagreeing
+// about the cost.
 fn charge_product(handle) = match product_fate(handle) {
   PfConsumed => (),
   PfByPipe => (),

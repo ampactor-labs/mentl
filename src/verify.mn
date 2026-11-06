@@ -3398,7 +3398,7 @@ fn answers_body(d) = match graph_node_body(d) {
 fn performs_in(ctx, h, op, i) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => call_performs(ctx, h, callee, op, i) ++ flat_map(performs_in(ctx, ??, op, i), body_child_handles(graph_node_body(h))),
   NExpr(PipeExpr(PTee, body, right)) => if install_serves(right, op) { [] } else { performs_in(ctx, body, op, i) } ++ performs_in(ctx, right, op, i),
-  NExpr(PipeExpr(PForward, left, stage)) => stage_performs(ctx, h, stage, op, i) ++ performs_in(ctx, left, op, i) ++ performs_in(ctx, stage, op, i),
+  NExpr(PipeExpr(PForward, left, stage)) => stage_performs(ctx, h, op, i) ++ performs_in(ctx, left, op, i) ++ performs_in(ctx, stage, op, i),
   NStmt(FnStmt(_, _, _, _, _)) => [],
   body @ (
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
@@ -3428,7 +3428,7 @@ fn call_performs(ctx, call, callee, op, i) = match graph_node_body(callee) {
   | NRow(_) | NParam(_) => [FaOpen(call)],
 }
 
-fn stage_performs(ctx, pipe, stage, op, i) = match stage_application(stage, []) {
+fn stage_performs(ctx, pipe, op, i) = match pipe_application(pipe) {
   Some((callee, _)) => call_performs(ctx, pipe, callee, op, i),
   None => [],
 }
@@ -3438,7 +3438,7 @@ fn stage_performs(ctx, pipe, stage, op, i) = match stage_application(stage, []) 
 fn perform_reach_in(ctx, h, op) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => call_perform_reach(ctx, h, callee, op) ++ flat_map(perform_reach_in(ctx, ??, op), body_child_handles(graph_node_body(h))),
   NExpr(PipeExpr(PTee, body, right)) => if install_serves(right, op) { [] } else { perform_reach_in(ctx, body, op) } ++ perform_reach_in(ctx, right, op),
-  NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, []) {
+  NExpr(PipeExpr(PForward, left, stage)) => match pipe_application(h) {
     Some((callee, _)) => call_perform_reach(ctx, h, callee, op),
     None => [],
   } ++ perform_reach_in(ctx, left, op) ++ perform_reach_in(ctx, stage, op),
@@ -4007,27 +4007,21 @@ fn applied_decl(call) = match graph_node_body(call) {
 
 // What an application hands its callee, slot by slot: the judgment's
 // product at a call — every argument, default and hole in declaration order
-// — or a stage's slots with the piped value in the open one.
+// — or at the pipe that completed it, with the piped value in its slot.
 fn applied_args(app) = match graph_node_body(app) {
-  NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, [left]) {
-    Some((_, args)) => args,
+  NExpr(PipeExpr(PForward, left, _)) => match pipe_slots(app) {
+    Some(slots) => slots,
     None => [left],
   },
-  NExpr(CallExpr(_, args)) => match graph_parent_of(app) {
-    Some(q) => match graph_node_body(q) {
-      NExpr(PipeExpr(PForward, _, stage)) => if stage == app { applied_args(q) } else { call_slots(app, args) },
-      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-      | NRow(_) | NParam(_) => call_slots(app, args),
+  NExpr(CallExpr(_, args)) => match graph_product_at(app) {
+    ProductOf(nodes, _, _) => nodes,
+    NoProduct => match completed_by_pipe(app) {
+      Some(slots) => slots,
+      None => args,
     },
-    None => call_slots(app, args),
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => [],
-}
-
-fn call_slots(call, args) = match graph_product_at(call) {
-  ProductOf(nodes, _, _) => nodes,
-  NoProduct => args,
 }
 
 // A call: a constructor builds its parts, a literal applied in place is its
@@ -4155,7 +4149,7 @@ fn pipe_flow(ctx, h, kind, left, right) = match kind {
   PForward => match graph_node_body(right) {
     NExpr(LambdaExpr(_, body)) => value_flow(ctx, body),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => match stage_application(right, [left]) {
+    | NRow(_) | NParam(_) => match pipe_application(h) {
       Some((callee, _)) => stage_call_flow(ctx, h, callee),
       None => value_flow(ctx, right) ++ value_flow(ctx, left),
     },

@@ -1721,15 +1721,17 @@ type ExecutableBoundary
 // the store, so the emitter writes it with no barrier.
 type CallShape = CallApplied | CallSuspended | CallAppliedFresh
 
-// A call's positional product, the judgment's own (infer.mn's infer_call_node): the
-// declared slots in order as the nodes that fill them — an argument, the
-// default that fills an absent field, an authored `??` — past them the
-// cells typing the slots a partial leaves open (one per slot, bound to the
-// slot's parameter type at the judgment, infer.mn's open_slot_cells), and the
-// shape the judgment decided. Written once
-// at the call node, a column of the version; the lowering reads it and
-// resolves no callee by name. `NoProduct` comes first so a virgin cell
-// reads as it.
+// A call's positional product, the judgment's own (infer.mn's infer_call_node):
+// one node per declared parameter, in declaration order — an argument, the
+// default that fills an absent field, an authored `??`, or the cell typing a
+// slot nothing fills (bound to the slot's parameter type at the judgment,
+// infer.mn's open_slot_cell) — then the open slots among them, in slot
+// order, and the shape the judgment decided. A callee whose parameters were
+// not known when the call was written keeps its written arguments, then a
+// cell per parameter past them. Written once at the call node, a column of
+// the version; the lowering reads it and resolves no callee by name, and the
+// values filling the partial fill its open slots in order (graph.mn's
+// product_filled). `NoProduct` comes first so a virgin cell reads as it.
 type CallProduct = NoProduct | ProductOf([Node], [Int], CallShape)
 
 // The emittable-fn enumeration's entry kind (lowering-is-a-column, the
@@ -4231,11 +4233,6 @@ effect GraphWrite {
   // every bracket that should see it does. Same shape as the holes pair
   // above, one concern over: an arm may note, only the body may narrate.
   graph_guard_drain() -> [(DiagKind, Int)]
-  // The pipe completion's retraction: a stage's `??` slot lowers (the
-  // note fires at the visit) and is then spliced over by the piped
-  // value — consumed, not surviving. The unnote removes it from the
-  // PENDING half only; a drained pair is a survival by construction.
-  graph_hole_unnote(Int)
   // THE ROW NOTE (C5): what a construct charges, noted on the node that
   // charges it — the frame join's per-node twin, written by the same
   // writer (inf_add_row_at) in the same move, a column of the version so a
@@ -6000,14 +5997,33 @@ fn show_handle(h) with !Mutate = {
 // callee NODE's own type, never by name. Positional args fill the next un-claimed slot
 // left-to-right; a labeled arg claims its named slot (skip-over); a slot no
 // arg reaches is filled by the param's default node (the absent product
-// field's fallback construction). An unknown label is E_UnknownArgLabel —
-// Located, productive-under-error (the arg is dropped, parsing continues).
+// field's fallback construction), and a slot neither reaches stays open in
+// its own place. An unknown label is E_UnknownArgLabel — Located,
+// productive-under-error (the arg is dropped, parsing continues).
 //
 // No declared params (forward ref / fn-param callee / constructor): no labels
 // to resolve against. Strip any stray LabeledArg wrappers to their value so
 // downstream never meets the wrapper, and keep positional order.
 fn resolve_call_args(params, args, cname: String) =
-  if len(params) == 0 { map(unwrap_labeled_arg, args) } else { fill_arg_slots(params, args, cname) }
+  if len(params) == 0 { map(written_slot, args) } else { fill_arg_slots(params, args, cname) }
+
+// What fills one parameter's slot in a call: the node an argument or the
+// parameter's default gives it, or nothing, which leaves the slot open. A
+// slot keeps its parameter's position either way, so a partial is keyed by
+// its parameters and never by the order its arguments were written in
+// (SYNTAX §«Partial application»): `minus(b = 3)` leaves `a` open, and the
+// value that later fills the partial fills `a`.
+type ArgSlot = SlotFilled(Int) | SlotOpen
+
+fn written_slot(arg) = SlotFilled(unwrap_labeled_arg(arg))
+
+// The nodes that fill a call's slots, for a product with none open.
+fn slot_fillers(slots) = flat_map(slot_filler, slots)
+
+fn slot_filler(s) = match s {
+  SlotFilled(n) => [n],
+  SlotOpen => [],
+}
 
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
 fn unwrap_labeled_arg(arg) = match graph_node_body(arg) {
@@ -6019,13 +6035,13 @@ fn unwrap_labeled_arg(arg) = match graph_node_body(arg) {
 // Build the positional slot buffer (one slot per declared param, 0 = unfilled
 // sentinel — a real arg node is a non-zero handle). Two passes over the args:
 // labeled args claim their named slot first (skip-over); positional args then
-// fill the remaining unfilled slots left-to-right. Then collect each slot to
-// its placed value or its param default.
+// fill the remaining unfilled slots left-to-right. Then each slot is its
+// placed value, its param's default, or open.
 fn fill_arg_slots(params, args, cname) = {
   let n = len(params)
   let claimed = place_labeled(params, args, 0, make_list(n), cname)
   let filled = place_positional(args, 0, 0, claimed, n)
-  collect_slot_nodes(params, filled, 0, n, make_list(n), 0)
+  zip(params, filled) |> map(slot_of_param)
 }
 
 // Pass 1 — place each LabeledArg at its named param slot; positional args are
@@ -6096,22 +6112,18 @@ fn param_index(params, label, i) = if i >= len(params) {
   if param_name(list_index(params, i)) == label { i } else { param_index(params, label, i + 1) }
 }
 
-// Project each slot to its placed value node, or — when the slot is the 0
-// sentinel — the param's default node. A sentinel slot with no default is
-// dropped (a genuinely-missing required arg is infer's arity check, surfaced
-// at the call). The contiguous prefix of present args is returned in order.
-fn collect_slot_nodes(params, slots, i, n, out, count) = if i >= n {
-  slice(out, 0, count)
-} else {
-  let placed = list_index(slots, i)
-  if slot_present(placed) {
-    collect_slot_nodes(params, slots, i + 1, n, list_set(out, count, placed), count + 1)
+// One parameter's slot: the value placed in it, else its default, else open.
+// An open slot is kept where it stands, so the call is the partial waiting
+// for that parameter, and the judgment types the slot at the parameter.
+fn slot_of_param(pair) = match pair {
+  (p, placed) => if slot_present(placed) {
+    SlotFilled(placed)
   } else {
-    match param_default(list_index(params, i)) {
-      Some(expr) => collect_slot_nodes(params, slots, i + 1, n, list_set(out, count, expr), count + 1),
-      None => collect_slot_nodes(params, slots, i + 1, n, out, count),
+    match param_default(p) {
+      Some(expr) => SlotFilled(expr),
+      None => SlotOpen,
     }
-  }
+  },
 }
 
 // The prefix the arm-list literal's one parameter is named under, one home

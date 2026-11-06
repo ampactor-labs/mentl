@@ -8,7 +8,7 @@ import io
 
 fn double(n) = n * 2
 
-// <~ adds each number to the total before it.
+// The feedback, <~, adds each number to the total before it.
 // `!Alloc` is checked on every build: a version
 // of this stage that allocates does not build.
 fn add(x) with !Alloc = { t => t + x } <~ delay(1)
@@ -17,14 +17,14 @@ fn bar(n) = join("", repeat(n, "*"))
 
 fn say(n, b) = print("{n} {b}\n")
 
-// <| sends each total to two stages, and |>
-// hands both answers to `say`.
+// The share, <|, sends each total to two stages, and
+// the pipe, |>, hands both answers to `say`.
 fn row(x) = (add(x) <| (int_to_str, bar)) |> say
 
-// ~> sends what `print` writes to the screen.
+// The install, ~>, sends what `print` writes to the screen.
 fn main() = {
   print("hello\n")
-  // >< doubles every number, each a branch.
+  // The split, ><, doubles every number, each a branch.
   each(row, [1, 2, 3] >< double)
   0
 } ~> stdout_console

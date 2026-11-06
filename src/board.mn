@@ -134,8 +134,10 @@ fn board_bounds() = [
   // (2026-10-30): the start's call of main writes each empty list through a
   // named function, where a lambda wrote it. 126 -> 123 (2026-11-05): the
   // install's effect groups are laid out and pushed onto the world chain by
-  // named stages, where three lambdas did it.
-  Bound({ceiling: 123, question: QCensus(CsEffectfulLambda)}),
+  // named stages, where three lambdas did it. 123 -> 122 (2026-11-06): the
+  // walk that took a stage's filled hole off the pending list left, since
+  // the lowering never visits a hole a pipe filled.
+  Bound({ceiling: 122, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — a wildcard answering zero. A catch-all over a sum
   // refuses (E_CatchAllOverSum), so a zero answers by meaning: a roster for
   // an honest total, a demand where a name is required, an invariant's
@@ -259,8 +261,12 @@ fn board_bounds() = [
   // link, the day these calls first raised their claims; until then each
   // kept `Trap` in its row and nothing was printed. The open obligations
   // above count what they counted before. Falls as each read and cut is
-  // proven, or becomes a walk over the data it reads.
-  Bound({ceiling: 664, question: QCensus(CsCallClaim)}),
+  // proven, or becomes a walk over the data it reads. 664 -> 653
+  // (2026-11-06): a call's product keeps one slot per parameter, so the
+  // index reads that rebuilt a partial's slots (its holes, its missing
+  // parameters, the pipe's splice) left with them, and one read joined where
+  // a call's arguments are judged against their parameters.
+  Bound({ceiling: 653, question: QCensus(CsCallClaim)}),
   // THE PLACES THAT CAN TRAP WITH NO CLAIM CHECKED THERE (`mentl query
   // src/main.mn "census silent-trap"`): a place in the program's own modules
   // whose `Trap` reaches main's row while no claim stands at it, most of them
@@ -272,8 +278,11 @@ fn board_bounds() = [
   // the library traps, and the editor's strip gained the claims proven
   // through the calls, three new calls into the library). The target
   // is zero, and the count falls as each place gains a claim or stops
-  // trapping.
-  Bound({ceiling: 3375, question: QCensus(CsSilentTrap)}),
+  // trapping. 3,375 -> 3,373 (2026-11-06) with no place gaining a claim: a
+  // stage's call is judged by the call judgment, whose slot code calls the
+  // library's list functions, and six membership tests written out by hand
+  // became calls of one helper, so two fewer places call the library.
+  Bound({ceiling: 3373, question: QCensus(CsSilentTrap)}),
   // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
   // §4⑨): an install whose body applies a function nothing names (a field
   // of a parameter, a value out of sight), writes memory nothing names, or
@@ -326,8 +335,14 @@ fn board_bounds() = [
   // compiler before its last pieces (the traps facet, the crown's contracts,
   // the settle asking each claim in an extent of its own, and the editor's
   // strip reading the claims proven through the calls) added code whose
-  // values the walk cannot place yet.
-  Bound({ceiling: 35936, question: QCensus(CsUnplaced)}),
+  // values the walk cannot place yet. 35,936 -> 35,905 (2026-11-06): code
+  // left and came when a stage became the call it completes; the walk places
+  // nothing it could not place before. Two of the values are new: the
+  // answers of applied_around and unwrap_labeled_arg in the check that a
+  // hole standing as a pipe's stage is no slot. The second is a Node, which
+  // is an Int, and the census counts it only because it reads an alias as
+  // memory whatever the alias names (PLAN §11, the reach one walk).
+  Bound({ceiling: 35905, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -418,8 +433,12 @@ fn board_bounds() = [
   // a pipeline when it took a call's one-way edge for a function argument.
   // 380 -> 379 the same day: the list flattening's drain over an explicit
   // stack left when the walk became one recursion down a node's links. 379
-  // -> 378 (2026-11-05): the count read 378 on this landing's compiler.
-  Bound({ceiling: 378, question: QCensus(CsIterationCostume)}),
+  // -> 378 (2026-11-05): the count read 378 on this landing's compiler. 378
+  // -> 374 (2026-11-06): four index walks became stages over a call's slots
+  // when a call's product came to keep one slot per parameter: the
+  // partial's hole scan, the argument judging, the lowering's search for a
+  // pipe's hole and the slot collector.
+  Bound({ceiling: 374, question: QCensus(CsIterationCostume)}),
   // The match arms that list three or more constructors with only `_` for
   // their arguments (`mentl query src/main.mn "census wildcard-roster"`).
   // Each such arm names the cases of a sum it does not take apart, so a
@@ -427,8 +446,11 @@ fn board_bounds() = [
   // siblings. Counted on 2026-11-05 at 1,369 over the wheel, 336 of them in
   // src/infer.mn, 240 in src/verify.mn and 139 in src/query.mn. Landing T
   // replaces these arms with defaults, records and edges, and the count falls
-  // with each arm it replaces.
-  Bound({ceiling: 1369, question: QCensus(CsWildcardRoster)}),
+  // with each arm it replaces. 1,369 -> 1,360 (2026-11-06): the pipe's own
+  // completion of its stage left the judgment and the lowering with its
+  // arms, and the readers of the one product the call judgment writes
+  // brought ten.
+  Bound({ceiling: 1360, question: QCensus(CsWildcardRoster)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -513,8 +535,10 @@ fn board_bounds() = [
   // count was read at left when the bound reached zero. 39 -> 38
   // (2026-10-30): the declared gate's note on the boot that accepted a
   // positive cap left with the cap. 38 -> 37 (2026-11-05): the count read 37
-  // on this landing's compiler.
-  Bound({ceiling: 37, question: QCensus(CsProseClass(PcCommit))}),
+  // on this landing's compiler. 37 -> 35 (2026-11-06): the notes in the
+  // pipe's own judgment and lowering that cited the boots they were measured
+  // on left with that code.
+  Bound({ceiling: 35, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
@@ -584,8 +608,9 @@ fn board_bounds() = [
   // its roster, a demand or an invariant's refusal. 85 -> 84 (2026-10-30):
   // the marker over the list of effects the machine answers itself left
   // when MemoryWrite and ImageSwap joined it, since no audit pattern
-  // matches the list.
-  Bound({ceiling: 84, question: QCensus(CsProseClass(PcSilencer))}),
+  // matches the list. 84 -> 80 (2026-11-06): the markers over the pipe's own
+  // expected arrow and its stage lowering left with that code.
+  Bound({ceiling: 80, question: QCensus(CsProseClass(PcSilencer))}),
   // A STOP SAYS WHAT IT IS. Every literal that writes the instruction
   // stopping the machine is one of three, each after a said stop: a site's
   // call of the stop (the emitter's stopped_with), the stop's own end once

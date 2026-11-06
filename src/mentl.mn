@@ -781,14 +781,13 @@ fn verdict_open(v) = match v {
 }
 
 // The arguments an application hands the declaration, in its parameters'
-// order: a call's positional product, a pipe's piped value.
-fn application_args(h) = match graph_node_body(h) {
-  NExpr(PipeExpr(PForward, left, _)) => [left],
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => match graph_product_at(h) {
-    ProductOf(args, _, _) => args,
-    NoProduct => [],
-  },
+// order: the positional product the judgment wrote at a call, or at the pipe
+// that completed one, its stage's configuration and the piped value each in
+// its slot. It answered the piped value alone for a pipe, so a stage's
+// configuration was read as handing nothing.
+fn application_args(h) = match graph_product_at(h) {
+  ProductOf(args, _, _) => args,
+  NoProduct => [],
 }
 
 // The callee node when it references the declaration `decl`, or none.

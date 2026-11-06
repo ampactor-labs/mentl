@@ -1,0 +1,12 @@
+// expect: 0
+// A partial given its second parameter by label keeps the first slot open at
+// the first parameter's type: `rep(n = 3)` waits for the String `s`, so
+// applied to "ab" it is len("ab") * 3 = 6. The pin before this landing put
+// the label's value in the first slot and refused the program, E_TypeMismatch
+// "Int vs [Byte]".
+fn rep(s: String, n: Int) = len(s) * n
+
+fn main() = {
+  let f = rep(n = 3)
+  f("ab") - 6
+}

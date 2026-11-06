@@ -321,6 +321,8 @@ list_set(xs, ??, v)     // the MIDDLE field is the hole: { i => list_set(xs, i, 
 
 `??` is the same absence marker as the gradient's hole (§«Token enumeration», `THole`): a field the cursor reads as unsupplied. What fills it depends on context. Synth proposes a candidate, a call supplies a value, the `|>` pipe supplies the flowing datum, or a resumption supplies it later. The marker is the same in every case, and it names which field is missing, never a slot.
 
+A label keeps its field's identity too. `minus(b = 3)` over `fn minus(a, b) = a - b` is the function of `a`, so `10 |> minus(b = 3)` is `minus(10, 3)`: `(10 |> minus(b = 3)) - 7` exits 0 (tests/micros/mn-pipe-label-fills-its-slot.mn), and `let f = minus(b = 3)` makes `f(10)` the same call (mn-partial-label-keeps-its-slot.mn).
+
 **Where nothing can fill the field later, the hole is a value hole and the call is applied.** An operand of an operator, such as `choose(??) + 1`, `-choose(??)` or `choose(??) == 2`, receives nothing from anywhere: no pipe flows into it and no later call fills it, so the product it would suspend into has no filler except the proposer. The call is therefore applied, and its `??` is the slot's value hole under the slot's contract (`choose(??) + 1` over `choose(n: Positive)` proposes `1`). The judgment records this decision on the call's product (`CallShape`) for the lowering to read. In every other position, such as an argument (`f(choose(??))`), a binding (`let c = choose(??)`) or a returned value, the `??` keeps the suspension described above.
 
 **The `|>` pipe fills a hole; it does not rewrite the call.** `x |> f(a)` fills `f(a)`'s remaining hole with `x`:
@@ -330,11 +332,11 @@ users |> filter({ p => p.age > 18 })              // fills xs → equals filter(
 users |> filter({ p => p.age > 18 }) |> map({ p => p.name }) |> sort
 ```
 
-The pipe's type rule (§«`|>` — converge») requires `right : A -> B`, a product with exactly one hole, and a partial application is exactly that. So the pipe does not append syntax: it fills the product's one remaining hole with the piped value. This is why the five verbs compose. Every stage is a product already filled with its configuration, and its data field is a hole the pipe completes: `x |> clamp(0, 255)` fills `clamp(lo, hi, x)`'s datum. A call that is genuinely not a stage names the pipe's target with `??` (`nodes |> list_set(??, i, v)`, §«The Stage Law»). A stage with more than one hole and none marked, or with no hole at all, is not an `A -> B`, and the pipe's unification refuses it (`E_TypeMismatch`, at its arity face: tests/micros/mn-pipe-into-complete-refuses.mn, mn-pipe-hole-ambiguous-refuses.mn).
+The pipe's type rule (§«`|>` — converge») requires `right : A -> B`, a product with exactly one hole, and a partial application is exactly that. So the pipe does not append syntax: it fills the product's one remaining hole with the piped value. The call it completes is judged as the call it is, where the pipe stands: it owes what the call owes and charges what the call charges, so `xs |> slice(??, 5, 9)` owes the cut's bounds at the pipe (`mentl check tests/micros/mn-pipe-cut-claim-pending.mn` prints `0 <= 5 && 5 <= 9 && 9 <= len(xs)` pending at 4:19), and a pipe into `slice` that a guard proves leaves `Trap` out of the row (mn-pipe-cut-proven-keeps-no-trap.mn). This is why the five verbs compose. Every stage is a product already filled with its configuration, and its data field is a hole the pipe completes: `x |> clamp(0, 255)` fills `clamp(lo, hi, x)`'s datum. A call that is genuinely not a stage names the pipe's target with `??` (`nodes |> list_set(??, i, v)`, §«The Stage Law»). A stage with more than one hole and none marked, or with no hole at all, is not an `A -> B`, and the pipe's unification refuses it (`E_TypeMismatch`, at its arity face: tests/micros/mn-pipe-into-complete-refuses.mn, mn-pipe-hole-ambiguous-refuses.mn).
 
 **These five forms are one primitive.** Positional construction, construction by field label, defaults, the hole (partial application) and pipe completion are all the parameter-list product, constructed by identity with any subset of its fields supplied, defaulted or left as holes. There is no currying mechanism separate from the product. A "curried function" is a product with holes, and its arity is always exact, because the holes are named fields rather than a hidden nesting of one-argument functions.
 
-**The judgment writes the product once, at the call.** Labels resolve, defaults fill and holes are typed against the parameters that the callee node carries: a let-bound closure's own parameter names, a parameter's own arity, a field's own type. They are never resolved against a module function that happens to share the name, and the lowering reads the product off the call node instead of resolving it again. A partial over a local callee carries the callee's value in its record beside the supplied fields, and every open slot of a partial is typed by its own cell, so `fadd(1.5)` over a Float pair assembles.
+**The judgment writes the product once, at the call.** Labels resolve, defaults fill and holes are typed against the parameters that the callee node carries: a let-bound closure's own parameter names, a parameter's own arity, a field's own type. They are never resolved against a module function that happens to share the name, and the lowering reads the product off the call node instead of resolving it again. The product holds one node per parameter, in declaration order: the argument written for it, its default, an authored `??`, or a cell for a slot nothing fills. At a pipe it is the completed call's product, written at the pipe. A partial over a local callee carries the callee's value in its record beside the supplied fields, and every open slot of a partial is typed by its own cell, so `fadd(1.5)` over a Float pair assembles.
 
 **A hole is a suspension point, so partial application and resumption are one operation.** A product with a hole is a computation suspended at its argument, and filling the hole resumes it. When the field is filled by a value, or by the pipe's flowing datum, this is partial application. When the hole is filled later, it is the multi-shot continuation (`PLAN.md §4④`): a `??` hole reified as a resumable record is a continuation waiting for its argument, which can be filled now, later or many times. Partial application and continuation resumption are both hole-filling keyed by identity. They differ only in whether the hole is filled at the call site or captured and resumed. `??` is one absence marker across the whole medium: the gradient's synth hole, the argument hole and the continuation's resume slot are the cursor reading the same absence at three levels.
 
@@ -3301,10 +3303,12 @@ tests/micros/mn-explicit-read-handed-past-end-pending:5:28-5:45"
 mn-explicit-cut-proven-is-total.mn,
 mn-explicit-cut-fixed-out-of-range-refuses.mn). `make_list`'s count and
 `list_set`'s index are still checked in their bodies alone. A call that a
-pipe completes (`xs |> slice(1, 3)`) keeps the primitive's check, so a cut
-past the end stops the run ("trap: a precondition failed at lists:442:57",
-tests/micros/mn-pipe-cut-keeps-its-check.mn), but it raises no claim yet
-(`PLAN.md` §11, a stage is the call it completes).
+pipe completes (`xs |> slice(??, 5, 9)`) is that call, so it owes the same
+claim where the pipe stands: `mentl check` prints "verify: pending
+partiality 0 <= 5 && 5 <= 9 && 9 <= len(xs) at
+tests/micros/mn-pipe-cut-keeps-its-check:5:19-5:40", and on a list of three
+the cut keeps the primitive's check and stops the run ("trap: a
+precondition failed at lists:442:57").
 
 A bound that a parameter takes from every call, such as `0 <= i` where each
 call passes `0` or `i + 1`, is read after the judgment

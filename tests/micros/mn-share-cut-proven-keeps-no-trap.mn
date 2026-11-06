@@ -1,0 +1,11 @@
+// expect: 3
+// A share's branches are the calls they complete, so a guarded cut owes its
+// bounds where its branch stands, the guard proves them, and `main` keeps
+// its `!Trap` promise. The pin before this landing raised no claim at a
+// branch, so the branch charged the checked cut's `Trap`.
+fn ends(xs) = if len(xs) >= 2 { xs <| (slice(??, 0, 1), slice(??, 1, 2)) } else { ([], []) }
+
+fn main() with !Trap = {
+  let (a, b) = ends([1, 2, 3])
+  len(a) + len(b) + 1
+}

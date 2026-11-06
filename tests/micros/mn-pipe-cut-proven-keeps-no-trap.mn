@@ -1,0 +1,8 @@
+// expect: 2
+// A pipe into `slice` whose bounds a guard proves is the cut beneath the
+// check, so `main` keeps its `!Trap` promise: nothing it calls can stop with
+// a trap. The pinned compiler raised no claim at the stage, so the stage
+// charged the checked cut's `Trap` and `!Trap` was refused.
+fn first_two(xs) = if len(xs) >= 2 { xs |> slice(??, 0, 2) } else { [] }
+
+fn main() with !Trap = len(first_two([1, 2, 3]))

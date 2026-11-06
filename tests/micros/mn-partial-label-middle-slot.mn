@@ -1,0 +1,10 @@
+// expect: 0
+// Two parameters given by label and the first left open: `mix(b = 10, c = 1)`
+// waits for `a`, so applied to 100 it is mix(100, 10, 1), which is
+// 100 - 10 * 1 = 90.
+fn mix(a, b, c) = a - b * c
+
+fn main() = {
+  let g = mix(b = 10, c = 1)
+  g(100) - 90
+}

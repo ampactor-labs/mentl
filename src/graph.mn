@@ -559,7 +559,7 @@ fn stops_of(h) = match value_tails(h) {
     } else {
       [StopCall(h, callee, args)]
     },
-    NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, [left]) {
+    NExpr(PipeExpr(PForward, _, _)) => match pipe_application(h) {
       Some((callee, args)) => [StopCall(h, callee, args)],
       None => [StopBeyond(h)],
     },
@@ -683,13 +683,12 @@ fn field_value(field) = match field {
   (_, v) => v,
 }
 
-// A callee leaf applied to arguments: a reference applied to them, or a
-// partial application completed by them — the authored `??` slots first,
-// then the slots past its arguments.
-fn stage_application(sh, applied) = match graph_node_body(sh) {
-  NExpr(VarRef(_)) => Some((sh, applied)),
+// A partial application held as a value, completed by the values a call
+// hands it: its callee, and its product with the values in its open slots
+// (`product_filled`). Anything that is not a partial completes nothing.
+fn partial_completed(sh, applied) = match graph_node_body(sh) {
   NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
-    ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
+    ProductOf(nodes, open, CallSuspended) => Some((callee, product_filled(nodes, open, applied))),
     ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) => None,
     NoProduct => None,
   },
@@ -697,21 +696,31 @@ fn stage_application(sh, applied) = match graph_node_body(sh) {
   | NRow(_) | NParam(_) => None,
 }
 
-// Each authored hole takes the next applied value, in order, and the applied
-// values no hole took follow the slots.
-fn completed_args(nodes, applied) = match fold(([], applied), fill_slot, nodes) {
+// A product's slots with its open ones filled: each open slot takes the next
+// value, in slot order, and the values no open slot took follow the slots,
+// which is the Stage Law's slot for a callee whose parameters were not known
+// when its arguments were written. This is how a pipe completes its stage
+// and how a partial is applied, so a slot keeps its parameter whichever
+// argument was written first.
+fn product_filled(nodes, open, values) = match fold(([], values), fill_open_slot(open, ??, ??), nodes) {
   (filled, left) => filled ++ left,
 }
 
-fn fill_slot(acc, n) = match acc {
-  (filled, left) => if is_authored_hole(n) {
-    match left {
-      [v, ...more] => (push(filled, v), more),
-      [] => (push(filled, n), []),
-    }
-  } else {
-    (push(filled, n), left)
+fn fill_open_slot(open, acc, n) = match acc {
+  (filled, left) => match open_slot_taking(open, n, left) {
+    (slot, rest) => (push(filled, slot), rest),
   },
+}
+
+// What one slot holds once filled, with the values left: an open slot takes
+// the next value, and any other slot keeps its node.
+fn open_slot_taking(open, n, left) = if handles_contain(open, n) {
+  match left {
+    [v, ...more] => (v, more),
+    [] => (n, []),
+  }
+} else {
+  (n, left)
 }
 
 fn is_authored_hole(n) = match graph_node_body(n) {
@@ -762,39 +771,69 @@ fn applied_in_sight(r) = match graph_product_at(r) {
   ProductOf(_, _, _) => None,
 }
 
+// The slots a reference's call hands, one per parameter: the product of the
+// complete call whose callee it is (a share's branch completed included), of
+// the pipe that completed the call whose callee it is, or of the pipe whose
+// stage it is. A partial held as a value is applied out of sight.
 fn applied_around(r) = match graph_parent_of(r) {
   Some(p) => match graph_node_body(p) {
-    NExpr(CallExpr(callee, args)) => if callee == r {
+    NExpr(CallExpr(callee, _)) => if callee == r {
       match graph_product_at(p) {
-        ProductOf(_, _, CallSuspended) => completed_by_pipe(p),
-        ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) | NoProduct => Some(args),
+        ProductOf(slots, _, CallApplied) | ProductOf(slots, _, CallAppliedFresh) => Some(slots),
+        ProductOf(_, _, CallSuspended) => None,
+        NoProduct => completed_by_pipe(p),
       }
     } else {
       None
     },
-    NExpr(PipeExpr(PForward, left, stage)) => if stage == r { Some([left]) } else { None },
+    NExpr(PipeExpr(PForward, _, stage)) => if stage == r { pipe_slots(p) } else { None },
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => None,
   },
   None => None,
 }
 
-// A partial call's arguments once the pipe it is the stage of fills its open
-// slots; None where no pipe applies it.
+// The slots of the call a pipe completed with `call` as its stage; None
+// where no pipe completes it.
 fn completed_by_pipe(call) = match graph_parent_of(call) {
   Some(p) => match graph_node_body(p) {
-    NExpr(PipeExpr(PForward, left, stage)) => if stage == call {
-      match stage_application(call, [left]) {
-        Some((_, args)) => Some(args),
-        None => None,
-      }
-    } else {
-      None
-    },
+    NExpr(PipeExpr(PForward, _, stage)) => if stage == call { pipe_slots(p) } else { None },
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => None,
   },
   None => None,
+}
+
+// The slots of the call a pipe completed, written at the pipe.
+fn pipe_slots(pipe) = match graph_product_at(pipe) {
+  ProductOf(slots, _, _) => Some(slots),
+  NoProduct => None,
+}
+
+// The call a pipe applies, where its stage names a callee: a reference, or a
+// call the pipe completed (one with no product of its own), with the slots
+// the judgment completed at the pipe. A literal, a complete call answering a
+// function and any other value standing as the stage name no callee.
+fn pipe_application(pipe) = match graph_node_body(pipe) {
+  NExpr(PipeExpr(PForward, _, stage)) => match stage_named_callee(stage) {
+    Some(callee) => match pipe_slots(pipe) {
+      Some(slots) => Some((callee, slots)),
+      None => None,
+    },
+    None => None,
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
+}
+
+fn stage_named_callee(stage) = match graph_node_body(stage) {
+  NExpr(VarRef(_)) => Some(stage),
+  NExpr(CallExpr(func, _)) => match graph_product_at(stage) {
+    NoProduct => Some(func),
+    ProductOf(_, _, _) => None,
+  },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // A parameter's declaration and position: the function whose parameter list
@@ -1355,7 +1394,6 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // them. Empty — the overwhelming case — resumes without a state rebind,
   // so the per-judgment drain costs nothing when no bind refused.
   if len(guard_diags) == 0 { resume([]) } else { resume(guard_diags) with guard_diags = [] },
-  graph_hole_unnote(h) => resume() with holes_pend = holes_pend_without(holes_pend, h),
   graph_holes_at() => resume(holes_col),
   graph_row_note(h, row) => // THE ROW NOTE's write (C5): what a construct charges, under the node
   // that charges it — the frame join's per-node twin, entered under the
@@ -1515,9 +1553,6 @@ fn chase_node(ref nodes, seed, handle, depth) with !Mutate = if depth > 100 {
 fn emitfns_index_build(col, idx, i) = fold(idx, emitfn_index_note, slice(col, i, len(col)))
 
 fn emitfn_index_note(acc, e) = smap_add(acc, e.name, e)
-
-// The unnote's filter — the pipe-consumed hole leaves the pending buffer.
-fn holes_pend_without(hs, h) = fold([], (a, x) => if x == h { a } else { push(a, x) }, hs)
 
 // chase_handle — union-find `find`: follow the TVar chain to the
 // canonical ROOT handle (the integer), not the node. unify unions the
@@ -2087,19 +2122,27 @@ fn row_of_subtree(h) with !Mutate = {
   }
 }
 
-// A slot of a suspended call's product, the hole standing in it directly or
-// under its label.
+// A hole that stands for no absence at run time, directly or under its
+// label: a slot a partial leaves open, which the closure awaits, or a slot a
+// pipe or a share filled with the value it hands, which the call reads in
+// the hole's place. A hole that a call applies, a pipe's stage among them, is
+// the absence itself: running the call runs whatever fills the hole.
 fn hole_is_open_slot(h) = match graph_parent_of(h) {
-  Some(p) => suspended_at(p, h) || match graph_parent_of(p) {
-    Some(q) => suspended_at(q, h),
-    None => false,
-  },
+  Some(p) => !is_some(applied_around(h)) && (suspended_at(p, h) || labeled_slot(p, h)),
+  None => false,
+}
+
+// A hole written as a label's value is a slot of the call the label stands
+// in. Any other node around the hole is not a call's argument, so the call
+// above it says nothing of the hole.
+fn labeled_slot(label, h) = unwrap_labeled_arg(label) == h && match graph_parent_of(label) {
+  Some(q) => suspended_at(q, h),
   None => false,
 }
 
 fn suspended_at(p, h) = match graph_product_at(p) {
-  ProductOf(nodes, _, CallSuspended) => any({ n => n == h }, nodes),
-  ProductOf(_, _, CallApplied) | ProductOf(_, _, CallAppliedFresh) | NoProduct => false,
+  ProductOf(nodes, open, _) => handles_contain(open, h) || !handles_contain(nodes, h),
+  NoProduct => is_some(completed_by_pipe(p)),
 }
 
 fn row_of_child(acc, c) = match acc {
@@ -2441,29 +2484,58 @@ fn product_fate(h) = match graph_parent_of(h) {
   },
 }
 
-// THE MERGE: a product of N fills a stage whose N slots are still open —
-// the trailing holes the Stage Law puts the datum in, N of them. A stage
-// with one hole takes the product WHOLE (an ordinary pipe), so the merge
-// asks for exact agreement and never guesses.
-fn product_fills_stage(h, right) = {
-  let n = product_arity_at(h)
-  n > 1 && stage_open_slots(right) == n
+// THE MERGE'S PARTS, each at its own handle: a tuple literal's elements, a
+// fanout's branch results (the boundary edges the judgment drew). Where a
+// product the site builds has exactly as many parts as its stage leaves
+// slots open, the judgment fills the slots with them, so `(a) >< (b) |> f`
+// is `f(a, b)` and no tuple is built; the lowering binds each part to a
+// register of its own.
+fn product_part_handles(ph) = match graph_node_body(ph) {
+  NExpr(MakeTupleExpr(elems)) => elems,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => match graph_boundary_at(ph) {
+    FanoutBoundary(edges) => map(boundary_result_handle, edges),
+    NoBoundary | SequenceFanout(_) | InterpBoundary(_) => [],
+  },
 }
 
-// A stage's open slots: the parameters of its own arrow, read live — a bare
-// reference's whole parameter list, a partial's remaining ones (the partial
-// node's type IS the remaining arrow), and −1 where nothing proves an arrow.
-// A LITERAL stage says its own count on the page, which is what lets the
-// merge be known before the literal is judged (the judgment reaches a pipe's
-// left first).
-fn stage_open_slots(right) = match graph_node_body(right) {
-  NExpr(LambdaExpr(params, _)) => len(params),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => match lookup_ty(right) {
-    TFun(ps, _, _) => len(ps),
-    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => -1,
+fn boundary_result_handle(edge) = match edge {
+  BoundaryEdge(result_h, _, _, _, _, _) => result_h,
+}
+
+// Whether a pipe's product holds the parts of its left (the merge) rather
+// than the left whole.
+fn pipe_merges(pipe, left) = product_arity_at(left) > 1 && match graph_product_at(pipe) {
+  ProductOf(slots, _, _) => !handles_contain(slots, left),
+  NoProduct => false,
+}
+
+// The callee of the call a stage completes. Where the stage is itself the
+// application's site (a share's branch), its product is that call's, and a
+// call standing there calls its callee. At a pipe, a call the pipe completed
+// has no product of its own and calls its callee, while one with a product
+// is a complete call answering a function, which the pipe applies as it
+// applies any other stage's value.
+fn stage_callee_of(stage, site) = match graph_node_body(stage) {
+  NExpr(CallExpr(func, _)) => if site == stage {
+    func
+  } else {
+    match graph_product_at(stage) {
+      NoProduct => func,
+      ProductOf(_, _, _) => stage,
+    }
   },
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => stage,
+}
+
+// The node a share's branch is applied at: the branch, whose product is the
+// call the borrowed input completes, or the boundary's result cell, where
+// the share applies the function a complete call standing as the branch
+// answers.
+fn share_site(branch, result_h) = match graph_product_at(result_h) {
+  ProductOf(_, _, _) => result_h,
+  NoProduct => branch,
 }
 
 // The MINT span of a handle — the reverse read of the span_index weave

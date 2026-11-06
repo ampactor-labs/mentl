@@ -1,0 +1,16 @@
+// expect: refuse E_TypeMismatch
+// A handler whose configuration parameter has no default cannot be installed
+// bare: `~> counting` gives its step no value, so the install is refused
+// where it stands. The pin before this landing dropped the empty slot,
+// compiled the program, and its run stopped at "a perform found no handler".
+effect Count {
+  next() -> Int
+}
+
+handler counting(step: Int) with n = 0 {
+  next() => resume(n + step) with n = n + step,
+}
+
+fn twice() = next() + next()
+
+fn main() = twice() ~> counting

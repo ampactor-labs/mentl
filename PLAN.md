@@ -978,11 +978,11 @@ as unknown, never as passing.
   its `Trap`, so a destructure's claim and a parameter pattern's stand at
   the pattern, and the facet reads each place's own claim. `mentl check`
   ends with how many places can trap and how many of them are inside the
-  library (on the wheel: 3,987 places, 3,931 of them inside the library
+  library (on the wheel: 3,971 places, 3,915 of them inside the library
   through the program's calls), and the proof gate heads its answer PROVEN
   only when nothing is pending and no place can trap. The board bounds the
-  places with no claim at 3,375 and the open claims at explicit calls at
-  664.
+  places with no claim at 3,373 and the open claims at explicit calls at
+  653.
 - **The lowering calls the form beneath a check only where the judgment
   proved its claim** (2026-11-06). It used to call `slice_raw` or
   `list_index_unchecked` wherever a call's node carried no `Trap` note, and
@@ -991,8 +991,39 @@ as unknown, never as passing.
   links a call whose claim it proved to the form beneath the check, and the
   lowering calls only what the link names
   (tests/micros/mn-pipe-cut-keeps-its-check.mn and four more stop with a
-  trap where the pin before this one read past the end). A pipe's stage
-  owes no claim of its own yet (§11, a stage is the call it completes).
+  trap where the pin before this one read past the end).
+- **A stage is the call it completes** (2026-11-06). A call's product keeps
+  one node per declared parameter, in declaration order: the argument
+  written for it, its default, an authored `??`, or a cell for a slot
+  nothing fills. A label used to drop the slots it skipped, so every reader
+  that completed a partial filled the wrong ones: `10 |> minus(b = 3)` ran
+  as `minus(3, 10)`, and so did `let f = minus(b = 3)` followed by `f(10)`
+  (tests/micros/mn-pipe-label-fills-its-slot.mn and
+  mn-partial-label-keeps-its-slot.mn answer right where the pin before this
+  one did not). A pipe's stage is judged by the one call judgment, at the
+  pipe, with the piped value in its open slot, so a stage owes its call's
+  claims and charges its call's row: a pipe into `slice` owes the cut's
+  bounds where the pipe stands (`mentl check
+  tests/micros/mn-pipe-cut-claim-pending.mn` prints `0 <= 5 && 5 <= 9 && 9
+  <= len(xs)` pending at 4:19), and one a guard proves keeps `!Trap`
+  (mn-pipe-cut-proven-keeps-no-trap.mn, and its share twin). A share's
+  branch is judged the same way against the borrowed input, and a merge's
+  parts fill the open slots. The lowering and every reader read that one
+  product. A hole standing as a stage is the callee of the call the pipe
+  completes, never a slot the pipe filled, so the caret at it still says
+  that a hole states no row, and its Why names the call `the call to ??`
+  (tests/micros/mn-pipe-stage-hole-states-no-row.mn and
+  mn-pipe-stage-hole-why.mn, red on pin e99f1621510b, this landing's first
+  build). A bare install of a handler whose configuration parameter has no
+  default is refused where it stands, where the pin before this one built it
+  and its run stopped at "a perform found no handler"
+  (mn-install-config-without-default-refuses.mn). A recursive group's end
+  reads its members' rows with the compressing resolve, since a stage's
+  flow cell keeps each member's row apart and a walk that writes nothing
+  back visits a member once for every path to it: the judgment of
+  lower.mn's link took 16.2 s at 1.26 GB without it and takes 4.1 s at
+  275 MB (the pin before this one, which merged those rows, 3.0 s at
+  133 MB).
 - **The crown is a battery** (2026-11-06). Each of the 191 crucibles in
   tests/crown states its contract on its first line, `// check: refuse
   E_EffectMismatch` (or the class it tests) for a leak and `// check:
@@ -1626,7 +1657,14 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    first gives the same answers as its own separate walk on the wheel and the
    batteries, and then the separate walks are deleted. Memory's question,
    which allocation a value may be, is one walk since 2026-11-05 (§7); the
-   eight queries follow, one landing each. The traps facet (2026-11-06, §7)
+   eight queries follow, one landing each. The census of the values that
+   walk cannot place (`census unplaced`, a board bound) reads a refinement
+   as its base but an alias as memory whatever the alias names
+   (`type_holds_memory`, src/verify.mn), so a `Node`, which is an `Int`,
+   counts as a value the walk cannot place: measured 2026-11-06 on the
+   answer of `unwrap_labeled_arg`. Read through to its target, an alias of
+   a word is a word, and the fall is a correction of the measure, said as
+   one. The traps facet (2026-11-06, §7)
    is a ninth: it walks a function's body and not the arms of the handlers
    it installs, so a trap reached through an installed handler counts as
    the installing function's own, with no path into the library (`mentl
@@ -1840,19 +1878,26 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    tighten` applies the names everywhere, and the positional form is then
    refused (`E_UnnamedParameter`). A type name that resolves nowhere is
    refused with `E_MissingVariable` at the name; today `fn f(x: Nope) = x + 1`
-   is refused as arithmetic on `Nope` (measured 2026-10-21). A dropped value
+   is refused as arithmetic on `Nope` (measured 2026-10-21). A bare install
+   of a handler whose configuration parameter has no default is refused with
+   the arity text "function arity mismatch: 1 param(s) vs 0 param(s)", where
+   the refusal should name the parameter and say to write its value
+   (tests/micros/mn-install-config-without-default-refuses.mn, 2026-11-06).
+   A dropped value
    is reported (`Hβ.infer.statement-value-is-dropped-silently`). A block's
    non-final statement whose value is a function is refused
    (`E_DroppedValue`). A non-unit word or aggregate is reported without being
    refused until the wheel's census reaches zero, and refused after that.
    `let _ = e` is the explicit discard.
    Teach lists what the program still owes
-   (`Hβ.teach.teaches-what-the-program-owes`). It offers one step at a
-   time, as the gradient was designed (DESIGN.md of 2026-03-23, the
-   gradient walkthrough of 2026-04-22): the annotation that unlocks the most
-   for the code at the caret, ranked by what it unlocks, and nothing where
-   no step unlocks anything. Today `mentl teach` lists one step for every
-   function at once (`mentl teach examples/pulse/course/07-bounds.mn`). It proposes a refinement at a
+   (`Hβ.teach.teaches-what-the-program-owes`). It works out the next step
+   for every function, which is what choosing among the steps needs, and
+   ranks them by what each unlocks, as the gradient was designed (DESIGN.md
+   of 2026-03-23, the gradient walkthrough of 2026-04-22): the step that
+   unlocks the most for the code at the caret comes first, and nothing is
+   offered where no step unlocks anything. Today `mentl teach` lists every
+   function's step in the order the functions are written, with nothing
+   ranked (`mentl teach examples/pulse/course/07-bounds.mn`). It proposes a refinement at a
    part (walked back through `PartFact` to its producer, and ranked by the
    obligations it discharges). A declaration with an authored clause is still
    offered the further locks its dependents rely on. Teach reads a lexical
@@ -2175,19 +2220,18 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    start; a size the program computes waits for step 2's evaluator, and
    running out of memory as a row fact is step 1's).
 
-10. **A stage is the call it completes.** The judgment writes a stage's
-    completed product once at the pipe, the piped value in its hole or its
-    next open slot with labels resolved and defaults filled, and judges that
-    call with the one call judgment, so a stage's claims, row, store ages and
-    hand-offs are the call's. A share's branches complete against the
-    borrowed input the same way, and the merge fills the product's parts.
-    The lowering lowers that product as a call, and the readers that rebuild
-    the completed call (`stage_application`, `completed_args`) and the
-    lowering's splice go. The call's product also says when the judgment
-    proved a primitive's claim, in place of the reference edge such a call
-    carries since 2026-11-06. Red today: `10 |> minus(b = 3)` runs as
-    minus(3, 10), and a pipe into `slice` owes no claim, so a guarded one
-    still charges `Trap`.
+10. **A claim's verdict is a fact at its node.** Where the ledger or the
+    settle decides a claim, its verdict (open, proven, proven only through
+    the program's calls, refused) is written at the claim's node, beside the
+    claim the graph already keeps there (`graph_claim_note`), and every
+    reader reads the node: `mentl check`'s printout, the traps facet, the
+    editor's strip and teach's debt. The ledger keeps only the open debt it
+    prints and the claims the settle asks again. Red today: the strip and the
+    traps facet find a claim proven only through the calls by matching its
+    module and span against the ledger's lists (`verify_handed`,
+    `trap_owed_at`, `trap_decided_at`), which cost the board three places
+    that can trap with no claim and eleven values the walk cannot place when
+    the strip learned them (2026-11-06).
 
 11. **The host's clock, randomness and sleep are real.** The WASI boundary
     leaves lib/io.mn for a module of its own. The emitter imports
