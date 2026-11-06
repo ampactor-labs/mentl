@@ -1626,7 +1626,13 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    first gives the same answers as its own separate walk on the wheel and the
    batteries, and then the separate walks are deleted. Memory's question,
    which allocation a value may be, is one walk since 2026-11-05 (§7); the
-   eight queries follow, one landing each.
+   eight queries follow, one landing each. The traps facet (2026-11-06, §7)
+   is a ninth: it walks a function's body and not the arms of the handlers
+   it installs, so a trap reached through an installed handler counts as
+   the installing function's own, with no path into the library (`mentl
+   query examples/grid/station.mn traps` says so of `main`, where `mentl
+   why examples/grid/station.mn main Trap` follows the arm into
+   `print_string`).
 
 2. **The keystone: lowering is a column, and the graph gains its evaluator**
    (`Hβ.lower.lowering-is-a-column`, `Hβ.lower.the-evaluator-is-a-projection`).
@@ -1841,7 +1847,12 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    refused until the wheel's census reaches zero, and refused after that.
    `let _ = e` is the explicit discard.
    Teach lists what the program still owes
-   (`Hβ.teach.teaches-what-the-program-owes`). It proposes a refinement at a
+   (`Hβ.teach.teaches-what-the-program-owes`). It offers one step at a
+   time, as the gradient was designed (DESIGN.md of 2026-03-23, the
+   gradient walkthrough of 2026-04-22): the annotation that unlocks the most
+   for the code at the caret, ranked by what it unlocks, and nothing where
+   no step unlocks anything. Today `mentl teach` lists one step for every
+   function at once (`mentl teach examples/pulse/course/07-bounds.mn`). It proposes a refinement at a
    part (walked back through `PartFact` to its producer, and ranked by the
    obligations it discharges). A declaration with an authored clause is still
    offered the further locks its dependents rely on. Teach reads a lexical

@@ -41,8 +41,7 @@ selfcompile_peak_kb_max: 421100
 # same wheel (the guest's `arena: … line peak N KB`): two compilers on one
 # input, a reading no machine moves. A landing whose deletions do not cover
 # the facts it keeps pays their measured price on one dated line, closed by the next commit:
-# paid 2026-11-06 (selfcompile_line_peak_kb_max): 141 KB, L1's 620 more open claims kept until printed and its perform-install column (285,557 KB against the boot's 285,416 on the same wheel); the next commit sets the key back to 0, since the pin then carries these facts
-selfcompile_line_peak_kb_max: 141
+selfcompile_line_peak_kb_max: 0
 
 # The candidate's wall time on the wheel, as a percentage of the pinned
 # boot's on the same wheel in the same march (the m3 leg against the m1 leg,
