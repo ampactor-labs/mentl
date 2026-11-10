@@ -760,8 +760,14 @@ accepts each program and `mentl run` shows the break.
 - A refinement claim left pending is assumed by its callee and checked
   nowhere when the program runs, so a read it proves can read outside its
   list; what a pending claim should cost is Morgan's open decision (§11.1).
-- False proofs are found only when someone thinks to write a probe. No run
-  checks a claim the compiler proved (§11.B, §11.2).
+- A wrong proof is caught only where a fixture asks for a witness build
+  with `// witness: N` on its first line, as
+  tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
+  other fixtures that way, no verb builds a witness outside a battery, and
+  no witness build has run over the examples or the compiler (§11.B). A
+  witness build keeps the checks of reads, cuts, divisions and conversions.
+  It does not check a pattern's claim or a refinement, and its stop names
+  the library's line and not the proven place (§11.10).
 
 **Claims and proof.**
 
@@ -780,6 +786,15 @@ accepts each program and `mentl run` shows the break.
   §11.13).
 - A claim proven only through the program's calls leaves the `Trap` in the
   row, so `with !Trap` cannot rest on it yet (§11.3).
+- The judgment charges `Trap` at a call of `str_eq` and none at `==` on two
+  strings, which runs the same function. `mentl why FILE F Trap` says a
+  function that compares with `==` never uses `Trap`, and the module it
+  compiles to calls `str_eq` (a scratch program, 2026-11-10). The
+  comparison cannot stop a run, since `str_eq` reads only below the two
+  lengths it found equal, but the judgment has not proven that, so one of
+  its two answers is unproven. The compiler's own source still calls
+  `str_eq` by name where SYNTAX says a developer writes `==` (`mentl query
+  src/main.mn "refs of str_eq"`; §11.13).
 - The traps facet does not follow the arms of a handler a function
   installs. It calls the grid controller's one remaining trap `main`'s own,
   with no path, where `mentl why examples/grid/station.mn main Trap` traces
@@ -829,6 +844,15 @@ accepts each program and `mentl run` shows the break.
   read as older memory, because the judgment keeps nothing of what a store
   put into an allocation. `mentl verify` counts the values the verifier's
   walk cannot place (§11.8).
+- A join, `xs ++ ys`, is read as memory the walk cannot follow, so a
+  function whose answer is a join answers older memory: `mentl query
+  src/main.mn "claim of int_to_str"` says `returns: older`, and every use
+  of such a function counts as a value the walk cannot place. A join builds
+  a new node that holds both operands. Reading it so changes what a store
+  into a joined list reaches, so it needs fixtures of its own (§11.1).
+- An arena opened inside a spawned branch sometimes keeps its region. The
+  frontier leg that expects it reclaimed fails about one run in thirty
+  (§11.B, "First, a check that fails at random").
 - A resume does not restore host resources. Resuming on another machine
   and a session that outlives its process are open (§11.6).
 - SIMD and GPU schedules run their branches one after another. A branch
@@ -876,6 +900,10 @@ accepts each program and `mentl run` shows the break.
   resolves nowhere is refused as arithmetic on it. A label on a sequence
   primitive's argument is refused as unknown (§11.3, §11.5).
 - The verbs' own defects, found by running each one, are listed in §11.5.
+- A tuple pattern written as a parameter of a module-level function builds
+  and runs, and its head does not print back as one declaration. `mentl
+  query FILE heads` counts it, and the landing pass refuses a pin over it
+  (§11.5).
 - `sin(3.0)` is 9e-9 from its value (§11.7).
 - The page cannot play a lesson (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
@@ -1090,112 +1118,51 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-Three boxes are written out. None is gated yet (2026-11-10), so the first
-piece of work is Morgan's gate on Box 1. The three build one instrument.
-Today a false proof is found only when someone thinks to write the program
-that exposes it (§7). A witness build keeps the checks the compiler proved
-away, so every program we already run becomes such a program. The arena
-already works this way: an extent the judgment proved root-free checks, at
-its exit, that no barrier journaled inside it (§4⑨).
+Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
+this branch ("I trust you and approve you to work through the night"), and
+the builder read that as his gate on the boxes here, in order. Each
+landing's receipt is his to review, and a box he did not mean to gate is
+reverted on his word.
 
-1. **Box 1 · A fixture can keep every check the compiler proved away.** Not
-   gated.
+The boxes build one instrument. A false proof used to be found only when
+someone thought to write the program that exposes it (§7). A witness build
+keeps the checks the compiler proved away, so every program we already run
+becomes such a program. The box that landed on 2026-11-10 built it for one
+fixture at a time: a fixture whose first line is `// witness: N` is built
+with every proven check kept (pin 8e16ac1db2bb). The two boxes below run
+it over everything we have. The arena already works this way: an extent
+the judgment proved root-free checks, at its exit, that no barrier
+journaled inside it (§4⑨).
 
-   What a person sees. A fixture whose first line is `// witness: N` is
-   built as a witness. Wherever the compiler proved a claim and would leave
-   its check out (an index read, a cut, an integer division, a conversion
-   to Int), the check stays, and the run must answer N. A wrong proof then
-   stops the run where today it reads the wrong memory. Every other build
-   is written exactly as before.
+**What a box does to the board.** A box that adds code to the wheel raises
+the two counts that grow with code: the values the memory walk cannot place
+and the places that can trap with no claim (`src/board.mn`). Neither limit
+may rise, so a box names what pays for its code before it is built: a class
+of values the walk learns to place, or code that leaves because the new
+form made it unnecessary. `MENTL_BOOT=<candidate> mentl verify` shows both
+counts before the landing pass, and `mentl query src/main.mn "census
+unplaced"` says beside each value what stopped the walk. The witness box
+stopped at this on its first landing pass. It paid by teaching the walk
+that a constructor with no fields is a word, which placed 890 values. One
+cause measured since is the join, which stands behind the 742 uses of
+`int_to_str` among the unplaced values (§7, Memory).
 
-   Fails today, on pin b46b71133838 (both measured 2026-11-10). `mentl run`
-   on the program below answers 2, the list's length word: the read is
-   proven from `i: NonNeg`, the caller hands it -2, and nothing checks the
-   refinement or the read. `mentl test` on a directory that holds the
-   program prints `NOEXPECT mn-witness-proven-read-stops`, since no
-   contract begins `// witness:`.
+**First, a check that fails at random.** One leg of the frontier gate,
+`tests/frontier/arena/spawning-module-runs-the-body.mn`, exits 1 where it
+expects 42 in about one run in thirty, on the pinned compiler as on any
+candidate, since both write the same module for it. In the failing runs an
+arena opened inside a spawned branch keeps its region, so the leg's
+`arena_stat(ArKept) == 0` is false: of 1,000 runs on 2026-11-10, 32 failed
+in both branches and 4 in one. The landing pass stopped on it once that
+night and passed on the next run. An unreliable check comes before any
+order (§11's second rule), so this is settled before the next landing. It
+is not a box yet. To make it one, read which of the exit's reasons to keep
+a region a spawned instance can meet by timing alone, and decide by that
+reading whether the runtime or the leg's expectation is wrong. Box 1 lands
+nothing, so it can run first.
 
-   ```
-   // witness: 134 trap: a precondition failed
-   type NonNeg = Int where 0 <= self
-
-   fn at(xs, i: NonNeg) = if i < len(xs) { list_index(xs, i) } else { 0 }
-
-   fn go(k) = at([4, 5], k - 3)
-
-   fn main() = go(1)
-   ```
-
-   What the wheel gains. The compiler's own link holds 101 references to
-   the read beneath the bounds check and 35 to the cut beneath its check
-   (`mentl query src/main.mn "refs of list_index_unchecked"` and `"refs of
-   slice_raw"`, 2026-11-10). Most are reads and cuts a proof stands behind,
-   and no run checks one of those proofs today. Box 2 runs them.
-
-   The form, in five places.
-   - `src/effects.mn`, beside `claim_open_at`: the type `ProofUse =
-     ProofsTrusted | ProofsWitnessed`; the effect `Proofs { proof_use() ->
-     ProofUse }`; the handler `proofs(use)`, whose one arm is `proof_use()
-     => resume(use)`; and `fn check_kept_at(h) = match proof_use() {
-     ProofsWitnessed => true, ProofsTrusted => claim_open_at(h) }`.
-   - `src/backends/wasm.mn`: `emit_int_div`, and `emit_primitive` in its
-     `FloatToInt` arm, read `check_kept_at(h)` where they read
-     `claim_open_at(h)`. Nothing else in the emitter changes.
-   - `src/lower.mn`, `lower_index_runtime`: where the build witnesses, the
-     callee is the checked read, the declaration that
-     `env_resolve_linked(subscript_callee(false))` answers; otherwise it is
-     today's line.
-   - `src/lower.mn`, `lower_global_call`, the arm for a call the judgment
-     linked to the form beneath its check: where the build witnesses, the
-     call is lowered as written, through `lower_named_call(handle, fh, name,
-     r_args, lo_args)`; otherwise it is today's `LDirectCall`.
-   - `src/main.mn`: `dispatch_invocation` installs `proofs(ProofsTrusted)`
-     over every verb. `Expect` gains `ExpectWitness(Int, String)`.
-     `battery_expect` reads `// witness: ` as it reads `// expect: `: the
-     exit, then the line a stop must say. `battery_step` judges it as it
-     judges `ExpectRun`, with the compile under `~>
-     proofs(ProofsWitnessed)`, and prints the same `RUN` line, so the
-     host's loop is unchanged.
-
-   Two fixtures in `tests/micros`: `mn-witness-proven-read-stops.mn`, the
-   program above, and `mn-witness-proven-read-holds.mn`, the same `at`
-   handed an index in range, with `// witness: 7`.
-
-   Edge cases. A witness fixture with no proven place builds as any other
-   and must answer its N. A witness fixture the gate refuses prints
-   `FAILC`, as an `// expect` fixture does. A tuple read at a constant
-   index and a list pattern's rest carry no proof and are untouched. A read
-   or a cut that a pipe's stage or a share's branch completes goes through
-   the same arm of `lower_global_call`. `byte_at` and `str_slice` are
-   covered with `list_index` and `slice`, since each is linked to the same
-   form.
-
-   Refusals. None is new. A first line that begins `// witness:` with no
-   number reads as 0, as `// expect:` does.
-
-   Left alone. The stop's own line: for a read or a cut it is the checked
-   form's, `trap: a precondition failed at` the library's line, and it does
-   not yet say that a proof failed or name the proven place. No verb builds
-   a witness outside a battery. A pattern's claim and a refinement are not
-   witnessed. Each of these has its place later in this list.
-
-   Proves it.
-
-   ```
-   source tools/wt-env.sh; C=$(wt_m2_ensure) && wt_m2_place "$C" .build/probe
-   MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl check src/main.mn
-   wt_battery "$PWD/.build/probe/m2.wasm" tests/micros
-   mentl land
-   ```
-
-   The check prints what it prints on the pin and no error; an effect that
-   nothing handles would be `E_EffectUnhandled`. The battery reports every
-   contract holding, two more than before. `mentl land` reports every gate
-   green. The march is expected CLEAN, since a trusted build is written as
-   before, and any other verdict is reported before a pin is taken.
-
-2. **Box 2 · Count the proven checks that fail on the programs we have.**
-   Not gated. It needs Box 1.
+1. **Box 1 · Count the proven checks that fail on the programs we have.**
+   Gated with the night's work (2026-11-10).
 
    What a person sees. One number with the programs behind it: of the
    fixtures that state `// expect: N`, the course's twelve lessons, the two
@@ -1206,8 +1173,8 @@ its exit, that no barrier journaled inside it (§4⑨).
 
    Fails today. The number is unknown, and that is the failure.
 
-   The form. Nothing is committed to the source. On a working tree with
-   Box 1 landed:
+   The form. Nothing is committed to the source. On a working tree at the
+   pin that builds witnesses:
    - Fixtures. A probe edit puts the compile in `battery_step`'s
      `ExpectRun` arm under `~> proofs(ProofsWitnessed)`. Build the
      candidate and run `wt_battery` on `tests/micros`, `tests/frontier` and
@@ -1240,8 +1207,10 @@ its exit, that no barrier journaled inside it (§4⑨).
    fixtures that differ, the witness-built compiler's exit, and the `cmp`
    of its module against the one that built it.
 
-3. **Box 3 · Every battery runs each `// expect` fixture both ways.** Not
-   gated. It needs Box 2's count at zero, or each cause it found fixed.
+2. **Box 2 · Every battery runs each `// expect` fixture both ways.**
+   Gated with the night's work (2026-11-10). It needs Box 1's count at
+   zero, or each cause it found fixed, and the check that fails at random
+   settled.
 
    What a person sees. `mentl land` turns red when a proof is wrong on any
    fixture: a fixture whose witness build differs from its trusted build is
@@ -1260,8 +1229,9 @@ its exit, that no barrier journaled inside it (§4⑨).
    added, so the count still equals the directory's files and a failing
    witness run still counts as broken.
 
-   Measured before the gate. The micro battery's wall time with the second
-   compile, against today's.
+   Measured before it is built. The micro battery's wall time with the
+   second compile, against today's. And what pays for the second compile's
+   code on the board, by the rule above.
 
    Proves it. `wt_battery` on each test directory reports the same count of
    fixtures as before, and a fixture with a wrong proof, placed in a scratch

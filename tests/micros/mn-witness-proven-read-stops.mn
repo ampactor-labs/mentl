@@ -1,0 +1,12 @@
+// witness: 134 trap: a precondition failed
+// A read the compiler proves from its parameter's refinement, handed an
+// index the refinement excludes. Built trusting the proof, the read runs
+// beneath its bounds check and answers 2, the word that holds the list's
+// length. Built as a witness, the check is kept and stops the run.
+type NonNeg = Int where 0 <= self
+
+fn at(xs, i: NonNeg) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn go(k) = at([4, 5], k - 3)
+
+fn main() = go(1)

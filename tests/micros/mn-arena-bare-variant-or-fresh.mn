@@ -1,0 +1,31 @@
+// expect: 9
+// `made` answers `Vacant`, a constructor that takes no fields, or a `Kept`
+// record holding a list it builds, so its answer is memory of whoever calls
+// it. Called inside the arena, the record, its list and the list [9, 8]
+// stored into it are all the arena's own. The arena's body answers the
+// record, so the exit moves it out along its type, and main reads the 9
+// after new memory has been written over what the arena freed.
+import arena
+
+type Shelf = Vacant | Kept([[Int]])
+
+fn made(n) = if n == 0 { Vacant } else { Kept(list_filled(n, [0])) }
+
+fn fill(s) = match s {
+  Kept(xs) => {
+    list_set(xs, 0, [9, 8])
+    s
+  },
+  Vacant => s,
+}
+
+fn first_of(s) = match s {
+  Kept(xs) => list_index(list_index(xs, 0), 0),
+  Vacant => 0,
+}
+
+fn main() = {
+  let kept = { fill(made(2)) } ~> arena
+  let junk = list_filled(16, 99)
+  first_of(kept) + len(junk) - 16
+}

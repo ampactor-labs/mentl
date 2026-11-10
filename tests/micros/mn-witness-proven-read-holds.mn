@@ -1,0 +1,10 @@
+// witness: 7
+// The same proven read, handed an index in range. Built as a witness, the
+// kept check passes and the run answers the element.
+type NonNeg = Int where 0 <= self
+
+fn at(xs, i: NonNeg) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn go(k) = at([4, 7], k)
+
+fn main() = go(1)

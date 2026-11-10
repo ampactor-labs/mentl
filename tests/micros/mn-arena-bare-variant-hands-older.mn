@@ -1,0 +1,27 @@
+// expect: 7
+// `held` answers `Vacant`, a constructor that takes no fields, or a `Kept`
+// record holding the list it was handed. Inside the arena the young list
+// [7, 8, 9] is stored into the list that `held` hands back, which is the list
+// older, built before the arena opened. The store must keep its barrier, so
+// the young list survives the arena's exit and main reads 7 afterwards.
+import arena
+
+type Shelf = Vacant | Kept([[Int]])
+
+fn held(c, xs) = if c { Kept(xs) } else { Vacant }
+
+fn poke(s, o) = {
+  match s {
+    Kept(xs) => list_set(xs, 0, [7, 8, 9]),
+    Vacant => o,
+  }
+  0
+}
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  { poke(held(true, older), older) } ~> arena
+  let junk = list_filled(16, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 16
+}

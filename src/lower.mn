@@ -890,7 +890,12 @@ fn site_schedule_seed(fh) = match lower_site_schedule() {
 fn lower_global_call(handle, site, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
   Some(PrimitiveKind(p)) => LPrim(handle, p, lo_args),
   Some(_) | None => match graph_ref_decl(site) {
-    Some(form) => LDirectCall(handle, fh, DeclaredAt(form), false, lo_args),
+    // A build that witnesses its proofs lowers the call as written, so the
+    // primitive's own check runs where the judgment proved it could not fail.
+    Some(form) => match proof_use() {
+      ProofsTrusted => LDirectCall(handle, fh, DeclaredAt(form), false, lo_args),
+      ProofsWitnessed => lower_named_call(handle, fh, name, r_args, lo_args),
+    },
     None => lower_named_call(handle, fh, name, r_args, lo_args),
   },
 }
@@ -5937,8 +5942,15 @@ fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
 // dereferences exactly that. Called as a closure value it met the site's own
 // vector — `(i32, i32, i32) -> f64` against a callee that signs a word — the
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
+//
+// A build that witnesses its proofs calls the checked read at every index,
+// the ones the judgment proved in range included, by the declaration the
+// link holds under the vocabulary's name.
 fn lower_index_runtime(handle, receiver, index) = {
-  let callee = sugar_callee(handle, subscript_callee(!claim_open_at(handle)))
+  let callee = match proof_use() {
+    ProofsWitnessed => vocabulary_callee(subscript_callee(false)),
+    ProofsTrusted => sugar_callee(handle, subscript_callee(!claim_open_at(handle))),
+  }
   LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
 }
 

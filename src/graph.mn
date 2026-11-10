@@ -522,7 +522,8 @@ handler references_linked {
 
 // Memory's one question, one step: the nearest stops of the value at `h`
 // (`MemoryStop`), over the edges the judgment drew (PLAN §4, the reach). A
-// reference reaches its binder's fact or the declaration it names. A join
+// reference reaches its binder's fact or the declaration it names, and a
+// reference to a constructor that takes no fields is a word. A join
 // and an install are read through `value_tails`: a block is its tail, a
 // branch its arms, and an install its body and the arms that answer without
 // resuming. Every other node is a stop the reader continues through by its
@@ -535,7 +536,7 @@ fn stops_of(h) = match value_tails(h) {
     NExpr(VarRef(_)) => match binder_read_by(h) {
       Some(b) => stops_of_binder(b),
       None => match graph_ref_decl(h) {
-        Some(d) => [StopDecl(h, d)],
+        Some(d) => if names_bare_variant(h) { [StopWord(h)] } else { [StopDecl(h, d)] },
         None => [StopBeyond(h)],
       },
     },
@@ -588,6 +589,16 @@ fn stops_of(h) = match value_tails(h) {
     NParam(_) | NPat(_) => stops_of_binder(h),
     NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [StopBeyond(h)],
   },
+}
+
+// Whether a reference is the value of a constructor that takes no fields,
+// such as `None`. The judgment writes a product at a reference only where the
+// reference names a function, so a constructor's reference with no product
+// is the variant itself. The emit writes that value as the variant's tag, a
+// word, so it is no memory and nothing can be stored into it.
+fn names_bare_variant(r) = match graph_product_at(r) {
+  NoProduct => ref_is_constructor(r),
+  ProductOf(_, _, _) => false,
 }
 
 // The stop a binder is, by the fact the judgment holds at it: a parameter, a

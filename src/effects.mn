@@ -1641,6 +1641,27 @@ fn row_names_trap(row) = match row {
 // saying so where it stayed open.
 fn claim_open_at(h) = any(row_names_trap, graph_rows_at(h))
 
+// What a build does with a claim the judgment proved. A trusted build leaves
+// the check out, as the proof allows. A witness build keeps the check, so a
+// wrong proof stops the run where the claim fails; the battery builds a
+// fixture that way when its first line is `// witness: N`.
+type ProofUse = ProofsTrusted | ProofsWitnessed
+
+effect Proofs {
+  proof_use() -> ProofUse
+}
+
+handler proofs(use) {
+  proof_use() => resume(use),
+}
+
+// Whether the form that checks a site's claim is written there: where the
+// claim stayed open, and at every claim where the build witnesses its proofs.
+fn check_kept_at(h) = match proof_use() {
+  ProofsWitnessed => true,
+  ProofsTrusted => claim_open_at(h),
+}
+
 // body ∩ forbidden = ∅ BY NAME — the crown's negation membership. A body effect
 // whose NAME is forbidden fails the gate: this is where a forbidden effect
 // carried in through instantiation is CAUGHT.

@@ -4912,9 +4912,9 @@ fn emit_stop_runtime() = {
 // engine's own words and no address. The checked forms take the operands and
 // the site's address, test the claim's faces in the order the instruction
 // fails them, and stop saying the one that failed; the instruction follows
-// where every face holds. The emit calls one only where the site's claim
-// stayed open (`claim_open_at`), so a proven site pays nothing: the check is
-// the open claim's projection, and proof deletes it.
+// where every face holds. The emit calls one only where the site's check is
+// kept (`check_kept_at`): where its claim stayed open, so a proven site pays
+// nothing, and at every site of a build that witnesses its proofs.
 fn emit_claim_checks() = {
   let lit = { s => int_to_str(string_offset(s)) }
   let stop = {
@@ -9090,7 +9090,7 @@ fn emit_arith_at(h, op, r) = match op {
 // A Float's division is total in the substrate (IEEE answers inf and NaN)
 // and raises no claim, so it keeps its instruction at every width.
 fn emit_int_div(h, op, r, k) = match r {
-  RI32 | RI64 => if claim_open_at(h) {
+  RI32 | RI64 => if check_kept_at(h) {
     wat_emit("    {site_args(h)} (call $mentl_{k}_{repr_wat(r)})\n")
   } else {
     emit_binop_repr(op, r)
@@ -10524,7 +10524,7 @@ fn primitive_op(p) with Pure = match p {
 // with the engine's words and no address; where the claim held, the
 // instruction.
 fn emit_primitive(h, p) = match p {
-  FloatToInt => if claim_open_at(h) {
+  FloatToInt => if check_kept_at(h) {
     wat_emit("    {site_args(h)} (call $mentl_trunc_f64)\n")
   } else {
     wat_emit("    ({primitive_op(p)})\n")

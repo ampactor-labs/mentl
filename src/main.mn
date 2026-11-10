@@ -173,7 +173,7 @@ fn dispatch_invocation(verb) = match verb {
   VNew(name) => new_project(name),
   VWith(hname, target) => with_run(hname, target),
   VWelcome => welcome_run(),
-} ~> judgment_ledgers ~> env_handler(env_root()) ~> no_state_walked ~> graph_handler(root_version()) ~> diagnostics_handler
+} ~> judgment_ledgers ~> env_handler(env_root()) ~> no_state_walked ~> graph_handler(root_version()) ~> diagnostics_handler ~> proofs(ProofsTrusted)
 
 // ─── edit_run — the cursor session at the terminal
 //
@@ -1580,6 +1580,9 @@ type Expect
   // the exit, and the prefix of the line a stop must say on fd 2 ("" when
   // the contract names none)
   = ExpectRun(Int, String)
+  // the same two, over a build that keeps every check the judgment proved
+  // away (`proofs`)
+  | ExpectWitness(Int, String)
   | ExpectMemory(Int, Int)
   | ExpectRefuse(String)
   | ExpectCheckRefuse(String)
@@ -1660,6 +1663,11 @@ fn battery_expect(src) = {
     Some(ExpectMemory(
       battery_expect_digits(src, 11, 0),
       battery_expect_digits(src, battery_skip_digits(src, 11) + 1, 0)
+    ))
+  } else if byte_len(src) >= 12 && str_slice(src, 0, 12) == "// witness: " {
+    Some(ExpectWitness(
+      battery_expect_digits(src, 12, 0),
+      battery_expect_said(src, 12 + byte_len(battery_expect_word(src, 12, 12)))
     ))
   } else if byte_len(src) < 12 {
     None
@@ -2252,6 +2260,25 @@ fn battery_loop(micros: [String], i, fails) = if i >= len(micros) {
   battery_loop(micros, i + 1, fails + step)
 }
 
+// A fixture that is compiled and run. Where the gate refused it, it fails
+// here. Where its module was written, the verdict is the host's: the RUN line
+// hands over the module, the exit it must answer, the error count, which the
+// gate has already held at zero, and the line a stop must say, and the
+// command that invoked the battery runs the module and prints PASS or
+// FAIL(run) in this line's place.
+fn battery_run_verdict(stem, want, said, compiled) = match compiled {
+  (left, nerr, _) => match left {
+    ArtifactRefused => {
+      print_string("FAILC {stem}\n")
+      1
+    },
+    ArtifactWritten(_) => {
+      print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
+      0
+    },
+  },
+}
+
 fn battery_step(path: String) = {
   let stem = path_stem(path)
   let src = fs_read_file(path)
@@ -2273,23 +2300,10 @@ fn battery_step(path: String) = {
       ExpectWaits(line, col, want) => battery_waits_step(stem, path_to_module(path), line, col, want),
       ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
-      ExpectRun(want, said) => match battery_compile(path_to_module(path), stem) {
-        (left, nerr, _) => match left {
-          ArtifactRefused => {
-            print_string("FAILC {stem}\n")
-            1
-          },
-          // The verdict is the host's: the RUN line hands over the module,
-          // the exit it must answer, the error count, which the gate has
-          // already held at zero, and the line a stop must say; the command
-          // that invoked the battery runs the module and prints PASS or
-          // FAIL(run) in this line's place.
-          ArtifactWritten(_) => {
-            print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
-            0
-          },
-        },
-      },
+      ExpectRun(want, said) => battery_compile(path_to_module(path), stem) |> battery_run_verdict(stem, want, said),
+      // The same contract over a build that keeps every check the judgment
+      // proved away, so a wrong proof stops the run where its claim fails.
+      ExpectWitness(want, said) => (battery_compile(path_to_module(path), stem) ~> proofs(ProofsWitnessed)) |> battery_run_verdict(stem, want, said),
       // The plan's verdict alone: the pages the written module's memory
       // begins with and may grow to, as the plan settled them.
       ExpectMemory(pages, max) => match battery_compile(path_to_module(path), stem) {

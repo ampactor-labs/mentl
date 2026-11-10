@@ -342,8 +342,16 @@ fn board_bounds() = [
   // values whose type is such an alias, `Node` the most common, are no
   // memory. The census read every alias as memory whatever it named. Two
   // answers this landing's code reads are among the 34,654: whether a stage's
-  // callee has a known arrow, and a share branch's own span.
-  Bound({ceiling: 34654, question: QCensus(CsUnplaced)}),
+  // callee has a known arrow, and a share branch's own span. 34,654 -> 33,772
+  // (2026-11-10): a reference to a constructor that takes no fields is a
+  // word, which the emit writes as the variant's tag. The walk read it as a
+  // declaration held as a value and the judgment aged it as older memory, so
+  // every function that can answer one answered older memory. With the
+  // reference read as the word it is, 890 values are placed. The same
+  // landing's witness build brought eight the walk cannot place: the resume
+  // of the handler that says how a build uses its proofs, the lowering's two
+  // choices of the checked form, and the battery's second way to compile.
+  Bound({ceiling: 33772, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -450,8 +458,10 @@ fn board_bounds() = [
   // with each arm it replaces. 1,369 -> 1,360 (2026-11-06): the pipe's own
   // completion of its stage left the judgment and the lowering with its
   // arms, and the readers of the one product the call judgment writes
-  // brought ten.
-  Bound({ceiling: 1360, question: QCensus(CsWildcardRoster)}),
+  // brought ten. 1,360 -> 1,359 (2026-11-10): the verifier's arm for a part
+  // taken off a declaration held as a value left when the walk came to read a
+  // constructor that takes no fields as a word.
+  Bound({ceiling: 1359, question: QCensus(CsWildcardRoster)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs

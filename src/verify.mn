@@ -4573,13 +4573,12 @@ fn part_of_stop(memo, b, step, stop) = match stop {
     },
     PartIndex(_) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => RootsBeyond(b),
   },
-  StopDecl(r, _) => match step {
-    PartCtor(name, _) => if ref_is_constructor(r) && !named_reference(r, name) { RootsAt([]) } else { RootsBeyond(b) },
-    PartIndex(_) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => RootsBeyond(b),
-  },
   StopParam(pb) => param_part_roots(memo, b, step, pb),
-  StopLet(_) | StopConfig(_) | StopState(_) | StopPart(_, _) | StopPerform(_, _) | StopAlloc(_)
-  | StopStatic(_) | StopWord(_) | StopPartOf(_, _) | StopBeyond(_) => RootsBeyond(b),
+  // A word has no parts, so a pattern that takes one does not match it: a
+  // whole that may be `None` hands a `Some(x)` arm nothing.
+  StopWord(_) => RootsAt([]),
+  StopLet(_) | StopConfig(_) | StopState(_) | StopPart(_, _) | StopDecl(_, _) | StopPerform(_, _)
+  | StopAlloc(_) | StopStatic(_) | StopPartOf(_, _) | StopBeyond(_) => RootsBeyond(b),
 }
 
 // A part of a parameter: the part at the same step of every construction the

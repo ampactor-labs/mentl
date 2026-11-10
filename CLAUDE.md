@@ -271,6 +271,12 @@ order they run.
   refuses and how, what it leaves alone, and the command that proves it.
 - No box is written without a number, measured on the compiler's own
   source, that shows what the box buys.
+- A box that adds code to the wheel says what pays for it. The board's
+  counts of values the memory walk cannot place and of places that can trap
+  with no claim grow with code, and neither limit may rise. So the box
+  names the class of values the walk learns to place, or the code that
+  leaves, with the count measured on a candidate (`MENTL_BOOT=<candidate>
+  mentl verify`).
 - Morgan gates each box before it is built. Until the gate, the work is to
   make the box exact: run its failing measurement, read the code it names,
   and remove every guess.
@@ -331,10 +337,11 @@ order they run.
    date. Update SYNTAX if the language's surface changed. Check every
    changed claim against the artifact with a command. A file outside PLAN
    names a §11 design by its title, never its number.
-7. **Commit on main through the hooks and push** (`git push -u origin
-   main`). No branches and no pull requests unless asked. Leave the tree
-   clean when the session ends, and end with a message that says what
-   changed and what was measured.
+7. **Commit through the hooks and push,** on the branch MENTL_MEMORY.md's
+   standing rules name. Main changes only on Morgan's word, and no pull
+   request is opened unless he asks. Leave the tree clean when the session
+   ends, and end with a message that says what changed and what was
+   measured.
 
 ## Performance
 
@@ -383,10 +390,12 @@ The hooks and gates enforce these rules. They are not suggestions.
   holds the decisions, and the compiler derives the rest. Delete dead code,
   side indexes, workarounds, decoration and leftovers from history on sight
   (`mentl query src/main.mn unreachable`, `census`, `mentl verify`).
-- **Use agents only for breadth,** such as reading many files or writing
-  fixtures. Pass the model explicitly, and start each agent from the map and
-  the parts its brief names. Never use an agent to review a design or a
-  document. Running the artifact is what proves a design wrong.
+- **No agents for now** (Morgan, 2026-11-10; MENTL_MEMORY.md's standing
+  rules say the same). When he lifts this, agents are for breadth only,
+  such as reading many files or writing fixtures: pass the model
+  explicitly, and start each agent from the map and the parts its brief
+  names. Never use an agent to review a design or a document. Running the
+  artifact is what proves a design wrong.
 
 ## No unfinished work
 
@@ -483,6 +492,15 @@ Each rule here was paid for by a stop or a wrong answer.
 - Work kept only on the session's machine is not kept. Commit and push each
   finished piece, and send Morgan a copy of anything that cannot be pushed
   yet.
+- Run `mentl verify` and `mentl query src/main.mn heads` on the candidate
+  before the landing pass. New code raises the counts that grow with code,
+  and a form the wheel has not used before (a pattern as a parameter) can
+  fail a check that only the pin step runs.
+- When a check fails on a landing, compare what the pinned compiler writes
+  for the same program before changing anything. A check that fails on the
+  same bytes from both compilers is unreliable, and an unreliable check is
+  measured (how often, on which condition) and recorded before it is run
+  again.
 
 ## Conventions
 
