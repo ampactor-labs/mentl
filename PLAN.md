@@ -858,9 +858,11 @@ accepts each program and `mentl run` shows the break.
 - A join, `xs ++ ys`, is read as memory the walk cannot follow, so a
   function whose answer is a join answers older memory: `mentl query
   src/main.mn "claim of int_to_str"` says `returns: older`, and every use
-  of such a function counts as a value the walk cannot place. A join builds
-  a new node that holds both operands. Reading it so changes what a store
-  into a joined list reaches, so it needs fixtures of its own (§11.1).
+  of such a function counts as a value the walk cannot place. The function
+  a join calls, `list_concat`, already claims what it answers: one of its
+  operands, or a new node that holds both. A probe that read the join by
+  that claim placed 1,732 values and passed every battery; it is written
+  out as the payment of §11.B's box, with the fixtures it still owes.
 - An arena opened inside a spawned branch sometimes keeps its region. The
   frontier leg that expects it reclaimed fails about one run in thirty
   (§11.B, "First, a check that fails at random").
@@ -1157,9 +1159,8 @@ form made it unnecessary. `MENTL_BOOT=<candidate> mentl verify` shows both
 counts before the landing pass, and `mentl query src/main.mn "census
 unplaced"` says beside each value what stopped the walk. The witness box
 stopped at this on its first landing pass. It paid by teaching the walk
-that a constructor with no fields is a word, which placed 890 values. One
-cause measured since is the join, which stands behind the 742 uses of
-`int_to_str` among the unplaced values (§7, Memory).
+that a constructor with no fields is a word, which placed 890 values. The
+next payment is measured and written into the box below: the join.
 
 **First, a check that fails at random.** One leg of the frontier gate,
 `tests/frontier/arena/spawning-module-runs-the-body.mn`, exits 1 where it
@@ -1202,11 +1203,14 @@ while the property it names stayed untrue for larger arenas.
 
 1. **Box 1 · Every battery runs each `// expect` fixture both ways.**
    Gated with the night's work (2026-11-10). The count it waited on is zero
-   (§7). It needs the check that fails at random settled first.
+   (§7). It needs the check that fails at random settled first. Two parts
+   of its form changed after the gate, by what was measured that night, and
+   are marked "for the gate" below.
 
    What a person sees. `mentl land` turns red when a proof is wrong on any
-   fixture: a fixture whose witness build differs from its trusted build is
-   run twice, and both runs must answer its contract.
+   fixture: every fixture that states `// expect: N` is built twice, once
+   trusting the proofs and once keeping their checks, and both runs must
+   answer its contract.
 
    Fails today. A wrong proof on a fixture passes every gate unless the
    fixture's answer happens to depend on it.
@@ -1214,21 +1218,58 @@ while the property it names stayed untrue for larger arenas.
    The form. In `battery_step`'s `ExpectRun` arm (`src/main.mn`), after the
    trusted compile, the module is compiled again under `~>
    proofs(ProofsWitnessed)` to `battery_wat_path` of the stem followed by
-   `~w`. Where the two texts differ, a second line `RUN <stem>~w` follows
-   the first, with the same exit and the same line a stop must say. In
-   `tools/wt-env.sh`, `wt_battery`'s count of the fixtures it saw leaves
-   out the verdicts whose stem ends in `~w`: one line replaced and none
-   added, so the count still equals the directory's files and a failing
-   witness run still counts as broken.
+   `~w`, and a second line `RUN <stem>~w` follows the first, with the same
+   exit and the same line a stop must say. In `tools/wt-env.sh`,
+   `wt_battery`'s count of the fixtures it saw leaves out the verdicts
+   whose stem ends in `~w`: one line replaced and none added, so the count
+   still equals the directory's files and a failing witness run still
+   counts as broken.
 
-   Measured so far (2026-11-10). Of the 670 modules the micro, frontier and
-   syntax directories compile, 639 differ between the two builds, because
-   the library every program links holds proven reads. So nearly every run
-   fixture runs twice.
+   For the gate: the box first said the second run happens only "where the
+   two texts differ". Of the 670 modules the micro, frontier and syntax
+   directories compile, 639 differ between the two builds, because the
+   library every program links holds proven reads. Comparing two texts to
+   skip one run in twenty is code the measurement does not pay for, so the
+   form above runs both builds always.
 
-   Measured before it is built. The micro battery's wall time with the
-   second compile, against today's. And what pays for the second compile's
-   code on the board, by the rule above.
+   What it costs, measured 2026-11-10 on the micro battery: 1 min 54 s with
+   either build alone, of which the compile step is 1 min 42 s and the
+   host's assemble and run step 12 s. 470 of its 779 fixtures are run
+   fixtures, so building those twice brings it to about 3 minutes, and the
+   landing pass gains about a minute and a half over its three batteries
+   that run programs. The second compile judges the fixture a second time.
+   Judging once and lowering twice would cost less, and it is not this
+   box: it needs the lowering to be a column of the graph (§11.2).
+
+   What pays for its code on the board. For the gate: the memory walk
+   reads a join, `xs ++ ys`, as the call of the function its node is linked
+   to, `list_concat`, by that function's own store claim (`returns:
+   parameters 1, 0`: the join answers one of its operands or a new node
+   that holds both). A probe built it in three places and was removed; its
+   patch is 148 lines.
+   - `src/graph.mn`, `stops_of`: the `BConcat` arm answers `[StopCall(h, h,
+     [l, r])]` where it answered `[StopBeyond(h)]`. The join's node stands
+     as its own callee, since the judgment links it to the primitive.
+   - `src/verify.mn`, `call_roots`: a callee that is a join is read by the
+     claim, as a named function is. The claim-reading arm becomes a
+     function, `claimed_roots(memo, call, callee, args)`, that both use.
+   - `src/infer.mn`, `call_targets` and `call_holds`: the same, through
+     `claimed_targets` and `claimed_holds`. A join inside the group that
+     declares `list_concat` stays older memory, as today.
+   Measured on the probe: the values the walk cannot place fall 33,771 ->
+   32,039 (1,732 placed) and every other count is unchanged; the compiler
+   reproduces itself (m2 equals m3); micros 779 of 779, crown 191 of 191,
+   frontier 219 of 219, syntax 21 of 21 and the frontier gate's 369 legs
+   pass. It costs 11 KB of the self-compile's line peak (285,125 KB against
+   the pin's 285,114 KB on the same source), paid as the last walk fix was,
+   on one dated line closed by the next commit. It is not yet attacked: the
+   box adds fixtures that store into a join's answer inside an arena, with
+   one operand empty so the answer is the other operand itself, and with an
+   operand older than the arena.
+
+   Left alone. A proof on a fixture that states another contract (`//
+   check:`, `// expect: refuse`) is not built as a witness. No verb builds
+   a witness outside a battery.
 
    Proves it. `wt_battery` on each test directory reports the same count of
    fixtures as before, and a fixture with a wrong proof, placed in a scratch
