@@ -53,8 +53,10 @@ back what changed and why after one reading, rewrite it.
 
 ### Glossary
 
-- **Landing:** one complete, committed piece of work, usually one PLAN §11
-  step.
+- **Box:** one bounded piece of work, written out in PLAN §11.B and gated
+  by Morgan before anyone builds it ("Boxes", below).
+- **Landing:** one complete, committed piece of work: a box that passed
+  `mentl land`.
 - **The wheel:** the compiler's own source, `src/` and `lib/`.
 - **The boot, a pin:** the pinned compiler binary, `boot/mentl.wasm`. Each
   pin is one entry in its chain, recorded in `boot/PROVENANCE.md`.
@@ -112,8 +114,11 @@ Four documents guide the work. Read this one in full every session. Read the
 other two in parts.
 
 - `MENTL_MEMORY.md`, the north star, read whole at the start of every session. It takes precedence over every other document, this one included, and is never edited: the pre-commit hook refuses a commit that changes it.
-- `PLAN.md` holds the design: the thesis, the kernel, the decisions, the
-  current state (§7) and the only list of open work (§11).
+- `PLAN.md` holds the design and the working plan: the thesis, the kernel,
+  the decisions (§4), where the code falls short (§7) and the only list of
+  open work (§11), which opens with the boxes in the order they run
+  (§11.B). No plan is kept anywhere else: no tool's plan file, no scratch
+  document.
 - `docs/SYNTAX.md` is the authority on how Mentl code is written.
 
 A session starts with `mentl map`, which lists MENTL_MEMORY.md, the north
@@ -121,8 +126,9 @@ star, first, then every heading of the other documents and every §11 step
 with its line number and size. `mentl map <id,
 title or word>` prints one part, such as `mentl map §11.1` or `mentl map
 "Resume discipline"`, and `mentl mcp` serves the same reads. Before acting, a
-landing reads PLAN §0, its own §11 step, and every part it touches. Brief an
-agent with the parts it needs, never the whole documents.
+session reads PLAN §0, the box it is building (`mentl map §11.B`), and every
+part that box names. Brief an agent with the parts it needs, never the whole
+documents.
 
 Nothing else is required reading. History is `git log`. The chain of pins is
 `boot/PROVENANCE.md`. What the compiler cannot do yet is measured by the
@@ -187,7 +193,8 @@ the way past it. No flag skips any of them.
 
 - Searching `.mn` source by hand, or writing to it from the shell, is refused
   (`tools/hooks/medium_first.py`). Ask the compiler instead, as the working
-  loop below shows.
+  loop below shows. Passing a `mentl` answer through a filter is refused
+  too: write the whole answer to a file and read the file whole.
 - A wheel file can be edited only after a `mentl` command naming its path has
   run in this session (`tools/consult-gate.sh`).
 - Every edited `.mn` file is checked for drift
@@ -230,7 +237,8 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   does not show it.
 - A fixture states what it expects on its first line. `// expect: N` is an
   exit code below 126, where 134 means a trap. Otherwise the first line names
-  the class of error that should refuse it.
+  the class of error that should refuse it. `mentl query src/main.mn
+  "variants Expect"` lists every form a first line can take.
 - Every test directory runs through `wt_battery <compiler> <dir>`: micros,
   syntax, proposals, teach and frontier. `mentl test` checks a directory and
   prints each fixture's RUN line, and the host runs it. `tests/crown` is a
@@ -252,13 +260,36 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   fresh`, `bash tools/frontier-gate.sh --compiler fresh`, `wt_battery
   <candidate> tests/crown`, `MENTL_BOOT=… mentl verify`.
 
+## Boxes
+
+Morgan runs the work as boxes (2026-11-10). PLAN §11.B holds them in the
+order they run.
+
+- A box is one bounded piece of work, written out before anyone builds it:
+  what a person will see, the measurement that fails today, the files and
+  functions it touches with their signatures, the edge cases, what it
+  refuses and how, what it leaves alone, and the command that proves it.
+- No box is written without a number, measured on the compiler's own
+  source, that shows what the box buys.
+- Morgan gates each box before it is built. Until the gate, the work is to
+  make the box exact: run its failing measurement, read the code it names,
+  and remove every guess.
+- A box is built exactly as written, one at a time. Design happens in the
+  box's text and never during the build. A box that turns out unclear or
+  wrong is a stop: report what was found, rewrite the box, and ask for the
+  gate again.
+- When a box lands, its commit deletes it from PLAN §11.B and brings §7 up
+  to date, and its message is the receipt: the files changed, the output of
+  the command that proves it, and anything that was unclear.
+
 ## The working loop
 
-1. **Choose the work and check the ground.** The work is PLAN §11's first
-   step, unless a failing gate comes first, or a measured false proof that a
-   real program hits, in `examples/`, in `lib/` or in the wheel. A problem
-   that only a test fixture shows joins the §11 step that owns its mechanism,
-   and the fixture becomes that step's failing test. Run `mentl land --quick`
+1. **Choose the work and check the ground.** The work is the first box of
+   PLAN §11.B, once Morgan has gated it, unless a failing gate comes first,
+   or a measured false proof that a real program hits, in `examples/`, in
+   `lib/` or in the wheel. A problem that only a test fixture shows joins
+   the §11 design that owns its mechanism, and the fixture becomes that
+   design's failing test. Run `mentl land --quick`
    to see where the tree stands: git, the stamps and verify. Then ask the
    compiler about every file you will touch: `mentl check <file>`,
    `mentl <file>:<line>`, `mentl query src/main.mn "refs of NAME"`,
@@ -271,9 +302,10 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
    claim about behavior that goes into a document, a comment or a commit
    comes from a probe's output, a scratch `.mn` file run through
    `mentl check` and `mentl run`, never from memory.
-3. **Build the whole landing in `.mn`,** hardest piece first. If it needs
-   something that does not exist yet, build that in the same landing instead
-   of handing it back as a question.
+3. **Build the box in `.mn`, exactly as it is written,** hardest piece
+   first. If it needs something the box does not name, stop and report it:
+   the box is rewritten and gated again, and nothing is designed during the
+   build.
 4. **Prove it with `mentl land`.** It builds the candidate and checks it
    cheapest first, stopping at the first failure: `mentl check src/main.mn`;
    `mentl fmt --check src lib examples`, since on 2026-10-16 the boot's check
@@ -295,10 +327,10 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
    forensics). It then stops for you to replace its placeholder line in
    `boot/PROVENANCE.md` with one sentence describing the change. Running
    `mentl land` again reads the results back on the new boot.
-6. **Record it.** Remove the finished text from PLAN §11 and bring §7 up to
+6. **Record it.** Remove the finished box from PLAN §11.B and bring §7 up to
    date. Update SYNTAX if the language's surface changed. Check every
    changed claim against the artifact with a command. A file outside PLAN
-   names a §11 step by its title, never its number.
+   names a §11 design by its title, never its number.
 7. **Commit on main through the hooks and push** (`git push -u origin
    main`). No branches and no pull requests unless asked. Leave the tree
    clean when the session ends, and end with a message that says what
@@ -359,15 +391,16 @@ The hooks and gates enforce these rules. They are not suggestions.
 ## No unfinished work
 
 - **Commit each landing whole.** No first pass and no list of what remains.
-  Split work too large for one commit into landings that are each complete,
-  and make each one a PLAN §11 step.
+  Split work too large for one commit into boxes that are each complete,
+  and write each one into PLAN §11.B.
 - **Build foundations first.** Before a landing starts, every fact it reads
   must already be carried by an edge from earlier work. A fact it needs that
   nothing carries yet is the landing to build first. Order the work so that
   nothing is left pending, half done or marked "may" while it waits for
   something later.
-- **PLAN §11 is the only list of open work.** Fix a gap you find inside the
-  work as part of the work. Never park it anywhere else.
+- **PLAN §11 is the only list of open work.** A gap found inside a box is a
+  stop, never a second piece of work done on the side: record it in §11
+  under the design that owns it, and never park it anywhere else.
 - **When a gate fails, fix what it measures.** Deleting the symptom when its
   cause can be fixed is the same as raising the limit.
 - **A limit above zero is a landing's failing test, never a resting place.**
@@ -425,6 +458,32 @@ versus the safer option B" (decide it instead), "look X up by name" when an
 edge already connects it, and any fix that adds code to compensate instead
 of deleting what made the compensation necessary.
 
+## What the work has taught
+
+Each rule here was paid for by a stop or a wrong answer.
+
+- Before a count is reported as moved, read the sites that moved. A count
+  that fell because code was deleted measured nothing, and a limit is never
+  paid for by trimming what the count happens to include.
+- Before a check is deleted or weakened, list the facts it covered and the
+  edge that now carries each, then run the old check's own fixtures and the
+  case it guarded.
+- A step that adds work per claim, per node or per call runs the
+  self-compile by hand and reads its arena line before the landing pass.
+- Before a failing gate is fixed, name the design that owns its mechanism.
+  If the fix extends a form that design deletes, do not make it.
+- A change that measures wrong is fixed forward. A revert only restores
+  soundness while the forward form is built.
+- A cost ceiling bends only by a dated allowance that the next commit
+  closes: at most 5%, and one open at a time.
+- Check that a name is free before declaring it (`mentl where src/main.mn
+  NAME`). The whole link is one namespace until a module is a scope.
+- The builder's own fixtures pass. After a landing that changes what the
+  compiler proves, write programs meant to break the claim and run them.
+- Work kept only on the session's machine is not kept. Commit and push each
+  finished piece, and send Morgan a copy of anything that cannot be pushed
+  yet.
+
 ## Conventions
 
 - Never credit an AI model in a commit, and never put a model identifier in
@@ -434,6 +493,8 @@ of deleting what made the compensation necessary.
   resolve to a declaration visible from that module. Leave history to git.
 - Run compiler-sized jobs, such as the march, the board or a profile, one at
   a time.
-- Make decisions instead of deferring them. You have full authority. Answer a
-  design question with the nine questions and by running the artifact, then
-  build the answer.
+- Decide what a measurement can decide: answer a design question with the
+  nine questions and by running the artifact, and write the answer into the
+  box for Morgan's gate. A question about what the language should mean is
+  Morgan's. Ask it with the alternatives and the measurements, and never
+  write it down as decided.

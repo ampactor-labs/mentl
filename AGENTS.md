@@ -13,7 +13,8 @@ and the other two documents in parts. `mentl map` lists their parts, and
   and the working loop.
 - `PLAN.md` holds the substance: the thesis, the kernel, the resolved
   decisions, what the artifact does not do yet (§7), and the only list of open
-  work (§11), ordered by how the five mechanisms (§4⑧) depend on each other.
+  work (§11), which opens with the boxes in the order they run (§11.B). The
+  working plan lives there and nowhere else.
 - `docs/SYNTAX.md` holds the surface syntax and is the authority on how the
   language is written. It overrides any claim about syntax made anywhere else
   but MENTL_MEMORY.md, including in this file.
