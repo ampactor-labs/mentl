@@ -351,7 +351,10 @@ fn board_bounds() = [
   // landing's witness build brought eight the walk cannot place: the resume
   // of the handler that says how a build uses its proofs, the lowering's two
   // choices of the checked form, and the battery's second way to compile.
-  Bound({ceiling: 33772, question: QCensus(CsUnplaced)}),
+  // 33,772 -> 33,771 the same day: a linked call is one direct call in both
+  // builds, and the build chooses only which declaration it calls, so the
+  // lowering's second way to write the call left.
+  Bound({ceiling: 33771, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

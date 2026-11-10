@@ -1,0 +1,11 @@
+// witness: 60
+// A share run under a schedule: each branch becomes a thunk the schedule
+// calls, and its result crosses the schedule's list. A build that keeps every
+// proven check writes those calls as every other build does, so the run
+// answers the same 60.
+fn widen(x) = x * 15
+
+fn main() = {
+  let (a, b) = (2 <| (widen, widen)) ~> sequential_compose
+  a + b
+}

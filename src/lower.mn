@@ -890,13 +890,22 @@ fn site_schedule_seed(fh) = match lower_site_schedule() {
 fn lower_global_call(handle, site, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
   Some(PrimitiveKind(p)) => LPrim(handle, p, lo_args),
   Some(_) | None => match graph_ref_decl(site) {
-    // A build that witnesses its proofs lowers the call as written, so the
-    // primitive's own check runs where the judgment proved it could not fail.
-    Some(form) => match proof_use() {
-      ProofsTrusted => LDirectCall(handle, fh, DeclaredAt(form), false, lo_args),
-      ProofsWitnessed => lower_named_call(handle, fh, name, r_args, lo_args),
-    },
+    Some(form) => LDirectCall(handle, fh, DeclaredAt(linked_callee(fh, form)), false, lo_args),
     None => lower_named_call(handle, fh, name, r_args, lo_args),
+  },
+}
+
+// The declaration a linked call calls. A trusted build calls the form the
+// judgment linked, which for a proven read or cut is the form beneath its
+// check. A build that witnesses its proofs calls the declaration the call
+// names, so the primitive's own check runs where the judgment proved it
+// could not fail. Where the link is the named declaration itself, as at a
+// share's branch, the two builds call the same function.
+fn linked_callee(fh, form) = match proof_use() {
+  ProofsTrusted => form,
+  ProofsWitnessed => match graph_ref_decl(fh) {
+    Some(named) => named,
+    None => form,
   },
 }
 

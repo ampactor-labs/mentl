@@ -763,11 +763,22 @@ accepts each program and `mentl run` shows the break.
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
-  other fixtures that way, no verb builds a witness outside a battery, and
-  no witness build has run over the examples or the compiler (§11.B). A
-  witness build keeps the checks of reads, cuts, divisions and conversions.
-  It does not check a pattern's claim or a refinement, and its stop names
-  the library's line and not the proven place (§11.10).
+  other fixtures that way, and no verb builds a witness outside a battery
+  (§11.B). A witness build keeps the checks of reads, cuts, divisions and
+  conversions. It does not check a pattern's claim or a refinement, and its
+  stop names the library's line and not the proven place (§11.10).
+- The one count of wrong proofs is a single night's, taken with probe
+  compilers that nothing keeps (2026-11-10, on the source pin ed44d08f50e7
+  was built from). Built as witnesses, all 640 fixtures
+  that state `// expect: N` answered their contracts (465 in tests/micros,
+  154 in tests/frontier, 21 in tests/syntax). The twelve lessons, the two
+  scores and the two hello programs each exited as their plain build does
+  and wrote the same bytes. The compiler built as a witness compiled itself
+  without stopping, and the module it wrote equals the one that built it.
+  The probes: the compile in `battery_step`'s `ExpectRun` arm, then the one
+  in `compile_run`, each put under `~> proofs(ProofsWitnessed)`. The count
+  is zero for the proofs a witness build checks, and it says nothing of the
+  four false proofs above, which a witness build does not check (§11.B).
 
 **Claims and proof.**
 
@@ -1118,7 +1129,7 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
+One box is written out. On 2026-11-10 Morgan approved a night's work on
 this branch ("I trust you and approve you to work through the night"), and
 the builder read that as his gate on the boxes here, in order. Each
 landing's receipt is his to review, and a box he did not mean to gate is
@@ -1127,11 +1138,14 @@ reverted on his word.
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
 keeps the checks the compiler proved away, so every program we already run
-becomes such a program. The box that landed on 2026-11-10 built it for one
-fixture at a time: a fixture whose first line is `// witness: N` is built
-with every proven check kept (pin 8e16ac1db2bb). The two boxes below run
-it over everything we have. The arena already works this way: an extent
-the judgment proved root-free checks, at its exit, that no barrier
+becomes such a program. Two boxes landed on 2026-11-10. The first built it
+for one fixture at a time: a fixture whose first line is `// witness: N` is
+built with every proven check kept. The second ran it over everything we
+have and counted the programs that answer differently: none of 640
+fixtures, none of the sixteen example programs, and not the compiler
+compiling itself (§7 holds the count and its commands). The box below
+makes that run part of every landing. The arena already works this way: an
+extent the judgment proved root-free checks, at its exit, that no barrier
 journaled inside it (§4⑨).
 
 **What a box does to the board.** A box that adds code to the wheel raises
@@ -1155,62 +1169,40 @@ arena opened inside a spawned branch keeps its region, so the leg's
 `arena_stat(ArKept) == 0` is false: of 1,000 runs on 2026-11-10, 32 failed
 in both branches and 4 in one. The landing pass stopped on it once that
 night and passed on the next run. An unreliable check comes before any
-order (§11's second rule), so this is settled before the next landing. It
-is not a box yet. To make it one, read which of the exit's reasons to keep
-a region a spawned instance can meet by timing alone, and decide by that
-reading whether the runtime or the leg's expectation is wrong. Box 1 lands
-nothing, so it can run first.
+order (§11's second rule), so this is settled before Box 1 is built.
 
-1. **Box 1 · Count the proven checks that fail on the programs we have.**
-   Gated with the night's work (2026-11-10).
+The cause, read from the module the leg compiles to. In a module that
+spawns, every instance takes its memory from one shared line, a chunk at a
+time (`$seg_refill`: 64 KB, or the size asked for where that is larger). An
+arena's exit reclaims only a region that is one span of the instance's own
+chunks, and `$arena_sweep` keeps the region in two cases that depend on the
+other instances: the instance took a chunk during the arena that did not
+follow its last one, because another instance had taken a chunk in between
+(`m < $seg_base`); or the exit's copy space does not fit and the chunk
+cannot be extended, for the same reason (`$seg_extend` answers 0). The leg
+meets the first case by construction. The first arena an instance opens
+allocates its 2 MB journal, which is one chunk filled exactly, so the
+arena's mark stands at the chunk's end and the body's first allocation
+takes a new chunk. When the other branch takes a chunk between those two
+allocations, the region is kept. Keeping is sound, and it costs the
+branch's memory until the instance ends.
 
-   What a person sees. One number with the programs behind it: of the
-   fixtures that state `// expect: N`, the course's twelve lessons, the two
-   scores, the two hello programs and the compiler compiling itself, how
-   many behave differently when built as witnesses. Each one is a false
-   proof in a program we already run, found without anyone guessing where
-   to look.
+Morgan's to gate, since it says what a spawned branch's arena promises.
+Two forms settle the leg. (a) The leg asserts what holds today: each
+branch counts an exit and answers the right sum, and the root, which runs
+alone after the join, counts an exit, keeps nothing and frees memory; §7
+then holds that a spawned branch's arena can keep its region, closed by
+the landing that gives each instance a memory of its own (MENTL_MEMORY.md,
+"Two memories"). (b) The runtime takes a fresh chunk before an arena's
+mark when the current one is nearly full, which makes this leg's small
+arena reclaim on every run and leaves an arena larger than a chunk as it
+is. The builder recommends (a): (b) grows the shared line's mechanism,
+which the two-memories landing deletes, and it would make the leg pass
+while the property it names stayed untrue for larger arenas.
 
-   Fails today. The number is unknown, and that is the failure.
-
-   The form. Nothing is committed to the source. On a working tree at the
-   pin that builds witnesses:
-   - Fixtures. A probe edit puts the compile in `battery_step`'s
-     `ExpectRun` arm under `~> proofs(ProofsWitnessed)`. Build the
-     candidate and run `wt_battery` on `tests/micros`, `tests/frontier` and
-     `tests/syntax`. Each `FAIL(run)` line is a fixture whose witness build
-     answers differently.
-   - Examples. Copies of the twelve lessons with `rate.mn`,
-     `examples/pulse/render`, `examples/wasatch`, `examples/hello/five.mn`
-     and `examples/hello/door.mn` under `.build/witness/`, each entry file
-     given a first line `// witness: N`, N being the exit its plain run
-     gives. `mentl test .build/witness` judges them. The grid controller is
-     left out, since it needs a recording on its input and none is in the
-     repository.
-   - The compiler. A second probe edit puts the compile in `compile_run`
-     under `~> proofs(ProofsWitnessed)`. The candidate built from that tree
-     compiles the wheel into a witness-built compiler, and that compiler
-     compiles the wheel once more. It must not stop, and the module it
-     writes must equal, byte for byte, the one that built it.
-   - `git checkout src/main.mn` removes both probe edits.
-
-   Edge cases. A fixture whose plain run already stops (`// expect: 134`)
-   must stop saying the same line. A fixture the gate refuses is not
-   counted.
-
-   What it records. §7 states the count with its date and commands. Each
-   cause found gets a failing fixture under the design that owns it. A
-   cause that a program in `examples/`, `lib/` or the wheel contains
-   becomes the next box, by this section's first rule.
-
-   Proves it. The receipt quotes each battery's summary line, the list of
-   fixtures that differ, the witness-built compiler's exit, and the `cmp`
-   of its module against the one that built it.
-
-2. **Box 2 · Every battery runs each `// expect` fixture both ways.**
-   Gated with the night's work (2026-11-10). It needs Box 1's count at
-   zero, or each cause it found fixed, and the check that fails at random
-   settled.
+1. **Box 1 · Every battery runs each `// expect` fixture both ways.**
+   Gated with the night's work (2026-11-10). The count it waited on is zero
+   (§7). It needs the check that fails at random settled first.
 
    What a person sees. `mentl land` turns red when a proof is wrong on any
    fixture: a fixture whose witness build differs from its trusted build is
@@ -1228,6 +1220,11 @@ nothing, so it can run first.
    out the verdicts whose stem ends in `~w`: one line replaced and none
    added, so the count still equals the directory's files and a failing
    witness run still counts as broken.
+
+   Measured so far (2026-11-10). Of the 670 modules the micro, frontier and
+   syntax directories compile, 639 differ between the two builds, because
+   the library every program links holds proven reads. So nearly every run
+   fixture runs twice.
 
    Measured before it is built. The micro battery's wall time with the
    second compile, against today's. And what pays for the second compile's

@@ -1,0 +1,12 @@
+// witness: 105
+// A share hands 21 to two functions the program declares. A build that keeps
+// every proven check calls each branch directly, as every other build does,
+// so the run answers the same 105.
+fn double(x) = x * 2
+
+fn triple(x) = x * 3
+
+fn main() = {
+  let (a, b) = 21 <| (double, triple)
+  a + b
+}

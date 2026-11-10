@@ -1,0 +1,12 @@
+// witness: 134 trap: a precondition failed
+// The read a pipe completes at its stage, proven from its parameter's
+// refinement and handed an index the refinement excludes. Built trusting the
+// proof, the read runs beneath its bounds check. Built as a witness, the
+// stage calls the checked read, which stops the run.
+type NonNeg = Int where 0 <= self
+
+fn at(xs, i: NonNeg) = if i < len(xs) { i |> list_index(xs, ??) } else { 0 }
+
+fn go(k) = at([4, 5], k - 3)
+
+fn main() = go(1)
