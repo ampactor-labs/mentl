@@ -1,0 +1,33 @@
+// expect: 9
+// A handler's state starts as a constructor with no fields and is set, inside
+// an arena, to a record holding a list built there. Read after the exit, with
+// new memory written over what the arena freed, the list must be whole.
+import arena
+
+type Shelf = Vacant | Kept([Int])
+
+effect Keep {
+  keep(s: Shelf)
+  kept() -> Shelf
+}
+
+handler keeper with last = Vacant {
+  keep(s) => resume() with last = s,
+  kept() => resume(last),
+}
+
+fn body(n) = {
+  keep(Kept([n, n + 1, n + 2]))
+  n
+}
+
+fn first_of(s) = match s {
+  Kept(xs) => list_index(xs, 0),
+  Vacant => 0,
+}
+
+fn main() = {
+  let n = body(9) ~> arena
+  let junk = list_filled(64, 99)
+  first_of(kept()) + n + len(junk) - 73
+} ~> keeper

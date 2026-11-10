@@ -1,0 +1,25 @@
+// expect: 5
+// An older list of shelves starts with every slot holding a constructor with
+// no fields. Inside the arena one slot is replaced by a record built there,
+// which holds a list built there. Read after the exit, the record and its
+// list must be whole, and the other slot must still be the bare constructor.
+import arena
+
+type Shelf = Vacant | Kept([Int])
+
+fn stock(shelves, n) = list_set(shelves, 1, Kept([n, n, n]))
+
+fn weigh(s) = match s {
+  Kept(xs) => list_index(xs, 2),
+  Vacant => 0,
+}
+
+fn main() = {
+  let shelves = list_filled(2, Vacant)
+  {
+    stock(shelves, 5)
+    0
+  } ~> arena
+  let junk = list_filled(64, 99)
+  weigh(list_index(shelves, 1)) + weigh(list_index(shelves, 0)) + len(junk) - 64
+}

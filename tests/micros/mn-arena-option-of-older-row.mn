@@ -1,0 +1,24 @@
+// expect: 7
+// `find_row` answers `Some` of a row of an older table, or `None`. Inside the
+// arena a young value is stored into the row it found. The row is older
+// memory, so the stored value must outlive the arena.
+import arena
+
+fn find_row(rows, k) = if k < len(rows) { Some(list_index(rows, k)) } else { None }
+
+fn fill(rows, k) = match find_row(rows, k) {
+  Some(row) => {
+    list_set(row, 0, [7, 8, 9])
+    0
+  },
+  None => 1,
+}
+
+fn main() = {
+  let rows = make_list(2)
+  list_set(rows, 0, make_list(1))
+  list_set(rows, 1, make_list(1))
+  { fill(rows, 1) } ~> arena
+  let junk = list_filled(64, 99)
+  list_index(list_index(list_index(rows, 1), 0), 0) + len(junk) - 64
+}

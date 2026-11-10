@@ -1,0 +1,27 @@
+// expect: 7
+// `through` answers its own parameter or a constructor with no fields, so
+// its answer is its caller's memory. The caller hands it a record that holds
+// an older list and, inside the arena, stores a young list into that older
+// list through the answer. The young list must outlive the arena.
+import arena
+
+type Shelf = Vacant | Kept([[Int]])
+
+fn through(c, s) = if c { s } else { Vacant }
+
+fn poke(s) = match s {
+  Kept(xs) => {
+    list_set(xs, 0, [7, 8, 9])
+    0
+  },
+  Vacant => 1,
+}
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  let shelf = Kept(older)
+  { poke(through(true, shelf)) } ~> arena
+  let junk = list_filled(64, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 64
+}
