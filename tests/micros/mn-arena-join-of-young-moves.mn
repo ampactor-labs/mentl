@@ -1,0 +1,19 @@
+// expect: 21
+// Two lists built inside the arena are joined there. One join is the arena's
+// answer and one is stored into a list older than the arena. The exit must
+// move each join with both of its operands, so both read whole afterwards:
+// 1 + 2 + 3 + 4 from the answer and 5 + 6 from the stored one.
+import arena
+
+fn add_int(a, b) = a + b
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  let joined = {
+    list_set(older, 0, [5] ++ [6])
+    [1, 2] ++ [3, 4]
+  } ~> arena
+  let junk = list_filled(64, 99)
+  fold(0, add_int, joined) + fold(0, add_int, list_index(older, 0)) + len(junk) - 64
+}

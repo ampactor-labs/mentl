@@ -1262,10 +1262,15 @@ while the property it names stayed untrue for larger arenas.
    frontier 219 of 219, syntax 21 of 21 and the frontier gate's 369 legs
    pass. It costs 11 KB of the self-compile's line peak (285,125 KB against
    the pin's 285,114 KB on the same source), paid as the last walk fix was,
-   on one dated line closed by the next commit. It is not yet attacked: the
-   box adds fixtures that store into a join's answer inside an arena, with
-   one operand empty so the answer is the other operand itself, and with an
-   operand older than the arena.
+   on one dated line closed by the next commit. Three fixtures in
+   tests/micros attack it and hold on the pin and on the probe, where
+   `mentl query FILE "claim of joined"` says `returns: parameters 1, 0`
+   and the pin says `returns: older`: `mn-arena-join-answers-older-operand`
+   (the left operand is empty, so the join answers the older right operand
+   and a young value stored into it must outlive the arena),
+   `mn-arena-join-left-operand-older` (the same with the right operand
+   empty) and `mn-arena-join-of-young-moves` (a join of two young lists is
+   the arena's answer, and another is stored into older memory).
 
    Left alone. A proof on a fixture that states another contract (`//
    check:`, `// expect: refuse`) is not built as a witness. No verb builds

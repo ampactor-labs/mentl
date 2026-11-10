@@ -1,0 +1,16 @@
+// expect: 7
+// A join whose right operand is empty answers its left operand itself, the
+// list older. A young list stored into that answer inside the arena lands in
+// older memory and must outlive the arena.
+import arena
+
+fn main() = {
+  let older = make_list(1)
+  list_set(older, 0, [0])
+  {
+    list_set(older ++ [], 0, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(64, 99)
+  list_index(list_index(older, 0), 0) + len(junk) - 64
+}

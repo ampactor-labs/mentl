@@ -1,0 +1,23 @@
+// expect: 7
+// A join whose left operand is empty answers its right operand itself, which
+// here is the list older, built before the arena opened. Inside the arena a
+// young list is stored into that answer, once through a function that joins
+// and once through a join written in place. Both stores land in older memory,
+// so both young lists must outlive the arena: 7 from the first, 0 from the
+// second's last element minus 9.
+import arena
+
+fn joined(xs, ys) = xs ++ ys
+
+fn main() = {
+  let older = make_list(2)
+  list_set(older, 0, [0])
+  list_set(older, 1, [0])
+  {
+    list_set(joined([], older), 0, [7, 8, 9])
+    list_set([] ++ older, 1, [7, 8, 9])
+    0
+  } ~> arena
+  let junk = list_filled(64, 99)
+  list_index(list_index(older, 0), 0) + list_index(list_index(older, 1), 2) - 9 + len(junk) - 64
+}
