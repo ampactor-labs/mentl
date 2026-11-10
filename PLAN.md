@@ -817,6 +817,12 @@ accepts each program and `mentl run` shows the break.
 - A refusal offers no fix. A dropped value goes unreported outside the
   stage of `each`. Accepting a proposal is not one write at the hole's
   node, and its provenance does not outlive its process (§11.5, §11.6).
+- A proposal can be text that does not check. `mentl accept` writes
+  `Box(??)` where `tests/proposals/box-fill.mn` says the hole fills with
+  it, and `mentl check` refuses the file that results, since a call that
+  still holds `??` is a function waiting for that argument. The proposer
+  builds no call that takes arguments, and no command says how much of a
+  program it can write (§11.B, the oracle).
 
 **The row.**
 
@@ -1131,11 +1137,13 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-One box is written out. On 2026-11-10 Morgan approved a night's work on
+Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
 this branch ("I trust you and approve you to work through the night"), and
-the builder read that as his gate on the boxes here, in order. Each
-landing's receipt is his to review, and a box he did not mean to gate is
-reverted on his word.
+the builder read that as his gate on the boxes here, in order. Later that
+day he turned the work to the oracle and gave the builder the reins for it,
+so Box 2 is built first and Box 1 waits on the two points marked for his
+gate. Each landing's receipt is his to review, and a box he did not mean to
+gate is reverted on his word.
 
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
@@ -1241,12 +1249,130 @@ while the property it names stayed untrue for larger arenas.
    Judging once and lowering twice would cost less, and it is not this
    box: it needs the lowering to be a column of the graph (§11.2).
 
-   What pays for its code on the board. For the gate: the memory walk
-   reads a join, `xs ++ ys`, as the call of the function its node is linked
-   to, `list_concat`, by that function's own store claim (`returns:
-   parameters 1, 0`: the join answers one of its operands or a new node
-   that holds both). A probe built it in three places and was removed; its
-   patch is 148 lines.
+   What pays for its code on the board. For the gate: the join, which this
+   box first named as its payment, pays for Box 2, which is built first.
+   This box adds one compile and one printed line. Its candidate's `mentl
+   verify` says what that raises, and the payment is named here before the
+   box is built.
+
+   Left alone. A proof on a fixture that states another contract (`//
+   check:`, `// expect: refuse`) is not built as a witness. No verb builds
+   a witness outside a battery.
+
+   Proves it. `wt_battery` on each test directory reports the same count of
+   fixtures as before, and a fixture with a wrong proof, placed in a scratch
+   directory, prints `FAIL(run)` for its `~w` stem.
+
+**The oracle, measured before any box** (pin ed44d08f50e7, 2026-11-10). At
+a hole the compiler tries candidates, judges each in a fork of the graph,
+and shows only the ones it proved (§5, the felt endpoint). Five
+measurements say where that stands.
+
+- A fork is cheap. A hole with 13 proven candidates and one with 103 both
+  answer in 0.18 s (two scratch programs with ten and a hundred `Int`
+  values in scope around one hole), so ninety more forks cost under 10 ms,
+  and one core judges thousands of candidates a second.
+- The proposer says one name at a time: a value in scope, a call with no
+  arguments, a function by reference, a literal, or an empty shape with
+  `??` in it. It builds no call that takes arguments. Where `speed(d, t)`
+  is the one expression the program's own names give for a `Speed`, it
+  answers `Speed(??)`.
+- A proposal can be text that does not check. `tests/proposals/box-fill.mn`
+  holds the contract `fill Box(??)`. Accepted into a copy of that file,
+  the text is refused by `mentl check`: `(Int) -> Box with Alloc vs Box`.
+  Written in source, a call that still holds `??` is the function waiting
+  for that argument (SYNTAX, "Partial application"), and the proposer's
+  gate judged its own hole as a value.
+- No fork runs on a second thread, and the compiler refuses its own source
+  four times when one is asked to (§11.8 holds the four chains).
+- Asked by hand at eight of lesson 8's own expressions, each replaced by
+  `??` in a copy of the lesson with its hole accepted, the compiler writes
+  back one (`lead`), asks with the author's text first at one (`time()`)
+  and second at one (`k`), fills one with something else (`brighten`,
+  where the author wrote `soft_clip`, a stage the lesson imports), and
+  asks without the author's text at four (`rate()`, `float_of_int(k)`,
+  `note_hz(k)` and the whole `wav_frame` call).
+
+So the search is short of candidates long before it is short of time. The
+boxes come in that order: first the command that makes the last count
+repeatable on any program, then proposals that are whole expressions, then
+what the answer says, then forks on every core.
+
+2. **Box 2 · `mentl query FILE written-back` asks the compiler for each of
+   a program's own expressions.** Built under the reins of 2026-11-10; its
+   receipt is Morgan's to review.
+
+   What a person sees. `mentl query examples/pulse/course/08-hole.mn
+   written-back` takes each call and each name that stands as a value in
+   the file, one at a time, replaces it with `??`, judges the edited file
+   in a fork, asks the proposer at that hole, and compares the answer with
+   what the author wrote. It prints one line of counts and one line for
+   each expression. The counts say how much of the program the compiler
+   could have written from the rest of it, and every later oracle box is
+   measured by them.
+
+   Fails today. The command answers `unknown query: written-back`. The
+   count exists only by hand (above).
+
+   The form.
+   - `src/types.mn`: `type Back = BackFilled | BackFirst | BackAmong |
+     BackElse(String) | BackAsked | BackNothing | BackUnread`, the answer
+     at one expression: the hole filled with the author's text; a question
+     whose first proven candidate is the author's text; a question that
+     holds it further down; a fill with other text, which the constructor
+     carries; a question without it; no candidate; or an edited file that
+     did not give the hole back. `effect WrittenBack { written_back() ->
+     [(Span, String, Back)] }`, each expression's place, its text and its
+     answer.
+   - `src/synth_proposer.mn`, which imports `cursor_transport` for the two
+     functions it reads there, `splice_span` and
+     `render_candidate_source`. `fn asked_back()` reads the link's entry
+     module (`link_entry`), lists its expressions (`nodes_under` each
+     declaration, kept by `asked_site`), and judges them as the options of
+     one `choose` under `speculate ~> judgment_core`, so each is asked in a
+     fork of its own. `fn asked_site(h)` keeps a call, and a name that is
+     not its call's callee; it leaves out the right side of `~>` and of
+     `<~`. `fn asked_at(mh, text, site)` writes `??` over the expression's
+     span (`splice_span`), judges the edited text (`rewritten_judged`),
+     finds the authored hole that begins where the expression began
+     (`hole_begun_at`), asks `propose_at` there under `~> synth_default`,
+     and answers `back_of(verdict, written)`. Every text is rendered inside
+     the fork, by `render_candidate_source`.
+   - `src/query.mn`: `Question` gains `QWrittenBack`, answered as
+     `QRWhere(back_lines(written_back()), [])`. `fn back_counts(sites)`
+     writes the counts in one fixed order: `N written back, N first, N
+     among, N filled otherwise, N asked without, N nothing, N unread`. `fn
+     back_lines(sites)` writes that line and then `at L:C  <text>  <what
+     was answered>` for each expression.
+   - `src/pipeline.mn`: `QueryVerb` gains `QVWrittenBack`, read from the
+     word `written-back`; `handler written_back_by_asking { written_back()
+     => resume(asked_back()) }`; and `query_context` becomes `query_default
+     ~> owed_by_judging ~> written_back_by_asking`, so every verb that asks
+     a question can ask this one.
+   - `src/main.mn`: a fixture's first line `// written-back: <counts>` is
+     the contract `ExpectWrittenBack(String)`, judged by
+     `battery_written_back_step` through `query_judged`: the fixture's own
+     counts must read exactly as the line says.
+
+   Edge cases. An expression inside another is asked on its own, so
+   `f(g(x))` is three questions. The lesson's own `??` stays a hole in
+   every fork, and the hole asked is the one that begins where the
+   expression began. An edit that leaves the file unreadable is counted as
+   unread, never dropped. Only the entry module is asked.
+
+   Left alone. A literal and an operator are not asked: a number is the
+   author's decision and no proof chooses one. A handler on the right of
+   `~>` and the spec on the right of `<~` are not asked, since a hole
+   there is not a value the proposer fills. The proposer does not change,
+   so every count this box prints is the pin's own. No limit goes on the
+   board until the first counts have been read.
+
+   What pays for its code on the board. The memory walk reads a join, `xs
+   ++ ys`, as the call of the function its node is linked to,
+   `list_concat`, by that function's own store claim (`returns: parameters
+   1, 0`: the join answers one of its operands or a new node that holds
+   both). A probe built it in three places and was removed; its patch is
+   148 lines.
    - `src/graph.mn`, `stops_of`: the `BConcat` arm answers `[StopCall(h, h,
      [l, r])]` where it answered `[StopBeyond(h)]`. The join's node stands
      as its own callee, since the judgment links it to the primitive.
@@ -1270,20 +1396,39 @@ while the property it names stayed untrue for larger arenas.
    and a young value stored into it must outlive the arena),
    `mn-arena-join-left-operand-older` (the same with the right operand
    empty) and `mn-arena-join-of-young-moves` (a join of two young lists is
-   the arena's answer, and another is stored into older memory).
+   the arena's answer, and another is stored into older memory). The new
+   code is written without an index read, a cut or a division, so it adds
+   no place that can trap with no claim.
 
-   Left alone. A proof on a fixture that states another contract (`//
-   check:`, `// expect: refuse`) is not built as a witness. No verb builds
-   a witness outside a battery.
-
-   Proves it. `wt_battery` on each test directory reports the same count of
-   fixtures as before, and a fixture with a wrong proof, placed in a scratch
-   directory, prints `FAIL(run)` for its `~w` stem.
+   Proves it. `tests/proposals/written-back.mn` holds its own counts on its
+   first line and passes in the proposals battery. `mentl query
+   examples/pulse/course/08-hole.mn written-back` prints the lesson's
+   counts, and its lines at 47:11 (`time()`) and 51:21 (`lead`) say what
+   the hand count said.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
 saying so.
 
+- A proposal is a whole expression, and it is the text that means what was
+  proven. At a position that wants a value, a call or a construction is
+  offered complete, each argument found by asking at that argument as at
+  any hole, and a call that still holds `??` is offered only where a
+  function is wanted. Red today: `mentl accept` writes `Box(??)` and
+  `mentl check` refuses the file; `speed(d, t)` is never proposed. Two
+  questions are settled by Box 2's counts before this is cut: whether a
+  nearer module's one survivor may hide a proven one the file imports
+  (lesson 8's `brighten` for `soft_clip`), and whether a candidate that
+  still holds a hole is offered beside a complete one. One question is
+  Morgan's: whether `??` in a constructor's field, where the construction
+  stands as a value, should be a value hole (§11.5).
+- The answer says what was searched: how many candidates were tried and
+  how many proved, a question asked at the outermost place the proven ones
+  differ and in the program's own names, and a refusal that names the
+  argument nothing in scope fills (§11.5).
+- A fork runs on a second thread: an owner inside the fork for `Fail`,
+  `Progress` and `StateWalk`, and a store walk that proves a fork's
+  judgment stores only into memory the fork allocated (§11.8).
 - The library's list walk is settled once, so a pipeline stands where a
   claim is checked. The failing test is `fn energy(xs) with !Alloc = xs |>
   map(square) |> fold(0, plus)`, refused today while the same sum as an
@@ -2026,6 +2171,25 @@ external solver plugs in only as a proposer whose certificate the kernel
 checks. Every step is gated by m3 under `sequential_compose` being
 byte-identical to m3 under `parallel_compose`, with the two wall times on
 the board.
+What stands between a fork and a second thread, measured on pin
+ed44d08f50e7 (2026-11-10). With `~> parallel_compose` installed over the
+fanout in `speculate`'s arm (`src/infer.mn`), the compiler refuses its own
+source four times, each `E_ThreadedBranchEffect` at that fanout, and
+`mentl why src/infer.mn forked <Effect>` names where each effect enters.
+`Fail`: `forked` installs `intern_view`, whose arm calls `fail`.
+`Progress`: `forked` installs `graph_handler`, whose arm calls `said`.
+`StateWalk`: `forked` installs `verify_ledger`, which reaches
+`walking_state` through `decide_noting` and `noting_unsettled`. `Mutate`:
+`forked` installs `infer_ctx`, whose `module_reach_table` builds a table
+by a fold over `reach_table_add`, `wmap_add` and `list_set`. The table is
+memory that function allocated, but its store claim is lost at the
+partial application handed to `fold`: `mentl query src/main.mn "claim of
+fold"` says `fold` applies its second parameter and hands it nothing
+known. So a fork on a second thread needs an owner inside the fork for
+each of the three effects its handlers perform outward, and a store walk
+that follows a partial application into the stage that applies it. A fork
+itself is cheap (§11.B, the oracle's measurements), so proposals that are
+whole expressions come before forks on every core.
 
 ### §11.9 · `!Outside` closes
 
