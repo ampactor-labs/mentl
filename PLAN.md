@@ -47,9 +47,12 @@ Closing the gap means reaching five properties:
    it, and nothing unproven runs. So whether a program does what its author
    meant never depends on someone reading it closely. Review can give
    assurance only up to some limit, and proof has no such limit. A person
-   sees it as `mentl check examples/grid/station.mn` printing nothing,
-   because every claim in the grid controller is proven, while the copy that
-   reads a price inside the decision does not build.
+   sees it as `mentl check examples/grid/station.mn` printing one line and
+   no pending claim: every claim the grid controller states is proven, and
+   the line counts one place that can still stop the program, which `mentl
+   why examples/grid/station.mn main Trap` traces to the printing of each
+   decision line. The copy that reads a price inside the decision does not
+   build.
 2. **The negative is provable**: people often mean "this never touches the
    network" or "this never allocates", and no mainstream language lets them
    say it. `!E` says it, and it holds under polymorphism. The absence it
@@ -330,7 +333,7 @@ graph is the way to reach it.** Never give up `!E`. The modal synthesis (the
 line of work by Tang and Lindley, POPL 2026, arXiv 2507.10301, which proves
 rows equivalent to capabilities) is the target for the unsurpassable tier.
 What it still leaves open is the negation half. Rows are represented as
-`EfRow(present, absent, tail)` with `EffTail = EtClosed | EtVar | EtAll`, and
+`EfRow(present, absent, tail)` with `EffTail = EtClosed | EtOpen | EtAll`, and
 negation is the absent field. The crown battery (`tests/crown/`, run by
 `wt_battery` like every test directory) is the soundness gate. The time axis is
 `TCont(R, S, ResumeDiscipline, EffRow)`: the continuation carries its effect
@@ -540,8 +543,8 @@ talk about Mentl"). The wheel is the first program held to this canon. Much
 of it was written before the canon and reads as its counter-example: index
 loops where a pipeline over a sequence belongs, flags where a handler
 belongs, tuples built by hand and taken apart on the next line. The census
-measures that drift, step 5's `tighten` rewrites it (§11.5), and none of it
-is a style to copy into new code.
+measures that drift, steps 5 and 13 rewrite it (§11.5, §11.13), and none of
+it is a style to copy into new code.
 
 ### §5.U · The value layer — one record read at four altitudes
 
@@ -671,10 +674,18 @@ the current state, and where the two disagree, this section is correct. Each
 item points to the §11 landing that closes it. A gate that did not run counts
 as unknown, never as passing.
 
-- **`!Trap` is false under deep recursion** (§11.2): running out of stack is
-  a trap that no row shows, so a `!Trap` recursion that a person writes a
-  million calls deep passes the check and then traps with "call stack
-  exhausted".
+- **Four false proofs are open, and each is a program the check accepts**
+  (all four run again on pin b46b71133838, 2026-11-10). A `!Trap` recursion
+  a million calls deep passes the check and stops with "call stack
+  exhausted", since running out of stack is a trap that no row shows
+  (§11.2). A handler of `trap` takes `Trap` out of the row while `trap`
+  still stops the machine, so `main with !Trap` over a deliberate trap is
+  accepted and the run stops (§11.12). A function that picks a member of its
+  own recursive group in an `if` publishes none of that member's effects, so
+  `fn quiet() with !Name = r(5)` is accepted and the run performs `ask`
+  (§11.1). And a refinement claim left pending is assumed by its callee and
+  checked nowhere when the program runs, so a read it proves can read
+  outside its list (§11.1).
 - **False proofs are found only when someone thinks to write a probe**
   (§11.2, the witness).
 - **The program is the graph, and its one-write operations are not all built.**
@@ -876,9 +887,10 @@ as unknown, never as passing.
   read each site against every earlier one through an index into a pushed
   list, which made a census of 6,467 matches take three minutes; superseded
   nodes were already skipped and no site was doubled, so the check is gone
-  and every census answers in about five seconds (the roster of 37 in
-  under ten). The column that would hold each node's roots waits for the
-  face, since a cell at every value node is about 20 MB on the
+  and one census answers in about six seconds; the whole roster, 42 shapes
+  on 2026-11-10, takes 24 seconds. The column that would hold each node's
+  roots waits for the face, since a cell at every value node is about 20 MB
+  on the
   self-compile's line peak, which the march refuses to let rise.
 - **The address of a value names the value's memory, and a declaration
   held as a value is its own allocation** (2026-11-05). The judgment read
@@ -968,7 +980,10 @@ as unknown, never as passing.
   and in a link with no `main` every declaration at module level, has a call
   no reference records, the host's, so its parameters decide nothing
   (tests/micros/mn-settle-*.mn, with the contract `// check: pending L:C`).
-  On the wheel the board's open obligations fell from 135 to 92.
+  On the wheel the board's open obligations fell from 135 to 92. `mentl
+  check src/main.mn` prints 600 pending claims, and `mentl verify` counts 92
+  open obligations and 653 claims left open at explicit calls (2026-11-10);
+  no command's output says how the three numbers relate.
 - **Every place a program can stop with a trap is listed with its claim**
   (2026-11-06). An explicit call of `list_index`, `byte_at`, `slice` or
   `str_slice` owes its bounds where it stands, as `xs[i]` owes its own.
@@ -1068,8 +1083,8 @@ as unknown, never as passing.
   this one stopped with "the compiler broke its own invariant"). The
   caret's Why at a library declaration names that declaration's module
   (`declared len, at lists:167`). A census counts the match arms that list
-  three or more constructors with only wildcards, bounded on the board at
-  1,369, so no commit adds one.
+  three or more constructors with only wildcards, and the board bounds the
+  count, so no commit adds one.
 - **A `with` clause states decisions and never lists the row**
   (2026-10-30). A declaration's clause leaves every effect it does not
   mention to the body: `fn rate() with Sample(48000) = { print(…);
@@ -1449,7 +1464,7 @@ as unknown, never as passing.
 mentl land [--quick | --board]      # the landing pass: this tree's compiler judged cheapest first, stopping at the first red — verify, march, frontier, proof-exactness, crown, effect identity, threads, ide — every verdict kept by the bytes it judged, pinned once; --quick = verify only; --board = the board on the pinned boot
 mentl verify [path]                 # the standing bounds on the medium's own source (src/board.mn), read off one judged graph; a rise refuses
 mentl check [path]                  # every module of the link judged, no emit; no path: the project
-mentl query <entry> <question>      # refs of NAME · unreachable · unreferenced · census <shape> · ghosts · imports · performs · smt · text · prose · writes of · reads of · provider of · heads · env · reports · owed <dir>
+mentl query <entry> <question>      # type NAME · effects NAME · ownership NAME · why NAME [Effect] · flow NAME · claim NAME · where NAME · refs of NAME · provider of OP · writes of FIELD · reads of FIELD · variants TYPE · census [<shape>] · text NEEDLE · prose NEEDLE · owed <dir> · traps · decls · modules · imports · performs · env · heads · ghosts · cost · smt · reports · verification · unresolved · unreferenced · unreachable · orphan-claims; `<question> in MODULE` narrows a site question to one module
 mentl why <file> <fn> [<Effect>]    # the declaration's reason, then where each effect of its row enters
 mentl where <file> <name>           # a declaration's head, row, widths and address
 mentl <file>:<line>[:<col>]         # the eight aspects at the caret, with the Lede
@@ -1544,12 +1559,14 @@ consumes, without checking, sibling items that have no comma between them.
 ## §10 · How to resume
 
 1. Read `CLAUDE.md` whole and the map the session starts with (`mentl map`),
-   then PLAN §0, §11's first step and every part of PLAN and SYNTAX the step
-   touches (`mentl map <id>`). That is the entire required context.
+   then PLAN §0, the step §11's STANDING CURSOR names first and every part
+   of PLAN and SYNTAX that step touches (`mentl map <id>`). That is the
+   entire required context.
 2. Run `mentl land --quick`. Where the code and the prose here disagree,
    trust the code and fix the prose.
-3. Take §11's first item. Before any edit, ask the medium about every
-   structure it touches (`mentl query`, `where`, `why`, `<file:line>`).
+3. Take the step the STANDING CURSOR names first, which is not the first in
+   the list. Before any edit, ask the medium about every structure it
+   touches (`mentl query`, `where`, `why`, `<file:line>`).
 4. Build the landing whole, prove and pin it with `mentl land`, commit on
    main, push, and delete the item's paragraph from §11.
 5. A landing starts from a written definition of done and the check that
@@ -1614,11 +1631,12 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
 
 1. **The soundness core: the crown modal, the row whole, the reach one
    walk.** (a) The crown, made modal (`Hβ.effects.modal-world-index`). A row
-   names effects: `EffName` carries a name and its arguments, a `RowEdge`'s
-   mask names effects, and `inf_mark_install_frame` drops the handler that the
-   install judgment already has. So absence is proven per effect, never per
-   install. The form: an effect in a row is indexed by the install that
-   answers it (`E@h`, the install node the judgment resolves when it draws the
+   names effects: `EffName` carries a name and its arguments, and a
+   `RowEdge`'s mask names effects. Since 2026-11-06 an install's frame mark
+   carries the install's node and a perform is linked to the install that
+   answers it (§7), but no row reads that link. So absence is proven per
+   effect, never per install. The form: an effect in a row is indexed by
+   the install that answers it (`E@h`, the install node the judgment resolves when it draws the
    op edge; `E@?` where a caller's install answers). A mask names the installs
    it subtracts, and a row variable bound at a `~>` edge is that install's
    lexical capability. This is Tang and Lindley's synthesis, with the negation
@@ -1683,12 +1701,14 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    excludes: `fn keep_small(n: Small) = n` under `type Small = Int where 0
    <= self && self < 10`, called as `keep_small(x + 1)` with x = 12, answers
    13, and `mentl query FILE traps` says nothing can trap (both measured
-   2026-11-06). A claim left pending is checked where it is pending when
-   the program runs, wherever its predicate performs no effect, and the run
-   stops there when it fails, so each pending site carries `Trap` and that
-   `Trap` is the one that happens; a label, whose predicate is an effect's
-   operation, stays a claim the flow walk decides. (c) The reach is one walk
-   (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
+   2026-11-06). What a pending claim costs when the program runs is not
+   decided, and the decision is Morgan's. SYNTAX's refinement section says
+   the predicate is erased and no check runs. The alternatives are a check
+   where the claim is pending, wherever its predicate performs no effect,
+   so the run stops there and that site's `Trap` is the one that happens;
+   or a refusal to build. A label, whose predicate is an effect's
+   operation, stays a claim the flow walk decides under each of them.
+   (c) The reach is one walk (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
    columns, answers absence, the effect-enters chain, the race rule, the
    schedule's demand, the edit cone, `refs of`, `unreachable` and the
    Severance Map's bands, each keyed by edge and none by spelling. Each query
@@ -1768,7 +1788,7 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    element crosses its slot at its own width, so a Float is never boxed to
    cross a word slot. A thread's task record holds a Float answer as a
    double, and the schedule's arms are twinned at the install's answer; today
-   a `fanout` that answers a Float under `parallel_compose` traps at its
+   a `><` that answers a Float under `parallel_compose` traps at its
    join. A pair passed to a one-parameter literal and two arguments passed to
    a two-parameter function use one calling convention. A handler named as a
    value is its record: `let h = one` binds it, a parameter holds it, and an
@@ -1810,8 +1830,8 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    crosses its slot at its own width (step 2). Its precondition is a claim on
    that face, owed at every explicit call the way `xs[i]`'s is (a read's and
    a cut's, §7). `make_list`'s count and `list_set`'s index raise no claim
-   yet, and a stage a pipe completes raises none until it is judged as the
-   call it completes (step 10). A call's answer
+   yet. A stage a pipe completes owes its call's claims since 2026-11-06
+   (§7). A call's answer
    read off a tee (a fold's accumulator, a handler's answer) is placed by the
    install's arms, as the value walk already reads them
    (`Hβ.effects.tee-answer-is-the-arms`). Today a function threading a table
@@ -1971,6 +1991,24 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    when its row, to which a hole adds nothing, lacks it; at a hole it says
    the hole's row is not known yet. All measured on 2026-11-06 by running
    programs against the pin.
+   The verbs themselves, each run on pin b46b71133838 with its whole answer
+   read (2026-11-09). `mentl teach src/main.mn` stops after 67 seconds
+   saying memory is exhausted, at 4.2 GB. `mentl check` and `mentl teach`
+   with no path, run in a project folder that lies under this repository,
+   judge the compiler and never the project. A bare `mentl` waits without a
+   word while its input is open. `mentl --with` finds the handler it is
+   given and says it cannot install one. `mentl tighten` needs a second run
+   when a clause and a catch-all both change, and says "NOT written" with
+   exit 0. `mentl resume` refuses the image lesson 12 saves, as not this
+   build's, though `mentl run` with `resume` reads it. `mentl repl` prints
+   no answers. `mentl query` answers an unknown question with exit 0 and
+   cannot list its questions; `ownership NAME` answers a count of
+   parameters, and `unresolved` a count with no sites. `mentl rename`
+   reports two names written for three changed lines. `mentl edit` prints a
+   placeholder where its Why belongs. The gate's server names its version
+   "first-light". A session answers `where` and `query` and misses on
+   `why`. The prelude imports `threading` and uses nothing from it, which
+   `query imports` marks DEAD.
    A dropped value
    is reported (`Hβ.infer.statement-value-is-dropped-silently`). A block's
    non-final statement whose value is a function is refused
@@ -2104,11 +2142,7 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
    `set_canonicalize` re-sorts a growing accumulator in the
    `effects_of_edges` loop. The `wmap` columns have fixed bucket counts, so a
    graph read scans a bucket of hundreds of entries. `ls_find_str_local` and
-   `name_set_prefix_contains` scan on every lookup. And a handler's state
-   commit journals its slot at every write, where once per extent would hold
-   what the exit reads. So the parse of src/infer.mn writes past the arena
-   journal's 262,144 entries, and its exit keeps every temporary the parse
-   built (measured 2026-10-22, with a probe that traps at the overflow). The
+   `name_set_prefix_contains` scan on every lookup. The
    self-compile's wall time and peak memory ratchet down. The wall time is
    read as a share of the boot's on the same wheel, since a single wall-time
    reading reflects the machine's load as much as the compiler.
@@ -2361,9 +2395,24 @@ before step 2 (2026-11-06): each reads only facts the steps before it carry.
     products of more than two fields become records. Each sequence stage of
     the library keeps its index walk in a nested function whose claims
     settle at the stage's close, so its face says it never traps, and the
-    378 functions `census iteration` names become pipelines over their
-    sequences. The census of rosters (1,369 arms) and of iteration costumes
-    (378 functions) fall with it.
+    functions `census iteration` names become pipelines over their
+    sequences. The board's counts of rosters and of iteration costumes fall
+    with it.
+    Measured on pin b46b71133838 (2026-11-10): a pipeline cannot stand
+    where a claim is checked. `fn energy(xs) with !Alloc = xs |> map(square)
+    |> fold(0, plus)` is refused, because every stage walks its list through
+    `iterate` (lib/prelude.mn), which first calls `list_to_flat`, a copy for
+    any list not stored flat, and then reads each element by an index whose
+    bounds claim is pending wherever the prelude is linked; the same sum
+    written as an index walk is accepted. A pair cannot flow into a
+    two-parameter stage: `pairs |> each(f)` is refused with "function arity
+    mismatch: 2 param(s) vs 1 param(s)", though a pattern parameter, `fn
+    g((a, b))`, is accepted.
+    `census iteration` does not count a walk that counts down
+    (`branch_replay_verify`, src/infer.mn). The wheel's `match` sites rose
+    from 6,123 on 2026-10-27 to 6,748, against 1,044 `|>`, 5 `><`, 2 `<|`
+    and 1 `<~`; the board bounds rosters and costumes, and nothing bounds
+    the total.
 
 14. **The WASI 0.2 component target, and a real network.** Mentl emits the
     component itself, the canonical ABI's lifting and lowering included, one
