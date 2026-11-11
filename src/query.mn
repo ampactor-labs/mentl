@@ -306,6 +306,10 @@ type Question
   // "traps" — every place where the program can stop with a trap, each with
   // the state of the claim that guards it (`trap_sites`)
   | QTraps
+  // "written-back" — each call and each name standing as a value in the
+  // entry module, replaced by `??` and asked again: how often the proposer
+  // writes the author's own text back (`written_back`)
+  | QWrittenBack
   // "QUESTION in MODULE" — a site facet's answer kept to one module's sites:
   // the link answers every module it judged, and a developer asking about the
   // module they are writing reads that module's sites alone
@@ -549,6 +553,7 @@ fn query_answer(q) = match q {
   QOwed(dir) => QROwed(owed_programs(dir)),
   QTraps => QRTraps(trap_sites() |> map(with_trap_claim(trap_ledger(), ??))),
   QHeads => QRWhere(head_round_trip(), []),
+  QWrittenBack => QRWhere(back_lines(written_back()), []),
   QIn(inner, m) => query_answer(inner) |> sites_in(m),
   QUnknown(raw) => QRError("unknown query: {raw}"),
 }
@@ -2833,6 +2838,48 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
     ImportStmt(_) => [],
   },
   NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+}
+
+// A written-back answer as lines: how many expressions were asked and how
+// many got each answer, then every expression at its place, with its text
+// as the author wrote it and what the proposer answered there.
+fn back_lines(sites) =
+  ["{int_to_str(len(sites))} expression(s) asked again as holes: {back_counts(sites)}"] ++ map(back_line, sites)
+
+// The counts of a written-back answer in one fixed order: the line a
+// fixture's `// written-back:` contract holds.
+fn back_counts(sites) =
+  sites |> fold({among: 0, filled: 0, first: 0, nothing: 0, otherwise: 0, unread: 0, without: 0}, tally_back) |> tally_line
+
+fn tally_back(t, site) = match site {
+  (_, _, answer) => match answer {
+    BackFilled => {...t, filled: t.filled + 1},
+    BackFirst => {...t, first: t.first + 1},
+    BackAmong => {...t, among: t.among + 1},
+    BackElse(_) => {...t, otherwise: t.otherwise + 1},
+    BackAsked => {...t, without: t.without + 1},
+    BackNothing => {...t, nothing: t.nothing + 1},
+    BackUnread => {...t, unread: t.unread + 1},
+  },
+}
+
+fn tally_line(t) =
+  "{int_to_str(t.filled)} written back, {int_to_str(t.first)} first, {int_to_str(t.among)} among, {int_to_str(t.otherwise)} filled otherwise, {int_to_str(t.without)} asked without, {int_to_str(t.nothing)} nothing, {int_to_str(t.unread)} unread"
+
+// The tuple's pin states that the text is a string where the line splices
+// it.
+fn back_line(site: (Span, String, Back)) = match site {
+  (Span(line, col, _, _), written, answer) => "at {int_to_str(line)}:{int_to_str(col)}  {written}  {back_said(answer)}",
+}
+
+fn back_said(answer) = match answer {
+  BackFilled => "written back",
+  BackFirst => "asked, the author's text first",
+  BackAmong => "asked, the author's text among the proven",
+  BackElse(said) => "filled with {said}",
+  BackAsked => "asked without the author's text",
+  BackNothing => "nothing proposed",
+  BackUnread => "the edited file did not give the hole back",
 }
 
 // THE HEAD ROUND TRIP — `parse(render(head)) == head`, for every function

@@ -11,6 +11,8 @@ import choice
 
 import cursor
 
+import cursor_transport
+
 import effects
 
 import egraph
@@ -329,13 +331,10 @@ fn scope_stmts_above(stmts, child) with !Mutate = match stmts {
 
 // The binders a block's statement writes: a let's pattern, or a nested
 // function's name, bound to the function's own declaration.
-fn let_binders(stmt) with !Mutate = match graph_node_body(stmt) {
-  NStmt(LetStmt(pat, _, _)) => pat_binders(pat),
-  NStmt(FnStmt(name, _, _, _, _)) => [(name, stmt)],
-  NStmt(TypeDefStmt(_, _) | EffectDeclStmt(_, _, _) | HandlerDeclStmt(_, _, _, _, _, _)
-  | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _)
-  | RowAliasStmt(_, _)) => [],
-  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+fn let_binders(stmt) with !Mutate = match stmt_at(stmt) {
+  Some(LetStmt(pat, _, _)) => pat_binders(pat),
+  Some(FnStmt(name, _, _, _, _)) => [(name, stmt)],
+  Some(_) | None => [],
 }
 
 // The binders a node writes: a pattern's, or a parameter's pattern's.
@@ -748,11 +747,10 @@ fn rank_of(c, hole_h, reach) with !Mutate = match candidate_reference(c) {
 // or a reference, which ranks by the same local-intent read as a call of
 // it. A literal or a lambda names none.
 fn candidate_reference(c) with !Mutate = match c {
-  EnrichedCandidate(cr) => match graph_node_body(cr.node) {
-    NExpr(CallExpr(callee, _)) => Some(callee),
-    NExpr(VarRef(_)) => Some(cr.node),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => None,
+  EnrichedCandidate(cr) => match expr_at(cr.node) {
+    Some(CallExpr(callee, _)) => Some(callee),
+    Some(VarRef(_)) => Some(cr.node),
+    Some(_) | None => None,
   },
 }
 
@@ -801,10 +799,9 @@ fn hole_arms(h) with !Mutate = match graph_parent_of(h) {
   None => None,
 }
 
-fn is_if(h) with !Mutate = match graph_node_body(h) {
-  NExpr(IfExpr(_, _, _)) => true,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => false,
+fn is_if(h) with !Mutate = match expr_at(h) {
+  Some(IfExpr(_, _, _)) => true,
+  Some(_) | None => false,
 }
 
 // The outermost `if` of the `else if` chain an `if` stands in.
@@ -819,10 +816,9 @@ fn chain_root(p) with !Mutate = match graph_parent_of(p) {
 
 // The arms of an `else if` chain: each `if`'s branch, and the last one's
 // `else`.
-fn chain_arms(p) with !Mutate = match graph_node_body(p) {
-  NExpr(IfExpr(_, then_h, else_h)) => if is_if(else_h) { [then_h] ++ chain_arms(else_h) } else { [then_h, else_h] },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => [],
+fn chain_arms(p) with !Mutate = match expr_at(p) {
+  Some(IfExpr(_, then_h, else_h)) => if is_if(else_h) { [then_h] ++ chain_arms(else_h) } else { [then_h, else_h] },
+  Some(_) | None => [],
 }
 
 fn arm_body(arm) with Pure = match arm {
@@ -1326,15 +1322,13 @@ fn candidate_reason(candidate) with Pure = match candidate {
 // here — a refused `MkBox(…)` is exactly the kind of refusal a developer
 // needs to see, and it has an arg. A skeleton with no head name teaches
 // nothing and stays out.
-fn candidate_head_name(node) = match graph_node_body(node) {
-  NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
-    NExpr(VarRef(name)) => Some(name),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => None,
+fn candidate_head_name(node) = match expr_at(node) {
+  Some(CallExpr(callee, _)) => match expr_at(callee) {
+    Some(VarRef(name)) => Some(name),
+    Some(_) | None => None,
   },
-  NExpr(VarRef(name)) => Some(name),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
+  Some(VarRef(name)) => Some(name),
+  Some(_) | None => None,
 }
 
 // A survivor's node, replaced by the cost-minimal member of its own
@@ -1377,10 +1371,9 @@ fn reference_before_mint(survivors) = if any(is_reference_candidate, survivors) 
 }
 
 fn is_reference_candidate(c) = match c {
-  EnrichedCandidate(cr) => match graph_node_body(cr.node) {
-    NExpr(VarRef(_)) => true,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => false,
+  EnrichedCandidate(cr) => match expr_at(cr.node) {
+    Some(VarRef(_)) => true,
+    Some(_) | None => false,
   },
 }
 
@@ -1551,13 +1544,12 @@ fn add_denotation(acc, d) = match d {
 
 // The name of a survivor that refers to a value the program holds, a
 // reference that is not a constructor; nothing for every other survivor.
-fn held_name(node) with !Mutate = match graph_node_body(node) {
-  NExpr(VarRef(name)) => match nullary_ctor_name(node) {
+fn held_name(node) with !Mutate = match expr_at(node) {
+  Some(VarRef(name)) => match nullary_ctor_name(node) {
     Some(_) => [],
     None => [name],
   },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => [],
+  Some(_) | None => [],
 }
 
 // Every survivor's constructor name when each is a bare nullary constructor
@@ -1572,16 +1564,15 @@ fn nullary_ctor_step(acc, node) = match acc {
   },
 }
 
-fn nullary_ctor_name(node) = match graph_node_body(node) {
-  NExpr(VarRef(name)) => match graph_ref_decl(node) {
+fn nullary_ctor_name(node) = match expr_at(node) {
+  Some(VarRef(name)) => match graph_ref_decl(node) {
     Some(d) => match graph_published(d) {
       Some((_, _, ConstructorScheme(_, _))) => Some(name),
       None | Some(_) => None,
     },
     None => None,
   },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
+  Some(_) | None => None,
 }
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a
@@ -1612,10 +1603,9 @@ fn candidate_row(node) = match zero_arg_callee_decl(node) {
 // The declaration a zero-arg call calls, along its callee's edge; None for
 // every other shape — an arg-bearing call's arguments are not yet sayable
 // (`Hβ.synth.vocabulary-arg-holes`).
-fn zero_arg_callee_decl(node) = match graph_node_body(node) {
-  NExpr(CallExpr(callee, args)) => if len(args) == 0 { graph_ref_decl(callee) } else { None },
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-  | NRow(_) | NParam(_) => None,
+fn zero_arg_callee_decl(node) = match expr_at(node) {
+  Some(CallExpr(callee, args)) => if len(args) == 0 { graph_ref_decl(callee) } else { None },
+  Some(_) | None => None,
 }
 
 // What this candidate DENOTES, if the medium can read it: a literal denotes
@@ -1634,10 +1624,9 @@ fn candidate_denotation(seen, node) = match zero_arg_callee_decl(node) {
   Some(d) => if any({ s => s == d }, seen) {
     None
   } else {
-    match graph_node_body(d) {
-      NStmt(FnStmt(_, _, _, _, body)) => candidate_denotation(push(seen, d), body),
-      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-      | NRow(_) | NParam(_) => None,
+    match stmt_at(d) {
+      Some(FnStmt(_, _, _, _, body)) => candidate_denotation(push(seen, d), body),
+      Some(_) | None => None,
     }
   },
   None => node_const(node),
@@ -1784,44 +1773,110 @@ fn synth_holes_loop(i, n, buf) = if i >= n {
 // field keeps its name with a hole as its value.
 fn synth_record_holes_for(fields) = map({ (fname, _) => (fname, synth_hole_node()) }, fields)
 
-// ─── Composition with cursor_default + delta_default ────────────────
-//
-// The full Phase μ chain composes here:
-//
-//   cursor_session(initial_caret)
-//       ~> delta_default              -- inverse-direction gradient (Hμ.gradient-delta)
-//       ~> synth_default              -- proposer chain (this file)
-//       ~> mentl_default              -- Teach + Why tentacles
-//       ~> interrogate_default        -- automated eight-fold (Hμ.eight-interrogation-loop)
-//       ~> terminal_transport         -- the human surface (Hμ.cursor.transport)
-//
-// The Phase μ peer handles + cursor + the kernel = the full Mentl
-// active surface. ULTIMATE FORM is the medium running this chain
-// continuously while the developer types — the bus-compressor closed
-// at the human boundary, with proposers exploring and the gradient
-// narrowing in real time. (The oracle-queue cache re-enters as graph
-// content persisting with the module image — Hβ.persist.module-image-
-// cache — read live by argmax, never a side-file.)
-//
-// ─── The closure ────────────────────────────────────────────────────
-//
-// Hμ.synth-proposer closes the named-but-unbodied stub at
-// mentl.mn:404-438. Every `??` position in the source now invokes
-// the proposer chain; every chain step gates through verify; only
-// proven candidates surface to the user; the gradient narrows each
-// constraint addition into a smaller candidate space until the
-// surviving candidate IS the synthesized residue.
-//
-// Per PLAN §2's cached cursor: Mentl IS what falls out of IC plus
-// Pure-over-broader-input applied to the speculative-inference loop.
-// The substrate is the residue of composing what was already there.
-//
-// Per CLAUDE.md ⊕ + Anchor 0: wheel-canonical dream code; the seed
-// transcribes after first-light-L1 + H7 MultiShot emit per Tier 3
-// growth. The bus is on; the medium folds itself into its seed.
-//
-// Six of six Phase μ peer handles closed wheel-side. ULTIMATE FORM
-// crystallizes when the developer types `??`, the chain runs, the
-// argmax surfaces, the gradient narrows, the loop closes, and the
-// medium teaches itself by being itself.
+// THE PROPOSER MEASURED AGAINST THE AUTHOR. Each call and each name that
+// stands as a value in the entry module is replaced by `??`, one at a time,
+// and the proposer is asked what goes there. The expressions are the options
+// of one `choose`, so `speculate` asks each in a fork of its own and drops
+// it: the edited text is judged there (`rewritten_judged`) beside the
+// program as it stands, and nothing below the fork moves. What crosses out
+// of a fork is the expression's place, its text as the author wrote it, and
+// the answer. The counts say how much of a program the proposer could have
+// written from the rest of it.
+fn asked_back() = match link_entry() {
+  None => [],
+  Some(mh) => {
+    let m = module_of(mh)
+    let sites = m.decls |> filter(holds_values) |> flat_map(nodes_under) |> filter(asked_site)
+    asked_at(mh, m.text, choose(sites)) ~> speculate ~> judgment_core
+  },
+}
 
+// The declarations whose bodies hold values: a function, a module value, a
+// handler and a statement run for its effect. A type's predicate and a
+// handler chain's members are read by other rules, and no hole stands there
+// for a value.
+fn holds_values(d) with !Mutate = match stmt_at(d) {
+  Some(FnStmt(_, _, _, _, _)) | Some(LetStmt(_, _, _)) | Some(HandlerDeclStmt(_, _, _, _, _, _))
+  | Some(ExprStmt(_)) => true,
+  Some(_) | None => false,
+}
+
+// What is asked: a call, and a name that stands as a value.
+fn asked_site(h) with !Mutate = match expr_at(h) {
+  Some(CallExpr(_, _)) | Some(VarRef(_)) => !stands_unasked(h),
+  Some(_) | None => false,
+}
+
+// A call's callee is part of its call, and the right side of an install or
+// of a feedback is a handler or a line's spec, which no value hole stands
+// for.
+fn stands_unasked(h) with !Mutate = match graph_parent_of(h) {
+  None => false,
+  Some(p) => match expr_at(p) {
+    Some(CallExpr(callee, _)) => callee == h,
+    Some(PipeExpr(kind, _, right)) => right == h && right_is_not_asked(kind),
+    Some(_) | None => false,
+  },
+}
+
+fn right_is_not_asked(kind) with Pure = match kind {
+  PTee | PFeedback => true,
+  PForward | PFanout(_) => false,
+}
+
+// One expression asked again, inside the fork `speculate` opened for it:
+// `??` is written over its span, the edited module is judged, and the
+// proposer is asked at the hole that begins where the expression began. An
+// edit the module does not read back from is answered as unread.
+fn asked_at(mh, text: String, site) = {
+  let sp = graph_span_of(site)
+  let written = render_candidate_source(site)
+  match hole_begun_at(rewritten_judged(mh, splice_span(text, sp, "??")), sp) {
+    None => [(sp, written, BackUnread)],
+    Some(hole) => {
+      let proposal = propose_at(hole) ~> synth_default
+      match proposal {
+        Proposal(p) => [(sp, written, back_of(p.verdict, written))],
+      }
+    },
+  }
+}
+
+// The authored hole among the statements read again that begins where the
+// replaced expression began. A hole the author left elsewhere in the same
+// declaration begins elsewhere.
+fn hole_begun_at(fresh, sp) = fresh |> flat_map(nodes_under) |> find(begins_hole_at(sp, ??))
+
+fn begins_hole_at(sp, h) = authored_hole(h) && same_start(graph_span_of(h), sp)
+
+fn same_start(a, b) with Pure = match a {
+  Span(al, ac, _, _) => match b {
+    Span(bl, bc, _, _) => al == bl && ac == bc,
+  },
+}
+
+// The proposer's verdict beside what the author wrote. A question's
+// candidates arrive ranked, so the first is the one the answer leads with.
+fn back_of(verdict, written: String) = match verdict {
+  VNone => BackNothing,
+  VFill(node, _) => {
+    let said = render_candidate_source(node)
+    if said == written { BackFilled } else { BackElse(said) }
+  },
+  VAsk(_, survivors) => match map(survivor_text, survivors) {
+    [] => BackAsked,
+    [first, ...more] => if first == written {
+      BackFirst
+    } else if any(text_is(written, ??), more) {
+      BackAmong
+    } else {
+      BackAsked
+    },
+  },
+}
+
+fn survivor_text(survivor) = match survivor {
+  (node, _) => render_candidate_source(node),
+}
+
+fn text_is(a: String, b: String) with Pure = a == b

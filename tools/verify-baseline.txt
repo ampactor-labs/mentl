@@ -37,10 +37,10 @@ authored_ref_max: 513
 # the board runs on every push and the runner reads higher than this machine.
 selfcompile_peak_kb_max: 421100
 
-# The KB the candidate's image line peak may exceed the pinned boot's on the same wheel (the guest's
-# `arena: … line peak N KB`): two compilers on one input, a reading no machine moves. A landing whose
-# deletions do not cover the facts it keeps pays their measured price on one dated line, closed by the next commit:
-selfcompile_line_peak_kb_max: 0
+# The KB the candidate's image line peak may exceed the pinned boot's on the same wheel (the guest's `arena: … line peak N KB`): two compilers on one input,
+# a reading no machine moves. A landing whose deletions do not cover the facts it keeps pays their measured price on one dated line, closed by the next commit:
+# paid 2026-11-11 (selfcompile_line_peak_kb_max): 10 KB, the store claims of the functions whose answer is a join, which name the operands they answer where they said older memory, and the mark of a replaced declaration kept as a column of the graph (286,268 KB against the boot's 286,258 on the same wheel); the next commit sets the key back to 0, since the pin then carries these facts
+selfcompile_line_peak_kb_max: 10
 
 # The candidate's wall time on the wheel, as a percentage of the pinned
 # boot's on the same wheel in the same march (the m3 leg against the m1 leg,

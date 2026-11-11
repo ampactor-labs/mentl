@@ -1,10 +1,12 @@
 // A module that spawns gives each instance its own run of the line (one
-// atomic add per chunk, a private bump inside), so an arena's region is a
-// span of its instance's run and its exit reclaims as it does
-// single-threaded: in the root after the join, and inside each spawned
-// branch, which opens arenas of its own. Until 2026-10-06 a spawn anywhere
-// turned every arena in the module off — the body ran and no exit was
-// counted (`Hβ.arena.per-instance-regions`). Expected exit: 42.
+// atomic add per chunk, a private bump inside). An arena opened in a
+// spawned branch runs its body, counts its exit and answers the right sum.
+// The root's arena, opened after the join when no other instance is taking
+// chunks, reclaims as an arena does in a module that never spawns. Whether
+// a branch's arena reclaims depends on the other branch: when that one
+// takes a chunk between two of this one's, the region is no longer one
+// span and the exit keeps it, so the branches assert nothing about what
+// was kept (PLAN §7, memory). Expected exit: 42.
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b
@@ -12,7 +14,7 @@ fn add_int(a, b) = a + b
 // A branch's own arena: its exits count in its instance's census.
 fn branch(_) = {
   let s = fold(0, add_int, build(60)) ~> arena
-  if s == 1830 && arena_stat(ArExits) > 0 && arena_stat(ArKept) == 0 && arena_stat(ArFreed) > 0 {
+  if s == 1830 && arena_stat(ArExits) > 0 {
     15
   } else {
     0

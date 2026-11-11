@@ -92,7 +92,7 @@ fn root_version() = Version{
   span_index: [],
   spans: pt_empty(),
   store_claims: pt_empty(),
-  superseded: wmap_new(64),
+  superseded: pt_empty(),
   tails_idx: smap_new(),
 }
 
@@ -156,6 +156,8 @@ fn version_links(v) = v.links
 fn version_module(v) = v.module
 
 fn version_parent(v) = v.parent
+
+fn version_superseded(v) = v.superseded
 
 fn version_products(v) = v.products
 
@@ -283,9 +285,9 @@ fn link_at(ref links, seed, h) = {
 // an edit (graph_supersede). The module column's word answers for a cell the
 // judgment minted, which no parent holds.
 fn current_at(module, parent, seed, superseded, handle) =
-  unsuperseded(superseded, module_at(module, seed, handle)) && ancestry_unsuperseded(parent, seed, superseded, handle)
+  unsuperseded(superseded, seed, module_at(module, seed, handle)) && ancestry_unsuperseded(parent, seed, superseded, handle)
 
-fn ancestry_unsuperseded(parent, seed, superseded, h) = unsuperseded(superseded, h) && match parent_at(parent, seed, h) {
+fn ancestry_unsuperseded(parent, seed, superseded, h) = unsuperseded(superseded, seed, h) && match parent_at(parent, seed, h) {
   None => true,
   Some(p) => ancestry_unsuperseded(parent, seed, superseded, p),
 }
@@ -293,11 +295,11 @@ fn ancestry_unsuperseded(parent, seed, superseded, h) = unsuperseded(superseded,
 // Whether a node was neither superseded as its path's module nor replaced
 // as a statement. A module node's own module column names the module that
 // was open when it was minted, never itself, so the question is asked of
-// the handle directly.
-fn unsuperseded(superseded, h) = match wmap_get(superseded, h) {
-  Some(_) => false,
-  None => true,
-}
+// the handle directly. The mark is a column like every fact at a handle: an
+// instance reads its own cell, then the versions below, so a fork that
+// replaces a statement marks it for itself alone.
+fn unsuperseded(superseded, seed, h) =
+  !slot_present(col_get(h, superseded, seed, version_superseded))
 
 // The purge's question at a supersession: was the node at `handle` born
 // anywhere but in the module node being superseded?
@@ -582,8 +584,8 @@ fn stops_of(h) = match value_tails(h) {
     // Arithmetic and comparison answer a word, which is no memory (an address
     // takes no arithmetic: the judgment refuses it); a concatenation builds a
     // value this walk does not follow.
-    NExpr(BinOpExpr(op, _, _)) => match op {
-      BConcat => [StopBeyond(h)],
+    NExpr(BinOpExpr(op, l, r)) => match op {
+      BConcat => [StopCall(h, h, [l, r])],
       BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr => [StopWord(h)],
     },
     NParam(_) | NPat(_) => stops_of_binder(h),
@@ -955,7 +957,11 @@ fn accept_wrap(reason, text, proof) = match reason {
 fn occurs_in_live(handle, ref ty) with !Mutate = occurs_in(graph_nodes(), graph_seed(), handle, ty)
 
 // One of an edit's replaced statements, marked superseded.
-fn supersede_one(gone, s) = wmap_add(gone, s, 1)
+fn supersede_one(gone, s) = pt_set(gone, s, 1)
+
+// A module's generation turns over in an instance seeded with the empty
+// version, and traps in one seeded from a live graph.
+fn turnover_is_outermost(seed: Version) = if seed.next > 0 { trap() }
 
 // graph_handler — the substrate handler
 //
@@ -973,18 +979,18 @@ fn supersede_one(gone, s) = wmap_add(gone, s, 1)
 // column, the holes, the write guard's stored refusals, the accepted
 // proposals, the link — as values of its own. A kept fork's final version
 // is merged cell by cell into the instance below (`graph_keep`); a dropped
-// fork's dies with its extent. Three facts are written in place and shared
-// down the chain — the modules by file, the superseded cells and the tail
-// facts — because each is written at the outermost boundary alone (a
-// module's registration, an edit's supersession, the module judgment's
-// tails note), never inside a fork.
+// fork's dies with its extent. Two facts are written in place and shared
+// down the chain — the modules by file and the tail facts — because each is
+// written at the outermost boundary alone (a path's first module node or
+// the node that replaces it, the module judgment's tails note), never
+// inside a fork.
 //
 // Threaded through the pipeline via ~>. Installed once at compile entry.
 // Every downstream pass (infer, lower, query, teach, emit, mentl) sees the
 // same live graph through the same effect discipline. State is internal to
 // the handler; callers never see the columns as a value except as a
 // Version they hand back; access is only through perform.
-handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), arena_roots = pt_empty(), perform_installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx {
+handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), arena_roots = pt_empty(), perform_installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = pt_empty(), link_now = seed.link_now, tails_idx = seed.tails_idx {
   graph_chase(handle) => resume(chase_node(nodes, seed, handle, 0)),
   graph_chase_handle(handle) => resume(chase_handle(nodes, seed, handle, 0)),
   graph_epoch() => resume(epoch),
@@ -1088,7 +1094,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // (lib/imap.mn's pt_merge), and every other fact is the kept instance's
   // as it left it. O(what the kept instance wrote); FV's columns die with
   // the extent that built them.
-  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), arena_roots = pt_merge(arena_roots, fv.arena_roots), perform_installs = pt_merge(perform_installs, fv.perform_installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = fv.superseded, link_now = fv.link_now, tails_idx = fv.tails_idx,
+  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), arena_roots = pt_merge(arena_roots, fv.arena_roots), perform_installs = pt_merge(perform_installs, fv.perform_installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = pt_merge(superseded, fv.superseded), link_now = fv.link_now, tails_idx = fv.tails_idx,
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write rebinds the column it wrote: pt_set answers the root as it
   // stands when the path was this version's own, else the copied root.
@@ -1119,19 +1125,26 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
     let program2 = pt_set(program, handle, body)
     let parent2 = put_parents(parent, handle, body)
     match body {
-      // A module's generation turns over at the outermost boundary alone: the
-      // by-file table and the in-edges purge are written in place, which no
-      // restore could take back, so a speculation registering a module — an
-      // open version, or an instance seeded from a live graph — is a defect
-      // in the caller and traps.
-      NModule(m) => match if seed.next > 0 { trap() } else { smap_get(modules_now, m.file) } {
+      // A module node registered again, with the statements an edit leaves
+      // it, writes its own two columns and nothing else, so a fork may do
+      // it. A path's first module node, and a node that replaces the one the
+      // path had, write the by-file table and purge the in-edges in place,
+      // which no restore could take back. That turnover belongs to the
+      // outermost boundary alone, so a speculation that makes one — an open
+      // version, or an instance seeded from a live graph — is a defect in
+      // the caller and traps.
+      NModule(m) => match smap_get(modules_now, m.file) {
         Some(old) => if old == handle {
           resume() with program = program2, parent = parent2
         } else {
+          turnover_is_outermost(seed)
           let keep = born_outside(module, seed, old, ??)
-          resume() with program = program2, parent = parent2, modules_now = smap_add(modules_now, m.file, handle), superseded = wmap_add(superseded, old, 1), decls_col = filter(keep, decls_col), in_edges = pt_retain(in_edges, in_edge_kept(keep, ??))
+          resume() with program = program2, parent = parent2, modules_now = smap_add(modules_now, m.file, handle), superseded = pt_set(superseded, old, 1), decls_col = filter(keep, decls_col), in_edges = pt_retain(in_edges, in_edge_kept(keep, ??))
         },
-        None => resume() with program = program2, parent = parent2, modules_now = smap_add(modules_now, m.file, handle),
+        None => {
+          turnover_is_outermost(seed)
+          resume() with program = program2, parent = parent2, modules_now = smap_add(modules_now, m.file, handle)
+        },
       },
       NLink(_) => resume() with program = program2, parent = parent2, link_now = Some(handle),
       NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => resume() with program = program2, parent = parent2,
@@ -2619,6 +2632,20 @@ fn link_of(l) with !Mutate = match graph_node_body(l) {
 fn module_of(mh) with !Mutate = match graph_node_body(mh) {
   NModule(m) => m,
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => trap(),
+}
+
+// The expression a node holds, and nothing where the node is of another
+// kind. A reader that asks about one or two forms of expression reads the
+// node through here, so the kinds that are not expressions are listed once.
+fn expr_at(h) with !Mutate = match graph_node_body(h) {
+  NExpr(e) => Some(e),
+  NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => None,
+}
+
+// The statement a node holds, and nothing where the node is of another kind.
+fn stmt_at(h) with !Mutate = match graph_node_body(h) {
+  NStmt(s) => Some(s),
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => None,
 }
 
 // The program's declarations, every module's in the link's order: what a

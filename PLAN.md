@@ -57,12 +57,14 @@ Closing the gap means reaching five properties:
    it, and nothing unproven runs. So whether a program does what its author
    meant never depends on someone reading it closely. Review can give
    assurance only up to some limit, and proof has no such limit. A person
-   sees it as `mentl check examples/grid/station.mn` printing one line and
-   no pending claim: every claim the grid controller states is proven, and
-   the line counts one place that can still stop the program, which `mentl
-   why examples/grid/station.mn main Trap` traces to the printing of each
-   decision line. The copy that reads a price inside the decision does not
-   build.
+   sees it as `mentl check examples/grid/station.mn` printing nothing: every
+   claim the grid controller states is checked on each build, through every
+   function it calls. `main` declares `!Trap`, so nothing from reading a
+   line to printing its decision can stop the program with a failed check,
+   and `mentl audit examples/grid/station.mn` opens by saying the module is
+   trap-free. The same line says it is not proven to always finish, and
+   running out of stack or of memory is outside what `!Trap` covers (§7).
+   The copy that reads a price inside the decision does not build.
 2. **The negative is provable**: people often mean "this never touches the
    network" or "this never allocates", and no mainstream language lets them
    say it. `!E` says it, and it holds under polymorphism. The absence it
@@ -807,10 +809,12 @@ accepts each program and `mentl run` shows the break.
   `str_eq` by name where SYNTAX says a developer writes `==` (`mentl query
   src/main.mn "refs of str_eq"`; §11.13).
 - The traps facet does not follow the arms of a handler a function
-  installs. It calls the grid controller's one remaining trap `main`'s own,
-  with no path, where `mentl why examples/grid/station.mn main Trap` traces
-  it into the library (`mentl query examples/grid/station.mn traps`;
-  §11.1).
+  installs. Where a handler's arm reads a list by an index nothing bounds,
+  `mentl query FILE traps` calls the place `main`'s own, with no claim and
+  no path, while `mentl check` prints the arm's pending claim at its line
+  and `mentl why FILE main Trap` follows the install into the arm (a
+  scratch program, 2026-11-11; the grid controller showed it until its
+  printing stopped trapping; §11.1).
 - `mentl teach` proposes locks, preconditions and lifts and little else,
   and lists every function's step in source order with nothing ranked
   (`mentl teach examples/pulse/course/07-bounds.mn`; §11.5).
@@ -821,8 +825,11 @@ accepts each program and `mentl run` shows the break.
   `Box(??)` where `tests/proposals/box-fill.mn` says the hole fills with
   it, and `mentl check` refuses the file that results, since a call that
   still holds `??` is a function waiting for that argument. The proposer
-  builds no call that takes arguments, and no command says how much of a
-  program it can write (§11.B, the oracle).
+  builds no call that takes arguments. Asked for each of lesson 8's own
+  expressions, it fills three with something the author did not write, one
+  of them at a hole whose type nothing has fixed yet (`mentl query
+  examples/pulse/course/08-hole.mn written-back`, the lines that say
+  `filled with`; §11.B, the oracle).
 
 **The row.**
 
@@ -861,17 +868,12 @@ accepts each program and `mentl run` shows the break.
   read as older memory, because the judgment keeps nothing of what a store
   put into an allocation. `mentl verify` counts the values the verifier's
   walk cannot place (§11.8).
-- A join, `xs ++ ys`, is read as memory the walk cannot follow, so a
-  function whose answer is a join answers older memory: `mentl query
-  src/main.mn "claim of int_to_str"` says `returns: older`, and every use
-  of such a function counts as a value the walk cannot place. The function
-  a join calls, `list_concat`, already claims what it answers: one of its
-  operands, or a new node that holds both. A probe that read the join by
-  that claim placed 1,732 values and passed every battery; it is written
-  out as the payment of §11.B's box, with the fixtures it still owes.
-- An arena opened inside a spawned branch sometimes keeps its region. The
-  frontier leg that expects it reclaimed fails about one run in thirty
-  (§11.B, "First, a check that fails at random").
+- An arena opened inside a spawned branch sometimes keeps its region, in 10
+  of 200 runs on 2026-11-11, when the other branch takes a chunk of the
+  shared line between two of its own (§11.B, "Two checks that failed at random").
+  The frontier leg asserts only what holds on every run, and the landing
+  that gives each instance a memory of its own closes it (MENTL_MEMORY.md,
+  "Two memories").
 - A resume does not restore host resources. Resuming on another machine
   and a session that outlives its process are open (§11.6).
 - SIMD and GPU schedules run their branches one after another. A branch
@@ -907,6 +909,20 @@ accepts each program and `mentl run` shows the break.
 - A module sees its whole import closure, so a user's `fn count` is
   refused as a second declaration of the library's, and the refusal does
   not say where the first one stands (§11.4).
+- A refusal names what is wrong and stops there. A program that calls
+  `print_string` without `import io` is told `E_MissingVariable error:
+  print_string`, with no module that declares the name and no nearest name
+  in scope. `import strngs` is told the three paths searched, at
+  `<link>:0:0`, with no line of the file and no word of `strings`. `with
+  Pure` over a body that prints is told the six effects the body has and
+  no call that brings them, where a negation's refusal names the path call
+  by call (three scratch programs, 2026-11-11; §11.5).
+- The caret on an unannotated pipeline over a list, `fn process(xs) = xs
+  |> filter(positive) |> map(double) |> sum`, answers 48 lines, 42 of them
+  six chains into the library's list walk, and `mentl teach` on the same
+  file says there is nothing to unlock. On an empty file `mentl teach`
+  says "All functions are at maximum annotation density." (scratch
+  programs, 2026-11-11; §11.5, §11.13).
 - A default arm over a sum is refused, and the refusal says to let `mentl
   tighten` write the roster. The five operators do not share one
   precedence level. A pair does not fill a two-parameter stage (§4⑩, §4⑪,
@@ -953,7 +969,7 @@ accepts each program and `mentl run` shows the break.
 mentl land [--quick | --board]      # the landing pass: this tree's compiler judged cheapest first, stopping at the first red — verify, march, frontier, proof-exactness, crown, effect identity, threads, ide — every verdict kept by the bytes it judged, pinned once; --quick = verify only; --board = the board on the pinned boot
 mentl verify [path]                 # the standing bounds on the medium's own source (src/board.mn), read off one judged graph; a rise refuses
 mentl check [path]                  # every module of the link judged, no emit; no path: the project
-mentl query <entry> <question>      # type NAME · effects NAME · ownership NAME · why NAME [Effect] · flow NAME · claim NAME · where NAME · refs of NAME · provider of OP · writes of FIELD · reads of FIELD · variants TYPE · census [<shape>] · text NEEDLE · prose NEEDLE · owed <dir> · traps · decls · modules · imports · performs · env · heads · ghosts · cost · smt · reports · verification · unresolved · unreferenced · unreachable · orphan-claims; `<question> in MODULE` narrows a site question to one module
+mentl query <entry> <question>      # type NAME · effects NAME · ownership NAME · why NAME [Effect] · flow NAME · claim NAME · where NAME · refs of NAME · provider of OP · writes of FIELD · reads of FIELD · variants TYPE · census [<shape>] · text NEEDLE · prose NEEDLE · owed <dir> · written-back · traps · decls · modules · imports · performs · env · heads · ghosts · cost · smt · reports · verification · unresolved · unreferenced · unreachable · orphan-claims; `<question> in MODULE` narrows a site question to one module
 mentl why <file> <fn> [<Effect>]    # the declaration's reason, then where each effect of its row enters
 mentl where <file> <name>           # a declaration's head, row, widths and address
 mentl <file>:<line>[:<col>]         # the eight aspects at the caret, with the Lede
@@ -1137,13 +1153,16 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
+One box is written out. On 2026-11-10 Morgan approved a night's work on
 this branch ("I trust you and approve you to work through the night"), and
 the builder read that as his gate on the boxes here, in order. Later that
-day he turned the work to the oracle and gave the builder the reins for it,
-so Box 2 is built first and Box 1 waits on the two points marked for his
-gate. Each landing's receipt is his to review, and a box he did not mean to
-gate is reverted on his word.
+day he turned the work to the oracle and gave the builder the reins for it.
+On 2026-11-11 he said that boxes were another session's suggestion for
+scoping work and that the builder had been holding to them too tightly. So
+a box here says what one landing does and what measures it, the oracle's
+boxes are built under the reins he gave, and Box 1 waits on the two points
+marked for his word. Each landing's receipt is his to review, and a landing
+he did not mean is reverted on his word.
 
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
@@ -1168,17 +1187,22 @@ counts before the landing pass, and `mentl query src/main.mn "census
 unplaced"` says beside each value what stopped the walk. The witness box
 stopped at this on its first landing pass. It paid by teaching the walk
 that a constructor with no fields is a word, which placed 890 values. The
-next payment is measured and written into the box below: the join.
+written-back query paid with the join (2026-11-11): the walk reads `xs ++
+ys` by `list_concat`'s own claim, which placed 1,732 values. A count can
+also fall at its root. That landing's three new print calls were over the
+second limit, and each traced to one check in the library that could not
+fire, a byte copied between two byte slots and range-checked as though it
+were a new value. With the copy written as a copy, printing cannot trap in
+any program, and 162 places left the compiler's own count.
 
-**First, a check that fails at random.** One leg of the frontier gate,
-`tests/frontier/arena/spawning-module-runs-the-body.mn`, exits 1 where it
-expects 42 in about one run in thirty, on the pinned compiler as on any
-candidate, since both write the same module for it. In the failing runs an
-arena opened inside a spawned branch keeps its region, so the leg's
-`arena_stat(ArKept) == 0` is false: of 1,000 runs on 2026-11-10, 32 failed
-in both branches and 4 in one. The landing pass stopped on it once that
-night and passed on the next run. An unreliable check comes before any
-order (§11's second rule), so this is settled before Box 1 is built.
+**Two checks that failed at random.** The first is settled. One leg of the
+frontier gate, `tests/frontier/arena/spawning-module-runs-the-body.mn`,
+exited 1 where it expected 42 in about one run in thirty, on every compiler
+since they write the same module for it: 36 of 1,000 runs on 2026-11-10,
+and 10 of 200 on pin 11389157fa42 the next day, when it marked that pin's
+board red and the landing pass had to run again. In the failing runs an
+arena opened inside a spawned branch kept its region, and the leg asserted
+that no region was kept.
 
 The cause, read from the module the leg compiles to. In a module that
 spawns, every instance takes its memory from one shared line, a chunk at a
@@ -1189,25 +1213,42 @@ other instances: the instance took a chunk during the arena that did not
 follow its last one, because another instance had taken a chunk in between
 (`m < $seg_base`); or the exit's copy space does not fit and the chunk
 cannot be extended, for the same reason (`$seg_extend` answers 0). The leg
-meets the first case by construction. The first arena an instance opens
+met the first case by construction. The first arena an instance opens
 allocates its 2 MB journal, which is one chunk filled exactly, so the
 arena's mark stands at the chunk's end and the body's first allocation
 takes a new chunk. When the other branch takes a chunk between those two
 allocations, the region is kept. Keeping is sound, and it costs the
-branch's memory until the instance ends.
+branch's memory until the instance ends. SYNTAX says as much of an arena
+whose run cannot be extended.
 
-Morgan's to gate, since it says what a spawned branch's arena promises.
-Two forms settle the leg. (a) The leg asserts what holds today: each
-branch counts an exit and answers the right sum, and the root, which runs
-alone after the join, counts an exit, keeps nothing and frees memory; §7
-then holds that a spawned branch's arena can keep its region, closed by
-the landing that gives each instance a memory of its own (MENTL_MEMORY.md,
-"Two memories"). (b) The runtime takes a fresh chunk before an arena's
-mark when the current one is nearly full, which makes this leg's small
-arena reclaim on every run and leaves an arena larger than a chunk as it
-is. The builder recommends (a): (b) grows the shared line's mechanism,
-which the two-memories landing deletes, and it would make the leg pass
-while the property it names stayed untrue for larger arenas.
+Since 2026-11-11 the leg asserts what holds on every run: each branch
+counts an exit and answers the right sum, and the root, which runs alone
+after the join, counts an exit, keeps nothing and frees memory. Run 400
+times on that pin, it answered 42 every time. §7 holds that a spawned
+branch's arena can keep its region, closed by the landing that gives each
+instance a memory of its own (MENTL_MEMORY.md, "Two memories"). The other
+form considered, a fresh chunk taken before an arena's mark, would have
+grown the shared line's mechanism, which that landing deletes, and left the
+property untrue for an arena larger than a chunk. The builder made this
+choice under the reins of 2026-11-10 after the leg had stopped two
+landings, and Morgan reverses it by saying so.
+
+The second check fails by chance on this machine. The march holds the
+candidate's wall time on the wheel to 103% of the pin's, each read as the
+minimum of four runs. On 2026-11-11 the landing pass refused one candidate
+twice (8.89 s against 8.63 s, then 9.26 s against 8.68 s), and the march
+run alone passed the same bytes (8.59 s against 8.69 s). Sixteen
+alternating pairs of runs read 8.52 to 9.69 s for the pin and 8.56 to
+9.81 s for the candidate, with their minimums 0.5% apart and their medians
+0.2% apart. wasmtime's fuel meter counts executed instructions and reads
+the same on every run: it puts that candidate 0.3% over the pin (82.41
+against 82.16 billion units, found by bisection, since the engine reports
+fuel only by stopping when it runs out). One run varies by 7% here, so a
+3% limit on four readings refuses a candidate that costs nothing. The
+count of instructions is the reading no machine moves. It replaces the
+wall time when the march is the compiler's own verb and the compiler
+counts its own work (§11.9). Until then a wall refusal is read against the
+march run alone before any code changes.
 
 1. **Box 1 · Every battery runs each `// expect` fixture both ways.**
    Gated with the night's work (2026-11-10). The count it waited on is zero
@@ -1263,10 +1304,10 @@ while the property it names stayed untrue for larger arenas.
    fixtures as before, and a fixture with a wrong proof, placed in a scratch
    directory, prints `FAIL(run)` for its `~w` stem.
 
-**The oracle, measured before any box** (pin ed44d08f50e7, 2026-11-10). At
-a hole the compiler tries candidates, judges each in a fork of the graph,
-and shows only the ones it proved (§5, the felt endpoint). Five
-measurements say where that stands.
+**The oracle, measured** (the first four on pin ed44d08f50e7, 2026-11-10;
+the fifth on pin 11389157fa42, 2026-11-11). At a hole the compiler tries
+candidates, judges each in a fork of the graph, and shows only the ones it
+proved (§5, the felt endpoint). Five measurements say where that stands.
 
 - A fork is cheap. A hole with 13 proven candidates and one with 103 both
   answer in 0.18 s (two scratch programs with ten and a hundred `Int`
@@ -1285,126 +1326,26 @@ measurements say where that stands.
   gate judged its own hole as a value.
 - No fork runs on a second thread, and the compiler refuses its own source
   four times when one is asked to (§11.8 holds the four chains).
-- Asked by hand at eight of lesson 8's own expressions, each replaced by
-  `??` in a copy of the lesson with its hole accepted, the compiler writes
-  back one (`lead`), asks with the author's text first at one (`time()`)
-  and second at one (`k`), fills one with something else (`brighten`,
-  where the author wrote `soft_clip`, a stage the lesson imports), and
-  asks without the author's text at four (`rate()`, `float_of_int(k)`,
-  `note_hz(k)` and the whole `wav_frame` call).
+- `mentl query FILE written-back` asks the proposer for each of a program's
+  own expressions. It replaces one call or one name at a time with `??`,
+  judges the edited file in a fork, asks at that hole, and compares the
+  answer with what the author wrote. On lesson 8 it asks 41 expressions in
+  0.36 s. It writes back 5. It asks a question at 31: with the author's
+  text first at 12, further down at 6, and absent at 13. It proposes
+  nothing at 2. And it fills 3 with something the author did not write:
+  `seconds()` for `sine_voice(sr)`, at a hole whose type nothing has fixed
+  yet; `note_hz` for the call `frame(buf, build_rig(rate()))`; and
+  `{voice: ??}` for `build_rig(rate())`. A fill is the compiler saying it
+  is sure, so each of the three is a wrong answer given as certain.
+  `tests/proposals/written-back.mn` holds its own counts on its first
+  line, so the proposals battery fails when they move.
 
-So the search is short of candidates long before it is short of time. The
-boxes come in that order: first the command that makes the last count
-repeatable on any program, then proposals that are whole expressions, then
-what the answer says, then forks on every core.
-
-2. **Box 2 · `mentl query FILE written-back` asks the compiler for each of
-   a program's own expressions.** Built under the reins of 2026-11-10; its
-   receipt is Morgan's to review.
-
-   What a person sees. `mentl query examples/pulse/course/08-hole.mn
-   written-back` takes each call and each name that stands as a value in
-   the file, one at a time, replaces it with `??`, judges the edited file
-   in a fork, asks the proposer at that hole, and compares the answer with
-   what the author wrote. It prints one line of counts and one line for
-   each expression. The counts say how much of the program the compiler
-   could have written from the rest of it, and every later oracle box is
-   measured by them.
-
-   Fails today. The command answers `unknown query: written-back`. The
-   count exists only by hand (above).
-
-   The form.
-   - `src/types.mn`: `type Back = BackFilled | BackFirst | BackAmong |
-     BackElse(String) | BackAsked | BackNothing | BackUnread`, the answer
-     at one expression: the hole filled with the author's text; a question
-     whose first proven candidate is the author's text; a question that
-     holds it further down; a fill with other text, which the constructor
-     carries; a question without it; no candidate; or an edited file that
-     did not give the hole back. `effect WrittenBack { written_back() ->
-     [(Span, String, Back)] }`, each expression's place, its text and its
-     answer.
-   - `src/synth_proposer.mn`, which imports `cursor_transport` for the two
-     functions it reads there, `splice_span` and
-     `render_candidate_source`. `fn asked_back()` reads the link's entry
-     module (`link_entry`), lists its expressions (`nodes_under` each
-     declaration, kept by `asked_site`), and judges them as the options of
-     one `choose` under `speculate ~> judgment_core`, so each is asked in a
-     fork of its own. `fn asked_site(h)` keeps a call, and a name that is
-     not its call's callee; it leaves out the right side of `~>` and of
-     `<~`. `fn asked_at(mh, text, site)` writes `??` over the expression's
-     span (`splice_span`), judges the edited text (`rewritten_judged`),
-     finds the authored hole that begins where the expression began
-     (`hole_begun_at`), asks `propose_at` there under `~> synth_default`,
-     and answers `back_of(verdict, written)`. Every text is rendered inside
-     the fork, by `render_candidate_source`.
-   - `src/query.mn`: `Question` gains `QWrittenBack`, answered as
-     `QRWhere(back_lines(written_back()), [])`. `fn back_counts(sites)`
-     writes the counts in one fixed order: `N written back, N first, N
-     among, N filled otherwise, N asked without, N nothing, N unread`. `fn
-     back_lines(sites)` writes that line and then `at L:C  <text>  <what
-     was answered>` for each expression.
-   - `src/pipeline.mn`: `QueryVerb` gains `QVWrittenBack`, read from the
-     word `written-back`; `handler written_back_by_asking { written_back()
-     => resume(asked_back()) }`; and `query_context` becomes `query_default
-     ~> owed_by_judging ~> written_back_by_asking`, so every verb that asks
-     a question can ask this one.
-   - `src/main.mn`: a fixture's first line `// written-back: <counts>` is
-     the contract `ExpectWrittenBack(String)`, judged by
-     `battery_written_back_step` through `query_judged`: the fixture's own
-     counts must read exactly as the line says.
-
-   Edge cases. An expression inside another is asked on its own, so
-   `f(g(x))` is three questions. The lesson's own `??` stays a hole in
-   every fork, and the hole asked is the one that begins where the
-   expression began. An edit that leaves the file unreadable is counted as
-   unread, never dropped. Only the entry module is asked.
-
-   Left alone. A literal and an operator are not asked: a number is the
-   author's decision and no proof chooses one. A handler on the right of
-   `~>` and the spec on the right of `<~` are not asked, since a hole
-   there is not a value the proposer fills. The proposer does not change,
-   so every count this box prints is the pin's own. No limit goes on the
-   board until the first counts have been read.
-
-   What pays for its code on the board. The memory walk reads a join, `xs
-   ++ ys`, as the call of the function its node is linked to,
-   `list_concat`, by that function's own store claim (`returns: parameters
-   1, 0`: the join answers one of its operands or a new node that holds
-   both). A probe built it in three places and was removed; its patch is
-   148 lines.
-   - `src/graph.mn`, `stops_of`: the `BConcat` arm answers `[StopCall(h, h,
-     [l, r])]` where it answered `[StopBeyond(h)]`. The join's node stands
-     as its own callee, since the judgment links it to the primitive.
-   - `src/verify.mn`, `call_roots`: a callee that is a join is read by the
-     claim, as a named function is. The claim-reading arm becomes a
-     function, `claimed_roots(memo, call, callee, args)`, that both use.
-   - `src/infer.mn`, `call_targets` and `call_holds`: the same, through
-     `claimed_targets` and `claimed_holds`. A join inside the group that
-     declares `list_concat` stays older memory, as today.
-   Measured on the probe: the values the walk cannot place fall 33,771 ->
-   32,039 (1,732 placed) and every other count is unchanged; the compiler
-   reproduces itself (m2 equals m3); micros 779 of 779, crown 191 of 191,
-   frontier 219 of 219, syntax 21 of 21 and the frontier gate's 369 legs
-   pass. It costs 11 KB of the self-compile's line peak (285,125 KB against
-   the pin's 285,114 KB on the same source), paid as the last walk fix was,
-   on one dated line closed by the next commit. Three fixtures in
-   tests/micros attack it and hold on the pin and on the probe, where
-   `mentl query FILE "claim of joined"` says `returns: parameters 1, 0`
-   and the pin says `returns: older`: `mn-arena-join-answers-older-operand`
-   (the left operand is empty, so the join answers the older right operand
-   and a young value stored into it must outlive the arena),
-   `mn-arena-join-left-operand-older` (the same with the right operand
-   empty) and `mn-arena-join-of-young-moves` (a join of two young lists is
-   the arena's answer, and another is stored into older memory). The new
-   code is written without an index read, a cut or a division, so it adds
-   no place that can trap with no claim.
-
-   Proves it. `tests/proposals/written-back.mn` holds its own counts on its
-   first line and passes in the proposals battery. `mentl query
-   examples/pulse/course/08-hole.mn written-back` prints the lesson's
-   counts, and its lines at 47:11 (`time()`) and 51:21 (`lead`) say what
-   the hand count said.
+So the search is short of candidates long before it is short of time, and
+it is sure in places where it should ask. The order that follows is:
+proposals that are whole expressions and never a wrong fill, then what the
+answer says, then the same search under a refusal, then forks on every
+core. `written-back` on lesson 8 and on the proposals fixture measures the
+first two.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
@@ -1414,34 +1355,45 @@ saying so.
   proven. At a position that wants a value, a call or a construction is
   offered complete, each argument found by asking at that argument as at
   any hole, and a call that still holds `??` is offered only where a
-  function is wanted. Red today: `mentl accept` writes `Box(??)` and
-  `mentl check` refuses the file; `speed(d, t)` is never proposed. Two
-  questions are settled by Box 2's counts before this is cut: whether a
-  nearer module's one survivor may hide a proven one the file imports
-  (lesson 8's `brighten` for `soft_clip`), and whether a candidate that
-  still holds a hole is offered beside a complete one. One question is
-  Morgan's: whether `??` in a constructor's field, where the construction
-  stands as a value, should be a value hole (§11.5).
+  function is wanted. Nothing is filled where the hole's type is still
+  free, and a proven candidate from a module the file imports stands
+  beside one from the file itself. Red today: `mentl accept` writes
+  `Box(??)` and `mentl check` refuses the file; `speed(d, t)` is never
+  proposed; lesson 8 has three fills its author did not write. The
+  measure: on lesson 8 and on tests/proposals/written-back.mn, "filled
+  otherwise" reaches zero and no expression moves to a worse answer. One
+  question is Morgan's: whether `??` in a constructor's field, where the
+  construction stands as a value, should be a value hole (§11.5).
 - The answer says what was searched: how many candidates were tried and
   how many proved, a question asked at the outermost place the proven ones
   differ and in the program's own names, and a refusal that names the
   argument nothing in scope fills (§11.5).
-- A fork runs on a second thread: an owner inside the fork for `Fail`,
-  `Progress` and `StateWalk`, and a store walk that proves a fork's
-  judgment stores only into memory the fork allocated (§11.8).
+- A refusal offers its proven fix, one class first: a name that resolves
+  nowhere. The candidates are the nearest names in scope and the import of
+  each library module that declares the name. Each is an edit judged in a
+  fork by the route `written-back` uses (`rewritten_judged`), and the ones
+  that leave the program with no error are shown, or the one question that
+  separates them. Red today: a program that calls `print_string` without
+  `import io` is told `E_MissingVariable error: print_string` and nothing
+  else. Of the 413 promises seven readers drew from the old documents on
+  2026-11-11, this is the one made most often: a refusal answered by a fix
+  the compiler has already proven (§11.5).
 - The library's list walk is settled once, so a pipeline stands where a
   claim is checked. The failing test is `fn energy(xs) with !Alloc = xs |>
   map(square) |> fold(0, plus)`, refused today while the same sum as an
   index walk is accepted (§11.13). The boards and the rewrite of the wheel
   in its own idiom both wait on it.
+- A fork runs on a second thread: an owner inside the fork for `Fail`,
+  `Progress` and `StateWalk`, and a store walk that proves a fork's
+  judgment stores only into memory the fork allocated (§11.8).
 - A default arm answers the empty value, and `mentl tighten` stops writing
   rosters (§4⑪, §11.13).
 - A pair fills a two-parameter stage, the five operators share one level,
   and the formatter writes one stage per line (§4⑩).
 - A pending claim is said in the developer's words with what would
   discharge it, lesson 7's four lines first. `mentl teach` ranks its steps
-  by what each unlocks. A refusal offers its proven fix, one class first
-  (§11.5).
+  by what each unlocks, and the refusal classes after the first each offer
+  their proven fix (§11.5).
 - A claim's verdict is a fact at its node (§11.10).
 - The host's clock, randomness and sleep are real (§11.11). With it comes
   the first run of the whole medium on a small Linux machine: the engine's
@@ -1551,9 +1503,9 @@ traps facet (2026-11-06)
 is a ninth: it walks a function's body and not the arms of the handlers
 it installs, so a trap reached through an installed handler counts as
 the installing function's own, with no path into the library (`mentl
-query examples/grid/station.mn traps` says so of `main`, where `mentl
-why examples/grid/station.mn main Trap` follows the arm into
-`print_string`).
+query FILE traps` says so of `main` in a scratch program whose handler
+arm reads a list by an unbounded index, where `mentl why FILE main Trap`
+follows the install into the arm; 2026-11-11).
 
 ### §11.2 · The keystone: lowering is a column, and the graph gains its evaluator
 

@@ -2,7 +2,7 @@
 
 Mentl closes the gap between what a person means and what they are forced to write. You usually know what a piece of code must never do: the frame that renders each block of audio must never allocate memory, and the decision a grid controller makes must never wait on the network. Most languages give you no way to write that down, and make you write everything else instead: types, borrows, lifetimes and error plumbing that a compiler could work out for itself. In Mentl you write three things: the shape of each flow, with five operators named for what they do (pipe, share, split, install and feedback); the rules each part keeps, such as `with !Alloc` or the range a number stays in; and the handlers that say what each effect does. The compiler works out the rest, every type, effect, ownership and width. It checks each rule through every function the code calls, on every build, and a version that breaks a rule does not build. So nobody reviews the code for that rule again, whoever or whatever edits it next.
 
-The programs in this repository show it working today: a course of twelve audio lessons that build one signal chain, two complete pieces rendered from code, a controller for a model flywheel and battery on the power grid, and the compiler itself, which is written in Mentl and compiles itself to the same bytes. Every output on this page is what the pinned compiler, `boot/mentl.wasm` (pin `ed44d08f50e7`, recorded in `boot/PROVENANCE.md`), printed when the command was run for this page.
+The programs in this repository show it working today: a course of twelve audio lessons that build one signal chain, two complete pieces rendered from code, a controller for a model flywheel and battery on the power grid, and the compiler itself, which is written in Mentl and compiles itself to the same bytes. Every output on this page is what the pinned compiler, `boot/mentl.wasm` (pin `11389157fa42`, recorded in `boot/PROVENANCE.md`), printed when the command was run for this page.
 
 ## Start with nothing
 
@@ -80,27 +80,23 @@ decide never uses Network: nothing in decide, and nothing it calls, performs an 
 ```
 $ mentl check examples/grid/station-leak.mn
 effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI + !Trap`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:221:5 → price_m calls `fetch` at examples/grid/station-leak:113:14 → `fetch` is an operation of Network, declared at net:11:1 at examples/grid/station-leak:153:1-258:2
-effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:449:1-452:13
-verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query examples/grid/station-leak traps` lists each with its claim
+effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:452:1-455:13
 ```
 
 Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI preview 1, the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.2 component target, and a real network").
 
-On the controller itself, `mentl check` prints one line:
+On the controller itself, `mentl check` prints nothing. `main` declares `!Trap`, so the same check covers the whole program on every build, from reading a line to printing its decision, through every function `main` calls and every arm of the handler it installs. A version in which any of them could fail a check does not build:
 
 ```
 $ mentl check examples/grid/station.mn
-verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query examples/grid/station traps` lists each with its claim
-```
-
-`mentl audit` lists every function the controller defines as never stopping with an error, except `main`. The one place left is the printing of each decision line, inside the library, reached through the handler `main` installs:
-
-```
 $ mentl why examples/grid/station.mn main Trap
-main uses Trap: main installs `station` at examples/grid/station:475:13 → station calls `print_string` at examples/grid/station:172:5 → print_string calls `str_payload` at io:208:21 → str_payload calls `flat_raw` at strings:199:14 → flat_raw calls `fill_range` at lists:504:5 → fill_range calls `store_strided` at lists:535:11 → store_strided calls `trap` at lists:96:65 → `trap` is an operation of Trap, declared at memory:235:1
+main never uses Trap: nothing in main, and nothing it calls, performs an operation of Trap
+$ mentl audit examples/grid/station.mn
+Nothing in this module uses Trap, Network, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven) and sandboxed (it never reaches the network)
+  It also never uses 12 other effect(s) that the program declares.
 ```
 
-No rule guards that check yet, so it stays a place the program can stop (PLAN §11, "The face: every declaration publishes one, and verification reads it"). `mentl query FILE traps` counts this place as `main`'s own and does not yet follow the handler into the library, which is why the line above says 0 of them are inside it.
+The audit goes on to list each function with what it uses. `!Trap` covers every check a program can fail: an index outside a list, a division by zero, a pattern that does not match. It does not cover running out of stack or of memory, and the audit's first line says the program is not proven to always finish (PLAN §11, "The keystone: lowering is a column, and the graph gains its evaluator" and "The soundness core: the crown modal, the row whole, the reach one walk").
 
 ## The shape you write is the shape it keeps
 
@@ -167,11 +163,11 @@ The two pending claims are the two divisions `teach` offered to settle above. A 
 
 ## Memory you never manage
 
-A Mentl program has nothing to allocate, free, count or collect. A computation runs in an extent: `(body) ~> arena` gives the body a region of memory, and at the body's exit what its result still reaches moves out and the rest is reclaimed at once. The controller runs each reading in one (`fn step() = if reading() ~> arena { step() }`). Compiled, assembled and run directly under the pinned wasmtime on four hand-written readings repeated, the whole process peaked at 18,304 KB of resident memory over 1,000 readings and at 18,276 KB over 300,000 readings, which took 11.3 s. Lesson 11 of the course reports its own memory when it ends:
+A Mentl program has nothing to allocate, free, count or collect. A computation runs in an extent: `(body) ~> arena` gives the body a region of memory, and at the body's exit what its result still reaches moves out and the rest is reclaimed at once. The controller runs each reading in one (`fn step() = if reading() ~> arena { step() }`). Compiled, assembled and run directly under the pinned wasmtime on four hand-written readings repeated, the whole process peaked at 18,848 KB of resident memory over 1,000 readings and at 18,864 KB over 300,000 readings, which took 8.3 s. Lesson 11 of the course reports its own memory when it ends:
 
 ```
 $ mentl run examples/pulse/course/11-footprint.mn > 11.wav
-11-footprint: 290 pages of 64 KiB held; heap line 2933920 bytes before the first section, 2933920 after the last extent ended; 5 extents ended, 0 kept their memory, 0 KB reclaimed, 0 KB moved
+11-footprint: 290 pages of 64 KiB held; heap line 2933872 bytes before the first section, 2933872 after the last extent ended; 5 extents ended, 0 kept their memory, 0 KB reclaimed, 0 KB moved
 ```
 
 Where the compiler cannot see what an extent's result reaches, the extent keeps its memory instead of checking references at run time, and the count of kept extents is printed, as above. Placing each value in the extent where it will live, so that nothing moves at an exit, is open work (PLAN §11, "Forks on every core").
@@ -187,7 +183,7 @@ warm: reusing the analysis saved by the last run
 $ cmp 11.wav 12.wav
 ```
 
-`cmp` prints nothing: the two-process render is byte for byte the one-process render, both 768,044 bytes with sha256 `a2499211…`. The saved image was 2,934,864 bytes. An open file or a position in an input stream belongs to the host and does not travel, and a program is saved between two of its statements, never in the middle of a call, because a running call's frames live in the engine (PLAN §11, "The keystone: lowering is a column, and the graph gains its evaluator").
+`cmp` prints nothing: the two-process render is byte for byte the one-process render, both 768,044 bytes with sha256 `a2499211…`. The saved image was 2,934,832 bytes. An open file or a position in an input stream belongs to the host and does not travel, and a program is saved between two of its statements, never in the middle of a call, because a running call's frames live in the engine (PLAN §11, "The keystone: lowering is a column, and the graph gains its evaluator").
 
 ## A program that learns
 
@@ -204,7 +200,7 @@ fn slope(a, x, yprev, want) = {
 
 ## The compiler is the first Mentl program
 
-The compiler is written in Mentl, in `src/` and `lib/`. The pinned binary compiles that source into a second compiler, which compiles the same source again, and the two outputs must be identical byte for byte. For the current pin that self-compile took 9.65 s of wall time at a peak of 268 MB of resident memory (`boot/PROVENANCE.md`). The hand-written seed that first built the compiler was deleted on 2026-07-10, so the pinned binary is the only way to build it, and `boot/PROVENANCE.md` records every pin with the sha256 read from the file. `mentl verify` holds the counts the compiler keeps about its own source as ceilings that only fall. On this pin 37 of them hold, among them the places in the compiler that can stop with an error and no rule guarding them (3,373) and the values whose memory the verifier cannot place yet (34,654).
+The compiler is written in Mentl, in `src/` and `lib/`. The pinned binary compiles that source into a second compiler, which compiles the same source again, and the two outputs must be identical byte for byte. For the current pin that self-compile took 9.04 s of wall time at a peak of 269 MB of resident memory (`boot/PROVENANCE.md`). The hand-written seed that first built the compiler was deleted on 2026-07-10, so the pinned binary is the only way to build it, and `boot/PROVENANCE.md` records every pin with the sha256 read from the file. `mentl verify` holds the counts the compiler keeps about its own source as ceilings that only fall. On this pin 37 of them hold, among them the places in the compiler that can stop with an error and no rule guarding them (3,214) and the values whose memory the verifier cannot place yet (32,103).
 
 ## What is not proven
 

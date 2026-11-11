@@ -4450,26 +4450,27 @@ fn call_roots(memo, call, callee, args) = if ref_is_constructor(callee) {
   RootsAt([call])
 } else {
   match graph_node_body(callee) {
-    NExpr(VarRef(cname)) => if cname == "alloc" {
-      RootsAt([call])
-    } else {
-      match graph_ref_decl(callee) {
-        Some(d) => match graph_store_claim_of(d) {
-          Some(StoreClaim(s)) => match s.returns {
-            ReturnsParams(idxs) | ReturnsPartOf(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
-            ReturnsFresh => RootsAt([call]),
-            // One of the literals in the static data, or fresh at the call.
-            ReturnsStatic(ns) => RootsAt([call] ++ ns),
-            ReturnsOlder => RootsBeyond(call),
-          },
-          None => RootsBeyond(call),
-        },
-        None => RootsBeyond(call),
-      }
-    },
+    NExpr(VarRef(cname)) => if cname == "alloc" { RootsAt([call]) } else { claimed_roots(memo, call, callee, args) },
+    // A join is the call of the primitive its node is linked to.
+    NExpr(BinOpExpr(BConcat, _, _)) => claimed_roots(memo, call, callee, args),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => RootsBeyond(call),
   }
+}
+
+// What a call of a declared function answers, by the function's store claim.
+fn claimed_roots(memo, call, callee, args) = match graph_ref_decl(callee) {
+  Some(d) => match graph_store_claim_of(d) {
+    Some(StoreClaim(s)) => match s.returns {
+      ReturnsParams(idxs) | ReturnsPartOf(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
+      ReturnsFresh => RootsAt([call]),
+      // One of the literals in the static data, or fresh at the call.
+      ReturnsStatic(ns) => RootsAt([call] ++ ns),
+      ReturnsOlder => RootsBeyond(call),
+    },
+    None => RootsBeyond(call),
+  },
+  None => RootsBeyond(call),
 }
 
 fn slot_roots(memo, call, args, i) = match nth_handle(args, i) {

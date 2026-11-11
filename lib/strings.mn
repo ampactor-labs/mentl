@@ -204,9 +204,9 @@ fn str_payload(s) = {
   }
 }
 
-// The stride-1 repack: copy each element word into a fresh byte record. The
-// values are byte-ranged by type ([byte]); store_strided's range trap keeps a
-// violation loud, never a silent wrap.
+// The stride-1 repack: copy each element into a fresh byte record. Every
+// element is a byte by its type ([Byte]), so the store writes its low byte
+// and checks no range.
 fn str_repack_stride1(flat, stride) = {
   let n = load_i32(flat)
   let dest = bytes_buf(n)

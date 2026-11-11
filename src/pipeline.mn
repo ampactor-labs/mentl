@@ -64,6 +64,8 @@ import parser
 
 import query
 
+import synth_proposer
+
 import types
 
 import verify
@@ -669,12 +671,19 @@ handler owed_by_judging {
   owed_programs(dir) => resume(list_to_flat(mn_files(dir, Level)) |> flat_map(owed_site)),
 }
 
+// THE WRITTEN-BACK QUESTION'S ANSWER: the proposer asked at each of the
+// entry module's own expressions (`asked_back`). The query layer imports no
+// proposer, so the answer is given here, as the owed question's is.
+handler written_back_by_asking {
+  written_back() => resume(asked_back()),
+}
+
 // THE CHAIN EVERY ASK IS ANSWERED UNDER: the query handler, and outside it
-// the answer only a verb that reaches the driver can give, since an arm's
-// performs resolve outer of its own install. Every verb that asks a
-// question — the board, a query, teach, the REPL, the page and the MCP
-// transport — installs this name and never the query handler bare.
-handler query_context = query_default ~> owed_by_judging
+// the answers only a verb that reaches the driver or the proposer can give,
+// since an arm's performs resolve outer of its own install. Every verb that
+// asks a question — the board, a query, teach, the REPL, the page and the
+// MCP transport — installs this name and never the query handler bare.
+handler query_context = query_default ~> owed_by_judging ~> written_back_by_asking
 
 // A program is owed where the medium stops being able to judge it clean: an
 // error its judgment or its plan's settle reports anywhere in its link —
@@ -1809,6 +1818,7 @@ type QueryVerb
   | QVWrites
   | QVReads
   | QVTraps
+  | QVWrittenBack
   | QVUnknownVerb
 
 fn classify_query_verb(w: String) with Pure = if w == "type" {
@@ -1875,6 +1885,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVOwed
 } else if w == "traps" {
   QVTraps
+} else if w == "written-back" {
+  QVWrittenBack
 } else {
   QVUnknownVerb
 }
@@ -1904,7 +1916,7 @@ fn parse_query_string(scope: String, q) = {
           QVType | QVEffects | QVOwnership | QVRefs | QVOwed | QVProvider | QVUnresolved | QVVerification
           | QVReports | QVFlow | QVClaim | QVCensus | QVWhere | QVDecls | QVVariants | QVModules | QVImports
           | QVUnreferenced | QVUnreachable | QVPerforms | QVEnv | QVOrphanClaims | QVCost | QVGhosts | QVHeads
-          | QVSmt | QVText | QVProse | QVWrites | QVReads | QVTraps | QVUnknownVerb
+          | QVSmt | QVText | QVProse | QVWrites | QVReads | QVTraps | QVWrittenBack | QVUnknownVerb
         ) => build_question(verb, w2, q, scope),
       }
     },
@@ -1961,6 +1973,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVReads => QCensus(CsFieldRead(arg)),
   QVOwed => QOwed(arg),
   QVTraps => QTraps,
+  QVWrittenBack => QWrittenBack,
   QVUnknownVerb => QUnknown(raw),
 }
 

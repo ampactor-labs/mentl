@@ -1,0 +1,14 @@
+// expect: 0
+// Printing never stops a program with an error. `say` declares `!Trap` over
+// a print, and the compiler agrees. The string is built one byte at a time,
+// so printing it first copies its bytes into one flat run for the host, and
+// that copy moves each byte as it is and checks no range.
+import io
+
+fn say(s) with !Trap = print_string(s)
+
+fn main() = {
+  let s = "" |> push(??, 104) |> push(??, 105) |> push(??, 10)
+  say(s)
+  if s == "hi\n" { 0 } else { 1 }
+}

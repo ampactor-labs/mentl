@@ -194,7 +194,11 @@ the way past it. No flag skips any of them.
 - Searching `.mn` source by hand, or writing to it from the shell, is refused
   (`tools/hooks/medium_first.py`). Ask the compiler instead, as the working
   loop below shows. Passing a `mentl` answer through a filter is refused
-  too: write the whole answer to a file and read the file whole.
+  too: write the whole answer to a file and read the file whole. Reading
+  the saved file through `head`, `cut` or `grep` is the same filter by
+  another route (Morgan, 2026-11-11). Where the whole answer is too long
+  to read, ask a narrower question, such as `<question> in MODULE` or
+  `mentl why FILE FN Effect`.
 - A wheel file can be edited only after a `mentl` command naming its path has
   run in this session (`tools/consult-gate.sh`).
 - Every edited `.mn` file is checked for drift
@@ -390,12 +394,14 @@ The hooks and gates enforce these rules. They are not suggestions.
   holds the decisions, and the compiler derives the rest. Delete dead code,
   side indexes, workarounds, decoration and leftovers from history on sight
   (`mentl query src/main.mn unreachable`, `census`, `mentl verify`).
-- **No agents for now** (Morgan, 2026-11-10; MENTL_MEMORY.md's standing
-  rules say the same). When he lifts this, agents are for breadth only,
-  such as reading many files or writing fixtures: pass the model
-  explicitly, and start each agent from the map and the parts its brief
-  names. Never use an agent to review a design or a document. Running the
-  artifact is what proves a design wrong.
+- **Agents are for breadth.** Morgan paused them on 2026-11-10 and lifted
+  the pause on 2026-11-11 ("I explicitly give you permission to use agents
+  however you deem best"); MENTL_MEMORY.md's standing rule is the older
+  word and cannot be edited. Use them for reading many files or writing
+  fixtures: pass the model explicitly, and start each agent from the map
+  and the parts its brief names. Listening to the compiler and designing
+  stay with the session. Never use an agent to review a design or a
+  document. Running the artifact is what proves a design wrong.
 
 ## No unfinished work
 
@@ -496,6 +502,12 @@ Each rule here was paid for by a stop or a wrong answer.
   before the landing pass. New code raises the counts that grow with code,
   and a form the wheel has not used before (a pattern as a parameter) can
   fail a check that only the pin step runs.
+- Before a board limit is paid by reshaping new code, ask what the new
+  sites trace to (`mentl why FILE FN Trap`). Three print calls over the
+  limit traced to one library check that could not fire; removing it took
+  162 places off the count and made printing trap-free in every program.
+- A line added to a library file goes below every line a fixture cites,
+  since contracts name library lines.
 - When a check fails on a landing, compare what the pinned compiler writes
   for the same program before changing anything. A check that fails on the
   same bytes from both compilers is unreliable, and an unreliable check is

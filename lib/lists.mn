@@ -529,11 +529,7 @@ fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
       if load_i32(node) - 1 >= src + n {
         fill_range(flat, left, dest, src, n, st)
       } else {
-        if st == 4 {
-          store_i32(addr_at(flat, 8 + (dest + n - 1) * 4), load_i32(addr_at(node, 12)))
-        } else {
-          store_strided(addr_at(flat, 8), dest + n - 1, st, load_strided(addr_at(node, 12), 0, st))
-        }
+        copy_element(addr_at(flat, 8 + (dest + n - 1) * st), addr_at(node, 12), st)
         fill_range(flat, left, dest, src, n - 1, st)
       }
     },
@@ -553,4 +549,16 @@ fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
     },
     SeqSlice => fill_range(flat, load_addr(addr_at(node, 8)), dest, load_i32(addr_at(node, 12)) + src, n, st),
   }
+}
+
+// One element copied between two slots of the same stride, its bits
+// unchanged: a byte, a word or a wide scalar. Nothing is narrowed on the
+// way, so there is no range to check. `store_strided` checks a range
+// because it takes a word that may be entering a byte slot.
+fn copy_element(dst, src, stride) = if stride == 1 {
+  store_i8(dst, load_i8(src))
+} else if stride == 4 {
+  store_i32(dst, load_i32(src))
+} else {
+  scalar_copy(dst, src, stride)
 }

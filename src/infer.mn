@@ -12896,20 +12896,31 @@ fn call_targets(call, callee, args, scope, view) = match graph_node_body(callee)
     } else if ref_is_constructor(callee) {
       range(0, len(args)) |> flat_map(arg_targets(args, scope, view, ??))
     } else {
-      match callee_summary(callee) {
-        Some(StoreClaim(s)) => match s.returns {
-          ReturnsParams(idxs) => flat_map(arg_targets(args, scope, view, ??), idxs),
-          ReturnsPartOf(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)) |> part_of_targets,
-          ReturnsStatic(ns) => map(TgStatic, ns),
-          ReturnsFresh => [],
-          ReturnsOlder => [TgOlder(0)],
-        },
-        None => [TgOlder(0)],
-      }
+      claimed_targets(callee, args, scope, view)
     },
+  },
+  // A join is the call of the primitive its node is linked to, read by that
+  // function's claim once its group has ended.
+  NExpr(BinOpExpr(BConcat, _, _)) => if answers_when_group_ends(callee) {
+    [TgOlder(0)]
+  } else {
+    claimed_targets(callee, args, scope, view)
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => [TgOlder(0)],
+}
+
+// What a call of a declared function answers, read off its claim against the
+// arguments the call hands it.
+fn claimed_targets(callee, args, scope, view) = match callee_summary(callee) {
+  Some(StoreClaim(s)) => match s.returns {
+    ReturnsParams(idxs) => flat_map(arg_targets(args, scope, view, ??), idxs),
+    ReturnsPartOf(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)) |> part_of_targets,
+    ReturnsStatic(ns) => map(TgStatic, ns),
+    ReturnsFresh => [],
+    ReturnsOlder => [TgOlder(0)],
+  },
+  None => [TgOlder(0)],
 }
 
 // What a part of a call's answer may be: a constructor's record holds its
@@ -12927,20 +12938,29 @@ fn call_holds(call, callee, args, scope, view) = match graph_node_body(callee) {
     } else if ref_is_constructor(callee) {
       range(0, len(args)) |> flat_map(arg_targets(args, scope, view, ??))
     } else {
-      match callee_summary(callee) {
-        Some(StoreClaim(s)) => match s.holds {
-          ReturnsFresh => [],
-          ReturnsParams(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)),
-          ReturnsPartOf(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)) |> map(part_of_target),
-          ReturnsStatic(ns) => map(TgStatic, ns),
-          ReturnsOlder => [TgOlder(0)],
-        },
-        None => [TgOlder(0)],
-      }
+      claimed_holds(callee, args, scope, view)
     },
+  },
+  NExpr(BinOpExpr(BConcat, _, _)) => if answers_when_group_ends(callee) {
+    [TgOlder(0)]
+  } else {
+    claimed_holds(callee, args, scope, view)
   },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => [TgOlder(0)],
+}
+
+// What a part of a declared function's answer may be, read off its claim
+// against the arguments the call hands it.
+fn claimed_holds(callee, args, scope, view) = match callee_summary(callee) {
+  Some(StoreClaim(s)) => match s.holds {
+    ReturnsFresh => [],
+    ReturnsParams(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)),
+    ReturnsPartOf(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)) |> map(part_of_target),
+    ReturnsStatic(ns) => map(TgStatic, ns),
+    ReturnsOlder => [TgOlder(0)],
+  },
+  None => [TgOlder(0)],
 }
 
 // Whether a call's callee is a member of the innermost group being judged,

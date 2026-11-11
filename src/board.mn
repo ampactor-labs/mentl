@@ -282,7 +282,15 @@ fn board_bounds() = [
   // stage's call is judged by the call judgment, whose slot code calls the
   // library's list functions, and six membership tests written out by hand
   // became calls of one helper, so two fewer places call the library.
-  Bound({ceiling: 3373, question: QCensus(CsSilentTrap)}),
+  // 3,373 -> 3,214 (2026-11-11): printing cannot trap. The library's copy of
+  // a list built by appends handed each element to `store_strided`, which
+  // checks that a word fits a byte slot, though the element came out of a
+  // slot of the same width. `fill_range` copies the element as it is, so
+  // `print_string`, `eprint_string` and the functions that flatten a list
+  // answer that they never use `Trap`, and every place whose only trap was
+  // that check left the count: 162 of the 3,376 the landing's own code had
+  // brought it to.
+  Bound({ceiling: 3214, question: QCensus(CsSilentTrap)}),
   // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
   // §4⑨): an install whose body applies a function nothing names (a field
   // of a parameter, a value out of sight), writes memory nothing names, or
@@ -353,8 +361,15 @@ fn board_bounds() = [
   // choices of the checked form, and the battery's second way to compile.
   // 33,772 -> 33,771 the same day: a linked call is one direct call in both
   // builds, and the build chooses only which declaration it calls, so the
-  // lowering's second way to write the call left.
-  Bound({ceiling: 33771, question: QCensus(CsUnplaced)}),
+  // lowering's second way to write the call left. 33,771 -> 32,103
+  // (2026-11-11): a join, `xs ++ ys`, is read as the call of the function
+  // its node is linked to, by that function's own claim: the join answers
+  // one of its operands or a new node that holds both. The walk stopped at
+  // every join. Measured alone, the reading placed 1,732 values, and the
+  // code the same landing adds (a query that asks the proposer for each of
+  // a program's own expressions, and two readers of a node's kind) brought
+  // 64 the walk cannot place.
+  Bound({ceiling: 32103, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -463,8 +478,12 @@ fn board_bounds() = [
   // arms, and the readers of the one product the call judgment writes
   // brought ten. 1,360 -> 1,359 (2026-11-10): the verifier's arm for a part
   // taken off a declaration held as a value left when the walk came to read a
-  // constructor that takes no fields as a word.
-  Bound({ceiling: 1359, question: QCensus(CsWildcardRoster)}),
+  // constructor that takes no fields as a word. 1,359 -> 1,350
+  // (2026-11-11): the graph answers a node's expression or its statement as
+  // an Option (`expr_at`, `stmt_at`), so a match that asks about one kind of
+  // node writes nothing about the others. Eleven arms of the hole proposer
+  // that listed every other kind left, and the two readers hold one each.
+  Bound({ceiling: 1350, question: QCensus(CsWildcardRoster)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -533,8 +552,9 @@ fn board_bounds() = [
   // (2026-10-15): the session's and the pipeline's notes over the walk the
   // link node replaced. 15 -> 13 (2026-10-16): the count read 14 at the pin
   // before, and the summary table's note citing its lowering reader left
-  // with the table.
-  Bound({ceiling: 13, question: QCensus(CsProseClass(PcCoordinate))}),
+  // with the table. 13 -> 12 (2026-11-11): the hole proposer's closing note
+  // cited a line of another module and left with the history it told.
+  Bound({ceiling: 12, question: QCensus(CsProseClass(PcCoordinate))}),
   // Repository paths that name no file: a comment citing a path the
   // checkout does not hold. 1 -> 0 (2026-10-21): the import segment's note
   // on a phantom path left with the history it told.
@@ -595,8 +615,9 @@ fn board_bounds() = [
   // the rollback's banner, attached to the span index's arm, left with the
   // fork. 253 -> 252 (2026-10-21): the evidence-hole banner left with the
   // root census. 252 -> 251 (2026-10-22): a math section's banner left when
-  // its functions became total.
-  Bound({ceiling: 251, question: QCensus(CsProseClass(PcBanner))}),
+  // its functions became total. 251 -> 250 (2026-11-11): the banner over
+  // the hole proposer's closing note left with the note.
+  Bound({ceiling: 250, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an

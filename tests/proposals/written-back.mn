@@ -1,0 +1,25 @@
+// written-back: 0 written back, 1 first, 8 among, 4 filled otherwise, 1 asked without, 0 nothing, 0 unread
+// Each call and each name that stands as a value below is replaced by `??`
+// and asked again: the first line counts how the proposer answered.
+type Meters = Meters(Float)
+
+type Seconds = Seconds(Float)
+
+type Speed = Speed(Float)
+
+fn speed(d: Meters, t: Seconds) -> Speed = match d {
+  Meters(m) => match t {
+    Seconds(s) => Speed(m / s),
+  },
+}
+
+fn show_speed(s: Speed) -> Float = match s {
+  Speed(v) => v,
+}
+
+fn main() = {
+  let d = Meters(100.0)
+  let t = Seconds(9.58)
+  let s = speed(d, t)
+  if show_speed(s) > 10.0 { 1 } else { 0 }
+}

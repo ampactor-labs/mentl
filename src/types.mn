@@ -2830,12 +2830,12 @@ fn applicability_text(a) = match a {
 // cannot desynchronize any more than a record's fields can.
 //
 // A version is a graph handler instance's whole state as a value: the
-// columns it wrote, every other fact it keeps — the mint, the span log, the
-// module in force, the epoch, the decls column, the emitted-fn enumeration
-// and its index, the signature column, the holes, the write guard's
-// refusals, the accepted proposals, the modules by file, the superseded
-// cells, the link and the tail facts — and, below them, the version the
-// instance was seeded with. Taking one is O(1) and copies nothing
+// columns it wrote, the superseded mark among them, every other fact it
+// keeps — the mint, the span log, the module in force, the epoch, the decls
+// column, the emitted-fn enumeration and its index, the signature column,
+// the holes, the write guard's refusals, the accepted proposals, the
+// modules by file, the link and the tail facts — and, below them, the
+// version the instance was seeded with. Taking one is O(1) and copies nothing
 // (`graph_version`). A speculation is an INSTANCE of the handler installed
 // around the resumption with a version as its seed: it reads its own column
 // first and the chain of versions below it for every other cell, writes
@@ -2885,7 +2885,7 @@ type Version = {
   span_index: [(Span, Int)],
   spans: [[[[ValidSpan]]]],
   store_claims: [[[[StoreClaim]]]],
-  superseded: [[(Int, Int)]],
+  superseded: [[[[Int]]]],
   tails_idx: [[(String, [Int])]],
 }
 
@@ -5370,6 +5370,23 @@ fn hole_text(h) with !Mutate = match graph_span_of(h) {
 // imports no driver.
 effect Owed {
   owed_programs(dir: String) -> [(String, Span)]
+}
+
+// What the proposer answered where one of a program's own expressions was
+// replaced by `??` and asked again: the hole filled with the author's text;
+// a question whose first proven candidate is the author's text; a question
+// that holds it further down; a fill with other text, which is carried; a
+// question without it; no candidate; or an edited file that did not give the
+// hole back.
+type Back = BackFilled | BackFirst | BackAmong | BackElse(String) | BackAsked | BackNothing | BackUnread
+
+// Each call and each name standing as a value in the entry module, asked
+// again as a hole: its place, its text as the author wrote it, and the
+// answer. The written-back question asks it (src/query.mn), and a chain that
+// reaches the proposer answers it (src/pipeline.mn), since the query layer
+// imports no proposer.
+effect WrittenBack {
+  written_back() -> [(Span, String, Back)]
 }
 
 // effect LookupTy lives in graph.mn beside lookup_ty_graph — the

@@ -1575,7 +1575,9 @@ fn test_check_run(entry_module) =
 // an open row there waits on, each by its text once, in the facet's order,
 // or `none` where the row is closed. `// why L:C: <text>` is the caret's
 // Why at L:C: one of the lines of the node's own chain, the sentence or a
-// hop beneath it, holds the text.
+// hop beneath it, holds the text. `// written-back: <counts>` is the
+// written-back question's: each of the fixture's own calls and names asked
+// again as a hole, counted by answer in the order `back_counts` writes.
 type Expect
   // the exit, and the prefix of the line a stop must say on fd 2 ("" when
   // the contract names none)
@@ -1599,6 +1601,8 @@ type Expect
   | ExpectAt(Int, Int, String)
   | ExpectWhy(Int, Int, String)
   | ExpectWaits(Int, Int, String)
+  // the counts the written-back question answers for the fixture itself
+  | ExpectWrittenBack(String)
 
 // A teach fixture's contract (D4): what the gradient answers at the
 // declaration on line L — one proven annotation whose source is the text,
@@ -1664,6 +1668,8 @@ fn battery_expect(src) = {
       battery_expect_digits(src, 11, 0),
       battery_expect_digits(src, battery_skip_digits(src, 11) + 1, 0)
     ))
+  } else if byte_len(src) >= 17 && str_slice(src, 0, 17) == "// written-back: " {
+    Some(ExpectWrittenBack(battery_line_rest(src, 17, 17)))
   } else if byte_len(src) >= 12 && str_slice(src, 0, 12) == "// witness: " {
     Some(ExpectWitness(
       battery_expect_digits(src, 12, 0),
@@ -2300,6 +2306,7 @@ fn battery_step(path: String) = {
       ExpectWaits(line, col, want) => battery_waits_step(stem, path_to_module(path), line, col, want),
       ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
+      ExpectWrittenBack(want) => battery_written_back_step(stem, path_to_module(path), want),
       ExpectRun(want, said) => battery_compile(path_to_module(path), stem) |> battery_run_verdict(stem, want, said),
       // The same contract over a build that keeps every check the judgment
       // proved away, so a wrong proof stops the run where its claim fails.
@@ -2351,6 +2358,24 @@ fn battery_step(path: String) = {
       ExpectCheckPending(line, col) => battery_check_pending_step(stem, path_to_module(path), line, col),
     },
   }
+}
+
+// THE WRITTEN-BACK BATTERY: the fixture judged as the query verb judges it,
+// each of its own expressions asked again as a hole, and the counts compared
+// with the contract's. The counts are read inside the judgment that holds
+// the graph, and only their line crosses out of it.
+fn battery_written_back_step(stem: String, module: String, want: String) = match query_judged(module, { _ => back_counts(written_back()) }) {
+  Some(got) => if got == want {
+    print_string("PASS {stem}: written-back {want}\n")
+    0
+  } else {
+    print_string("FAIL(back) {stem}: wanted {want}, and the proposer answers {got}\n")
+    1
+  },
+  None => {
+    print_string("FAIL(back) {stem}: the fixture never joined the weave\n")
+    1
+  },
 }
 
 // The judgment's verdict alone, the same check the refuse contract runs:

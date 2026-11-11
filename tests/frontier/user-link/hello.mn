@@ -1,6 +1,6 @@
-// A program with no claim of its own. Its check prints only its trap summary,
-// one place inside the library, and no narration about the library's prose
-// or summary of the library's own debt (the frontier's user-link leg).
+// A program with no claim of its own. Its check prints nothing: printing
+// cannot trap, and the check says nothing about the library's prose or the
+// library's own debt (the frontier's user-link leg).
 import io
 
 fn main() = {
