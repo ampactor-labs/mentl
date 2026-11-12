@@ -32,9 +32,13 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
 - The pin is `11389157fa42`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - No landing is in flight. The next three, in order: P1 (the landing pass
-  prints each stage's time and runs on every core), T1 (a pending claim is
-  checked when the program runs) and P2 (cost is counted, never timed).
-  §11.B holds the whole order.
+  prints each stage's time and runs on every core), N0 (the medium
+  translates the WebAssembly it emits into Thumb-2, checked under an ARM
+  emulator, the first step to the Daisy Seed) and T1 (a pending claim is
+  checked when the program runs). §11.B holds the whole order.
+- The two things everything is built toward (Morgan, 2026-11-12): one
+  exploration that proposes proven edits at every place a program lacks
+  something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
 - Morgan's word of 2026-11-12: the builder has full permission to shape,
   design and implement the medium; main follows every green pin; the
   engine is the newest stable release; work that serves none of the five
@@ -556,10 +560,10 @@ he reverses by saying so). What the medium calls proven is true. Anyone
 can check that without trusting the compiler. Real programs can be written
 in it. It tells whoever is at the keyboard, a person or a model, the next
 edit it can prove. Memory and time are facts it states (⑨). Frozen until a
-paying use asks for them: the SIMD and GPU schedules, the e-graph's
-optimizer, further derivative and DSP features, further features of the
-page, forks on a second thread (a fork is cheap and the search runs out of
-candidates first, §11.B) and the native backend.
+use asks for them: the SIMD and GPU schedules, the e-graph's optimizer,
+further derivative features and further features of the page. Forks on
+every core and a native route stood on this list for a few hours, until
+Morgan asked for both the same day (⑰, ⑱).
 
 **⑮ A pending claim is checked when the program runs** (Morgan,
 2026-11-12; not built). A refinement claim the verifier leaves pending is
@@ -570,6 +574,54 @@ and `main with !Trap` refuses a program that still holds a pending claim.
 A label, whose predicate is an effect's operation, stays a claim the flow
 walk decides. The other form considered, a refusal to build, would refuse
 the compiler itself, whose source carries pending claims (§11.B, T1).
+This check is the floor, and it is not the finished form. Morgan asked on
+2026-11-12 whether a cost was the most a pending claim could be. In the
+finished form no built program holds one, because the exploration of ⑰
+works each claim. It tries to break the claim at the edge values its
+types allow. It proposes the edit that proves it, most often one check
+where the value enters the program. What is left is a check whose failure
+is an effect that a handler answers (§11.12).
+
+**⑰ One exploration serves every place a program lacks something**
+(Morgan, 2026-11-12: "multithreaded multi-cursor multi-shot multi-verse
+exploration of possibilities given to the developer of a .mn program as a
+proposal/s at dynamic scale/scope"; built in part). A position is any
+place where a program lacks something: a hole, a refusal, a pending claim,
+a declaration with a next step on the gradient, or a shape the census
+counts as a costume. At a position the medium tries moves: an expression
+that fits, a refinement or a guard on a binder, a handler installed, an
+import added, a negation that already holds, a shape rewritten with the
+five operators. Each move is an edit judged in a fork of the graph. The
+candidates are the resumptions of one `choose` (multi-shot), and each is
+judged in a version of its own (multi-verse). Only an edit that leaves the
+program proven is shown. What is shown is ranked by what it unlocks: the
+claims it settles, the effects it takes out of rows, the capabilities it
+opens. A tie between two meanings is one question. The exploration runs at
+every position of a program at once (multi-cursor) and on every core
+(§11.8). It widens while its budget lasts: from the expression to the
+statement, the declaration, the module and the program, and from one name
+to a call inside a call. Its first answer comes within the caret's budget,
+and better ones follow as they are proven. It speaks in the program's own
+names. It never shows what it has not proven, and that is what lets a
+developer trust what the gradient offers. Built today: the fork and its
+judge at a hole, one name at a time, on one core, and `teach`'s step for
+each declaration (§11.B).
+
+**⑱ The first board is the Daisy Seed, reached by Mentl alone** (Morgan,
+2026-11-12: "I wanna run Mentl on my Daisy Seed Rev 7 doing audio DSP";
+not built). The Seed is a Cortex-M7 board with an audio codec. The path
+holds no other repository's firmware and no engine (MENTL_MEMORY.md's
+standing rule). The medium translates the WebAssembly module it already
+emits into Thumb-2 itself, so the artifact every gate has checked is the
+one that reaches the chip, and every fixture can run both ways and must
+agree. On the board an address is the chip's own address. So the board's
+clock tree, its audio port and its codec are handlers written in Mentl
+that store into the chip's registers, installed over `main` (§11.9), and a
+model of the board answers the same operations on a desk (⑫). The audio
+path keeps its claims on the chip: `!Alloc` holds for every frame, and the
+footprint the compiler states is the memory the board gives it (⑨). The
+lowering's own native projection (§11.9) is a second route to the same
+chip, built when the keystone lands, and the two must agree.
 
 **⑯ The engine is the newest stable release, and a feature is adopted for
 what it lets the host enforce or the compiler delete** (Morgan,
@@ -1316,12 +1368,30 @@ Then the medium, bottom to top.
   2).
 - L2. A refusal offers the fix the compiler has already proven (§11.5).
 - L3. `teach` ranks its steps, a pending claim is said in the developer's
-  words, and every verb answers narrowly (§11.5).
+  words with the edit that settles it, and every verb answers narrowly
+  (§11.5).
+- O1 to O4. The exploration of §4⑰ at scale, each on the one before. O1:
+  an edit costs what it changes, which stands on R2. O2: every position of
+  a program is explored, nearest the caret first, and each proposal says
+  what it unlocks. O3: forks run on every core (§11.8). O4: a resident
+  session streams its answers as they are proven (§11.6).
+- N0 to N4. The Daisy Seed (§4⑱). N0: `mentl native` translates an emitted
+  module into Thumb-2, and the batteries' run fixtures answer their
+  contracts under an ARM emulator as they do under the engine. No emulator
+  is in the build container on 2026-11-12, so N0 starts by adding one. N1:
+  a bare image starts on the Seed and blinks its light at a stated rate.
+  N2: lesson 1's tone leaves the codec, and a tuner reads 220 Hz. N3:
+  sound passes through lesson 3's chain with `!Alloc` held, and the
+  program prints the share of each block's time it used. N4: the footprint
+  the compiler states is the memory the image is given. Morgan flashes the
+  board and reports what it does, since the build container cannot reach
+  it.
 - The keystone (§11.2) follows: lowering as a column, the evaluator as a
   second reading of every program, and deep recursion moved to the heap.
 
-The first stretch runs P1, T1, P2, P5, P3 with P4, L1, T2, T4, R1, M5,
-L2, R2.
+The first stretch runs P1, N0, T1, L1, N1, N2, T4, R2 and O1. P2 to P5
+and P7 are taken between them, each when the landing before it shows what
+it would save.
 
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
