@@ -495,6 +495,22 @@ versus the safer option B" (decide it instead), "look X up by name" when an
 edge already connects it, and any fix that adds code to compensate instead
 of deleting what made the compensation necessary.
 
+Before a decision is recorded or a landing is built, put it to the test of
+the ultimate form (Morgan, 2026-11-12, after the builder proposed a check
+made when the program runs and then offered him options). It fails if it
+does any of these:
+
+- adds a run-time mechanism where a compile-time fact could stand;
+- lets anything unproven run, or be assumed;
+- adds a state between proven and refused in a built program;
+- offers options where a form can be decided from the kernel;
+- names a resting place above zero.
+
+A decision that fails is derived again from MENTL_MEMORY.md's law and PLAN
+§0, never borrowed from another language. Every commit message says which
+count on the board fell or which run-time mechanism left, or names the
+landing it is groundwork for.
+
 ## What the work has taught
 
 Each rule here was paid for by a stop or a wrong answer.

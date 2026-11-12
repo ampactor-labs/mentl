@@ -34,8 +34,9 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
 - No landing is in flight. The next three, in order: the rest of P1 (a
   battery writes its modules per folder and takes a shard), N0 (the medium
   translates the WebAssembly it emits into Thumb-2, checked under an ARM
-  emulator, the first step to the Daisy Seed) and T1 (a pending claim is
-  checked when the program runs). §11.B holds the whole order.
+  emulator, the first step to the Daisy Seed) and T1 (a stated claim is
+  proven or the program does not build, which starts by measuring what is
+  pending today, by kind). §11.B holds the whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -565,22 +566,28 @@ further derivative features and further features of the page. Forks on
 every core and a native route stood on this list for a few hours, until
 Morgan asked for both the same day (⑰, ⑱).
 
-**⑮ A pending claim is checked when the program runs** (Morgan,
-2026-11-12; not built). A refinement claim the verifier leaves pending is
-evaluated where it stands when the program runs, with `self` bound to the
-value, and the run stops there with the claim's address when it is false.
-The claim's `Trap` stays in the row of its site. So nothing is assumed,
-and `main with !Trap` refuses a program that still holds a pending claim.
-A label, whose predicate is an effect's operation, stays a claim the flow
-walk decides. The other form considered, a refusal to build, would refuse
-the compiler itself, whose source carries pending claims (§11.B, T1).
-This check is the floor, and it is not the finished form. Morgan asked on
-2026-11-12 whether a cost was the most a pending claim could be. In the
-finished form no built program holds one, because the exploration of ⑰
-works each claim. It tries to break the claim at the edge values its
-types allow. It proposes the edit that proves it, most often one check
-where the value enters the program. What is left is a check whose failure
-is an effect that a handler answers (§11.12).
+**⑮ A stated claim is proven, or the program does not build** (Morgan,
+2026-11-12; not built). In a built program a claim has two states and no
+third: a claim the verifier has not decided is a hole in the program's
+proof, and a program with a hole does not build, as one with `??` does not
+(`E_UnresolvedHole`). The compiler inserts no test on a claim's behalf and
+assumes nothing. The only tests that run are the ones the source holds: a
+value from outside gets its range from a guard its author wrote or
+accepted, and the guard's other arm says what happens to a bad value. A
+partial operation its author left unguarded and unclaimed is `Trap` in the
+row, said honestly, and `!Trap` forbids it; that is the bottom of the
+gradient and no claim being checked. A claim is decidable where it is
+written: a predicate outside what the verifier decides is refused at the
+type's declaration, as a delay whose depth cannot be read is refused. Each
+claim is checked against the facts stated at the binders around it, and
+where one is missing the medium names the binder and offers the edit,
+judged in a fork (⑰). So the verifier's limits appear only as a question
+to the author, never as something unproven that runs. The builder first
+wrote this decision as a check made when the program runs, another
+language's answer, and Morgan refused it twice: "I thought that the
+ultimate form of Mentl didn't do runtime checks". SYNTAX and
+MENTL_MEMORY.md had said so all along. A label, whose predicate is an
+effect's operation, stays a claim the flow walk decides (§11.B, T1).
 
 **⑰ One exploration serves every place a program lacks something**
 (Morgan, 2026-11-12: "multithreaded multi-cursor multi-shot multi-verse
@@ -869,8 +876,8 @@ accepts each program and `mentl run` shows the break.
   r(5)` is accepted and the run performs `ask` (§11.1).
 - A refinement claim left pending is assumed by its callee and checked
   nowhere when the program runs, so a read it proves can read outside its
-  list; Morgan decided on 2026-11-12 that such a claim is checked when the
-  program runs (§4⑮), which is not built (§11.B, T1).
+  list; Morgan decided on 2026-11-12 that a program holding such a claim
+  does not build (§4⑮), which is not built (§11.B, T1).
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
@@ -1337,24 +1344,31 @@ minute, and no expectation kept by hand.
 
 Then the medium, bottom to top.
 
-- T1. A pending claim is checked when the program runs (§4⑮). Every
-  refinement claim passes through `claim_refinement` (src/infer.mn). A
-  predicate holds the node handles of its operands, and `self` is bound
-  by `PWithSelf`, so the lowering can evaluate it at the value; no code
-  does today. A pending claim charges `Trap` at its node by the route a
-  pending division takes (`partiality_claim`), and the emitter reads the
-  fact it reads for every check (`check_kept_at`, src/effects.mn), so a
-  witness build keeps refinement checks too. Red first: §11.1(b)'s two
-  programs, `at([4, 5], k - 3)` and `keep_small(x + 1)`, have no fixture,
-  and each becomes one that must stop with the claim's address. Measured
-  on the candidate before the pass: which `!Trap` declarations in
-  `examples/`, `lib/` and the wheel now refuse, and what the checks cost
-  the compiler compiling itself.
+- T1. A stated claim is proven or the program does not build (§4⑮), in
+  four steps. First the debt is measured by kind: what `mentl check`
+  leaves pending in lessons 6 and 7, Pulse, Wasatch, the library and the
+  wheel, split into partial operations nobody claimed, stated refinements,
+  and calls that do not prove what their callee relies on. Second, a call
+  that does not prove what its callee relies on is refused, with the guard
+  that settles it. This closes §11.1(b)'s wrong acceptance and adds no
+  mechanism: the judgment already knows such a call (`pay_guard`,
+  src/infer.mn). Red first: §11.1(b)'s two programs, `at([4, 5], k - 3)`
+  and `keep_small(x + 1)`, have no fixture, and each becomes one that must
+  refuse, beside a guarded twin that must build and run. Third, an
+  undecided stated claim refuses the build, once the first step's count of
+  such claims in `examples/`, `lib/` and the wheel is zero; R1, §11.3 and
+  §11.10 bring it there, most claims first. Fourth, a predicate the
+  verifier cannot decide is refused where its type is declared. A new
+  bound on the board holds the checks the compiler emits on a claim's
+  behalf at their measured count, so the commit hook refuses a landing
+  that adds one.
 - T2. An effect no longer slips past a negation through a recursive group
   (§11.1(a)).
 - T3. Every battery runs each `// expect` fixture both ways (Box 1).
-- T4. A handler of `Trap` ends its extent, by the engine's exception
-  handling, and the program goes on (§11.12).
+- T4. An extent can end early. A handler answers the operation that a
+  guard's other arm performs, or a `Trap` its row admits; the extent's
+  memory is reclaimed, its stores into older memory are undone, and the
+  program goes on, by the engine's exception handling (§11.12).
 - M5, M6, M8. MENTL_MEMORY.md's landings: two memories, exits per extent
   with closures carrying their type, and a value allocated where it will
   live.
@@ -1376,9 +1390,9 @@ Then the medium, bottom to top.
   nowhere. A proposal is a whole expression and never a wrong fill (Box
   2).
 - L2. A refusal offers the fix the compiler has already proven (§11.5).
-- L3. `teach` ranks its steps, a pending claim is said in the developer's
-  words with the edit that settles it, and every verb answers narrowly
-  (§11.5).
+- L3. `teach` ranks its steps, an undecided claim is refused in the
+  developer's words with the edit that settles it, and every verb answers
+  narrowly (§11.5).
 - O1 to O4. The exploration of §4⑰ at scale, each on the one before. O1:
   an edit costs what it changes, which stands on R2. O2: every position of
   a program is explored, nearest the caret first, and each proposal says
@@ -1746,8 +1760,9 @@ saying so.
   component target (§11.14), a seeded world (§11.15), and the keystone and
   the designs after it in their dependency order (§11.2 to §11.9).
 
-Morgan decided on 2026-11-12 what a claim left pending costs when the
-program runs: it is checked there (§4⑮), and T1 above builds it.
+Morgan decided on 2026-11-12 that nothing is checked on a claim's behalf
+when a program runs: a stated claim is proven or the program does not
+build (§4⑮), and T1 above builds it.
 
 ### §11.1 · The soundness core: the crown modal, the row whole, the reach one walk
 
@@ -1822,12 +1837,12 @@ word. Where no proof leans on the refinement, the type holds a value it
 excludes: `fn keep_small(n: Small) = n` under `type Small = Int where 0
 <= self && self < 10`, called as `keep_small(x + 1)` with x = 12, answers
 13, and `mentl query FILE traps` says nothing can trap (both measured
-2026-11-06). Morgan decided on 2026-11-12 what a pending claim costs
-when the program runs: it is checked where it stands, so the run stops
-there and that site's `Trap` is the one that happens (§4⑮; §11.B, T1).
-SYNTAX's refinement section still says the predicate is erased and no
-check runs, and T1's commit corrects it. A label, whose predicate is an
-effect's operation, stays a claim the flow walk decides.
+2026-11-06). Morgan decided on 2026-11-12 that nothing is checked on a
+pending claim's behalf when the program runs, as SYNTAX's refinement
+section says: a stated claim is proven or the program does not build,
+and a call that does not prove what its callee relies on is refused
+(§4⑮; §11.B, T1). A label, whose predicate is an effect's operation,
+stays a claim the flow walk decides.
 (c) The reach is one walk (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
 columns, answers absence, the effect-enters chain, the race rule, the
 schedule's demand, the edit cone, `refs of`, `unreachable` and the

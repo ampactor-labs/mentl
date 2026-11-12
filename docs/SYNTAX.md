@@ -66,7 +66,7 @@ Each section below labels which primitive(s) its forms surface.
 
 ## Governing principles
 
-Every syntactic decision below follows five rules:
+Every syntactic decision below follows six rules:
 
 1. **Layout is projection, never contract.** The shape of the code on the page is the computation graph. That holds because the formatter projects the graph onto the page in canonical form, not because the parser reads meaning from whitespace. The kernel leaves no other choice. A contract would make whitespace a second writer into the graph, but the kernel has exactly one writer, inference: one graph and two operations on it, with no third. So layout can only be a read of the graph that inference has already written, and `mentl fmt` is that read at the surface. The parser has one precedence table. `mentl fmt` normalizes wrong layout when the file is saved, and wrong layout is never a parse error.
 
@@ -77,6 +77,8 @@ Every syntactic decision below follows five rules:
 4. **Every construct has graph correspondence.** Every piece of syntax produces a substrate operation, so a form with no meaning in the graph is not part of the language.
 
 5. **Diagnostics carry coordinates and Quick Fixes.** Every rejection produces a Located reason chain and, where the fix is mechanically apparent, a MachineApplicable patch. Each error message is written to show how to fix the problem.
+
+6. **A claim is decidable where it is written.** A claim the surface lets an author state is one the medium can decide against the facts stated at the binders around it. A predicate outside that is refused at the type's declaration, as `E_ComputedDelayDepth` refuses a depth the medium cannot read, and a claim that lacks a fact is refused naming the binder whose stated fact would settle it. So a built program holds no undecided claim and runs no check on a claim's behalf (`PLAN.md §4`, a stated claim is proven or the program does not build). The pinned compiler is short of this, and `PLAN.md §7` says where.
 
 ---
 
@@ -349,18 +351,19 @@ tree still carries an authored value-position hole is refused
 gate runs between reachability and emit, so a hole in pruned dead code never
 causes a false refusal. A `??` inside a parameter product stays executable,
 because it is the suspension waiting for its field (`add3(10, ??, 30)` is a
-value that runs). Proof debt follows a different rule. An executable with
-undischarged `V_Pending` obligations reports them (one ledger projection on
-stderr) and compiles. This is the sound-incomplete choice (`PLAN.md §0`):
-undecidable residue accumulates where it can be seen, is never assumed true,
-and never causes a blanket refusal. One case still breaks the second clause:
-a parameter's refinement is assumed inside its function while a caller's
-claim on it stays pending, and nothing checks that claim when the program
-runs, so a read the refinement proves can read outside its list (PLAN §11,
-the soundness core). The wheel's own self-compile carries
-obligations that are undecidable by their structure, so refusing on pending
-obligations would refuse the medium itself. A claim that is decidably false is
-still refused at the claim site (`E_RefinementRejected`).
+value that runs). An undecided claim is a hole of the same kind (`PLAN.md §4`, a
+stated claim is proven or the program does not build): the executable is
+refused, the refusal names the binder whose stated fact would settle the
+claim, and nothing is checked on the claim's behalf when the program runs.
+The pinned compiler is short of this. It reports an undecided claim
+(`V_Pending`, one ledger projection on stderr) and still compiles, and a
+parameter's refinement is assumed inside its function while a caller's
+claim on it stays undecided, so a read the refinement proves can read
+outside its list (`PLAN.md §7`; §11, the soundness core). The wheel's own
+source still carries undecided claims, nearly all of them the bounds of an
+index read or a cut, and the refusal lands when their count is zero. A
+claim that is decidably false is refused at the claim site
+(`E_RefinementRejected`).
 tools/proof-exactness-gate.sh is the executable contract for all three legs (a
 hole is refused, debt is reported, a suspension runs), and it passes on the
 pinned boot.
