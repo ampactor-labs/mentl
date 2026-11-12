@@ -9,12 +9,9 @@
 #   MARCH_REPIN=1 bash tools/march.sh  # bless a green candidate; the m4 leg
 #                                      # runs first and refuses on m3 ≠ m4
 #
-# The ratchet arbitrates ITSELF: m2 == m3 is the fixpoint; on m2 ≠ m3 the march
-# runs the m4 leg automatically and rules TRANSITION (m3 == m4 — an emit/import
-# change crossed one generation; re-pin boot from m3) vs BROKEN (m3 ≠ m4). The
-# m2 leg reads the ONE keyed boot(wheel) artifact (wt_m2_ensure, .build/m2cache
-# — shared with verify's census and march-gate), so gates never re-derive the
-# same ~13-minute compile.
+# m2 == m3 is the fixed point. Where they differ the march runs the m4 leg and
+# rules TRANSITION (m3 == m4: pin again from m3) or BROKEN (m3 differs from m4).
+# The m2 leg reads the one kept compile (wt_m2_ensure, .build/m2cache).
 #
 # Artifacts land in .build/march (luks-backed, per PLAN §8), NEVER /tmp — /tmp is
 # RAM-backed tmpfs here, and a 50MB objdump + 12MB m2.wat × repeated runs OOMs the

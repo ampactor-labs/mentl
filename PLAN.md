@@ -31,8 +31,8 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
 - The pin is `11389157fa42`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
-- No landing is in flight. The next three, in order: P1 (the landing pass
-  prints each stage's time and runs on every core), N0 (the medium
+- No landing is in flight. The next three, in order: the rest of P1 (a
+  battery writes its modules per folder and takes a shard), N0 (the medium
   translates the WebAssembly it emits into Thumb-2, checked under an ARM
   emulator, the first step to the Daisy Seed) and T1 (a pending claim is
   checked when the program runs). §11.B holds the whole order.
@@ -1299,13 +1299,22 @@ fixture, discards every kept result. The targets are a cold pass under 6
 minutes on four cores, a re-run after a fixture or document edit under 1
 minute, and no expectation kept by hand.
 
-- P1. The pass prints each stage's time and runs on every core: the
-  batteries' compile step in shards, the frontier legs in parallel, the
-  independent gates side by side. Kept results are keyed per directory.
-  The march keeps the machine to itself, so nothing that measures is
-  disturbed. One measurement decides a further step: where judging the
-  library dominates a fixture's compile, the battery judges the library
-  once and forks the graph per fixture.
+- P1. The pass runs on every core. Built in part on 2026-11-12: every
+  check prints its seconds, and the batteries and the gates that measure
+  no time run side by side after the march. On the pinned compiler, with
+  kept results ignored, those checks took 380 seconds one after another
+  and 189, 178 and 179 seconds side by side, with no failure in three
+  runs. What is left needs the compiler. Every battery writes its modules
+  into one folder by fixture name alone, and micros and frontier hold two
+  fixtures of one name (`mn-feedback-deep-line`, `mn-unused-wide-param`),
+  so side by side one battery ran the other's module, and the two now
+  share a lane. A battery is to write each module under its own folder's
+  name, and to take a shard, so the 787 micros, 147 seconds in one
+  process, split across the cores. The frontier gate's legs stay one
+  serial loop of about 138 seconds until P3 moves them into fixtures. One
+  measurement decides a further step: where judging the library dominates
+  a fixture's compile, the battery judges the library once and forks the
+  graph per fixture.
 - P2. Cost is counted, never timed ("Two checks that failed at random",
   below). An instrumented build counts the calls the compiler makes while
   it compiles itself, by the route the arena's counters take, and the
@@ -1378,14 +1387,31 @@ Then the medium, bottom to top.
 - N0 to N4. The Daisy Seed (§4⑱). N0: a new verb translates an emitted
   module into Thumb-2, and the batteries' run fixtures answer their
   contracts under an ARM emulator as they do under the engine. No emulator
-  is in the build container on 2026-11-12, so N0 starts by adding one. N1:
+  is in the build container on 2026-11-12, so N0 starts by adding one.
+  The translator is a Mentl program of its own, in a folder beside `src/`,
+  and no part of the wheel: it reads the module's bytes, the one artifact
+  every gate has judged, and writes the chip's. So it is the second large
+  program written in Mentl, in the five operators from its first line, and
+  the wheel's counts on the board do not move. It goes in five steps, each
+  with its fixtures passing both ways before the next: an ARM program made
+  by hand that exits 42 under the emulator; the reader of a module's
+  sections; whole numbers, locals, control flow and calls; memory, globals,
+  data and the three host calls a program imports; then tail calls, calls
+  through the table, block memory operations, 64-bit integers and floats.
+  A value lives on the machine's stack with its top in a register, a
+  64-bit integer is two words, a float is in the floating-point unit's
+  registers, and a callee removes its own arguments so a tail call can
+  reuse the frame. N1:
   a bare image starts on the Seed and blinks its light at a stated rate.
   N2: lesson 1's tone leaves the codec, and a tuner reads 220 Hz. N3:
   sound passes through lesson 3's chain with `!Alloc` held, and the
   program prints the share of each block's time it used. N4: the footprint
   the compiler states is the memory the image is given. Morgan flashes the
   board and reports what it does, since the build container cannot reach
-  it.
+  it. His bench holds an ST-Link V3 Mini, a Seeed RP2040 board, a
+  breadboard, jumpers and LEDs (his word, 2026-11-12). So an image can go
+  in over the debug port, and text can come back over the probe's serial
+  line or the debug port itself; the wiring is worked out at N1.
 - The keystone (§11.2) follows: lowering as a column, the evaluator as a
   second reading of every program, and deep recursion moved to the heap.
 

@@ -353,13 +353,10 @@ wt_wheel_compile() {
   wt_wheel_root "$1" "$2" "$3" "${4:-}" "${5:-}" "" compile src/main.mn
 }
 
-# ── the ONE wheel-compile + the gate stamp — Carried-Truth for the tools ────
-# boot(wheel) is DETERMINISTIC (the monotonic bump image: determinism =
-# fixpoint; every byte-exact m2 == m3 assert is the empirical proof), so the
-# compile is a pure function of (wheel bytes, boot bytes, run flags). It costs
-# ~13 minutes, and three gates used to re-derive it independently — verify's
-# census, march's m2, march-gate's m2. ONE keyed home now: .build/m2cache.
-# Consumers call wt_m2_ensure and READ; nobody re-derives. verify.sh stamps
+# ── One compile of the wheel by the boot, kept by key ───────────────────────
+# The boot compiling the wheel writes the same bytes every time, so the result
+# is kept in .build/m2cache under a key of the wheel, the boot and the run
+# flags. Every gate calls wt_m2_ensure and reads it. verify.sh stamps
 # its green verdict keyed on wt_state_key, so the pre-commit hook answers
 # instantly on an unchanged tree instead of re-paying the full gate it just
 # watched pass. Placement into a consumer dir COPIES (never hardlinks — every
