@@ -1386,18 +1386,20 @@ Then the medium, bottom to top.
   session streams its answers as they are proven (§11.6).
 - N0 to N4. The Daisy Seed (§4⑱). N0: a new verb translates an emitted
   module into Thumb-2, and the batteries' run fixtures answer their
-  contracts under an ARM emulator as they do under the engine. No emulator
-  is in the build container on 2026-11-12, so N0 starts by adding one.
-  The translator is a Mentl program of its own, in a folder beside `src/`,
+  contracts under an ARM emulator as they do under the engine. The build
+  container holds `qemu-arm` 8.2.2 since 2026-11-12, and its setup script
+  installs it. The translator is a Mentl program of its own, in `native/`,
   and no part of the wheel: it reads the module's bytes, the one artifact
   every gate has judged, and writes the chip's. So it is the second large
   program written in Mentl, in the five operators from its first line, and
-  the wheel's counts on the board do not move. It goes in five steps, each
-  with its fixtures passing both ways before the next: an ARM program made
-  by hand that exits 42 under the emulator; the reader of a module's
-  sections; whole numbers, locals, control flow and calls; memory, globals,
-  data and the three host calls a program imports; then tail calls, calls
-  through the table, block memory operations, 64-bit integers and floats.
+  the wheel's counts on the board do not move. It goes in five steps. The
+  first is built: `mentl run native/exit42.mn` writes a 90-byte ARM program
+  byte by byte, and `qemu-arm` runs it to exit 42 (2026-11-12). The next
+  four, each with its fixtures passing both ways before the one after: the
+  reader of a module's sections; whole numbers, locals, control flow and
+  calls; memory, globals, data and the three host calls a program imports;
+  then tail calls, calls through the table, block memory operations,
+  64-bit integers and floats.
   A value lives on the machine's stack with its top in a register, a
   64-bit integer is two words, a float is in the floating-point unit's
   registers, and a callee removes its own arguments so a tail call can

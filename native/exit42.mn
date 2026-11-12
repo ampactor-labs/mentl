@@ -1,0 +1,56 @@
+// The first step of the route to the Daisy Seed (PLAN §11, "The order from
+// 2026-11-12", N0): an ARM program made by hand, byte by byte.
+// `mentl run native/exit42.mn > exit42.elf` writes 90 bytes, and
+// `qemu-arm exit42.elf` exits 42.
+import io
+
+// The address the program is loaded at.
+fn base() = 65536
+
+// The two headers in front of the code: 52 bytes for the file, 32 for the
+// one part of it that is loaded.
+fn headers() = 84
+
+// Thumb code: movs r0, #42; movs r7, #1; svc 0. Linux reads r7 as the call
+// it is asked for, where 1 is exit, and r0 as the exit code.
+fn code() = [42, 32, 1, 39, 0, 223]
+
+// A number as two bytes and as four, lowest byte first.
+fn le16(n) = [n % 256, n / 256 % 256]
+
+fn le32(n) = le16(n % 65536) ++ le16(n / 65536)
+
+fn add_half(bytes, h) = bytes ++ le16(h)
+
+fn add_word(bytes, w) = bytes ++ le32(w)
+
+// Stages that append two-byte and four-byte numbers to the bytes before them.
+fn with_halves(hs, bytes) = hs |> fold(bytes, add_half)
+
+fn with_words(ws, bytes) = ws |> fold(bytes, add_word)
+
+// The first sixteen bytes say what the file is: an ELF file for a 32-bit
+// machine that stores the lowest byte first.
+fn ident() = [127, 69, 76, 70, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+// The file's header: an executable (2) for ARM (40) that starts at `entry`,
+// with one load header of 32 bytes right after these 52. 83886592 is the
+// flag word of the fifth ARM calling convention.
+fn file_header(entry) =
+  ident() |> with_halves([2, 40]) |> with_words([1, entry, 52, 0, 83886592]) |> with_halves([52, 32, 1, 40, 0, 0])
+
+// The load header: read `size` bytes from the start of the file to `base`,
+// readable and executable (5).
+fn load_header(size) = [] |> with_words([1, 0, base(), base(), size, size, 5, 4096])
+
+fn text(bytes) = bytes |> fold("", push)
+
+// The entry address is odd: the lowest bit set tells the machine the code is
+// Thumb.
+fn image() =
+  file_header(base() + headers() + 1) ++ load_header(headers() + len(code())) ++ code() |> text
+
+fn main() = {
+  image() |> print_string
+  0
+}
