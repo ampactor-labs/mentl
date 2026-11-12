@@ -923,6 +923,14 @@ accepts each program and `mentl run` shows the break.
   file says there is nothing to unlock. On an empty file `mentl teach`
   says "All functions are at maximum annotation density." (scratch
   programs, 2026-11-11; §11.5, §11.13).
+- No question takes a type. Asked which declarations take a function type
+  apart, the medium lists the places its constructor is matched (`mentl
+  query src/main.mn "refs of TFun in types"`, 28 places) and the names a
+  module declares (`"decls in types"`, 1,358 names, each with its position
+  and no type). It cannot list the declarations that take a `Ty` or the
+  ones that give one, so a builder who does not know a name guesses it.
+  A hole is meant to be that question, and at a hole the proposer offers
+  one name at a time (measured 2026-11-12; §11.B, the oracle; §11.5).
 - A default arm over a sum is refused, and the refusal says to let `mentl
   tighten` write the roster. The five operators do not share one
   precedence level. A pair does not fill a two-parameter stage (§4⑩, §4⑪,

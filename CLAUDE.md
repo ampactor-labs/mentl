@@ -513,6 +513,14 @@ Each rule here was paid for by a stop or a wrong answer.
   same bytes from both compilers is unreliable, and an unreliable check is
   measured (how often, on which condition) and recorded before it is run
   again.
+- Never guess a name. `mentl where FILE NAME` says only where a name
+  stands, so a guess that misses costs a run and teaches nothing (Morgan,
+  2026-11-12, after three such misses in a row). Ask what the compiler
+  holds: `"refs of CONSTRUCTOR in MODULE"` for every place a shape is
+  taken apart, `"variants TYPE"`, `"decls in MODULE"`, `mentl doc MODULE`,
+  or a `??` at the place the value is wanted, read at the caret. Where none
+  of them can answer, the question is a verb gap: record it and build it
+  ("Mentl builds Mentl", above).
 
 ## Conventions
 
