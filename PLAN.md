@@ -1153,15 +1153,15 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-One box is written out. On 2026-11-10 Morgan approved a night's work on
+Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
 this branch ("I trust you and approve you to work through the night"), and
 the builder read that as his gate on the boxes here, in order. Later that
 day he turned the work to the oracle and gave the builder the reins for it.
 On 2026-11-11 he said that boxes were another session's suggestion for
 scoping work and that the builder had been holding to them too tightly. So
 a box here says what one landing does and what measures it, the oracle's
-boxes are built under the reins he gave, and Box 1 waits on the two points
-marked for his word. Each landing's receipt is his to review, and a landing
+boxes are built under the reins he gave, so Box 2 is built first, and Box
+1 waits on the two points marked for his word. Each landing's receipt is his to review, and a landing
 he did not mean is reverted on his word.
 
 The boxes build one instrument. A false proof used to be found only when
@@ -1346,6 +1346,92 @@ proposals that are whole expressions and never a wrong fill, then what the
 answer says, then the same search under a refusal, then forks on every
 core. `written-back` on lesson 8 and on the proposals fixture measures the
 first two.
+
+2. **Box 2 · A proposal is a whole expression, and a hole is filled only
+   where the program decides the answer.** Built under the reins of
+   2026-11-10; its receipt is Morgan's to review.
+
+   What a person sees. At a hole the compiler offers calls and
+   constructions complete, with their arguments, beside the names it
+   offers today. It fills the hole only when one complete expression is
+   proven and the hole's type is known. `mentl query
+   examples/pulse/course/08-hole.mn written-back` answers no line with
+   `filled with`, and on the proposals fixture the only such lines left
+   are a constructor around a `??` where the author wrote a number.
+
+   Fails today, on pin 11389157fa42, each read at the caret of a copy of
+   lesson 8 with one expression replaced by `??`:
+   - `fn build_rig(sr) = {voice: ??}`. The caret says the hole's type is
+     "still free", and the same answer proposes `seconds()` as the fill.
+   - `play(frames, ??)`, a hole of type `(Int) -> a`. One candidate
+     proves, `note_hz`, so it is the fill. The author wrote `frame(buf,
+     build_rig(rate()))`, a call with its last argument left open, which
+     the proposer never builds.
+   - `frame(buf, ??)`, a hole whose type is a record with a `voice` field.
+     The fill is `{voice: ??}`, an empty shape, where `build_rig(rate())`
+     is in scope and is never tried.
+   - `tests/proposals/written-back.mn`: `speed(d, t)` is filled with
+     `Speed(??)`, `show_speed(s)` is asked without the author's text, and
+     three constructions are each filled with their constructor around a
+     `??`.
+
+   The form, all in `src/synth_proposer.mn`.
+   - A hole whose type is still an unbound variable proposes nothing:
+     `synth_propose` answers `VNone` before it enumerates, and the caret's
+     Query line already says what would bring the proposals. The arm of
+     `enumerate_typed` that offered `??` for such a hole leaves with its
+     enumerator.
+   - `vocabulary_step` offers a function that takes arguments. For a
+     function in a ring whose return could unify with the target
+     (`heads_may_unify`) and whose row the position admits, it builds the
+     call with every argument chosen: each argument is a value or a call
+     in scope whose type could unify with that parameter's, found by the
+     same step one level down. A constructor is offered the same way.
+     Unification stays the decider: each complete call is judged once, in
+     its own fork, by the gate that judges every candidate
+     (`candidate_proven`).
+   - At a hole that wants a function of m parameters, a function of more
+     parameters is offered with its first arguments supplied and its last
+     m left open, as SYNTAX's Stage Law writes a stage (`frame(buf,
+     build_rig(rate()))`). No `??` is written in it.
+   - The search is bounded: a call inside a call, and no deeper; at most
+     three candidates for one argument, nearest first; at most 48 calls
+     built for one hole. When a bound cuts the search the answer says so.
+   - A candidate that still holds a hole (an empty lambda, a constructor or
+     a record with `??` in it) is offered only when no complete candidate
+     is proven. `reference_before_mint` becomes that rule.
+   - The levels stay as they are: the scope and the hole's own module,
+     then the modules it imports, then the prelude, stopping at the first
+     level with a proven candidate. One change is measured before it is
+     kept: a module of the program's own folder (lesson 8's `rate`) is
+     read with the hole's own module, since the developer wrote both.
+
+   Edge cases. A function whose references reach the hole's own
+   declaration is not offered, as today (`offered`). A generic parameter
+   takes any value by its head, so the bound of three applies to it. A
+   partial call builds a closure, so the position's row must admit
+   `Alloc`, and the gate refuses it where a clause forbids that. A refused
+   call is listed among the refusals only when no call of that function
+   proved.
+
+   Left alone. What the answer says about a tie between two calls (the
+   next item). A lone candidate that holds a hole is still the fill, so
+   `tests/proposals/box-fill.mn` keeps its contract until Morgan answers
+   whether `??` in a constructor's field is a value hole. No literal is
+   proposed as an argument: a number is the author's decision.
+
+   What pays for its code on the board. The enumerator for a free hole
+   and the lambda-only rule leave. The rest is measured on the candidate
+   before the landing pass (`MENTL_BOOT=<candidate> mentl verify`), and
+   the payment is named here before the build goes on if a limit would
+   rise.
+
+   Proves it. `written-back` on lesson 8: "filled otherwise" is 0. On
+   tests/proposals/written-back.mn: `speed(d, t)` and `show_speed(s)` are
+   written back, and "filled otherwise" counts only `Meters(??)` and
+   `Seconds(??)`, where the author wrote a number. On both, no expression
+   that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
+   changes is worked out by hand and named in the receipt.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
