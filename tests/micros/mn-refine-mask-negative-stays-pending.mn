@@ -1,0 +1,9 @@
+// check: pending 7:19
+// A mask with its top bit set keeps the word's sign, so it bounds nothing:
+// under a mask of every bit the word comes back whole, and the claim stays
+// open.
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn all_bits(n) -> Bits16 = i32_and(n, 0 - 1)
+
+fn main() = all_bits(7) - 7

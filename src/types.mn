@@ -2045,8 +2045,11 @@ type Leaf
   // a callee's declared return: the callee owes it at its own declaration,
   // and it is debt there until proven
   | LPost(Ty)
-  // the Add fold's lower bound for a sum — overflow-blind
-  | LSum(Option(Int))
+  // a word between two ends, where an end nothing bounds is the least or the
+  // greatest word: the Add fold's sum, whose low end is overflow-blind and
+  // whose high end is open, and a word an instruction bounds exactly, a
+  // masked or a shifted one
+  | LSpan(Int, Int)
   // len / byte_len: a length, never below zero
   | LLength
   // a callee's return still a free cell — nothing to any reader but the

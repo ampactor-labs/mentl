@@ -1722,6 +1722,20 @@ providers resume with, each a value it may take, and an install that pins
 the op's effect answers only for the instance it serves
 (tests/micros/mn-call-reads-the-callee.mn,
 mn-perform-reads-the-providers.mn, mn-generic-result-by-signature.mn). A
+claim at an argument reads a call the same way: `want(five())` is proven
+where `five` answers 5 (mn-refine-call-at-argument.mn). A comparison with
+a constant reads both ends of what the other side can be, so a value known
+to fit eight bits fits sixteen (mn-refine-subrange-fits.mn). A word
+primitive's answer lies where its instruction leaves it. A word masked
+with `i32_and` by a value that is never negative lies between zero and
+that value's greatest, and a word shifted right by 1 to 31 bits with
+`i32_shr_u` keeps only the bits that are left. So `i32_and(n, 0xFFFF)` and
+`i32_shr_u(n, 16)` each fit a sixteen-bit field whatever `n` is
+(mn-refine-mask-fits.mn, mn-refine-shift-fits.mn). A mask wider than the
+field, a mask with its top bit set and a shift by 32 prove nothing, and
+the claim stays open (mn-refine-mask-wider-stays-pending.mn,
+mn-refine-mask-negative-stays-pending.mn,
+mn-refine-shift-whole-word-stays-pending.mn). A
 computation inherits nothing: `fn dec(x: Positive) -> Positive = x - 1`
 leaves `0 < x - 1` open as `V_Pending`, and `let d = if c { n } else { 0 }`
 is the join of `n` and `0`, never `n`'s refinement. If a refinement were

@@ -1,0 +1,8 @@
+// check: pending 6:19
+// A mask proves no more than itself: sixteen bits kept do not fit an
+// eight-bit field, so the claim stays open.
+type Bits8 = Int where 0 <= self && self <= 255
+
+fn low_byte(n) -> Bits8 = i32_and(n, 0xFFFF)
+
+fn main() = low_byte(7) - 7

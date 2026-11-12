@@ -1,0 +1,8 @@
+// check: pending 6:18
+// A shift counts its bits modulo 32, so a shift by 32 moves nothing and
+// bounds nothing: the claim stays open.
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn unmoved(n) -> Bits16 = i32_shr_u(n, 32)
+
+fn main() = unmoved(7) - 7

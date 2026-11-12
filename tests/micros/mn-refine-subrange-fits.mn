@@ -1,0 +1,11 @@
+// check: clean
+// A value known to fit eight bits fits sixteen: both ends of what a
+// parameter's precondition admits are read, so the wider claim is proven
+// from the narrower one.
+type Bits8 = Int where 0 <= self && self <= 255
+
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn widen(b: Bits8) -> Bits16 = b
+
+fn main() = widen(200) - 200

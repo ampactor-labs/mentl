@@ -1,0 +1,10 @@
+// check: clean
+// A claim at an argument reads a call as what its declaration computes
+// there, as a division's claim does: `five()` is 5, which fits sixteen bits.
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn five() = 5
+
+fn want(n: Bits16) = n
+
+fn main() = want(five()) - 5

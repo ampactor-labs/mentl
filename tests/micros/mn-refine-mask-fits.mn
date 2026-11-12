@@ -1,0 +1,8 @@
+// check: clean
+// A word masked with `i32_and` is at most its mask, whatever the word is, so
+// the low sixteen bits of any number fit a sixteen-bit field.
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn low_half(n) -> Bits16 = i32_and(n, 0xFFFF)
+
+fn main() = low_half(0xE000E010) - 57360

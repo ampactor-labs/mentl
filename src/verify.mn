@@ -800,7 +800,7 @@ fn leaf_ordered(leaf, eleaves) = match leaf {
   },
   LClaimed(_, beneath) => leaf_ordered(beneath, eleaves),
   LMay(beneath) => proves_only(leaf_ordered(beneath, eleaves)),
-  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+  LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 fn ordered_point_step(k, acc, leaf) = and_decide(acc, point_at_most(k, leaf))
@@ -812,7 +812,7 @@ fn point_at_most(k, leaf) = match leaf {
   },
   LClaimed(_, beneath) => point_at_most(k, beneath),
   LMay(beneath) => proves_only(point_at_most(k, beneath)),
-  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+  LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 // A sequence's length as a term: the constant the text fixes where every
@@ -835,14 +835,11 @@ fn leaf_nonneg(leaf) = match leaf {
     LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LLength => Some(true),
-  LParam(_, c) => match domain_lo(ty_domain(c)) {
-    Some(lo) => if lo >= 0 { Some(true) } else { None },
-    None => None,
-  },
+  LParam(_, c) => proven_if(domain_low(ty_domain(c)) >= 0),
   LClaimed(_, beneath) => leaf_nonneg(beneath),
   LMay(beneath) => proves_only(leaf_nonneg(beneath)),
   LPost(_) => None,
-  LSum(_) => None,
+  LSpan(_, _) => None,
   LRet(_) => None,
   LBuilt(_) => None,
   LUnknown => None,
@@ -867,7 +864,7 @@ fn leaf_bounded(op, leaf, lengths) = match leaf {
   },
   LClaimed(_, beneath) => leaf_bounded(op, beneath, lengths),
   LMay(beneath) => proves_only(leaf_bounded(op, beneath, lengths)),
-  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+  LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 fn point_step(op, k, acc, n) = and_decide(acc, point_against(op, k, n))
@@ -1373,7 +1370,7 @@ fn leaf_is_point(lv, leaf) = match leaf {
   LPoint(v) => litval_eq(v, lv),
   LClaimed(_, beneath) => leaf_is_point(lv, beneath),
   LMay(beneath) => proves_only(leaf_is_point(lv, beneath)),
-  LBuilt(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LUnknown => None,
+  LBuilt(_) | LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LUnknown => None,
 }
 
 // A constructor pattern: every value built by it proves, one built by
@@ -1389,7 +1386,7 @@ fn leaf_is_built_by(cname: String, leaf) = match leaf {
   LBuilt(made) => Some(made == cname),
   LClaimed(_, beneath) => leaf_is_built_by(cname, beneath),
   LMay(beneath) => proves_only(leaf_is_built_by(cname, beneath)),
-  LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LUnknown => None,
+  LPoint(_) | LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LUnknown => None,
 }
 
 fn ctor_part(cname: String, indexed) = match indexed {
@@ -1565,16 +1562,15 @@ fn tee_handler_name(r) = match graph_node_body(r) {
   | NRow(_) | NParam(_) => "",
 }
 
-// A comparison decides iff BOTH operands reduce to ground constants under the
-// current `self` binding — or, with a ground LEFT and a structural right, the
-// interval fragment proves `n <= X` from X's lower bound; a claim over a value
-// it leaves open is proven where the value's path implies it.
-fn compare_decide_at(op, lh, rh, bind) = match node_const_at(lh, bind) {
-  Some(lv) => match node_const_at(rh, bind) {
-    Some(rv) => litval_compare(op, lv, rv),
-    None => claim_on_path(interval_ge_decide(op, lv, rh, bind), op, lh, rh, bind),
-  },
-  None => claim_on_path(None, op, lh, rh, bind),
+// A comparison is decided from what its two operands can be, as the value
+// walk reads a comparison wherever one stands (`compare_leaves`): two
+// constants fold, and a constant against a value proves where the value's
+// span reaches it, on either side. `self` is the claimed value wherever an
+// operand's calls hand it on. A claim the values leave open, or refute, is
+// proven where the claimed value's path implies it.
+fn compare_decide_at(op, lh, rh, bind) = match leaves_decide_bool(compare_leaves(op, operand_leaves(lh, bind), operand_leaves(rh, bind)) ~> walking_self_as(bind)) {
+  Some(true) => Some(true),
+  open @ (Some(false) | None) => claim_on_path(open, op, lh, rh, bind),
 }
 
 // The path a comparison stands on is the claimed value's: a predicate's own
@@ -1582,21 +1578,6 @@ fn compare_decide_at(op, lh, rh, bind) = match node_const_at(lh, bind) {
 fn claim_on_path(verdict, op, lh, rh, bind) = match bind {
   SelfNode(sh) => or_path(verdict, sh, op, term_of(lh, bind), term_of(rh, bind)),
   NoSelf | SelfVal(_) => verdict,
-}
-
-// `n <= X` / `n < X` with ground left: proves when X's structural LOWER BOUND
-// reaches n. PROVES only, never refutes — a bound that fails to reach n says
-// nothing about X's values (None keeps the obligation live and honest).
-fn interval_ge_decide(ref op, ref lv, rh, bind) = match lv {
-  LVInt(n) => match leaves_lo(value_leaves(rh, bind)) {
-    Some(lo) => match op {
-      BLe => if n <= lo { Some(true) } else { None },
-      BLt => if n < lo { Some(true) } else { None },
-      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BGt | BGe | BAnd | BOr | BConcat => None,
-    },
-    None => None,
-  },
-  LVFloat(_) | LVString(_) | LVBool(_) => None,
 }
 
 // Resolve an operand HANDLE to a ground constant, reading the Expr LIVE from the
@@ -1730,7 +1711,7 @@ fn arith_leaves(op, las, lbs) = if all(has_point, las) && all(has_point, lbs) {
   las |> flat_map({ a => lbs |> map(arith_pair(op, a, ??)) })
 } else {
   match op {
-    BAdd => [LSum(lo_add(leaves_lo(las), leaves_lo(lbs)))],
+    BAdd => [LSpan(low_sum(leaves_low(las), leaves_low(lbs)), int_max_word())],
     BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => leaves_unknown,
   }
 }
@@ -1746,6 +1727,69 @@ fn arith_pair(op, a, b) = match may_point(a) {
   None => LUnknown,
 }
 
+// What a word primitive answers, read off the span each operand lies in.
+// An operand whose two ends meet is a constant, and two constants answer
+// what the instruction computes. A word masked by a value that is never
+// negative lies between zero and that value's greatest, and a word shifted
+// right by a count of 1 to 31 bits keeps only the bits that are left,
+// whatever the word was. Each end is exact, since neither instruction
+// wraps. Any other primitive over a value that is no constant is out of
+// sight.
+fn word_at(p, las, lbs) =
+  word_between(p, leaves_low(las), leaves_high(las), leaves_low(lbs), leaves_high(lbs))
+
+// The first operand lies between `al` and `ah` and the second between `bl`
+// and `bh`.
+fn word_between(p, al, ah, bl, bh) =
+  spanned(word_low(p, al, ah, bl, bh), word_high(p, al, ah, bl, bh))
+
+// A word between two ends, or a value out of sight where neither end bounds
+// it.
+fn spanned(lo, hi) =
+  if lo == i32_min() && hi == int_max_word() { leaves_unknown } else { [LSpan(lo, hi)] }
+
+// The least a word primitive can answer.
+fn word_low(p, al, ah, bl, bh) = if al == ah && bl == bh {
+  word_of(p, al, bl, i32_min())
+} else {
+  match p {
+    I32And => if al >= 0 || bl >= 0 { 0 } else { i32_min() },
+    I32ShrU => if 1 <= bl && bh <= 31 { 0 } else { i32_min() },
+    I32Or | I32Xor | I32Shl | I32ShrS | I32Clz | FloatOfInt | FloatToInt | FloatFloor | FloatSqrt => i32_min(),
+  }
+}
+
+// The greatest a word primitive can answer.
+fn word_high(p, al, ah, bl, bh) = if al == ah && bl == bh {
+  word_of(p, al, bl, int_max_word())
+} else {
+  match p {
+    I32And => if al >= 0 && bl >= 0 {
+      int_min(ah, bh)
+    } else if al >= 0 {
+      ah
+    } else if bl >= 0 {
+      bh
+    } else {
+      int_max_word()
+    },
+    I32ShrU => if 1 <= bl && bh <= 31 { i32_shr_u(-1, bl) } else { int_max_word() },
+    I32Or | I32Xor | I32Shl | I32ShrS | I32Clz | FloatOfInt | FloatToInt | FloatFloor | FloatSqrt => int_max_word(),
+  }
+}
+
+// What the instruction computes from two constant words, and `open` for a
+// primitive that does not take two words.
+fn word_of(p, x, y, open) = match p {
+  I32And => i32_and(x, y),
+  I32Or => i32_or(x, y),
+  I32Xor => i32_xor(x, y),
+  I32Shl => i32_shl(x, y),
+  I32ShrU => i32_shr_u(x, y),
+  I32ShrS => i32_shr_s(x, y),
+  I32Clz | FloatOfInt | FloatToInt | FloatFloor | FloatSqrt => open,
+}
+
 fn has_point(leaf) = may_point(leaf) != None
 
 // The point a leaf is and whether the value only MAY be it.
@@ -1756,7 +1800,7 @@ fn may_point(leaf) = match leaf {
   },
   LPoint(v) => Some((v, false)),
   LClaimed(_, beneath) => may_point(beneath),
-  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+  LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 // A comparison is what its operands can be, pair by pair: two points fold;
@@ -1784,26 +1828,28 @@ fn compare_verdict(op, a, b) = match may_point(a) {
 fn leaf_may(leaf) = match leaf {
   LMay(_) => true,
   LClaimed(_, beneath) => leaf_may(beneath),
-  LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
+  LPoint(_) | LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
 }
 
-// `x >= n` and `x > n` hold where x's lower bound reaches n; a bound that
-// falls short says nothing of x.
+// `x >= n` and `x > n` hold where x's low end reaches n, and `x <= n` and
+// `x < n` where its high end does. An end that falls short says nothing of
+// x, and an open end, the least or the greatest word, reaches only itself.
 fn bound_reaches(op, x, v) = match v {
-  LVInt(n) => match leaf_lo(x) {
-    Some(lo) => match op {
-      BGe => if lo >= n { Some(true) } else { None },
-      BGt => if lo > n { Some(true) } else { None },
-      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BLe | BAnd | BOr | BConcat => None,
-    },
-    None => None,
+  LVInt(n) => match op {
+    BGe => proven_if(leaf_low(x) >= n),
+    BGt => proven_if(leaf_low(x) > n),
+    BLe => proven_if(leaf_high(x) <= n),
+    BLt => proven_if(leaf_high(x) < n),
+    BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BAnd | BOr | BConcat => None,
   },
   LVFloat(_) | LVString(_) | LVBool(_) => None,
 }
 
+fn proven_if(held) = if held { Some(true) } else { None }
+
 fn as_may(leaf) = match leaf {
   LPoint(_) => LMay(leaf),
-  LMay(_) | LParam(_, _) | LPost(_) | LClaimed(_, _) | LSum(_) | LLength | LRet(_) | LBuilt(_)
+  LMay(_) | LParam(_, _) | LPost(_) | LClaimed(_, _) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_)
   | LUnknown => leaf,
 }
 
@@ -1837,7 +1883,7 @@ fn leaf_bool(leaf) = match leaf {
   },
   LPoint(LVBool(held)) => Some((held, false)),
   LClaimed(_, beneath) => leaf_bool(beneath),
-  LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+  LPoint(_) | LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 // A truth value read off its leaves: every value it can be holds, so it
@@ -2169,7 +2215,7 @@ fn project_leaf(leaf, step) = match leaf {
   LMay(beneath) => LMay(project_leaf(beneath, step)),
   // a constant, a sum, a length or a free return has no parts
   LPoint(_) => LUnknown,
-  LSum(_) => LUnknown,
+  LSpan(_, _) => LUnknown,
   LLength => LUnknown,
   LRet(_) => LUnknown,
   // a construction's parts are read where it was built (`part_read`)
@@ -2404,6 +2450,10 @@ fn declared_call_leaves(h, callee, d) = if walking_state(d) {
 } else {
   match graph_published(d) {
     Some((_, _, EffectOpScheme(en, providers, _))) => perform_leaves(h, callee, d, en, providers) |> under_post(callee, ??),
+    Some((_, _, PrimitiveKind(p))) => match applied_args(h) {
+      [a, b] => word_at(p, operand_leaves(a, NoSelf), operand_leaves(b, NoSelf)),
+      _ => leaves_unknown,
+    },
     Some((_, _, FnScheme)) => match answer_by_signature(h, callee, d, []) {
       Some(leaves) => leaves |> under_post(callee, ??),
       None => match graph_node_body(d) {
@@ -2447,7 +2497,7 @@ fn body_at_call(callee, d, params, slots, body) =
 // a construction can refute a claim, so only those need saying so.
 fn may_refute(leaf) = match leaf {
   LPoint(_) | LBuilt(_) => LMay(leaf),
-  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LClaimed(_, _) | LMay(_) | LUnknown => leaf,
+  LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LClaimed(_, _) | LMay(_) | LUnknown => leaf,
 }
 
 // A parameter takes its argument at its own node, the binder a reference to
@@ -2608,7 +2658,7 @@ fn leaves_contract(leaves) = match leaves {
 fn leaf_is_ret(root, leaf) = match leaf {
   LRet(r) => graph_chase_handle(r) == root,
   LMay(beneath) => leaf_is_ret(root, beneath),
-  LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LClaimed(_, _) | LBuilt(_) | LUnknown => false,
+  LPoint(_) | LParam(_, _) | LPost(_) | LSpan(_, _) | LLength | LClaimed(_, _) | LBuilt(_) | LUnknown => false,
 }
 
 fn leaf_contract(leaf) = match leaf {
@@ -2616,7 +2666,7 @@ fn leaf_contract(leaf) = match leaf {
   LPost(c) => Some(c),
   LClaimed(c, _) => Some(c),
   LMay(beneath) => leaf_contract(beneath),
-  LPoint(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
+  LPoint(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 // The alias a contract is named by, through refinements and width pins.
@@ -2645,54 +2695,71 @@ fn leaf_excludes(k, leaf) = match leaf {
   LClaimed(_, beneath) => leaf_excludes(k, beneath),
   LMay(beneath) => proves_only(leaf_excludes(k, beneath)),
   LPost(_) => None,
-  LSum(_) => None,
+  LSpan(_, _) => None,
   LRet(_) => None,
   LBuilt(_) => None,
   LUnknown => None,
 }
 
-// A CLAIM's lower bound: the least of every leaf's, each answering — a
-// postcondition and the Add fold included, since a claim's own debt is the
-// ledger's to carry.
-fn leaves_lo(leaves) =
-  if len(leaves) == 0 { None } else { leaves |> fold(Some(int_max_word()), leaf_lo_meet) }
+// A CLAIM's span: the two ends that cover what every leaf can be, the least
+// of their low ends and the greatest of their high ends. Each end is a word,
+// and an end nothing bounds is the least or the greatest word, which is what
+// every word lies between. A postcondition and the Add fold answer here,
+// since a claim's own debt is the ledger's to carry.
+// The fold starts from the end that covers nothing, and no leaf at all is a
+// value nothing bounds.
+fn leaves_low(leaves) =
+  if len(leaves) == 0 { i32_min() } else { leaves |> fold(int_max_word(), low_cover) }
 
-fn leaf_lo_meet(acc, leaf) = match acc {
-  Some(a) => match leaf_lo(leaf) {
-    Some(b) => Some(int_min(a, b)),
-    None => None,
-  },
-  None => None,
+fn leaves_high(leaves) =
+  if len(leaves) == 0 { int_max_word() } else { leaves |> fold(i32_min(), high_cover) }
+
+fn low_cover(acc, leaf) = int_min(acc, leaf_low(leaf))
+
+fn high_cover(acc, leaf) = int_max(acc, leaf_high(leaf))
+
+// The least value one leaf can be.
+fn leaf_low(leaf) = match leaf {
+  LPoint(v) => point_word(v, i32_min()),
+  LParam(_, c) => domain_low(ty_domain(c)),
+  LPost(c) => domain_low(ty_domain(c)),
+  // both hold of the one value, so the greater of the two low ends does
+  LClaimed(c, beneath) => int_max(domain_low(ty_domain(c)), leaf_low(beneath)),
+  LMay(beneath) => leaf_low(beneath),
+  LSpan(lo, _) => lo,
+  LLength => 0,
+  LRet(_) => i32_min(),
+  LBuilt(_) => i32_min(),
+  LUnknown => i32_min(),
 }
 
-fn leaf_lo(leaf) = match leaf {
-  LPoint(v) => match v {
-    LVInt(n) => Some(n),
-    LVFloat(_) | LVString(_) | LVBool(_) => None,
-  },
-  LParam(_, c) => domain_lo(ty_domain(c)),
-  LPost(c) => domain_lo(ty_domain(c)),
-  // both hold of the one value, so the bounds MEET
-  LClaimed(c, beneath) => bound_meet(int_max, domain_lo(ty_domain(c)), leaf_lo(beneath)),
-  LMay(beneath) => leaf_lo(beneath),
-  LSum(lo) => lo,
-  LLength => Some(0),
-  LRet(_) => None,
-  LBuilt(_) => None,
-  LUnknown => None,
+// The greatest value one leaf can be.
+fn leaf_high(leaf) = match leaf {
+  LPoint(v) => point_word(v, int_max_word()),
+  LParam(_, c) => domain_high(ty_domain(c)),
+  LPost(c) => domain_high(ty_domain(c)),
+  // both hold of the one value, so the lesser of the two high ends does
+  LClaimed(c, beneath) => int_min(domain_high(ty_domain(c)), leaf_high(beneath)),
+  LMay(beneath) => leaf_high(beneath),
+  LSpan(_, hi) => hi,
+  LLength => int_max_word(),
+  LRet(_) => int_max_word(),
+  LBuilt(_) => int_max_word(),
+  LUnknown => int_max_word(),
+}
+
+// A constant as an end: a whole number is its own, and any other constant
+// is `open`, since an integral end cannot speak about it.
+fn point_word(v, open) = match v {
+  LVInt(n) => n,
+  LVFloat(_) | LVString(_) | LVBool(_) => open,
 }
 
 // The largest signed word — the identity of the lower bound's meet.
 fn int_max_word() with Pure = 2147483647
 
-// The sum of two operand bounds — both must answer.
-fn lo_add(ea, eb) = match ea {
-  Some(a) => match eb {
-    Some(b) => Some(a + b),
-    None => None,
-  },
-  None => None,
-}
+// The sum of two operands' low ends: open where either is.
+fn low_sum(a, b) = if a == i32_min() || b == i32_min() { i32_min() } else { a + b }
 
 // A CLAIM's echo: every leaf names the refinement — a parameter's
 // precondition or a callee's postcondition carrying the alias — so the
@@ -3011,7 +3078,7 @@ fn leaf_carries(aname: String, leaf) = match leaf {
   LPost(c) => ty_names_alias(c, aname),
   LClaimed(c, beneath) => ty_names_alias(c, aname) || leaf_carries(aname, beneath),
   LMay(beneath) => leaf_carries(aname, beneath),
-  LPoint(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
+  LPoint(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
 }
 
 fn ty_names_alias(ty, aname: String) = match ty {
@@ -3032,7 +3099,7 @@ fn leaf_param(leaf) = match leaf {
   LParam(b, _) => [b],
   LClaimed(_, beneath) => leaf_param(beneath),
   LMay(beneath) => leaf_param(beneath),
-  LPoint(_) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => [],
+  LPoint(_) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => [],
 }
 
 fn leaves_unproven(leaves) = leaves |> any(leaf_unproven)
@@ -3041,7 +3108,7 @@ fn leaves_unproven(leaves) = leaves |> any(leaf_unproven)
 // decided here did not stand on it.
 fn leaf_unproven(leaf) = match leaf {
   LPost(_) => true,
-  LSum(_) => true,
+  LSpan(_, _) => true,
   LClaimed(_, _) => true,
   LMay(beneath) => leaf_unproven(beneath),
   LPoint(_) | LParam(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
@@ -5732,9 +5799,10 @@ fn ty_domain(ty) = match ty {
 // The whole fact, in one walk: both ends of what a refinement admits, read
 // together. A walk that answers one end alone forces any consumer wanting the
 // other to grow a mirror family beside it — two walks over one fact, the
-// parallel-arrays drift at the function layer. A leaf's lower bound
-// (`leaf_lo`) is this read projected through `domain_lo`, and the bound-meet
-// is `domain_meet` at the domain altitude.
+// parallel-arrays drift at the function layer. A leaf's two ends
+// (`leaf_low`, `leaf_high`) are this read projected through `domain_low` and
+// `domain_high`, each a word, and the bound-meet is `domain_meet` at the
+// domain altitude.
 //
 // It is an OVER-approximation by contract (Domain, types.mn): the reader may
 // decide what to construct from it, never what to admit.
@@ -5905,30 +5973,28 @@ fn int_max(a, b) with Pure = if a > b { a } else { b }
 
 fn int_min(a, b) with Pure = if a < b { a } else { b }
 
-// The low bound a domain states. A finite set bounds itself; a member the
-// integral bound cannot speak about leaves the end open rather than inventing
-// one.
-fn domain_lo(d) = match d {
-  DRange(lo, _) => lo,
-  DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, min_of_lit) } else { None },
-  DUndecided => None,
+// The two ends a domain states, each a word: an end the domain leaves open
+// is the least or the greatest word. A finite set bounds itself on both
+// sides by its least and greatest members.
+fn domain_low(d) = match d {
+  DRange(lo, _) => unwrap_or(lo, i32_min()),
+  DFinite(vs) => finite_end(int_min, i32_min(), int_max_word(), vs),
+  DUndecided => i32_min(),
 }
 
-fn is_lv_int(v) with Pure = match v {
-  LVInt(_) => true,
-  LVFloat(_) | LVString(_) | LVBool(_) => false,
+fn domain_high(d) = match d {
+  DRange(_, hi) => unwrap_or(hi, int_max_word()),
+  DFinite(vs) => finite_end(int_max, int_max_word(), i32_min(), vs),
+  DUndecided => int_max_word(),
 }
 
-// The guard above admits only integral members, so the other arm carries the
-// accumulator untouched rather than inventing a bound for a value it cannot
-// read.
-fn min_of_lit(acc, v) = match v {
-  LVInt(n) => match acc {
-    Some(a) => if n < a { Some(n) } else { Some(a) },
-    None => Some(n),
-  },
-  LVFloat(_) | LVString(_) | LVBool(_) => acc,
-}
+// One end of a finite set: the member `wider` keeps, starting from the end
+// that covers nothing. A set with no member states no end, and a member that
+// is no whole number leaves the end open, which `wider` then keeps.
+fn finite_end(wider, open, covers_nothing, vs) =
+  if len(vs) == 0 { open } else { vs |> fold(covers_nothing, member_end(wider, open, ??, ??)) }
+
+fn member_end(wider, open, acc, v) = wider(acc, point_word(v, open))
 
 // Bind the refinement's `self` to the value node being refined. A predicate's
 // operands are node HANDLES (types.mn Predicate) and `self` may sit NESTED inside

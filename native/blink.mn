@@ -61,7 +61,7 @@ fn stay_here_on_a_fault(before) = before ++ [Loop([Again(Always)])]
 // 16 of the first word) and the chip waits until it is steady (bit 17). It
 // then asks to run from the crystal (2 in the fifth word) and waits until
 // it does (bit 4 of that word).
-fn run_from_the_crystal(before) = before ++ set_word(clocks, 0x5802, 0x4400) ++ set_bit(clocks, 0, 16) ++ [
+fn run_from_the_crystal(before) = before ++ set_word(clocks, 0x58024400) ++ set_bit(clocks, 0, 16) ++ [
   until_bit(clocks, 0, 17),
   move_byte(scratch, 2),
   store_word(scratch, clocks, 4),
@@ -74,19 +74,19 @@ fn run_from_the_crystal(before) = before ++ set_word(clocks, 0x5802, 0x4400) ++ 
 // word sets the pin and bit 23 clears it, so the light is turned on and
 // `next` is left holding the word that turns it off.
 fn drive_the_light(before) =
-  before ++ set_word(switches, 0x5802, 0x44E0) ++ set_bit(switches, 0, 2) ++ set_word(port, 0x5802, 0x0800) ++ set_bit(port, 0, 14) ++ clear_bit(port, 0, 15) ++ [move_byte(next, 128), store_word(next, port, 6), shift_left(next, next, 16)]
+  before ++ set_word(switches, 0x580244E0) ++ set_bit(switches, 0, 2) ++ set_word(port, 0x58020800) ++ set_bit(port, 0, 14) ++ clear_bit(port, 0, 15) ++ [move_byte(next, 128), store_word(next, port, 6), shift_left(next, next, 16)]
 
 // The timer's three words stand at 0xE000E010: the first starts it (5: on,
 // counting the processor's clock), the second is the count to start from
 // and the third the count now. The ticks are counted in the first word of
 // the memory nearest the processor, 0x20000000, where the probe reads them.
-fn start_the_timer(before) = before ++ set_word(timer, 0xE000, 0xE010) ++ set_word(scratch, reload / 65536, reload % 65536) ++ [
+fn start_the_timer(before) = before ++ set_word(timer, 0xE000E010) ++ set_word(scratch, reload) ++ [
   store_word(scratch, timer, 1),
   move_byte(scratch, 0),
   store_word(scratch, timer, 2),
   move_byte(scratch, 5),
   store_word(scratch, timer, 0)
-] ++ set_word(ticks_at, 0x2000, 0) ++ [move_byte(scratch, 0), store_word(scratch, ticks_at, 0)]
+] ++ set_word(ticks_at, 0x20000000) ++ [move_byte(scratch, 0), store_word(scratch, ticks_at, 0)]
 
 // The loop the chip stays in. It waits for a tick: bit 16 of the timer's
 // first word says the count reached zero, and reading the word clears it.

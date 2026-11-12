@@ -1,0 +1,9 @@
+// check: clean
+// A word shifted right by sixteen bits with `i32_shr_u` has sixteen bits
+// left, whatever the word is, so the high half of any number fits a
+// sixteen-bit field.
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn high_half(n) -> Bits16 = i32_shr_u(n, 16)
+
+fn main() = high_half(0xE000E010) - 57344

@@ -59,9 +59,11 @@ fn load_word(rt: Low, rn: Low, words: Bits5) = Op(0x6800 + words * 64 + rn * 8 +
 fn wide_move(top, rd: Low, n: Bits16) =
   Wide(top + n / 2048 % 2 * 1024 + n / 4096, n / 256 % 8 * 4096 + rd * 256 + n % 256)
 
-// A register set to a 32-bit number, given as its high and low halves.
-fn set_word(rd: Low, high: Bits16, low: Bits16) =
-  [wide_move(0xF240, rd, low), wide_move(0xF2C0, rd, high)]
+// A register set to any 32-bit number: its low sixteen bits first, then its
+// high sixteen. The compiler proves each half fits its field whatever the
+// number is.
+fn set_word(rd: Low, n) =
+  [wide_move(0xF240, rd, i32_and(n, 0xFFFF)), wide_move(0xF2C0, rd, i32_shr_u(n, 16))]
 
 // The two registers the phrases below work in. Nothing is kept in them from
 // one phrase to the next.

@@ -29,20 +29,19 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `11389157fa42`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `82d70f4fff10`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
   N0 to N4 say what each machine holds.
 - No landing is in flight. A Mentl-written image runs on Morgan's spare
   Daisy Seed since 2026-11-12, loaded into its memory by the probe: the
-  first step of N1 (§11.B). The next four, in order: an integer carries
-  its range and a word primitive is read, which the image's own code asked
-  for (§11.3); N0 (the medium translates the WebAssembly it emits into
-  Thumb-2, checked under an ARM emulator); the rest of P1 (a battery
-  writes its modules per folder); and T1 (a stated claim is proven or the
-  program does not build, which starts by measuring what is pending
-  today, by kind). §11.B holds the whole order.
+  first step of N1 (§11.B). The next three, in order: N0 (the medium
+  translates the WebAssembly it emits into Thumb-2, checked under an ARM
+  emulator); the rest of P1 (a battery writes its modules per folder);
+  and T1 (a stated claim is proven or the program does not build, which
+  starts by measuring what is pending today, by kind). §11.B holds the
+  whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -921,17 +920,13 @@ accepts each program and `mentl run` shows the break.
   §11.13).
 - A claim proven only through the program's calls leaves the `Trap` in the
   row, so `with !Trap` cannot rest on it yet (§11.3).
-- The verifier knows an integer as a point or a lower bound and never as
-  an upper bound, and it does not read the word primitives. Over `let
-  timer_at = 0xE000E010`, `want16(i32_and(timer_at, 0xFFFF))` leaves `0
-  <= self && self <= 65535` pending, though the run prints 57360. So
-  `set_word` in `native/thumb.mn` takes a 32-bit number as two halves
-  where one number, split inside, is what a person would write (a scratch
-  program, 2026-11-12; §11.3).
-- A claim at an argument is not read through a call. Over `fn five() =
-  5`, `want16(five())` is left pending while `100 / five()` is proven,
-  and `let five = 5` at module level is read in both places (a scratch
-  program, 2026-11-12; §11.3).
+- The verifier bounds a sum on its low side only, and that bound is blind
+  to the word wrapping: `fn add(a: Bits8, b: Bits8) -> Bits16 = a + b` is
+  left pending. So are a difference, a product, `i32_or` and a signed
+  shift over a value that is no constant. A call that answers 300, passed
+  where a byte is wanted, is left pending where the same constant written
+  in place is refused, since a call's answers are read as values it may
+  take (a scratch program, 2026-11-12; §11.3).
 - A parameter pinned to 64 bits passes `mentl check`, and the engine
   refuses the module the compiler writes for `fn high(n: i64) = n /
   65536`: "type mismatch: expected i64, found i32" (a scratch program,
@@ -2075,13 +2070,12 @@ is judged, together with its row fact. Today the claim is owed and the
 `Trap` it guards is charged at the install
 (`Hβ.verify.handler-is-a-judgment-unit`). A Float carries its range (a
 sine's [-1, 1], affine combinations, a clamp), so a frequency computed from
-a sine or a product is decided (Pulse, Wasatch). An integer carries its
-range the same way, both bounds, and a word primitive is read: a word
-masked by `i32_and` is at most its mask, and one shifted right by k bits
-with `i32_shr_u` is below 2 to the power 32 less k. So an instruction's
-field cut from any number is proven to fit, and `native/thumb.mn`'s
-`set_word` takes one number. A claim at an argument reads a call's body
-as a division's does (both measured short on 2026-11-12, §7).
+a sine or a product is decided (Pulse, Wasatch). A masked or shifted
+word carries both ends of its range (built 2026-11-12). A sum, a
+difference and a product of bounded values are to carry both ends the
+same way, with a result that can pass the word's end left open, so that
+two bytes added are proven to fit sixteen bits. Today that claim is left
+pending (§7).
 The four sequence primitives' face carries parameters with no names, so
 `slice([1, 2, 3], start = 0, end = 2)` is refused with "no parameter
 named `start` on `slice`" while `mentl where` prints the declaration's
