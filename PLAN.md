@@ -24,6 +24,24 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 > M1 and M3 are built, M2 and M4 in part, and both of its "other open
 > landings" are built.
 
+## Where the work stands
+
+Every landing's commit keeps this screen current. A session that has lost
+its context reads it first, then the parts CLAUDE.md's "What to read" names.
+
+- The pin is `11389157fa42`, on wasmtime 36.0.17. `mentl land --quick`
+  says where the tree stands against it.
+- No landing is in flight. The next three, in order: P1 (the landing pass
+  prints each stage's time and runs on every core), T1 (a pending claim is
+  checked when the program runs) and P2 (cost is counted, never timed).
+  §11.B holds the whole order.
+- Morgan's word of 2026-11-12: the builder has full permission to shape,
+  design and implement the medium; main follows every green pin; the
+  engine is the newest stable release; work that serves none of the five
+  properties of §4⑭ waits.
+- Open decisions of Morgan's: the one-line license statement, and whether
+  `??` in a constructor's field is a value hole (§11.B, Box 2).
+
 ---
 
 ## §0 · What Mentl IS — the thesis (the north star)
@@ -532,10 +550,48 @@ part of a type (§11.7). A failed or timed-out branch of a split stops its
 siblings (§11.8, §11.12). And a host call that waits is a perform resumed
 later, so no function is marked asynchronous (§11.14).
 
-Four decisions of the same days are about method and are written in
-CLAUDE.md: the work runs as boxes that Morgan gates (2026-11-10), a change
-that measures wrong is fixed forward, a cost ceiling bends only by a dated
-allowance, and work kept only on a session's machine is not kept.
+**⑭ The finished medium is five properties, and work that serves none of
+them waits** (the builder, under Morgan's permission of 2026-11-12, which
+he reverses by saying so). What the medium calls proven is true. Anyone
+can check that without trusting the compiler. Real programs can be written
+in it. It tells whoever is at the keyboard, a person or a model, the next
+edit it can prove. Memory and time are facts it states (⑨). Frozen until a
+paying use asks for them: the SIMD and GPU schedules, the e-graph's
+optimizer, further derivative and DSP features, further features of the
+page, forks on a second thread (a fork is cheap and the search runs out of
+candidates first, §11.B) and the native backend.
+
+**⑮ A pending claim is checked when the program runs** (Morgan,
+2026-11-12; not built). A refinement claim the verifier leaves pending is
+evaluated where it stands when the program runs, with `self` bound to the
+value, and the run stops there with the claim's address when it is false.
+The claim's `Trap` stays in the row of its site. So nothing is assumed,
+and `main with !Trap` refuses a program that still holds a pending claim.
+A label, whose predicate is an effect's operation, stays a claim the flow
+walk decides. The other form considered, a refusal to build, would refuse
+the compiler itself, whose source carries pending claims (§11.B, T1).
+
+**⑯ The engine is the newest stable release, and a feature is adopted for
+what it lets the host enforce or the compiler delete** (Morgan,
+2026-11-12; not built). The gates run on the newest stable wasmtime,
+pinned again as releases come, and the compiler must compile itself to the
+same bytes under a second, unrelated engine. A feature behind a flag is
+used only as an opt-in for one program, or once a second engine also runs
+it. Exception handling ends an extent early (§11.12). Multiple memories
+hold the image and the heap apart (MENTL_MEMORY.md, "Two memories"). WASI
+0.3 components make a program's row its import list (§11.14), and a module
+imported with a negation may be emitted as a component of its own, so the
+engine enforces what the judgment proved and anyone can read it off the
+import list. Garbage collection by the engine and continuations the engine
+owns stay out (⑨, ⑫).
+
+Four decisions of 2026-11-05 to 2026-11-10 are about method and are
+written in CLAUDE.md: the work runs as boxes (2026-11-10), a change that
+measures wrong is fixed forward, a cost ceiling bends only by a dated
+allowance, and work kept only on a session's machine is not kept. Three
+more of 2026-11-12 are there too: main follows every green pin, what a
+session reads after it loses its context, and the five operators checked
+at every landing.
 
 ---
 
@@ -761,7 +817,8 @@ accepts each program and `mentl run` shows the break.
   r(5)` is accepted and the run performs `ask` (§11.1).
 - A refinement claim left pending is assumed by its callee and checked
   nowhere when the program runs, so a read it proves can read outside its
-  list; what a pending claim should cost is Morgan's open decision (§11.1).
+  list; Morgan decided on 2026-11-12 that such a claim is checked when the
+  program runs (§4⑮), which is not built (§11.B, T1).
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
@@ -1172,6 +1229,100 @@ boxes are built under the reins he gave, so Box 2 is built first, and Box
 1 waits on the two points marked for his word. Each landing's receipt is his to review, and a landing
 he did not mean is reverted on his word.
 
+**The order from 2026-11-12.** On that day Morgan approved the builder's
+recommendations, gave it full permission to shape, design and implement
+the medium from the bottom up, and asked for a faster process and the
+newest engine (§4⑭ to ⑯). The landings below run in this order, each one
+commit and one pin, red on the pin first. A letter and a number name a
+landing in this list alone. Box 1 below is T3, and Box 2 is the second
+half of L1.
+
+The pass gets fast first, because every later landing pays for it. A cold
+pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
+stage prints its own. The six batteries took 3.4 minutes, compiling their
+1,277 fixtures one after another in one process. The frontier gate's 370
+legs took 110 seconds in one serial loop, and run twice at a pin. A
+wall-time breach cost 55 seconds, in 2 of 8 passes. Any edit, even to one
+fixture, discards every kept result. The targets are a cold pass under 6
+minutes on four cores, a re-run after a fixture or document edit under 1
+minute, and no expectation kept by hand.
+
+- P1. The pass prints each stage's time and runs on every core: the
+  batteries' compile step in shards, the frontier legs in parallel, the
+  independent gates side by side. Kept results are keyed per directory.
+  The march keeps the machine to itself, so nothing that measures is
+  disturbed. One measurement decides a further step: where judging the
+  library dominates a fixture's compile, the battery judges the library
+  once and forks the graph per fixture.
+- P2. Cost is counted, never timed ("Two checks that failed at random",
+  below). An instrumented build counts the calls the compiler makes while
+  it compiles itself, by the route the arena's counters take, and the
+  march compares the candidate's count with the pin's. The same counts
+  kept per function are the profiler, so the two profiling scripts leave
+  `tools/`.
+- P3. What a command prints is a fixture's contract, replayed by `mentl
+  test`. The legs of `tools/frontier-gate.sh` move into such fixtures in
+  batches, each batch proven by running the old leg and the new contract
+  on one compiler, until the script is empty (§11.9).
+- P4. A document's quoted output is re-run by a command that fails when
+  the pin prints something else and rewrites the quote on request (§11.5).
+- P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
+  2026-11-12, where exception handling and multiple memories are on by
+  default), and the compiler compiles itself to the same bytes under a
+  second engine (§4⑯).
+- P7. `mentl land` prints the census of the five operators, index walks,
+  let-chains and rosters for the modules a landing touched, against the
+  pin's. A landing adds no index walk, let-chain or roster.
+
+Then the medium, bottom to top.
+
+- T1. A pending claim is checked when the program runs (§4⑮). Every
+  refinement claim passes through `claim_refinement` (src/infer.mn). A
+  predicate holds the node handles of its operands, and `self` is bound
+  by `PWithSelf`, so the lowering can evaluate it at the value; no code
+  does today. A pending claim charges `Trap` at its node by the route a
+  pending division takes (`partiality_claim`), and the emitter reads the
+  fact it reads for every check (`check_kept_at`, src/effects.mn), so a
+  witness build keeps refinement checks too. Red first: §11.1(b)'s two
+  programs, `at([4, 5], k - 3)` and `keep_small(x + 1)`, have no fixture,
+  and each becomes one that must stop with the claim's address. Measured
+  on the candidate before the pass: which `!Trap` declarations in
+  `examples/`, `lib/` and the wheel now refuse, and what the checks cost
+  the compiler compiling itself.
+- T2. An effect no longer slips past a negation through a recursive group
+  (§11.1(a)).
+- T3. Every battery runs each `// expect` fixture both ways (Box 1).
+- T4. A handler of `Trap` ends its extent, by the engine's exception
+  handling, and the program goes on (§11.12).
+- M5, M6, M8. MENTL_MEMORY.md's landings: two memories, exits per extent
+  with closures carrying their type, and a value allocated where it will
+  live.
+- R1. A pipeline over a list passes `!Alloc` and `!Trap`; a default arm
+  answers the empty value; the five operators share one level; a pair
+  fills a two-parameter stage (§4⑩, §4⑪, §11.13).
+- R2. Every declaration publishes one face, a module is a scope, and an
+  edit judges again only what it changed (§11.3, §11.4, §11.6).
+- R3. The clock, randomness and sleep are real, then the component
+  target, where a program's row is its import list and the network is
+  real (§11.11, §11.14).
+- C1. `mentl audit` writes a receipt: each claim, its verdict, how anyone
+  can check it again, the hashes and the commands. It travels inside the
+  binary.
+- C2. A module imported with a negation may be emitted as a component of
+  its own, so the engine enforces the negation (§4⑯).
+- L1. Search by type: one index of what each declaration takes and gives,
+  read by a query, by the hole and by the refusal of a name that resolves
+  nowhere. A proposal is a whole expression and never a wrong fill (Box
+  2).
+- L2. A refusal offers the fix the compiler has already proven (§11.5).
+- L3. `teach` ranks its steps, a pending claim is said in the developer's
+  words, and every verb answers narrowly (§11.5).
+- The keystone (§11.2) follows: lowering as a column, the evaluator as a
+  second reading of every program, and deep recursion moved to the heap.
+
+The first stretch runs P1, T1, P2, P5, P3 with P4, L1, T2, T4, R1, M5,
+L2, R2.
+
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
 keeps the checks the compiler proved away, so every program we already run
@@ -1497,8 +1648,8 @@ saying so.
   component target (§11.14), a seeded world (§11.15), and the keystone and
   the designs after it in their dependency order (§11.2 to §11.9).
 
-One decision of Morgan's stands open and gates the soundness core's form:
-what a claim left pending costs when the program runs (§11.1(b)).
+Morgan decided on 2026-11-12 what a claim left pending costs when the
+program runs: it is checked there (§4⑮), and T1 above builds it.
 
 ### §11.1 · The soundness core: the crown modal, the row whole, the reach one walk
 
@@ -1573,13 +1724,12 @@ word. Where no proof leans on the refinement, the type holds a value it
 excludes: `fn keep_small(n: Small) = n` under `type Small = Int where 0
 <= self && self < 10`, called as `keep_small(x + 1)` with x = 12, answers
 13, and `mentl query FILE traps` says nothing can trap (both measured
-2026-11-06). What a pending claim costs when the program runs is not
-decided, and the decision is Morgan's. SYNTAX's refinement section says
-the predicate is erased and no check runs. The alternatives are a check
-where the claim is pending, wherever its predicate performs no effect,
-so the run stops there and that site's `Trap` is the one that happens;
-or a refusal to build. A label, whose predicate is an effect's
-operation, stays a claim the flow walk decides under each of them.
+2026-11-06). Morgan decided on 2026-11-12 what a pending claim costs
+when the program runs: it is checked where it stands, so the run stops
+there and that site's `Trap` is the one that happens (§4⑮; §11.B, T1).
+SYNTAX's refinement section still says the predicate is erased and no
+check runs, and T1's commit corrects it. A label, whose predicate is an
+effect's operation, stays a claim the flow walk decides.
 (c) The reach is one walk (`Hβ.graph.reach-is-one-walk`): `reach(from, edge kinds, stop)`, cached as
 columns, answers absence, the effect-enters chain, the race rule, the
 schedule's demand, the edit cone, `refs of`, `unreachable` and the

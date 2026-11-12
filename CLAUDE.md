@@ -53,8 +53,8 @@ back what changed and why after one reading, rewrite it.
 
 ### Glossary
 
-- **Box:** one bounded piece of work, written out in PLAN §11.B and gated
-  by Morgan before anyone builds it ("Boxes", below).
+- **Box:** one bounded piece of work, written out in PLAN §11.B before
+  anyone builds it ("Boxes", below).
 - **Landing:** one complete, committed piece of work: a box that passed
   `mentl land`.
 - **The wheel:** the compiler's own source, `src/` and `lib/`.
@@ -136,6 +136,13 @@ compiler itself (`mentl verify`, `mentl query`), never kept as prose. Reading
 by parts stays the rule while landings that read this way use less context
 than loading both documents whole did (363,609 bytes at the start of every
 session, measured 2026-10-26) and succeed as often.
+
+A session that has lost its context (a compaction) reads, before it does
+anything else: MENTL_MEMORY.md whole, PLAN's opening screen ("Where the
+work stands"), PLAN §0 and §7, the parts the landing in flight names, and
+always SYNTAX's "Composing the five" and "Writing Mentl code" below, so the
+five operators are in hand before a line is written (Morgan, 2026-11-12,
+in place of his earlier word to read all three documents whole).
 
 ## The main design rule
 
@@ -281,9 +288,12 @@ order they run.
   names the class of values the walk learns to place, or the code that
   leaves, with the count measured on a candidate (`MENTL_BOOT=<candidate>
   mentl verify`).
-- Morgan gates each box before it is built. Until the gate, the work is to
-  make the box exact: run its failing measurement, read the code it names,
-  and remove every guess.
+- Before a box is built, make it exact: run its failing measurement, read
+  the code it names, and remove every guess. Morgan gated each box himself
+  until 2026-11-12, when he gave the builder full permission to shape,
+  design and implement the medium. Since then the builder decides, each
+  landing's receipt is his to review, and he reverses a landing by saying
+  so. A question about what the language should mean is still his.
 - A box is built exactly as written, one at a time. Design happens in the
   box's text and never during the build. A box that turns out unclear or
   wrong is a stop: report what was found, rewrite the box, and ask for the
@@ -342,10 +352,13 @@ order they run.
    changed claim against the artifact with a command. A file outside PLAN
    names a §11 design by its title, never its number.
 7. **Commit through the hooks and push,** on the branch MENTL_MEMORY.md's
-   standing rules name. Main changes only on Morgan's word, and no pull
-   request is opened unless he asks. Leave the tree clean when the session
-   ends, and end with a message that says what changed and what was
-   measured.
+   standing rules name. Main follows every green pin (Morgan, 2026-11-12):
+   once a landing has passed every gate, is pinned and is pushed,
+   fast-forward main to it, so the public repository and the browser page
+   show the current compiler. MENTL_MEMORY.md's older rule, main only with
+   the user's word, cannot be edited. No pull request is opened unless he
+   asks. Leave the tree clean when the session ends, and end with a message
+   that says what changed and what was measured.
 
 ## Performance
 
@@ -399,7 +412,9 @@ The hooks and gates enforce these rules. They are not suggestions.
   however you deem best"); MENTL_MEMORY.md's standing rule is the older
   word and cannot be edited. Use them for reading many files or writing
   fixtures: pass the model explicitly, and start each agent from the map
-  and the parts its brief names. Listening to the compiler and designing
+  and the parts its brief names. Give each agent a hard budget of tool
+  calls, and a cheaper model for mechanical work: three agents with no
+  budget used a whole five-hour allowance on 2026-11-12. Listening to the compiler and designing
   stay with the session. Never use an agent to review a design or a
   document. Running the artifact is what proves a design wrong.
 
@@ -440,6 +455,13 @@ Always write a sequence with `|>`: `y |> f |> g`, never
 `let x = f(y); g(x)`.
 SYNTAX's "Composing the five" says how the five are used together, with
 the compiler's answer at each operator.
+
+The five are checked at every landing, not left to memory (Morgan,
+2026-11-12). Before a commit that touches the wheel, ask the census for
+each module the landing touched, on the candidate and on the pin: `mentl
+query src/main.mn "census iteration in MODULE"` and `"census match in
+MODULE"`. A landing adds no index walk, let-chain or roster, and its
+commit message carries the counts.
 
 Ask nine questions at every line you write:
 
@@ -529,8 +551,9 @@ Each rule here was paid for by a stop or a wrong answer.
 - Comments say what the code does and why, in plain English, as the
   developer would explain it. A name in backticks is a reference and must
   resolve to a declaration visible from that module. Leave history to git.
-- Run compiler-sized jobs, such as the march, the board or a profile, one at
-  a time.
+- Run nothing beside the march or a profile, because they measure. Other
+  compiler-sized jobs run one at a time until the landing pass itself runs
+  them side by side (PLAN §11, "The order from 2026-11-12").
 - Decide what a measurement can decide: answer a design question with the
   nine questions and by running the artifact, and write the answer into the
   box for Morgan's gate. A question about what the language should mean is
