@@ -1375,7 +1375,7 @@ Then the medium, bottom to top.
   a program is explored, nearest the caret first, and each proposal says
   what it unlocks. O3: forks run on every core (§11.8). O4: a resident
   session streams its answers as they are proven (§11.6).
-- N0 to N4. The Daisy Seed (§4⑱). N0: `mentl native` translates an emitted
+- N0 to N4. The Daisy Seed (§4⑱). N0: a new verb translates an emitted
   module into Thumb-2, and the batteries' run fixtures answer their
   contracts under an ARM emulator as they do under the engine. No emulator
   is in the build container on 2026-11-12, so N0 starts by adding one. N1:
