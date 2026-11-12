@@ -1,0 +1,125 @@
+// check: clean
+// A WebAssembly module read from its bytes: the eight bytes it opens with,
+// then each section's kind, place, size and count. The translator reads the
+// module the compiler wrote, the one artifact every gate has judged (PLAN
+// §11, "The order from 2026-11-12", N0).
+//
+// Reading bytes in order. `byte` answers the next one, `pass` moves over
+// `count` bytes without reading them, `place` says how many bytes have been
+// read so far, and `more` says whether any are left.
+effect Source {
+  byte() -> Int
+  pass(count: Int)
+  place() -> Int
+  more() -> Bool
+}
+
+// A file's bytes, read from the first: `left` holds the bytes not read yet,
+// and `read` counts the ones that have been. A read past the last byte is
+// the file's fault: the reader says where the file ends and stops.
+handler reading(bytes) with left = bytes, read = 0 {
+  byte() => match left {
+    [next, ...rest] => resume(next) with left = rest, read = read + 1,
+    [] => fail("the module ends at byte {int_to_str(read)}, inside a section that says it is longer"),
+  },
+  pass(count) => resume() with left = after(count, read, left), read = read + count,
+  place() => resume(read),
+  more() => resume(len(left) > 0),
+}
+
+// The bytes left once `count` of them are passed over, cut off in one step.
+// A count past the end of the file is the file's fault: `read` says where
+// the reader stood when it was asked.
+fn after(count, read, bytes) = if 0 <= count && count <= len(bytes) {
+  slice(bytes, count, len(bytes))
+} else {
+  fail("at byte {int_to_str(read)} a section says {int_to_str(count)} more bytes follow, and the file has {int_to_str(len(bytes))}")
+}
+
+// A whole number written seven bits to a byte, lowest bits first. A byte
+// under 128 is the number's last.
+fn number() = {
+  let b = byte()
+  if b < 128 { b } else { b - 128 + 128 * number() }
+}
+
+// What a section holds. The file says it with one byte, 0 to 12.
+type Kind
+  = Custom
+  | Types
+  | Imports
+  | Functions
+  | Tables
+  | Memories
+  | Globals
+  | Exports
+  | Start
+  | Elements
+  | DataCount
+  | Code
+  | Data
+
+fn kind_of(id) = match id {
+  0 => Custom,
+  1 => Types,
+  2 => Imports,
+  3 => Functions,
+  4 => Tables,
+  5 => Memories,
+  6 => Globals,
+  7 => Exports,
+  8 => Start,
+  9 => Elements,
+  10 => Code,
+  11 => Data,
+  12 => DataCount,
+  _ => fail("byte {int_to_str(place() - 1)} names section kind {int_to_str(id)}, and a module has kinds 0 to 12"),
+}
+
+// One section: its kind, the byte its body starts at, the body's size in
+// bytes, and how many entries the body says it holds.
+type Section = {at: Int, count: Int, kind: Kind, size: Int}
+
+// How many entries a section's body says it holds. A section that is a list
+// opens with its length. A start section names one function. A custom
+// section is a name and bytes of its own, with no count.
+fn entries(kind) = match kind {
+  Custom => 0,
+  Start => 1,
+  Types | Imports | Functions | Tables | Memories | Globals | Exports | Elements | DataCount | Code
+  | Data => number(),
+}
+
+// The next section: its kind and size are read, its count where it has one,
+// and the rest of its body is passed over.
+fn section() = {
+  let kind = kind_of(byte())
+  let size = number()
+  let at = place()
+  let count = entries(kind)
+  pass(at + size - place())
+  Section({at, count, kind, size})
+}
+
+// Every section left in the file, each handed on as it is read.
+fn sections() = if more() {
+  yield(section())
+  sections()
+} else {
+  ()
+}
+
+// The eight bytes every module opens with: a zero byte, the letters "asm",
+// and version 1 as four bytes.
+fn header() = if [byte(), byte(), byte(), byte(), byte(), byte(), byte(), byte()] == [0, 97, 115, 109, 1, 0, 0, 0] {
+  ()
+} else {
+  fail("this is not a WebAssembly module: it does not open with a zero byte, \"asm\" and version 1")
+}
+
+// A module's sections, in the file's order.
+fn sections_of(bytes) = {
+  header()
+  sections()
+  result()
+} ~> collector ~> reading(bytes)

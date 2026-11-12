@@ -1,3 +1,4 @@
+// expect: 0
 // The first image for the Daisy Seed (PLAN §11, "The order from 2026-11-12",
 // N1): a table of vectors and a short program, written byte by byte. A debug
 // probe puts it in the chip's memory and starts it there, so the flash is

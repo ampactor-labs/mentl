@@ -546,6 +546,12 @@ Each rule here was paid for by a stop or a wrong answer.
   162 places off the count and made printing trap-free in every program.
 - A line added to a library file goes below every line a fixture cites,
   since contracts name library lines.
+- A helper that hands the next helper a pair or an optional number adds
+  values the memory walk cannot place, and the board refuses the rise.
+  Hand words. On 2026-11-12 a first shape that passed a value's two ends
+  as optional numbers raised three counts, by 3, 52 and 2; with each end a
+  word, where an end nothing bounds is the least or the greatest word,
+  every count came to or under its limit.
 - When a check fails on a landing, compare what the pinned compiler writes
   for the same program before changing anything. A check that fails on the
   same bytes from both compilers is unreliable, and an unreliable check is

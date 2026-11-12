@@ -1,3 +1,4 @@
+// check: clean
 // The parts of an ELF file, the container an ARM program travels in, written
 // as bytes. `native/exit42.mn` builds a Linux program from them, and
 // `native/blink.mn` an image that a debug probe loads into the Daisy Seed.

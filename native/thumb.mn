@@ -1,3 +1,4 @@
+// check: clean
 // Thumb instructions for the Daisy Seed's Cortex-M7, each as the 16-bit
 // halves the chip reads, and a program as lines that know where their loops
 // begin. The translator's code generator grows from this file (PLAN §11,

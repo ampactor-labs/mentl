@@ -927,6 +927,12 @@ accepts each program and `mentl run` shows the break.
   where a byte is wanted, is left pending where the same constant written
   in place is refused, since a call's answers are read as values it may
   take (a scratch program, 2026-11-12; §11.3).
+- A guard an arm writes over its handler's own state is not read as a
+  fact. Inside an arm, `if 0 <= at && at < len(bytes) { byte_at(bytes,
+  at) }` over the state field `at` is left pending, and the same guard
+  over a local first bound to `at` is proven, as it is over a function's
+  parameter (a scratch program, 2026-11-12; §11.3, a handler is a
+  judgment unit).
 - A parameter pinned to 64 bits passes `mentl check`, and the engine
   refuses the module the compiler writes for `fn high(n: i64) = n /
   65536`: "type mismatch: expected i64, found i32" (a scratch program,
@@ -1432,23 +1438,32 @@ Then the medium, bottom to top.
   module into Thumb-2, and the batteries' run fixtures answer their
   contracts under an ARM emulator as they do under the engine. The
   emulator is `qemu-arm`. The build container holds version 8.2.2 since
-  2026-11-12, and its setup script installs it. Morgan's machine has none
-  installed: Fedora's `qemu-user` package provides the command. The static
-  build of version 11.1.3, from `qemu-user-static-arm`, was unpacked there
-  without installing it on 2026-11-12 and ran `exit42` to exit 42. It runs
-  a file only if the file has its execute bit, and says "Exec format
-  error" otherwise. The translator is a Mentl program of its own, in `native/`,
+  2026-11-12, and its setup script installs it. Morgan's machine holds
+  version 11.1.3 since the same day, from Fedora's `qemu-user` package,
+  and it runs `exit42` to exit 42 there. It runs a file only if the file
+  has its execute bit, and says "Exec format error" otherwise. The
+  translator is a Mentl program of its own, in `native/`,
   and no part of the wheel: it reads the module's bytes, the one artifact
   every gate has judged, and writes the chip's. So it is the second large
   program written in Mentl, in the five operators from its first line, and
-  the wheel's counts on the board do not move. It goes in five steps. The
-  first is built: `mentl run native/exit42.mn` writes a 90-byte ARM program
-  byte by byte, and `qemu-arm` runs it to exit 42 (2026-11-12). The next
-  four, each with its fixtures passing both ways before the one after: the
-  reader of a module's sections; whole numbers, locals, control flow and
-  calls; memory, globals, data and the three host calls a program imports;
-  then tail calls, calls through the table, block memory operations,
-  64-bit integers and floats.
+  the wheel's counts on the board do not move. It goes in five steps, and
+  two are built (2026-11-12). The first: `mentl run native/exit42.mn`
+  writes a 90-byte ARM program byte by byte, and `qemu-arm` runs it to
+  exit 42. The second is the reader of a module's sections: `mentl run
+  native/sections.mn < module.wasm` prints each section's kind, where its
+  body starts, its size in bytes and its count of entries. It agrees with
+  `wasm-objdump -h` on every section of the 669 modules the batteries had
+  built, 7,335 sections, and on the compiler's own module of 5,143,029
+  bytes, which it reads in 0.05 seconds. A file that is no module, and a
+  module cut short, are each refused in a sentence that says where. The
+  reader keeps the bytes not yet read and takes them apart by pattern, so
+  it indexes nothing and `mentl check` leaves it no claim. `native/` is a
+  battery of the landing pass since the same day: each of its files
+  states its contract on its first line. The next three, each with its
+  fixtures passing both ways before the one after: whole numbers, locals,
+  control flow and calls; memory, globals, data and the three host calls
+  a program imports; then tail calls, calls through the table, block
+  memory operations, 64-bit integers and floats.
   A value lives on the machine's stack with its top in a register, a
   64-bit integer is two words, a float is in the floating-point unit's
   registers, and a callee removes its own arguments so a tail call can

@@ -1,0 +1,37 @@
+// expect: 1
+// The sections of a WebAssembly module, one line each: its kind, the byte
+// its body starts at, its size in bytes and its count of entries.
+//   mentl run native/sections.mn < module.wasm
+// Run with nothing on its input, as a battery runs it, the program says
+// that no module was given and stops with exit 1.
+import io
+
+import wasm
+
+// The kinds by the names `wasm-objdump -h` prints, so the two lists can be
+// laid side by side.
+fn kind_name(kind) = match kind {
+  Custom => "Custom",
+  Types => "Type",
+  Imports => "Import",
+  Functions => "Function",
+  Tables => "Table",
+  Memories => "Memory",
+  Globals => "Global",
+  Exports => "Export",
+  Start => "Start",
+  Elements => "Elem",
+  DataCount => "DataCount",
+  Code => "Code",
+  Data => "Data",
+}
+
+fn say(s: Section) =
+  println("{kind_name(s.kind)} start={int_to_str(s.at)} size={int_to_str(s.size)} count={int_to_str(s.count)}")
+
+fn main() = {
+  {
+    read_stdin() |> sections_of |> each(say)
+  } ~> fail_exit
+  0
+}

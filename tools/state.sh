@@ -67,8 +67,8 @@ if [ "${1:-}" = "--land" ]; then
     step "MARCH (the cost ratchets and the fixed point)" bash tools/march.sh
     # Batteries write modules under .build/battery by fixture name alone. micros and frontier
     # hold two fixtures of one name, so they share a lane, and effect-identity runs after.
-    battery() { local d rc=0; for d in "$@"; do gate "BATTERY tests/$d" wt_battery "$cand" "tests/$d" || rc=1; done; return $rc; }
-    side battery micros frontier; for d in syntax proposals teach crown; do side battery "$d"; done
+    battery() { local d rc=0; for d in "$@"; do gate "BATTERY $d" wt_battery "$cand" "$d" || rc=1; done; return $rc; }
+    side battery tests/micros tests/frontier; for d in tests/syntax tests/proposals tests/teach tests/crown native; do side battery "$d"; done
     side gate "PROOF-EXACTNESS" bash tools/proof-exactness-gate.sh fresh
     side gate "FRONTIER" bash tools/frontier-gate.sh --compiler fresh
     side memo_gate "INSTRUMENT" instrument "$cand" tools/instrument-gate.sh env MENTL_BOOT="$cand" bash tools/instrument-gate.sh
@@ -123,7 +123,7 @@ if [ "${1:-}" != "--quick" ]; then
   memo_gate "MARCH (the fixpoint ratchet)" march "$boot" tools/march.sh bash tools/march.sh
   side gate "FRONTIER (scheduled matrix + the ?? authoring workflows)"        bash tools/frontier-gate.sh
   side gate "PROOF-EXACTNESS (hole refuses · debt surfaces · suspension runs)" bash tools/proof-exactness-gate.sh
-  side gate "BATTERY tests/crown (!E soundness crucibles)"                    wt_battery "$boot" tests/crown
+  for d in tests/crown native; do side gate "BATTERY $d" wt_battery "$boot" "$d"; done
   side memo_gate "INSTRUMENT (can the board go RED?)" instrument "$boot" tools/instrument-gate.sh bash tools/instrument-gate.sh; joined
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
   memo_gate "THREADS (is the concurrency width what the source says?)" threads "$boot" tools/thread-gate.sh bash tools/thread-gate.sh
