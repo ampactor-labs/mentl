@@ -1,0 +1,126 @@
+// Thumb instructions for the Daisy Seed's Cortex-M7, each as the 16-bit
+// halves the chip reads, and a program as lines that know where their loops
+// begin. The translator's code generator grows from this file (PLAN §11,
+// "The order from 2026-11-12", N0).
+//
+// One of the eight registers a 16-bit instruction can name.
+type Low = Int where 0 <= self && self <= 7
+
+// A number that fits a field of 5, 8 or 16 bits.
+type Bits5 = Int where 0 <= self && self <= 31
+
+type Bits8 = Int where 0 <= self && self <= 255
+
+type Bits16 = Int where 0 <= self && self <= 65535
+
+// How many values a field of an instruction can hold: 256 for eight bits.
+type Values = Int where 0 < self
+
+// When a branch is taken: every time, when the last test found nothing or
+// two equal numbers, or when it found something or a difference.
+type Cond = Always | Equal | NotEqual
+
+// One line of a program: a 16-bit instruction, a 32-bit instruction as its
+// two halves in order, lines that can branch back to their own first line,
+// and a branch to the first line of the loop it stands in.
+type Line = Op(Int) | Wide(Int, Int) | Loop([Line]) | Again(Cond)
+
+// movs rd, #n
+fn move_byte(rd: Low, n: Bits8) = Op(0x2000 + rd * 256 + n)
+
+// adds rd, #n
+fn add_byte(rd: Low, n: Bits8) = Op(0x3000 + rd * 256 + n)
+
+// lsls rd, rm, #n
+fn shift_left(rd: Low, rm: Low, n: Bits5) = Op(n * 64 + rm * 8 + rd)
+
+// orrs rd, rm
+fn or_into(rd: Low, rm: Low) = Op(0x4300 + rm * 8 + rd)
+
+// bics rd, rm: the bits set in rm are cleared in rd.
+fn clear_bits(rd: Low, rm: Low) = Op(0x4380 + rm * 8 + rd)
+
+// tst rn, rm: the next branch reads whether the two share a set bit.
+fn test_bits(rn: Low, rm: Low) = Op(0x4200 + rm * 8 + rn)
+
+// rors rd, rm: rd turned right by the count in rm.
+fn rotate_right(rd: Low, rm: Low) = Op(0x41C0 + rm * 8 + rd)
+
+// str rt, [rn, #4 * words]
+fn store_word(rt: Low, rn: Low, words: Bits5) = Op(0x6000 + words * 64 + rn * 8 + rt)
+
+// ldr rt, [rn, #4 * words]
+fn load_word(rt: Low, rn: Low, words: Bits5) = Op(0x6800 + words * 64 + rn * 8 + rt)
+
+// A 32-bit instruction that puts a 16-bit number in a register. `top` is
+// 0xF240 to set the low half and clear the high one (movw), and 0xF2C0 to
+// set the high half and keep the low one (movt). The number's bits stand in
+// four fields of the instruction.
+fn wide_move(top, rd: Low, n: Bits16) =
+  Wide(top + n / 2048 % 2 * 1024 + n / 4096, n / 256 % 8 * 4096 + rd * 256 + n % 256)
+
+// A register set to a 32-bit number, given as its high and low halves.
+fn set_word(rd: Low, high: Bits16, low: Bits16) =
+  [wide_move(0xF240, rd, low), wide_move(0xF2C0, rd, high)]
+
+// The two registers the phrases below work in. Nothing is kept in them from
+// one phrase to the next.
+let scratch = 1
+
+let mask = 2
+
+// One bit of a word in memory is set, and the word's other bits are kept.
+// The word stands `words` words past the address in `at`.
+fn set_bit(at: Low, words: Bits5, bit: Bits5) = [
+  load_word(scratch, at, words),
+  move_byte(mask, 1),
+  shift_left(mask, mask, bit),
+  or_into(scratch, mask),
+  store_word(scratch, at, words)
+]
+
+// One bit of a word in memory is cleared, and the word's other bits are kept.
+fn clear_bit(at: Low, words: Bits5, bit: Bits5) = [
+  load_word(scratch, at, words),
+  move_byte(mask, 1),
+  shift_left(mask, mask, bit),
+  clear_bits(scratch, mask),
+  store_word(scratch, at, words)
+]
+
+// The chip reads a word in memory again and again until one bit of it is set.
+fn until_bit(at: Low, words: Bits5, bit: Bits5) = Loop([
+  load_word(scratch, at, words),
+  move_byte(mask, 1),
+  shift_left(mask, mask, bit),
+  test_bits(scratch, mask),
+  Again(Equal)
+])
+
+// A count of halves, forward or back, as a field that holds `size` values.
+fn wrapped(n, size: Values) = (n + size) % size
+
+// A branch whose target stands `delta` bytes from the address four bytes
+// past the branch, which is where the chip counts from.
+fn branch(cond, delta) = match cond {
+  Always => 0xE000 + wrapped(delta / 2, 2048),
+  Equal => 0xD000 + wrapped(delta / 2, 256),
+  NotEqual => 0xD100 + wrapped(delta / 2, 256),
+}
+
+// One line added to the halves written so far. `start` is the offset of the
+// loop the line stands in, and `at` the offset the line itself is written
+// at, both in bytes from the program's first instruction.
+fn written(start, sofar, line) = match sofar {
+  (at, halves) => match line {
+    Op(half) => (at + 2, halves ++ [half]),
+    Wide(first, second) => (at + 4, halves ++ [first, second]),
+    Again(cond) => (at + 2, halves ++ [branch(cond, start - at - 4)]),
+    Loop(body) => body |> fold((at, halves), written(at, ??, ??)),
+  },
+}
+
+// A program's instructions as halves, in the order the chip runs them.
+fn halves_of(lines) = match lines |> fold((0, []), written(0, ??, ??)) {
+  (_, halves) => halves,
+}

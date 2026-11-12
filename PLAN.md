@@ -34,12 +34,15 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
   N0 to N4 say what each machine holds.
-- No landing is in flight. The next three, in order: the rest of P1 (a
-  battery writes its modules per folder and takes a shard), N0 (the medium
-  translates the WebAssembly it emits into Thumb-2, checked under an ARM
-  emulator, the first step to the Daisy Seed) and T1 (a stated claim is
-  proven or the program does not build, which starts by measuring what is
-  pending today, by kind). §11.B holds the whole order.
+- No landing is in flight. A Mentl-written image runs on Morgan's spare
+  Daisy Seed since 2026-11-12, loaded into its memory by the probe: the
+  first step of N1 (§11.B). The next four, in order: an integer carries
+  its range and a word primitive is read, which the image's own code asked
+  for (§11.3); N0 (the medium translates the WebAssembly it emits into
+  Thumb-2, checked under an ARM emulator); the rest of P1 (a battery
+  writes its modules per folder); and T1 (a stated claim is proven or the
+  program does not build, which starts by measuring what is pending
+  today, by kind). §11.B holds the whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -918,6 +921,21 @@ accepts each program and `mentl run` shows the break.
   §11.13).
 - A claim proven only through the program's calls leaves the `Trap` in the
   row, so `with !Trap` cannot rest on it yet (§11.3).
+- The verifier knows an integer as a point or a lower bound and never as
+  an upper bound, and it does not read the word primitives. Over `let
+  timer_at = 0xE000E010`, `want16(i32_and(timer_at, 0xFFFF))` leaves `0
+  <= self && self <= 65535` pending, though the run prints 57360. So
+  `set_word` in `native/thumb.mn` takes a 32-bit number as two halves
+  where one number, split inside, is what a person would write (a scratch
+  program, 2026-11-12; §11.3).
+- A claim at an argument is not read through a call. Over `fn five() =
+  5`, `want16(five())` is left pending while `100 / five()` is proven,
+  and `let five = 5` at module level is read in both places (a scratch
+  program, 2026-11-12; §11.3).
+- A parameter pinned to 64 bits passes `mentl check`, and the engine
+  refuses the module the compiler writes for `fn high(n: i64) = n /
+  65536`: "type mismatch: expected i64, found i32" (a scratch program,
+  2026-11-12; §11.2).
 - The judgment charges `Trap` at a call of `str_eq` and none at `==` on two
   strings, which runs the same function. `mentl why FILE F Trap` says a
   function that compares with `==` never uses `Trap`, and the module it
@@ -1324,7 +1342,21 @@ minute, and no expectation kept by hand.
   serial loop of about 138 seconds until P3 moves them into fixtures. One
   measurement decides a further step: where judging the library dominates
   a fixture's compile, the battery judges the library once and forks the
-  graph per fixture.
+  graph per fixture. That measurement was taken on Morgan's machine on
+  2026-11-12, four cores, pin 11389157fa42. The micro battery compiles its
+  787 fixtures in 350 seconds in one process and runs them in 47, so a
+  fixture costs 0.445 seconds on average. A fixture that says only `fn
+  main() = 3` costs about 0.5 seconds, twenty of them in 10.8 seconds, and
+  `mentl check` on it takes 0.55 seconds where the verb's start alone
+  takes 0.17. So nearly all of a fixture's compile is the library's
+  judgment, made again for each fixture. The form is therefore the
+  library judged once (§11.8), and a split across cores is not built:
+  it would spread the same repeated judgment over more processes. What
+  stays of this item is the folder: two folders that hold one fixture
+  name write one module path (`mentl test` on two scratch folders prints
+  `.build/battery/mn-same-name.wat` for both), and the frontier gate's
+  serial loop took 361 seconds on that machine, more than any battery
+  but the micros.
 - P2. Cost is counted, never timed ("Two checks that failed at random",
   below). An instrumented build counts the calls the compiler makes while
   it compiles itself, by the route the arena's counters take, and the
@@ -1436,6 +1468,23 @@ Then the medium, bottom to top.
   where an instruction the Seed lacks stops the run, and the RP2040's
   handler is §11.9's. N1:
   a bare image starts on the Seed and blinks its light at a stated rate.
+  Its first step is built (2026-11-12): `mentl run native/blink.mn` writes
+  a 460-byte file, a table of vectors and a program of 71 instructions
+  written as lines in `native/thumb.mn`, and `probe-rs run --chip
+  STM32H750IB` puts it in the chip's memory at 0x24000000 and starts it
+  there, so the flash is untouched. Read back through the probe on Morgan's
+  spare Seed: the chip runs from its crystal, the vector base is the
+  image's, and the word at 0x20000000 counts 8.008 ticks a second where
+  the program says 8, over 40 seconds. Two things were measured on the
+  way. That board's internal oscillator gives 53.3 MHz where ST names 64
+  MHz, read from the processor's cycle counter against the crystal's
+  15.98 MHz, so a stated rate is counted from the crystal. And the probe
+  tool starts an image from memory only when the file names a section
+  `.vector_table` and its section headers stand a multiple of four bytes
+  into the file. The image's instructions are still chosen by hand. The
+  step that remains is the same blink as Mentl source: a light and a
+  timer as effects, their handlers storing into the chip's registers,
+  through N0's translator.
   N2: lesson 1's tone leaves the codec, and a tuner reads 220 Hz. N3:
   sound passes through lesson 3's chain with `!Alloc` held, and the
   program prints the share of each block's time it used. N4: the footprint
@@ -2026,7 +2075,13 @@ is judged, together with its row fact. Today the claim is owed and the
 `Trap` it guards is charged at the install
 (`Hβ.verify.handler-is-a-judgment-unit`). A Float carries its range (a
 sine's [-1, 1], affine combinations, a clamp), so a frequency computed from
-a sine or a product is decided (Pulse, Wasatch).
+a sine or a product is decided (Pulse, Wasatch). An integer carries its
+range the same way, both bounds, and a word primitive is read: a word
+masked by `i32_and` is at most its mask, and one shifted right by k bits
+with `i32_shr_u` is below 2 to the power 32 less k. So an instruction's
+field cut from any number is proven to fit, and `native/thumb.mn`'s
+`set_word` takes one number. A claim at an argument reads a call's body
+as a division's does (both measured short on 2026-11-12, §7).
 The four sequence primitives' face carries parameters with no names, so
 `slice([1, 2, 3], start = 0, end = 2)` is refused with "no parameter
 named `start` on `slice`" while `mentl where` prints the declaration's

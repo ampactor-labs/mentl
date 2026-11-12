@@ -1,0 +1,121 @@
+// The first image for the Daisy Seed (PLAN §11, "The order from 2026-11-12",
+// N1): a table of vectors and a short program, written byte by byte. A debug
+// probe puts it in the chip's memory and starts it there, so the flash is
+// left as it was:
+//   mentl run native/blink.mn > blink.elf
+//   probe-rs run --chip STM32H750IB blink.elf
+// The light on the board is on for half a second and off for half a second,
+// and the word at 0x20000000 counts eighths of a second since the start.
+import io
+
+import elf
+
+import thumb
+
+// The image stands at the start of the 512 KB of memory on the chip's AXI
+// bus, and the stack begins at the top of the 128 KB nearest the processor.
+let image_at = 0x24000000
+
+let stack_top = 0x20020000
+
+// The table holds sixteen vectors of four bytes: the stack's first address,
+// where the program starts, and fourteen ways the chip can be interrupted.
+let table_size = 64
+
+// Every fault and interrupt lands on the first instruction after the table,
+// a branch to itself, so the probe finds the chip there when one happens.
+let stopped_at = image_at + table_size
+
+let start_at = stopped_at + 2
+
+// The board's crystal gives 16 MHz, and the chip's own timer counts that
+// clock down from `reload` to zero eight times a second.
+let crystal_hz = 16000000
+
+let ticks_a_second = 8
+
+let reload = crystal_hz / ticks_a_second - 1
+
+// What each register holds for the whole run, and the two that hold an
+// address only while the chip starts.
+let port = 0
+
+let next = 3
+
+let timer = 4
+
+let ticks_at = 5
+
+let clocks = 6
+
+let switches = 7
+
+// An address of Thumb code is written with its lowest bit set.
+fn vectors() = [stack_top, start_at + 1] ++ repeat(14, stopped_at + 1)
+
+fn stay_here_on_a_fault(before) = before ++ [Loop([Again(Always)])]
+
+// The chip starts on its own oscillator, which is only roughly 64 MHz: one
+// board measured 53.3 MHz. So the clock is taken from the crystal. `clocks`
+// points at the clock controls, 0x58024400. The crystal is switched on (bit
+// 16 of the first word) and the chip waits until it is steady (bit 17). It
+// then asks to run from the crystal (2 in the fifth word) and waits until
+// it does (bit 4 of that word).
+fn run_from_the_crystal(before) = before ++ set_word(clocks, 0x5802, 0x4400) ++ set_bit(clocks, 0, 16) ++ [
+  until_bit(clocks, 0, 17),
+  move_byte(scratch, 2),
+  store_word(scratch, clocks, 4),
+  until_bit(clocks, 4, 4)
+]
+
+// The light is on pin 7 of port C. The port is switched on (bit 2 of the
+// word at 0x580244E0) and the pin is made an output (bits 15 and 14 of the
+// port's first word become 0 and 1). A write of bit 7 to the port's seventh
+// word sets the pin and bit 23 clears it, so the light is turned on and
+// `next` is left holding the word that turns it off.
+fn drive_the_light(before) =
+  before ++ set_word(switches, 0x5802, 0x44E0) ++ set_bit(switches, 0, 2) ++ set_word(port, 0x5802, 0x0800) ++ set_bit(port, 0, 14) ++ clear_bit(port, 0, 15) ++ [move_byte(next, 128), store_word(next, port, 6), shift_left(next, next, 16)]
+
+// The timer's three words stand at 0xE000E010: the first starts it (5: on,
+// counting the processor's clock), the second is the count to start from
+// and the third the count now. The ticks are counted in the first word of
+// the memory nearest the processor, 0x20000000, where the probe reads them.
+fn start_the_timer(before) = before ++ set_word(timer, 0xE000, 0xE010) ++ set_word(scratch, reload / 65536, reload % 65536) ++ [
+  store_word(scratch, timer, 1),
+  move_byte(scratch, 0),
+  store_word(scratch, timer, 2),
+  move_byte(scratch, 5),
+  store_word(scratch, timer, 0)
+] ++ set_word(ticks_at, 0x2000, 0) ++ [move_byte(scratch, 0), store_word(scratch, ticks_at, 0)]
+
+// The loop the chip stays in. It waits for a tick: bit 16 of the timer's
+// first word says the count reached zero, and reading the word clears it.
+// The tick is counted. Three ticks in four change nothing. On the fourth
+// the word in `next` is written to the port and then turned by 16 bits, so
+// it sets the pin one time and clears it the next.
+fn blink_forever(before) = before ++ [
+  Loop([
+    until_bit(timer, 0, 16),
+    load_word(scratch, ticks_at, 0),
+    add_byte(scratch, 1),
+    store_word(scratch, ticks_at, 0),
+    move_byte(mask, 3),
+    test_bits(scratch, mask),
+    Again(NotEqual),
+    store_word(next, port, 6),
+    move_byte(mask, 16),
+    rotate_right(next, mask),
+    Again(Always)
+  ])
+]
+
+// What the chip does, in the order it does it.
+fn program() =
+  [] |> stay_here_on_a_fault |> run_from_the_crystal |> drive_the_light |> start_the_timer |> blink_forever
+
+fn image() = (vectors() |> flat_map(le32)) ++ (program() |> halves_of |> flat_map(le16))
+
+fn main() = {
+  memory_image(image_at, start_at + 1, image()) |> print_string
+  0
+}

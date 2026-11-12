@@ -1,0 +1,74 @@
+// The parts of an ELF file, the container an ARM program travels in, written
+// as bytes. `native/exit42.mn` builds a Linux program from them, and
+// `native/blink.mn` an image that a debug probe loads into the Daisy Seed.
+//
+// A number as two bytes and as four, lowest byte first.
+fn le16(n) = [n % 256, n / 256 % 256]
+
+fn le32(n) = le16(n % 65536) ++ le16(n / 65536)
+
+fn add_half(bytes, h) = bytes ++ le16(h)
+
+fn add_word(bytes, w) = bytes ++ le32(w)
+
+// Stages that append two-byte and four-byte numbers to the bytes before them.
+fn with_halves(hs, bytes) = hs |> fold(bytes, add_half)
+
+fn with_words(ws, bytes) = ws |> fold(bytes, add_word)
+
+fn text(bytes) = bytes |> fold("", push)
+
+// The two headers in front of a program's bytes: 52 bytes for the file, 32
+// for the one part of it that is loaded.
+fn headers() = 84
+
+// The first sixteen bytes say what the file is: an ELF file for a 32-bit
+// machine that stores the lowest byte first.
+fn ident() = [127, 69, 76, 70, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+// The file's header: an executable (2) for ARM (40) that starts at `entry`,
+// with one load header of 32 bytes right after these 52. `sections` section
+// headers of 40 bytes each stand at `sections_at`, and the last of them
+// holds their names. 0x05000200 is the flag word of the fifth ARM calling
+// convention.
+fn file_header(entry, sections_at, sections) =
+  ident() |> with_halves([2, 40]) |> with_words([1, entry, 52, sections_at, 0x05000200]) |> with_halves([52, 32, 1, 40, sections, names_index(sections)])
+
+fn names_index(sections) = if sections > 0 { sections - 1 } else { 0 }
+
+// The load header: `size` bytes that stand `offset` bytes into the file go
+// to `address`. `rights` adds 4 to read, 2 to write and 1 to run, and the
+// address and the offset differ by a multiple of `align`.
+fn load_header(offset, address, size, rights, align) =
+  [] |> with_words([1, offset, address, address, size, size, rights, align])
+
+// A section header: where a named part of the file stands and where it goes
+// in memory. `name` counts bytes into the names, `kind` is 1 for program
+// bytes and 3 for names, and `rights` adds 1 to write, 2 to load and 4 to
+// run.
+fn section_header(name, kind, rights, address, offset, size, align) =
+  [] |> with_words([name, kind, rights, address, offset, size, 0, 0, align, 0])
+
+// The names of the sections, each ended by a zero byte and the whole filled
+// to 28 bytes: an empty name, `.vector_table` at byte 1 and `.shstrtab` at
+// byte 15.
+fn section_names() = "\0.vector_table\0.shstrtab\0\0\0\0"
+
+// The three section headers of a memory image `size` bytes long: an empty
+// one, the image itself and the names.
+fn section_headers(address, size) =
+  section_header(0, 0, 0, 0, 0, 0, 0) ++ section_header(1, 1, 7, address, headers(), size, 4) ++ section_header(15, 3, 0, 0, headers() + size, 28, 1)
+
+// Bytes filled with zeros to a multiple of four. The probe tool reads the
+// section headers only where they stand a multiple of four bytes into the
+// file.
+fn filled(bytes) = bytes ++ repeat((4 - len(bytes) % 4) % 4, 0)
+
+// A file whose `bytes` a debug probe puts at `address`, to read, write and
+// run. The bytes begin with the chip's table of vectors: the probe tool
+// starts an image from memory when the file names a section `.vector_table`
+// there, so the whole image is that one section.
+fn memory_image(address, entry, bytes) = framed(address, entry, filled(bytes))
+
+fn framed(address, entry, bytes) =
+  text(file_header(entry, headers() + len(bytes) + 28, 3) ++ load_header(headers(), address, len(bytes), 7, 4) ++ bytes) ++ section_names() ++ text(section_headers(address, len(bytes)))
