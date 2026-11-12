@@ -12,7 +12,7 @@
 #      name exists on disk — the verification surface (PLAN §8) and the
 #      README's command blocks are the outsider's path; a command that does
 #      not exist is a broken promise.
-set -u
+set -u; export LC_ALL=C  # a range such as [0-9] means the same bytes on every machine: under en_US.UTF-8 it also matches a circled digit
 cd "$(dirname "$0")/.." || exit 2
 fail=0
 

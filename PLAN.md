@@ -31,6 +31,9 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
 - The pin is `11389157fa42`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
+- Sessions run in the build container and, since 2026-11-12, on Morgan's
+  own machine, where the Daisy Seed and its probe are on the desk. §11.B's
+  N0 to N4 say what each machine holds.
 - No landing is in flight. The next three, in order: the rest of P1 (a
   battery writes its modules per folder and takes a shard), N0 (the medium
   translates the WebAssembly it emits into Thumb-2, checked under an ARM
@@ -1400,9 +1403,14 @@ Then the medium, bottom to top.
   session streams its answers as they are proven (§11.6).
 - N0 to N4. The Daisy Seed (§4⑱). N0: a new verb translates an emitted
   module into Thumb-2, and the batteries' run fixtures answer their
-  contracts under an ARM emulator as they do under the engine. The build
-  container holds `qemu-arm` 8.2.2 since 2026-11-12, and its setup script
-  installs it. The translator is a Mentl program of its own, in `native/`,
+  contracts under an ARM emulator as they do under the engine. The
+  emulator is `qemu-arm`. The build container holds version 8.2.2 since
+  2026-11-12, and its setup script installs it. Morgan's machine has none
+  installed: Fedora's `qemu-user` package provides the command. The static
+  build of version 11.1.3, from `qemu-user-static-arm`, was unpacked there
+  without installing it on 2026-11-12 and ran `exit42` to exit 42. It runs
+  a file only if the file has its execute bit, and says "Exec format
+  error" otherwise. The translator is a Mentl program of its own, in `native/`,
   and no part of the wheel: it reads the module's bytes, the one artifact
   every gate has judged, and writes the chip's. So it is the second large
   program written in Mentl, in the five operators from its first line, and
@@ -1417,17 +1425,35 @@ Then the medium, bottom to top.
   A value lives on the machine's stack with its top in a register, a
   64-bit integer is two words, a float is in the floating-point unit's
   registers, and a callee removes its own arguments so a tail call can
-  reuse the frame. N1:
+  reuse the frame. The instructions are chosen for one chip at a time, by
+  a handler the translator runs under, and N0 builds the handler for the
+  Seed's Cortex-M7. The emulator tells the chips apart (measured
+  2026-11-12 on `qemu-arm` 11.1.3). Under `-cpu cortex-m7` and under `-cpu
+  cortex-m0`, the three 16-bit instructions of `exit42` run to exit 42. A
+  copy that opens with the 32-bit instruction `movw r0, #42` runs to exit
+  42 under `cortex-m7`, and under `cortex-m0` it stops with an illegal
+  instruction (exit 132). So N0's fixtures run under `-cpu cortex-m7`,
+  where an instruction the Seed lacks stops the run, and the RP2040's
+  handler is §11.9's. N1:
   a bare image starts on the Seed and blinks its light at a stated rate.
   N2: lesson 1's tone leaves the codec, and a tuner reads 220 Hz. N3:
   sound passes through lesson 3's chain with `!Alloc` held, and the
   program prints the share of each block's time it used. N4: the footprint
-  the compiler states is the memory the image is given. Morgan flashes the
-  board and reports what it does, since the build container cannot reach
-  it. His bench holds an ST-Link V3 Mini, a Seeed RP2040 board, a
-  breadboard, jumpers and LEDs (his word, 2026-11-12). So an image can go
-  in over the debug port, and text can come back over the probe's serial
-  line or the debug port itself; the wiring is worked out at N1.
+  the compiler states is the memory the image is given. The build
+  container cannot reach the board. Morgan's machine can, and sessions run
+  there too since 2026-11-12. His bench holds the Seed, an ST-Link V3
+  Mini, a Seeed RP2040 board, a breadboard, jumpers and LEDs (his word,
+  2026-11-12). His machine holds `probe-rs` 0.32.0, which drives the
+  probe, and `dfu-util` 0.11, which writes over the Seed's own USB socket.
+  Its udev rules open the probe's USB ids to his user, and the id the Seed
+  shows while it waits for an image (`0483:df11`). No board was plugged in
+  that day (`lsusb`). So from N1 a session on his machine loads the image
+  and reads the chip's memory back over the debug port itself, and the
+  landing's check is a command's output. Morgan plugs the board in and
+  reports what no command reads: the light and the sound. Text can come
+  back over the probe's serial line or the debug port. That wiring, and
+  the memory the first image is loaded into, are worked out at N1 with the
+  board attached.
 - The keystone (§11.2) follows: lowering as a column, the evaluator as a
   second reading of every program, and deep recursion moved to the heap.
 
@@ -2520,8 +2546,12 @@ are its final form. A module the compiler emits needs an engine with tail
 calls and bulk memory, and threads only when the program starts one. The
 board path is Mentl's own: no other repository's firmware and no outside
 engine stands between the compiler and the chip. The native projection
-emits the same lowering column as Thumb-2 for the Daisy Seed's Cortex-M7
-and the RP2040's Cortex-M0+. The board's clock, codec and serial line are
+emits the same lowering column as Thumb instructions for the Daisy Seed's
+Cortex-M7 and the RP2040's Cortex-M0+, chosen per chip by a handler. The
+two chips do not run the same instructions: the emulator's Cortex-M0,
+whose instruction set (ARM's ARMv6-M) is the M0+'s, stops at a 32-bit
+Thumb-2 instruction that its Cortex-M7 runs (§11.B, N0, measured
+2026-11-12). The board's clock, codec and serial line are
 handlers installed over `main`, one import per operation, the mechanism
 step 7 names for configuration, and the reading reaches `decide` as a
 record through those arms, never as text to parse. The first measurement
