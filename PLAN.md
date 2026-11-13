@@ -44,7 +44,7 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   proven or the program does not build). Its first step, the debt
   measured by kind, was taken on 2026-11-13 and found eight calls in the
   compiler's own lexer that hand an unproven position to a read with no
-  check. The next landing is §11.10 (a claim's verdict is a fact at its
+  check. The next landing is Box 4, §11.10 (a claim's verdict is a fact at its
   node), which T1's refusal reads. §11.B holds the whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
@@ -1328,7 +1328,7 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
+Three boxes are written out. On 2026-11-10 Morgan approved a night's work on
 this branch ("I trust you and approve you to work through the night"), and
 the builder read that as his gate on the boxes here, in order. Later that
 day he turned the work to the oracle and gave the builder the reins for it.
@@ -1344,8 +1344,8 @@ recommendations, gave it full permission to shape, design and implement
 the medium from the bottom up, and asked for a faster process and the
 newest engine (§4⑭ to ⑯). The landings below run in this order, each one
 commit and one pin, red on the pin first. A letter and a number name a
-landing in this list alone. Box 1 below is T3, and Box 2 is the second
-half of L1.
+landing in this list alone. Box 1 below is T3, Box 2 is the second half
+of L1, and Box 4 is §11.10, which T1's refusal reads.
 
 The pass gets fast first, because every later landing pays for it. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1826,6 +1826,118 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 4 · A claim's verdict is written at its node, and every reader
+   reads it there.** PLAN §11.10, written 2026-11-13 as T1's groundwork:
+   T1's refusal reads a call's verdict after the settle, and §9.8 forbids
+   building it on the span matching this box removes. The builder gates
+   it, under Morgan's word of 2026-11-12.
+
+   What a person sees. The caret on a value a claim is made of shows that
+   claim and its verdict. On pin f106490d4d8a, in the program of
+   tests/micros/mn-witness-proven-read-stops.mn, the caret on the call
+   `at([4, 5], k - 3)` answers `Verify: pending comparison 0 <= self at
+   at:5:12-5:29`, and the caret on `k - 3`, the value the claim is about,
+   answers no claim. `mentl query FILE traps`, the editor's strip and
+   `mentl teach` answer what they answer today, read from the nodes.
+
+   Fails today, on pin f106490d4d8a. Every reader finds a claim's verdict
+   by matching a module and a span against the ledger's lists:
+   - the traps facet scans the ledger's decided, owed and handed lists
+     once for each of the wheel's 3,205 places (`trap_claim_at`,
+     src/query.mn);
+   - the strip filters the whole program's decided and handed lists for
+     each module it draws (`canvas_of`, src/space.mn);
+   - teach filters the faces' debt by module and overlapping span for each
+     declaration (`open_obligations`, `return_suggestions`, src/mentl.mn);
+   - the caret counts a claim as a node's when the claim's span lies
+     inside the node's (`verify_pending_at`, src/cursor.mn), so a claim
+     said at a call is never its argument's.
+   These readers hold 20 values the memory walk cannot place and 2 places
+   that can trap with no claim (each module's census read at the readers'
+   lines: 13 values in the traps facet's matching, 2 values and 2 places
+   in the strip's filters, 5 values in teach's).
+
+   What it buys. Each reader reads one node where it scanned a list. A
+   fork's verdicts go with its version, so the fork's copy of the decided
+   list and `verify_adopt` leave. T1's refusal can read whether a call's
+   claim is still open after the settle.
+
+   The form.
+   - `type ClaimAt = {node: Int, span: Span, pred: Predicate, why:
+     Reason}` (src/types.mn) is one claim: the node it stands at, the span
+     it is said at, what it claims and why it was raised. The node is the
+     value a refinement is claimed of, where `graph_claim_note` notes the
+     contract today; the operation a partial operation's claim guards; the
+     pattern a shape claim guards; or the function value a crossing demand
+     is made of. A claim's module is `graph_module_of(claim.node)`, read
+     where the claim is printed, so the ledger carries no module.
+   - `verify(ClaimAt) -> Option(Bool)` replaces `verify(Int, Span,
+     Predicate, Reason)`, and the ledger's lists hold `ClaimAt`.
+   - `type ClaimVerdict = ClaimOpen | ClaimHanded | ClaimProven |
+     ClaimRefused`, and a column of the graph's version,
+     `graph_verdict_note(h, (Predicate, ClaimVerdict))` and
+     `graph_verdicts_of(h) -> [(Predicate, ClaimVerdict)]` (src/graph.mn),
+     written the way `graph_claim_note` is.
+   - `verify_claim(node, span, pred, reason)` (src/verify.mn) writes
+     ClaimProven or ClaimRefused at the node when the ledger decides the
+     claim. A claim left open gets its verdict once, after the settle:
+     `reask_settle` writes what the re-ask decided (ClaimProven,
+     ClaimHanded, ClaimRefused), and then ClaimOpen at the node of each
+     claim still in the debt. `flow_settle` writes the label claims'
+     verdicts the same way.
+   - Each of the eleven claim sites in src/infer.mn passes its node:
+     `partiality_claim` and `infer_index_force` their `handle`,
+     `claim_shape` its `pat`, `owe_face_claim` the call (`proven_form`
+     gains the call's `handle`), `apply_refinement_constraint` and the
+     opaque parts the value, `open_demand` and the return claim in
+     `cross_result` the crossing function value (`provision_verdict` and
+     `usage_of_unknown` gain it), and `branch_replay_verify` the node its
+     entry recorded.
+   - The readers read nodes. The traps facet's claim at a place is the
+     meet of the verdicts at the place's node and at its arguments' nodes,
+     since a call pays its guard for its arguments' claims. The strip marks
+     each node of the module by its verdicts, at the node's span. Teach
+     reads the open and handed verdicts at the nodes of a declaration's
+     extent. The caret reads its node and the nodes below it.
+     `decl_claim_facts` reads the label verdicts in a declaration's extent.
+   - What leaves: the ledger's `decided` and `handed` lists and the
+     operations that read them (`verify_decided`, `verify_handed`,
+     `verify_adopt`); the fork's copy of the decided list (the branch
+     snapshot in src/infer.mn and the segment in src/synth_proposer.mn);
+     `trap_ledger`, `trap_claim_at`, `trap_owed_at` and `trap_decided_at`;
+     the strip's `decided_here`; and teach's `owed_at`.
+   - The printers keep reading the open debt and take each claim's module
+     from its node: `report_verify_debt`, `debt_text`, `battery_pending`,
+     the LSP's diagnostics, and query's `verification`, `smt` and `census
+     call-claims`.
+
+   Edge cases. A node can hold several claims: a structure's parts, or a
+   claim's label half beside its value half. It holds one verdict for
+   each, and a reader takes their meet: refused, then open, then handed,
+   then proven, the order `trap_claim_at` reads today. A claim judged
+   inside a fork writes the fork's version, which is kept or dropped with
+   it. A claim re-judged after an edit is forgotten with the declarations
+   it stood in (`verify_forget`), by node.
+
+   Refuses nothing new.
+
+   Left alone. The lines `mentl check` prints and their coordinates,
+   since the debt keeps the span each claim is said at. The row notes that
+   charge `Trap` at an open partial operation, which the lowering reads
+   (`claim_open_at`). The places the traps facet finds.
+
+   What pays for its code on the board. The 20 values and 2 places of the
+   span matching leave with it. The record's field reads and the column's
+   reads are the new code's cost, which the candidate's `mentl verify`
+   measures before the landing pass; the receipt names both.
+
+   Proves it. On the candidate, `mentl query FILE traps` answers the same
+   places with the same verdicts as the pin, read site by site, on the
+   wheel and the twelve lessons, and `mentl check` prints the same lines.
+   Every battery keeps its count of fixtures. The caret on `k - 3` in
+   tests/micros/mn-witness-proven-read-stops.mn answers its claim, open,
+   where the pin answers none.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
