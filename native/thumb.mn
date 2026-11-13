@@ -1,8 +1,9 @@
 // check: clean
 // Thumb instructions for the Daisy Seed's Cortex-M7, each as the 16-bit
 // halves the chip reads, and a program as lines that know where their loops
-// and blocks begin and end. The translator's code generator is built from
-// this file (PLAN §11, "The order from 2026-11-12", N0).
+// and blocks begin and end. The native projection's encoder writes these
+// (PLAN §4⑱, docs/NATIVE.md), and `native/encodes-thumb.mn` holds each form
+// against the bytes `llvm-objdump` reads back.
 import io
 
 // One of the eight registers a 16-bit instruction can name.

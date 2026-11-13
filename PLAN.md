@@ -36,12 +36,10 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   N0 to N4 say what each machine holds.
 - No landing is in flight. A Mentl-written image runs on Morgan's spare
   Daisy Seed since 2026-11-12, loaded into its memory by the probe: the
-  first step of N1 (§11.B). The translator from WebAssembly to Thumb-2
-  takes whole numbers, locals, control flow and calls, the third of N0's
-  five steps. The next three, in order: the rest of N0 (memory, globals,
-  data and the host's calls, so the compiler's own modules translate and
-  the batteries answer both ways under an ARM emulator, then the rest of
-  the instruction set); the rest of P1 (a battery writes its modules per
+  first step of N1 (§11.B). The chip's code comes from the native
+  projection, after the keystone and the memory landings (§4⑱); a
+  translator from WebAssembly, built first, was removed on 2026-11-13. The
+  next two, in order: the rest of P1 (a battery writes its modules per
   folder);
   and T1 (a stated claim is proven or the program does not build, which
   starts by measuring what is pending today, by kind). §11.B holds the
@@ -625,19 +623,28 @@ each declaration (§11.B).
 
 **⑱ The first board is the Daisy Seed, reached by Mentl alone** (Morgan,
 2026-11-12: "I wanna run Mentl on my Daisy Seed Rev 7 doing audio DSP";
-not built). The Seed is a Cortex-M7 board with an audio codec. The path
-holds no other repository's firmware and no engine (MENTL_MEMORY.md's
-standing rule). The medium translates the WebAssembly module it already
-emits into Thumb-2 itself, so the artifact every gate has checked is the
-one that reaches the chip, and every fixture can run both ways and must
-agree. On the board an address is the chip's own address. So the board's
-clock tree, its audio port and its codec are handlers written in Mentl
-that store into the chip's registers, installed over `main` (§11.9), and a
-model of the board answers the same operations on a desk (⑫). The audio
-path keeps its claims on the chip: `!Alloc` holds for every frame, and the
-footprint the compiler states is the memory the board gives it (⑨). The
-lowering's own native projection (§11.9) is a second route to the same
-chip, built when the keystone lands, and the two must agree.
+the board's first image built 2026-11-12, the route not built). The Seed
+is a Cortex-M7 board with an audio codec. The path holds no other
+repository's firmware and no engine (MENTL_MEMORY.md's standing rule).
+The chip's code is the native projection, a handler over the lowering
+column beside the WAT emit (⑧, §11.9, docs/NATIVE.md), so the facts the
+judgment holds reach the chip and a check the verifier discharged is left
+out of the code. It is built after the keystone (§11.2) and after the
+memory landings that place each extent in the chip memory its clock needs
+(MENTL_MEMORY.md, M5 to M9). Every fixture runs both ways, under the
+engine and under an ARM emulator, and the two must agree. On the board an
+address is the chip's own address. So the board's clock tree, its audio
+port and its codec are handlers written in Mentl that store into the
+chip's registers, installed over `main` (§11.9), and a model of the board
+answers the same operations on a desk (⑫). The audio path keeps its
+claims on the chip: `!Alloc` holds for every frame, and the footprint the
+compiler states is the memory the board gives it (⑨). The builder first
+chose to translate the emitted WebAssembly into Thumb-2, to reach the
+board before the keystone. Morgan asked on 2026-11-13 whether the work
+stood on something the plan replaces, and it did: WebAssembly keeps an
+instruction and drops the proof, so the translator tested again on the
+chip what the compiler had proved. It was removed (§11.B, N0 to N4, holds
+the measurement).
 
 **⑯ The engine is the newest stable release, and a feature is adopted for
 what it lets the host enforce or the compiler delete** (Morgan,
@@ -1438,66 +1445,64 @@ Then the medium, bottom to top.
   a program is explored, nearest the caret first, and each proposal says
   what it unlocks. O3: forks run on every core (§11.8). O4: a resident
   session streams its answers as they are proven (§11.6).
-- N0 to N4. The Daisy Seed (§4⑱). N0: a new verb translates an emitted
-  module into Thumb-2, and the batteries' run fixtures answer their
-  contracts under an ARM emulator as they do under the engine. The
-  emulator is `qemu-arm`. The build container holds version 8.2.2 since
-  2026-11-12, and its setup script installs it. Morgan's machine holds
-  version 11.1.3 since the same day, from Fedora's `qemu-user` package,
-  and it runs `exit42` to exit 42 there. It runs a file only if the file
-  has its execute bit, and says "Exec format error" otherwise. The
-  translator is a Mentl program of its own, in `native/`,
-  and no part of the wheel: it reads the module's bytes, the one artifact
-  every gate has judged, and writes the chip's. So it is the second large
-  program written in Mentl, in the five operators from its first line, and
-  the wheel's counts on the board do not move. It goes in five steps, and
-  three are built (2026-11-12). The first: `mentl run native/exit42.mn`
-  writes a 90-byte ARM program byte by byte, and `qemu-arm` runs it to
-  exit 42. The second is the reader of a module's sections: `mentl run
-  native/sections.mn < module.wasm` prints each section's kind, where its
-  body starts, its size in bytes and its count of entries. It agrees with
-  `wasm-objdump -h` on every section of the 669 modules the batteries had
-  built, 7,335 sections, and on the compiler's own module of 5,143,029
-  bytes, which it reads in 0.05 seconds. A file that is no module, and a
-  module cut short, are each refused in a sentence that says where. The
-  reader keeps the bytes not yet read and takes them apart by pattern, so
-  it indexes nothing and `mentl check` leaves it no claim. `native/` is a
-  battery of the landing pass since the same day: each of its files
-  states its contract on its first line. The third translates whole
-  numbers, locals, blocks, loops, branches and calls: `mentl run
-  native/translate.mn < module.wasm > module.elf` writes a Linux program
-  that calls the module's `main` and exits with its answer, or with 134
-  where the module traps. 21 modules written by hand for it each answer
-  the same under the engine (`wasmtime --invoke main`) and, translated,
-  under `qemu-arm -cpu cortex-m7`: recursion 20,000 calls deep, a
-  function with 42 locals, branches that drop values out of nested
-  blocks, signed and unsigned comparison, division and remainder, shifts
-  by more than 31 bits, constants of every width, and the three traps (a
-  division by zero, the least number divided by -1, and `unreachable`).
-  A module that imports, touches memory or holds a 64-bit number is
-  refused, naming the byte. That run of both ways is a script of the
-  session's and no gate's: every module the compiler writes imports the
-  host's calls, so the batteries' run fixtures can answer both ways from
-  the fourth step on. `native/translates-a-recursive-call.mn` holds what
-  the emulator showed for one module, the instructions that ran to 89.
-  The next two, each with its fixtures passing both ways before the one
-  after: memory, globals, data and the three host calls a program
-  imports; then tail calls, calls through the table, block memory
-  operations, 64-bit integers and floats.
-  A value lives on the machine's stack with its top in a register, a
-  64-bit integer is two words, a float is in the floating-point unit's
-  registers, and a callee removes its own arguments so a tail call can
-  reuse the frame. The instructions are the Cortex-M7's, written as
-  functions in `native/thumb.mn`; a handler that chooses them for one
-  chip at a time is still to be built. The emulator tells the chips apart (measured
-  2026-11-12 on `qemu-arm` 11.1.3). Under `-cpu cortex-m7` and under `-cpu
+- The keystone (§11.2): lowering as a column, the evaluator as a second
+  reading of every program, and deep recursion moved to the heap.
+- N0 to N4. The Daisy Seed (§4⑱). The chip's code is the native
+  projection: a handler over the lowering column beside the WAT emit
+  (§4⑧, §11.9, docs/NATIVE.md). It is built after the keystone above, and
+  after the memory landings MENTL_MEMORY.md orders before its own native
+  projection: two memories (M5), exits per extent (M6), a value allocated
+  where it will live (M8), and layout and placement read from the program
+  (M9), which put each extent in the chip memory its clock needs. N0: the
+  native projection writes the Thumb-2 instructions of one chip, chosen by
+  a handler, and every battery's run fixtures answer their contracts under
+  an ARM emulator as they do under the engine.
+
+  A translator from the emitted WebAssembly to Thumb-2 was built first,
+  on 2026-11-12, and removed on 2026-11-13. It took whole numbers, locals,
+  control flow and calls, and 21 modules written by hand for it each
+  answered the same under the engine and, translated, under the emulator.
+  Morgan asked whether the work stood on something the plan replaces, and
+  it did. WebAssembly keeps an instruction and drops the proof. The
+  division in tests/micros/mn-call-reads-the-callee.mn, `100 / five()`,
+  is proven total, so the compiler writes a bare `i32.div_s` for it, and
+  WebAssembly defines that instruction to trap; the translator therefore
+  tested for zero and for the least number divided by -1 before every
+  division, proven or not. Its next step would have tested every load and
+  store against the memory's size: lesson 1's module (`mentl compile
+  examples/pulse/course/01-tone.mn`, pin 39f3181a46eb) holds 141 loads,
+  109 stores and 8 calls through the table, each a check made when the
+  program runs where the compiler holds the fact or is to hold it
+  (MENTL_MEMORY.md's law). And a store to a chip register, such as
+  0x58024400, is in WebAssembly a store that far into the module's own
+  memory, so "an address is the chip's own address" (§4⑱) cannot hold
+  through a translator. The translator came first only to reach the board
+  before the keystone, and what arrives sooner does not choose a route.
+
+  What stays in `native/`, a battery of the landing pass: the Thumb-2
+  encoders (`native/thumb.mn`), each field of each instruction a refined
+  parameter, so `mentl check` proves it fits; `native/encodes-thumb.mn`,
+  which holds a program `qemu-arm -cpu cortex-m7` ran to exit 89 and every
+  other instruction form the encoders write, each as `llvm-objdump` reads
+  it back; the ELF writer (`native/elf.mn`); `native/exit42.mn`, a 90-byte
+  Linux program the emulator runs to exit 42; and the board's first image,
+  below. In docs/NATIVE.md the encoder is a handler on the lowering
+  (`~> NativeOut`), and these encoders are the instructions it writes.
+
+  The emulator is `qemu-arm`. The build container holds version 8.2.2
+  since 2026-11-12, and its setup script installs it. Morgan's machine
+  holds version 11.1.3 since the same day, from Fedora's `qemu-user`
+  package. It runs a file only if the file has its execute bit, and says
+  "Exec format error" otherwise. It tells the chips apart (measured
+  2026-11-12 on version 11.1.3). Under `-cpu cortex-m7` and under `-cpu
   cortex-m0`, the three 16-bit instructions of `exit42` run to exit 42. A
   copy that opens with the 32-bit instruction `movw r0, #42` runs to exit
   42 under `cortex-m7`, and under `cortex-m0` it stops with an illegal
   instruction (exit 132). So N0's fixtures run under `-cpu cortex-m7`,
   where an instruction the Seed lacks stops the run, and the RP2040's
-  handler is §11.9's. N1:
-  a bare image starts on the Seed and blinks its light at a stated rate.
+  handler is §11.9's.
+
+  N1: a bare image starts on the Seed and blinks its light at a stated rate.
   Its first step is built (2026-11-12): `mentl run native/blink.mn` writes
   a 460-byte file, a table of vectors and a program of 71 instructions
   written as lines in `native/thumb.mn`, and `probe-rs run --chip
@@ -1514,7 +1519,7 @@ Then the medium, bottom to top.
   into the file. The image's instructions are still chosen by hand. The
   step that remains is the same blink as Mentl source: a light and a
   timer as effects, their handlers storing into the chip's registers,
-  through N0's translator.
+  through the native projection.
   N2: lesson 1's tone leaves the codec, and a tuner reads 220 Hz. N3:
   sound passes through lesson 3's chain with `!Alloc` held, and the
   program prints the share of each block's time it used. N4: the footprint
@@ -1533,10 +1538,8 @@ Then the medium, bottom to top.
   back over the probe's serial line or the debug port. That wiring, and
   the memory the first image is loaded into, are worked out at N1 with the
   board attached.
-- The keystone (§11.2) follows: lowering as a column, the evaluator as a
-  second reading of every program, and deep recursion moved to the heap.
 
-The first stretch runs P1, N0, T1, L1, N1, N2, T4, R2 and O1. P2 to P5
+The first stretch runs P1, T1, L1, T4, R2 and O1. P2 to P5
 and P7 are taken between them, each when the landing before it shows what
 it would save.
 

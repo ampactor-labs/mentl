@@ -1,0 +1,267 @@
+// expect: 0
+// The Thumb-2 encoders of `native/thumb.mn`, checked against bytes read back
+// by `llvm-objdump --triple=thumbv7em-none-eabihf` and run by `qemu-arm -cpu
+// cortex-m7`. The first program is a start, a stop and two functions: fib,
+// and a main that asks fib for its eleventh number. Its 59 halves ran to
+// exit 89 under the emulator. The second is every other instruction form
+// the encoders write, each read back as the instruction its line names.
+// main answers 0 where every half comes out the same, and 1 otherwise.
+import io
+
+import thumb
+
+// The start calls main, function 1, and asks the system to end the program
+// with what main answered (movs r7, #1; svc 0). The stop ends it with 134.
+let opening = [Call(1), move_byte(7, 1), system_call]
+
+let stop = [move_byte(0, 134), move_byte(7, 1), system_call]
+
+// fib(n) answers n where n is less than 2, and fib(n - 1) + fib(n - 2)
+// otherwise. The value on top is in r0 and the rest are on the stack; n
+// stands two words above the frame, past the caller's frame and the way
+// back. The body is one block, and the choice is a block that holds a
+// block: the inner one is left where n is not less than 2, and the outer
+// one at the end of the first answer.
+fn fib() = [
+  save_frame,
+  move_byte(1, 0),
+  mark_frame,
+  block_of([
+    load_word(0, 7, 2),
+    push_reg(0),
+    move_byte(0, 2),
+    pop_reg(1),
+    compare_regs(1, 0),
+    either(Less),
+    move_byte(0, 1),
+    move_byte(0, 0),
+    compare_byte(0, 0),
+    block_of([
+      block_of([Jump(Equal, 0), load_word(0, 7, 2), Jump(Always, 1)]),
+      load_word(0, 7, 2),
+      push_reg(0),
+      move_byte(0, 1),
+      pop_reg(1),
+      subtract_regs(0, 1, 0),
+      push_reg(0),
+      Call(0),
+      push_reg(0),
+      load_word(0, 7, 2),
+      push_reg(0),
+      move_byte(0, 2),
+      pop_reg(1),
+      subtract_regs(0, 1, 0),
+      push_reg(0),
+      Call(0),
+      pop_reg(1),
+      add_regs(0, 1, 0)
+    ])
+  ]),
+  stack_to_frame,
+  pop_reg(7),
+  pop_reg(1),
+  drop_words(1),
+  return_through_one
+]
+
+// main puts 11 on the stack, calls fib, and returns with fib's answer.
+fn main_function() = [
+  save_frame,
+  move_byte(1, 0),
+  mark_frame,
+  block_of([move_byte(0, 11), push_reg(0), Call(0)]),
+  stack_to_frame,
+  pop_reg(7),
+  pop_reg(1),
+  return_through_one
+]
+
+// fib stands right after the start and the stop, and main right after fib.
+fn fib_program() = {
+  let first = size_of(opening) + size_of(stop)
+  opening ++ stop ++ fib() ++ main_function() |> halves_of ~> placed([first, first + size_of(fib())], size_of(opening))
+}
+
+fn fib_halves() = [
+  0xF000,
+  0xF82E,
+  0x2701,
+  0xDF00,
+  0x2086,
+  0x2701,
+  0xDF00,
+  0xB580,
+  0x2100,
+  0x466F,
+  0x68B8,
+  0xB401,
+  0x2002,
+  0xBC02,
+  0x4281,
+  0xBFB4,
+  0x2001,
+  0x2000,
+  0x2800,
+  0xF000,
+  0x8003,
+  0x68B8,
+  0xF000,
+  0xB813,
+  0x68B8,
+  0xB401,
+  0x2001,
+  0xBC02,
+  0x1A08,
+  0xB401,
+  0xF7FF,
+  0xFFE7,
+  0xB401,
+  0x68B8,
+  0xB401,
+  0x2002,
+  0xBC02,
+  0x1A08,
+  0xB401,
+  0xF7FF,
+  0xFFDE,
+  0xBC02,
+  0x1808,
+  0x46BD,
+  0xBC80,
+  0xBC02,
+  0xB001,
+  0x4708,
+  0xB580,
+  0x2100,
+  0x466F,
+  0x200B,
+  0xB401,
+  0xF7FF,
+  0xFFD0,
+  0x46BD,
+  0xBC80,
+  0xBC02,
+  0x4708
+]
+
+// Every other form, each line followed in a comment by what llvm-objdump
+// reads. The function with number 0 and the stop both stand at the first
+// instruction.
+fn forms() = [
+  // sdiv r0, r1, r0
+  divide(0, 1, 0),
+  // udiv r2, r1, r0
+  divide_unsigned(2, 1, 0),
+  // mls r0, r2, r0, r1
+  multiply_subtract(0, 2, 0, 1),
+  // muls r0, r1, r0
+  multiply_into(0, 1),
+  // ands r0, r1
+  and_into(0, 1),
+  // orrs r0, r1
+  or_into(0, 1),
+  // eors r0, r1
+  xor_into(0, 1),
+  // lsls r1, r0
+  shift_left_by(1, 0),
+  // lsrs r1, r0
+  shift_right_by(1, 0),
+  // asrs r1, r0
+  shift_right_signed_by(1, 0),
+  // lsls r2, r2, #31
+  shift_left(2, 2, 31),
+  // adds r2, r0, #1
+  add_small(2, 0, 1),
+  // mov r0, r2
+  copy_reg(0, 2),
+  // add sp, #12
+  drop_words(3),
+  // ldr.w r0, [r7, #160]
+  load_far(0, 7, 40),
+  // str.w r0, [r7, #160]
+  store_far(0, 7, 40),
+  // tst r1, r2
+  test_bits(1, 2),
+  // bics r1, r2
+  clear_bits(1, 2),
+  // rors r3, r2
+  rotate_right(3, 2),
+  // adds r6, #1
+  add_byte(6, 1),
+  // cmp r7, #5
+  compare_byte(7, 5),
+  // str r3, [r0, #24]
+  store_word(3, 0, 6),
+  // ite ne
+  either(NotEqual),
+  // ite ge
+  either(GreaterEqual),
+  // ite lo
+  either(Below),
+  // ite hi
+  either(Above),
+  // bne.w, movs, b.w past the block
+  block_of([Jump(NotEqual, 0), move_byte(0, 1), Jump(Always, 0)]),
+  // movs, blt back to the movs
+  loop_of([move_byte(0, 1), Again(Less)]),
+  // beq.w to the stop
+  StopIf(Equal),
+  // bl to function 0
+  Call(0)
+] ++
+// movw r1, #0xa7ff; movt r1, #0x61
+set_word(1, 0x0061A7FF)
+
+fn forms_halves() = [
+  0xFB91,
+  0xF0F0,
+  0xFBB1,
+  0xF2F0,
+  0xFB02,
+  0x1010,
+  0x4348,
+  0x4008,
+  0x4308,
+  0x4048,
+  0x4081,
+  0x40C1,
+  0x4101,
+  0x07D2,
+  0x1C42,
+  0x4610,
+  0xB003,
+  0xF8D7,
+  0x00A0,
+  0xF8C7,
+  0x00A0,
+  0x4211,
+  0x4391,
+  0x41D3,
+  0x3601,
+  0x2F05,
+  0x6183,
+  0xBF14,
+  0xBFAC,
+  0xBF34,
+  0xBF8C,
+  0xF040,
+  0x8003,
+  0x2001,
+  0xF000,
+  0xB800,
+  0x2001,
+  0xDBFD,
+  0xF43F,
+  0xAFD8,
+  0xF7FF,
+  0xFFD6,
+  0xF24A,
+  0x71FF,
+  0xF2C0,
+  0x0161
+]
+
+fn forms_program() = forms() |> halves_of ~> placed([0], 0)
+
+fn main() =
+  if fib_program() == fib_halves() && forms_program() == forms_halves() { 0 } else { 1 } ~> fail_exit

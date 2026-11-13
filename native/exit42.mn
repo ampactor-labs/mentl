@@ -1,6 +1,6 @@
 // expect: 0
-// The first step of the route to the Daisy Seed (PLAN §11, "The order from
-// 2026-11-12", N0): an ARM program made by hand, byte by byte.
+// The emulator's test path for the Daisy Seed's code (PLAN §11, "The order
+// from 2026-11-12", N0): an ARM program made by hand, byte by byte.
 // `mentl run native/exit42.mn > exit42.elf` writes 90 bytes, and
 // `qemu-arm exit42.elf` exits 42 once the file may be run (`chmod +x`).
 import io

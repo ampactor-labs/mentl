@@ -552,6 +552,15 @@ Each rule here was paid for by a stop or a wrong answer.
   as optional numbers raised three counts, by 3, 52 and 2; with each end a
   word, where an end nothing bounds is the least or the greatest word,
   every count came to or under its limit.
+- Before a route is built, read every passage that describes the same
+  mechanism, and build the one they agree on. On 2026-11-12 one decision
+  (PLAN §4⑱) chose to translate the emitted WebAssembly for the Daisy Seed,
+  so the board would be reached before the keystone, while PLAN §4⑧,
+  §11.9, docs/NATIVE.md and MENTL_MEMORY.md's landings all make native
+  code a projection of the lowering. A module reader and a translator were
+  built before Morgan asked whether the work stood on something the plan
+  replaces, and on 2026-11-13 they were removed. What arrives sooner does
+  not choose a route.
 - When a check fails on a landing, compare what the pinned compiler writes
   for the same program before changing anything. A check that fails on the
   same bytes from both compilers is unreliable, and an unreliable check is
