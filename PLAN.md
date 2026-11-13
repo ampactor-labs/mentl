@@ -40,9 +40,12 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   projection, after the keystone and the memory landings (§4⑱); a
   translator from WebAssembly, built first, was removed on 2026-11-13.
   Since that day each battery writes its modules under the fixtures' own
-  paths and runs in a lane of its own. The next landing is T1 (a stated
-  claim is proven or the program does not build, which starts by
-  measuring what is pending today, by kind). §11.B holds the whole order.
+  paths and runs in a lane of its own. The work is T1 (a stated claim is
+  proven or the program does not build). Its first step, the debt
+  measured by kind, was taken on 2026-11-13 and found eight calls in the
+  compiler's own lexer that hand an unproven position to a read with no
+  check. The next landing is §11.10 (a claim's verdict is a fact at its
+  node), which T1's refusal reads. §11.B holds the whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -892,7 +895,10 @@ accepts each program and `mentl run` shows the break.
 - A refinement claim left pending is assumed by its callee and checked
   nowhere when the program runs, so a read it proves can read outside its
   list; Morgan decided on 2026-11-12 that a program holding such a claim
-  does not build (§4⑮), which is not built (§11.B, T1).
+  does not build (§4⑮), which is not built (§11.B, T1). The compiler's
+  own lexer makes eight such calls: `lex_from`, `scan_string` and
+  `triple_common_indent` read the source unchecked on a position nothing
+  proves is at least 0 (a probe compiler, 2026-11-13; T1).
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
@@ -1376,16 +1382,42 @@ minute, and no expectation kept by hand.
 Then the medium, bottom to top.
 
 - T1. A stated claim is proven or the program does not build (§4⑮), in
-  four steps. First the debt is measured by kind: what `mentl check`
-  leaves pending in lessons 6 and 7, Pulse, Wasatch, the library and the
-  wheel, split into partial operations nobody claimed, stated refinements,
-  and calls that do not prove what their callee relies on. Second, a call
-  that does not prove what its callee relies on is refused, with the guard
-  that settles it. This closes §11.1(b)'s wrong acceptance and adds no
-  mechanism: the judgment already knows such a call (`pay_guard`,
-  src/infer.mn). Red first: §11.1(b)'s two programs, `at([4, 5], k - 3)`
-  and `keep_small(x + 1)`, have no fixture, and each becomes one that must
-  refuse, beside a guarded twin that must build and run. Third, an
+  four steps. The first, the debt measured by kind, was taken on
+  2026-11-13 on pin f106490d4d8a over the twelve lessons, both scores,
+  the grid controller and the wheel. A probe compiler reported every call
+  whose argument did not prove its callee's refinement, and each report
+  was read against `mentl query FILE verification`, which lists what stays
+  open after the settle. Of 123 distinct open claims, 69 are partial
+  operations nobody claimed (a read, a cut, a division or a pattern; 57 of
+  them in the wheel), 13 are stated refinements away from any call, and
+  41 are stated refinements a call leaves open, with two more that are
+  parts of a structured contract. The claims open at explicit calls of a
+  partial primitive are counted apart (`census call-claims`, 652 in the
+  wheel's link). Ten of the open calls are to a callee that leans on the
+  claim. Two of those call `float_to_int`, a primitive whose check stays
+  at the call: a scratch program that hands it 1000000000000.0 stops with
+  "a precondition failed … the operand is outside the word". The other
+  eight are in src/lexer.mn. There `lex_from`, `scan_string` and
+  `triple_common_indent` read the source without a check, because a
+  position's `ValidOffset` says it is at least 0, and the position handed
+  in comes out of a scanner's answer, or a parameter, that states
+  nothing. That is §11.1(b)'s false proof inside the compiler. Another 257
+  calls hold their callee's claim only on a part nothing proves: a sum
+  whose bound ignores the word wrapping, a callee's stated return, which
+  the verifier reads as still owed, or a let's own claim. The callee leans
+  on the claim in 73 of them. Second, a call that leaves open a claim its
+  callee's body leans on is refused, with the guard that settles it, and
+  the eight lexer positions are stated where they are made. The refusal
+  reads each claim's verdict after the settle, because a claim open where
+  the judgment meets it can be proven later through what the program's
+  calls hand it (a scratch program, 2026-11-13), so §11.10 lands before
+  it. Red first: tests/micros/mn-witness-proven-read-stops.mn is
+  `at([4, 5], k - 3)`; it builds today and only its witness build stops.
+  It becomes a fixture that must refuse, beside a guarded twin that must
+  build and run. `keep_small(x + 1)`, where nothing leans on the claim,
+  is refused with the 33 open calls of that kind once the verifier
+  decides a Float range (§11.3), since 17 of them are `ReducibleAngle`
+  claims, in the library, lesson 7 and the two scores. Third, an
   undecided stated claim refuses the build, once the first step's count of
   such claims in `examples/`, `lib/` and the wheel is zero; R1, §11.3 and
   §11.10 bring it there, most claims first. Fourth, a predicate the
