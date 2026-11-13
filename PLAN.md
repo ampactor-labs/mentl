@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `82d70f4fff10`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `39f3181a46eb`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's

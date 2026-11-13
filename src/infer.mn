@@ -15959,8 +15959,11 @@ fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
 // A provision is what a position is handed, never a demand on it. A label is
 // what can influence a value, which a computation carries and a learned
 // precondition would not, so a contract naming one is owed where the settle
-// finds its demands (verify.mn's `flow_settle`), never learned here.
-fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) && !is_provision(contract) && !ty_names_a_label(contract) {
+// finds its demands (verify.mn's `flow_settle`), never learned here. A claim
+// the function's own guard already proves is no demand on its callers:
+// `fn f(k) = if 0 <= k && k <= 31 { want5(k) } else { 0 }` asks nothing of
+// `f(40)`, which answers 0 (verify.mn's `holds_where_it_stands`).
+fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) && !is_provision(contract) && !ty_names_a_label(contract) && !holds_where_it_stands(contract, ah) {
   match flow_param(ah) {
     Some(b) => match graph_binder_of(b) {
       Some(fact) => match fact {

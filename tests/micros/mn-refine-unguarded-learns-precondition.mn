@@ -1,0 +1,11 @@
+// check: refuse E_RefinementRejected
+// A function that hands its parameter straight to a refined one, with no
+// guard, still makes its callers owe that refinement: `passes(40)` is
+// refused where it is written.
+type Bits5 = Int where 0 <= self && self <= 31
+
+fn want5(n: Bits5) = n
+
+fn passes(k) = want5(k)
+
+fn main() = passes(40)

@@ -1753,7 +1753,12 @@ own claim is open: `inv(5)` leaves nothing to prove, `inv(m + 1)` charges
 `Trap` to its caller, and a caller that passes its own `p: Positive` passes
 the guard on to its own callers. A parameter with no annotation that is
 passed straight into a refined position takes on that precondition
-(`fn wrap(x) = inv(x)` requires `Positive` of its callers). A function with
+(`fn wrap(x) = inv(x)` requires `Positive` of its callers), unless the
+function's own guard already proves the claim there: `fn f(k) = if 0 <= k
+&& k <= 31 { want5(k) } else { 0 }` asks nothing of its callers, and
+`f(40)` answers 0 (tests/micros/mn-refine-own-guard-owes-callers-nothing.mn;
+a guard that admits more than the claim still teaches it,
+mn-refine-guard-too-wide-learns.mn). A function with
 no written return type publishes the contract that every return tail
 carries, and a call to itself is read as returning what the other tails
 return.

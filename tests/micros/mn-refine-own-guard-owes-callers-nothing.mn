@@ -1,0 +1,11 @@
+// check: clean
+// A function whose own guard proves a call's claim owes its callers nothing
+// for that call: `guarded(40)` answers 0 and never calls `want5`, so it is
+// no refusal and leaves nothing open.
+type Bits5 = Int where 0 <= self && self <= 31
+
+fn want5(n: Bits5) = n
+
+fn guarded(k) = if 0 <= k && k <= 31 { want5(k) } else { 0 }
+
+fn main() = guarded(40)

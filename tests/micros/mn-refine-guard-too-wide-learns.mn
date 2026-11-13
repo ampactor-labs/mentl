@@ -1,0 +1,11 @@
+// check: refuse E_RefinementRejected
+// A guard that admits more than the claim proves nothing, so the parameter
+// still learns the claim and its callers still owe it: `loose(40)` is
+// refused, since 40 passes the guard and is no five-bit number.
+type Bits5 = Int where 0 <= self && self <= 31
+
+fn want5(n: Bits5) = n
+
+fn loose(k) = if 0 <= k && k <= 63 { want5(k) } else { 0 }
+
+fn main() = loose(40)

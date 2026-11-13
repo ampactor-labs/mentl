@@ -375,8 +375,11 @@ fn board_bounds() = [
   // of what a value can be are words, where the verifier handed an optional
   // number from reader to reader. The walk places nothing it could not
   // place before: the readers of a value's bounds hold fewer values, the
-  // new readers of a masked and a shifted word among them.
-  Bound({ceiling: 32099, question: QCensus(CsUnplaced)}),
+  // new readers of a masked and a shifted word among them. 32,099 -> 32,094
+  // the same day: a contract's two ends are read in one place
+  // (`contract_low`, `contract_high`), where six readers each built the
+  // contract's domain record to read one end of it.
+  Bound({ceiling: 32094, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

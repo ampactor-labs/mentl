@@ -835,7 +835,7 @@ fn leaf_nonneg(leaf) = match leaf {
     LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LLength => Some(true),
-  LParam(_, c) => proven_if(domain_low(ty_domain(c)) >= 0),
+  LParam(_, c) => proven_if(contract_low(c) >= 0),
   LClaimed(_, beneath) => leaf_nonneg(beneath),
   LMay(beneath) => proves_only(leaf_nonneg(beneath)),
   LPost(_) => None,
@@ -2718,13 +2718,19 @@ fn low_cover(acc, leaf) = int_min(acc, leaf_low(leaf))
 
 fn high_cover(acc, leaf) = int_max(acc, leaf_high(leaf))
 
+// The least and the greatest value a contract admits, each a word: the one
+// home where a contract's ends are read.
+fn contract_low(c) = domain_low(ty_domain(c))
+
+fn contract_high(c) = domain_high(ty_domain(c))
+
 // The least value one leaf can be.
 fn leaf_low(leaf) = match leaf {
   LPoint(v) => point_word(v, i32_min()),
-  LParam(_, c) => domain_low(ty_domain(c)),
-  LPost(c) => domain_low(ty_domain(c)),
+  LParam(_, c) => contract_low(c),
+  LPost(c) => contract_low(c),
   // both hold of the one value, so the greater of the two low ends does
-  LClaimed(c, beneath) => int_max(domain_low(ty_domain(c)), leaf_low(beneath)),
+  LClaimed(c, beneath) => int_max(contract_low(c), leaf_low(beneath)),
   LMay(beneath) => leaf_low(beneath),
   LSpan(lo, _) => lo,
   LLength => 0,
@@ -2736,10 +2742,10 @@ fn leaf_low(leaf) = match leaf {
 // The greatest value one leaf can be.
 fn leaf_high(leaf) = match leaf {
   LPoint(v) => point_word(v, int_max_word()),
-  LParam(_, c) => domain_high(ty_domain(c)),
-  LPost(c) => domain_high(ty_domain(c)),
+  LParam(_, c) => contract_high(c),
+  LPost(c) => contract_high(c),
   // both hold of the one value, so the lesser of the two high ends does
-  LClaimed(c, beneath) => int_min(domain_high(ty_domain(c)), leaf_high(beneath)),
+  LClaimed(c, beneath) => int_min(contract_high(c), leaf_high(beneath)),
   LMay(beneath) => leaf_high(beneath),
   LSpan(_, hi) => hi,
   LLength => int_max_word(),
@@ -6031,6 +6037,16 @@ fn refinement_admits(ty, value_handle) = match ty {
   TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
   | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TValue(_) => true,
 }
+
+// Whether a contract that states a range of whole numbers already holds of a
+// value where the value stands: on the value's own leaves and the conditions
+// on its path, recording nothing. A function whose own guard proves a call's
+// claim owes its callers nothing for that call, so its parameter learns no
+// precondition there, which the judgment asks before it learns one. A
+// contract that states no range, a structure's parts or a Float's bounds,
+// is not read here.
+fn holds_where_it_stands(contract, value) =
+  (contract_low(contract) != i32_min() || contract_high(contract) != int_max_word()) && refinement_admits(contract, value)
 
 // Fold a comparison over two constant operand values.
 // Total over the comparison operators: the three the grammar spells the
