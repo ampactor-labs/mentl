@@ -640,7 +640,11 @@ fn driver_incremental() = match link_entry() {
         if len(changed) == 0 {
           ()
         } else {
-          match edit_judged(entries, module_of(em).file, prelude_key, verify_forget) {
+          // The warm compile clears nothing an edit replaced: a claim at a
+          // replaced node is never read, since every read of the verdict
+          // column asks whether the program still holds the node, and the
+          // warm compile's reports stay as they were.
+          match edit_judged(entries, module_of(em).file, prelude_key, { _ => () }) {
             (n, m) => said("warm: re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s)\n"),
           }
           driver_warm_persist(entry_module)
@@ -1107,9 +1111,9 @@ fn unmarked(set, h: Int) = match wmap_get(set, h) {
 fn edit_replaced(e) = match edit_gone(e) {
   [] => [],
   gone => if any({ seg => len(kept_stmt(seg)) > 0 }, edit_of(e).segments) {
-    [ReplacedExtents(edit_node(e), module_name_of_handle(edit_node(e)), gone_extents(edit_of(e), gone))]
+    [ReplacedExtents(module_name_of_handle(edit_node(e)), gone_extents(edit_of(e), gone))]
   } else {
-    [ReplacedModule(edit_node(e), module_name_of_handle(edit_node(e)))]
+    [ReplacedModule(module_name_of_handle(edit_node(e)))]
   },
 }
 
@@ -1118,7 +1122,7 @@ fn gone_extents(r, gone) = {
   zip(r.old, r.spans) |> filter({ (s, _) => !unmarked(set, s) }) |> map({ (_, sp) => sp })
 }
 
-fn module_replaced(mh) = ReplacedModule(mh, module_name_of_handle(mh))
+fn module_replaced(mh) = ReplacedModule(module_name_of_handle(mh))
 
 // A module's kept statements in a group the cone reached become one run of
 // lines read again.

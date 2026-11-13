@@ -255,8 +255,11 @@ fn board_bounds() = [
   // the count read 92 on this landing's compiler. 92 -> 91 (2026-11-12): a
   // comparison is decided from what both of its operands can be, so the
   // lowering's tag for a Bool, `if b { 1 } else { 0 }`, is proven to fit a
-  // byte, where only a constant on the left was read before.
-  Bound({ceiling: 91, question: QVerifyDebt}),
+  // byte, where only a constant on the left was read before. 91 -> 90
+  // (2026-11-13): the graph holds the only record of a claim, so a kept
+  // fork's claims arrive with the version it merges, and the index walk
+  // that performed each of them again below the fork left with its read.
+  Bound({ceiling: 90, question: QVerifyDebt}),
   // THE CLAIMS LEFT OPEN AT EXPLICIT CALLS OF A PARTIAL PRIMITIVE (`mentl
   // query src/main.mn "census call-claims"`): a read's or a cut's bounds,
   // owed where `list_index(xs, i)` or `slice(xs, a, b)` is called, as `xs[i]`
@@ -270,8 +273,11 @@ fn board_bounds() = [
   // parameters, the pipe's splice) left with them, and one read joined where
   // a call's arguments are judged against their parameters. 653 -> 652
   // (2026-11-13): `index_of` drops the first byte of what it has not read at
-  // each step, so its cuts are proven inside the string.
-  Bound({ceiling: 652, question: QCensus(CsCallClaim)}),
+  // each step, so its cuts are proven inside the string. 652 -> 651 the same
+  // day: the editor's diagnostics read the claims at their own document's
+  // nodes, and the walk that read each of the program's open claims with
+  // `list_index` left.
+  Bound({ceiling: 651, question: QCensus(CsCallClaim)}),
   // THE PLACES THAT CAN TRAP WITH NO CLAIM CHECKED THERE (`mentl query
   // src/main.mn "census silent-trap"`): a place in the program's own modules
   // whose `Trap` reaches main's row while no claim stands at it, most of them
@@ -298,8 +304,18 @@ fn board_bounds() = [
   // never use `Trap`, since the walk's cuts are proven and its comparison is
   // `==`, which the judgment charges no `Trap`. The ten places that call them
   // left the count. One place joined: the file a battery writes a fixture's
-  // module to is named by `replace`, which keeps two cuts of its own.
-  Bound({ceiling: 3205, question: QCensus(CsSilentTrap)}),
+  // module to is named by `replace`, which keeps two cuts of its own. 3,205
+  // -> 3,150 (2026-11-13), with no place gaining a claim: the graph holds the
+  // only record of a claim, and the ledger's lists left with every reader's
+  // scan of them. The traps facet's scans of three lists for each place left
+  // 45 places in the query module, the strip's two scans of the program's
+  // debt for each view 8 in the space module, and the audit's filter of the
+  // whole debt for each declaration 6 in the pipeline module. The column's
+  // own read brought one, in the graph module, and the editor's read of one
+  // document's claims two. One place the facet read as guarded is read as it
+  // is: a `map` call in the cursor module whose trap is the library's index,
+  // where a claim about a lambda two levels below was said at the same span.
+  Bound({ceiling: 3150, question: QCensus(CsSilentTrap)}),
   // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
   // §4⑨): an install whose body applies a function nothing names (a field
   // of a parameter, a value out of sight), writes memory nothing names, or
@@ -384,8 +400,16 @@ fn board_bounds() = [
   // new readers of a masked and a shifted word among them. 32,099 -> 32,094
   // the same day: a contract's two ends are read in one place
   // (`contract_low`, `contract_high`), where six readers each built the
-  // contract's domain record to read one end of it.
-  Bound({ceiling: 32094, question: QCensus(CsUnplaced)}),
+  // contract's domain record to read one end of it. 32,094 -> 32,055
+  // (2026-11-13): code left and came, and the walk places nothing it could
+  // not place before. The verify ledger, its forget and the tuples its
+  // readers took apart left: net of what came in each module, 99 values in
+  // ten modules, 71 of them in the verify module. The verdict column's
+  // reads, with the set of the link's modules a whole read keeps verdicts
+  // by, the strip's reads at the module's nodes and the census narrowed to
+  // a declaration brought 60: 28 in the graph module, 17 in the space
+  // module, 14 in the query module and one in the MCP module.
+  Bound({ceiling: 32055, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -480,8 +504,11 @@ fn board_bounds() = [
   // -> 374 (2026-11-06): four index walks became stages over a call's slots
   // when a call's product came to keep one slot per parameter: the
   // partial's hole scan, the argument judging, the lowering's search for a
-  // pipe's hole and the slot collector.
-  Bound({ceiling: 374, question: QCensus(CsIterationCostume)}),
+  // pipe's hole and the slot collector. 374 -> 372 (2026-11-13): the audit's
+  // walk over the declarations and the editor's walk over the program's
+  // debt became maps, when each declaration and each document came to read
+  // its own claims at its own nodes.
+  Bound({ceiling: 372, question: QCensus(CsIterationCostume)}),
   // The match arms that list three or more constructors with only `_` for
   // their arguments (`mentl query src/main.mn "census wildcard-roster"`).
   // Each such arm names the cases of a sum it does not take apart, so a
@@ -591,8 +618,10 @@ fn board_bounds() = [
   // positive cap left with the cap. 38 -> 37 (2026-11-05): the count read 37
   // on this landing's compiler. 37 -> 35 (2026-11-06): the notes in the
   // pipe's own judgment and lowering that cited the boots they were measured
-  // on left with that code.
-  Bound({ceiling: 35, question: QCensus(CsProseClass(PcCommit))}),
+  // on left with that code. 35 -> 34 (2026-11-13): the note on the verify
+  // ledger's forget, which cited the boot it was measured on, left with the
+  // ledger.
+  Bound({ceiling: 34, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the

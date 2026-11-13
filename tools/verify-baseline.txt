@@ -30,7 +30,7 @@ desugar_vocabulary: 45
 # The ownership markers the wheel's source authors; inference grades the
 # rest, so each falls as a marker becomes a fact the judgment derives.
 authored_own_max: 38
-authored_ref_max: 511
+authored_ref_max: 510
 
 # The self-compile's peak RSS in KB (the march's m3 leg, the minimum of three
 # on a breach): 1% over the CI runner's reading of the boot it holds, since
@@ -39,7 +39,8 @@ selfcompile_peak_kb_max: 421100
 
 # The KB the candidate's image line peak may exceed the pinned boot's on the same wheel (the guest's `arena: … line peak N KB`): two compilers on one input,
 # a reading no machine moves. A landing whose deletions do not cover the facts it keeps pays their measured price on one dated line, closed by the next commit:
-selfcompile_line_peak_kb_max: 0
+# paid 2026-11-13 (selfcompile_line_peak_kb_max): 186 KB, the verdict column, which holds each claim's verdict at its node for as long as the graph lives, so the emission's peak holds it: 687 leaf pages of 64 cells (177 KB) and the pages above them (286,192 KB against the boot's 286,006 on the same wheel); the next commit sets the key back to 0, since the pin then carries this column
+selfcompile_line_peak_kb_max: 186
 
 # The candidate's wall time on the wheel, as a percentage of the pinned
 # boot's on the same wheel in the same march (the m3 leg against the m1 leg,

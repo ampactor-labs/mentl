@@ -618,24 +618,19 @@ fn strip_cr(line) = {
 fn session_current(manifest) = if driver_manifest() == manifest {
   manifest
 } else {
-  match driver_session_cone("main", session_forget) {
+  // The session's generation clear, handed to the cone as a value: the banked
+  // reports made where the edit replaced go (`diag_forget`), and every other
+  // statement's stand. The cone hands it what its judgment replaces BEFORE
+  // the judgment, since a stale generation's reports would shadow the current
+  // truth, and the modules the new link no longer holds, which no judgment
+  // would ever clear: a project opened over a lesson's session kept its
+  // libraries' reports, and the Lens over the next four-line lesson held 519
+  // of them (measured in the browser, 2026-10-06). A claim needs no clear: a
+  // claim at a replaced node is never read.
+  match driver_session_cone("main", diag_forget) {
     (n, m) => eprint_string("session: tree moved — re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s); the graph is current\n"),
   }
   driver_manifest()
-}
-
-// The session's generation clear, handed to the cone as a value: the banked
-// reports and the claims made where the edit replaced go, and every other
-// statement's stand. The cone hands it what its judgment replaces BEFORE the
-// judgment — a stale generation's entries must not shadow the current truth,
-// their spans belonging to a tree that no longer exists — and the modules the
-// new link no longer holds, which no judgment would ever clear: a project
-// opened over a lesson's session kept its libraries' reports, and the Lens
-// over the next four-line lesson held 519 of them (measured in the browser,
-// 2026-10-06).
-fn session_forget(gone) = {
-  diag_forget(gone)
-  verify_forget(gone)
 }
 
 // The serve loop — a RAW recursion over the session's manifest (the
@@ -786,12 +781,11 @@ fn session_miss() = "MENTL-SESSION-MISS\n"
 fn mcp_run(at_read) = {
   eprint_string("mentl mcp: the gate on stdio — nothing executes unproven\n")
   // ONE bracket, BOTH paths: the no-project session's tool arms carry
-  // the same static rows (audit's Verify + Tighten, query's ask) even
-  // though their guards answer "no project graph resident" at runtime —
-  // a bare mcp_loop leaked those rows to main and the executable gate
-  // refused (verify_ledger is stateful, so no default grounds it). The
-  // conditional lives inside the bracket; the installs cost nothing on
-  // the empty path.
+  // the same static rows (audit's Tighten, query's ask) even though their
+  // guards answer "no project graph resident" at runtime — a bare mcp_loop
+  // leaked those rows to main and the executable gate refused, since a
+  // stateful handler has no default that grounds it. The conditional lives
+  // inside the bracket; the installs cost nothing on the empty path.
   {
     // The artifact directory is made INSIDE the bracket, because that is
     // where the Filesystem handler is: the op answers here, and this

@@ -94,7 +94,15 @@ fn root_version() = Version{
   store_claims: pt_empty(),
   superseded: pt_empty(),
   tails_idx: smap_new(),
+  verdicts: pt_empty(),
 }
+
+// The verdicts at a node and at every node below it, read down the child
+// edges (`node_children`): the claims a caret, a declaration or a module
+// stands over. A claim is a node's when the claim's own node is that node
+// or one of its sub-expressions, so the walk reads each node of the subtree
+// once and nothing outside it.
+fn verdicts_below(h) = graph_verdicts_of(h) ++ (node_children(h) |> flat_map(verdicts_below))
 
 // ─── The column reads through the versions below ─────────────────────────
 // An instance's column holds the cells it wrote; a cell it never wrote is
@@ -130,6 +138,24 @@ fn col_all(h, col, seed: Version, pick) = {
 }
 
 fn col_push(h, col, seed: Version, pick, v) = pt_set(col, h, push(col_all(h, col, seed, pick), v))
+
+// A claim's verdict, in place of the one written earlier for the same claim
+// (said at the same span, claiming the same), so a settle's later decision
+// stands alone and a reader meets one verdict for each claim.
+fn col_put_verdict(h, col, seed: Version, decided: (ClaimAt, ClaimVerdict)) = match decided {
+  (claim, _) => pt_set(
+    col,
+    h,
+    push(
+      col_all(h, col, seed, version_verdicts) |> filter(other_claim(claim.span, claim.pred, ??)),
+      decided
+    )
+  ),
+}
+
+fn other_claim(span, pred, noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, _) => claim.span != span || claim.pred != pred,
+}
 
 fn col_newest(h, col, seed: Version, pick) = {
   let c = col_all(h, col, seed, pick)
@@ -178,6 +204,8 @@ fn version_births(v) = v.births
 fn version_late(v) = v.late
 
 fn version_claims(v) = v.claims
+
+fn version_verdicts(v) = v.verdicts
 
 fn version_in_edges(v) = v.in_edges
 
@@ -290,6 +318,30 @@ fn current_at(module, parent, seed, superseded, handle) =
 fn ancestry_unsuperseded(parent, seed, superseded, h) = unsuperseded(superseded, seed, h) && match parent_at(parent, seed, h) {
   None => true,
   Some(p) => ancestry_unsuperseded(parent, seed, superseded, p),
+}
+
+// Whether the node at `handle` stands in the program the graph's link holds
+// now: current (`current_at`), and born in one of the link's modules or at
+// the link itself (`link_held`). An edit can leave a module out of the link
+// without replacing any of its statements, and the session registers the
+// same link again without it. A read of the whole column asks this, where a
+// reader that holds a node reached it through the link.
+fn in_link_now(module, parent, seed, superseded, held, handle) =
+  current_at(module, parent, seed, superseded, handle) && held_member(held, module_at(module, seed, handle))
+
+// The link's own record of what it holds, read once for a whole read: its
+// modules and itself, as a set of handles. With no link, the graph holds no
+// program.
+fn link_held(program, seed, link) = match link {
+  Some(l) => fold(mark_member(wmap_new(64), l), mark_member, body_children_for_parent(body_at(program, seed, l))),
+  None => wmap_new(1),
+}
+
+fn mark_member(set, h: Int) = wmap_add(set, h, 1)
+
+fn held_member(held, m: Int) = match wmap_get(held, m) {
+  Some(_) => true,
+  None => false,
 }
 
 // Whether a node was neither superseded as its path's module nor replaced
@@ -990,7 +1042,7 @@ fn turnover_is_outermost(seed: Version) = if seed.next > 0 { trap() }
 // same live graph through the same effect discipline. State is internal to
 // the handler; callers never see the columns as a value except as a
 // Version they hand back; access is only through perform.
-handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), arena_roots = pt_empty(), perform_installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = pt_empty(), link_now = seed.link_now, tails_idx = seed.tails_idx {
+handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), boundaries = pt_empty(), arena_roots = pt_empty(), perform_installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), verdicts = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = pt_empty(), link_now = seed.link_now, tails_idx = seed.tails_idx {
   graph_chase(handle) => resume(chase_node(nodes, seed, handle, 0)),
   graph_chase_handle(handle) => resume(chase_handle(nodes, seed, handle, 0)),
   graph_epoch() => resume(epoch),
@@ -1020,6 +1072,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
     ("births", pt_leaves(births)),
     ("late", pt_leaves(late)),
     ("claims", pt_leaves(claims)),
+    ("verdicts", pt_leaves(verdicts)),
     ("in_edges", pt_leaves(in_edges)),
     ("published", pt_leaves(published)),
     ("store_claims", pt_leaves(store_claims)),
@@ -1087,6 +1140,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
     store_claims,
     superseded,
     tails_idx,
+    verdicts,
   }),
   graph_keep(fv) => // The keep: FV is the final version of an instance seeded with this
   // instance's version, and what it wrote stands — every cell its columns
@@ -1094,7 +1148,7 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // (lib/imap.mn's pt_merge), and every other fact is the kept instance's
   // as it left it. O(what the kept instance wrote); FV's columns die with
   // the extent that built them.
-  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), arena_roots = pt_merge(arena_roots, fv.arena_roots), perform_installs = pt_merge(perform_installs, fv.perform_installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = pt_merge(superseded, fv.superseded), link_now = fv.link_now, tails_idx = fv.tails_idx,
+  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), boundaries = pt_merge(boundaries, fv.boundaries), arena_roots = pt_merge(arena_roots, fv.arena_roots), perform_installs = pt_merge(perform_installs, fv.perform_installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), verdicts = pt_merge(verdicts, fv.verdicts), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = pt_merge(superseded, fv.superseded), link_now = fv.link_now, tails_idx = fv.tails_idx,
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write rebinds the column it wrote: pt_set answers the root as it
   // stands when the path was this version's own, else the copied root.
@@ -1453,6 +1507,17 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   // judgment's claims go with it.
   resume() with epoch = epoch + 1, claims = col_push(h, claims, seed, version_claims, contract),
   graph_claims_of(h) => resume(col_all(h, claims, seed, version_claims)),
+  graph_verdict_note(h, decided) => // THE VERDICTS' write (PLAN §11.10): a claim and what was decided of
+  // it, entered under the handle of the node the claim stands at in place of
+  // the verdict written earlier for the same claim, a column of the version
+  // so a fork's verdicts go with it.
+  resume() with epoch = epoch + 1, verdicts = col_put_verdict(h, verdicts, seed, decided),
+  graph_verdicts_of(h) => resume(col_all(h, verdicts, seed, version_verdicts)),
+  graph_verdicts_written() => // Every verdict this instance's own column holds, at a node of the
+  // program the link holds now (`in_link_now`), in the order of the nodes:
+  // the keys the column wrote below the next handle (lib/imap.mn's
+  // pt_keys_below), each read in this instance's own column.
+  resume(pt_keys_below(verdicts, next) |> filter(in_link_now(module, parent, seed, superseded, link_held(program, seed, link_now), ??)) |> flat_map(pt_get(verdicts, ??))),
   graph_written_since(below) => // The write set of this instance: the cells below the frontier its own
   // nodes column holds, which are exactly the ones it wrote.
   resume(pt_keys_below(nodes, below)),

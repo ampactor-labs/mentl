@@ -498,7 +498,7 @@ fn inf_add_row_owner_at(h, row) = {
 // claim it is (PTotalDiv, decided by Verify's fragment from the operands'
 // constants and from what their refined types exclude — a Positive refinement proves
 // both faces, a NonZero refinement the zero face, a constant either), and
-// reads the ledger's verdict: proven charges nothing, a refutation is
+// reads the claim's verdict: proven charges nothing, a refutation is
 // reported there (`1 / 0` refuses at the site), and a claim left OPEN
 // charges `Trap` into the frame's row and onto the node, so `!Trap` proves
 // its absence transitively and the e-graph never drops an operand that
@@ -515,7 +515,7 @@ fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_
   ()
 } else {
   match verify_claim(
-    graph_module_current(),
+    handle,
     span,
     PTotalDiv(op, lh, rh),
     Located(span, Inferred("integer division is partial"))
@@ -1476,12 +1476,15 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // A claim still owed is asked again here, once everything it can read is
   // judged: a handler's arms read each other's writes in any order, and a
   // predicate's call a declaration later in the file. What it publishes is
-  // the ledger it rewrites and the refusals it reports, so the walks it makes
-  // die at the arena's exit.
+  // the verdicts it writes at the claims' nodes, which the arena's exit
+  // moves out, and the refusals it reports, so the walks it makes die at
+  // the exit.
   reask_settle() ~> arena
   // What can reach a value is a fact of the whole program, so the claims
-  // naming a label are decided here, once every declaration is judged.
-  flow_settle()
+  // naming a label are decided here, once every declaration is judged. It
+  // publishes what the re-ask does, the verdicts and the refusals, so its
+  // read of the column and its walks of the flow die at the exit.
+  flow_settle() ~> arena
   root_settle(stmts)
   step_ended()
 } ~> judgment_core
@@ -1712,8 +1715,8 @@ fn default_node(p) = match param_default(p) {
 
 // Reports said to no one: the discovery parse's import read (the weave
 // parse reports every lex diagnostic again, placeably), the gradient's
-// dry claims (a proposal judged on a scratch ledger, its refutation the
-// answer and never a report) and a program judged for the board's owed
+// dry claims (a proposal judged in a fork that is dropped, its refutation
+// the answer and never a report) and a program judged for the board's owed
 // question, whose reports are banked for the reader that asked. The counts
 // answer zero, because nothing here judges the program; the scope is kept
 // as the driver sets it, so a reader under this register still knows whose
@@ -2514,30 +2517,17 @@ fn fork_seed() =
 
 // One option's judgment under the chain, and what it leaves: its answer, the
 // graph instance's final version, and the facts the ledgers hold — the env
-// entries, the reports, the open claims (the debt and the claims naming a
-// label, which the root settles once every declaration is judged), the
-// consume log, the decided claims, and the frame stack's and the store
+// entries, the reports, the consume log, and the frame stack's and the store
 // ages' final state — read inside the chain, where the instances still
-// stand, for a keep to replay below.
+// stand, for a keep to replay below. A claim the option raised needs no
+// replay: its verdict is a column of the graph version the keep merges.
 fn forked(seed, body) = match seed {
   (v, base, consumed, ctx, ages, words) => {
     consume_seed(consumed)
     let w = world_top()
     let a = body()
     world_restore(w)
-    (
-      a,
-      graph_version(),
-      (
-        env_entries(),
-        diag_banked(),
-        verify_debt() ++ verify_flows(),
-        consume_log(),
-        verify_decided(),
-        inf_seed(),
-        ages_seed()
-      )
-    )
+    (a, graph_version(), (env_entries(), diag_banked(), consume_log(), inf_seed(), ages_seed()))
   } ~> row_gate ~> store_ages(ages) ~> infer_ctx(ctx) ~> fresh_for_inference ~> judgment_ledgers ~> env_handler(base) ~> diag_branch ~> lookup_ty_graph ~> graph_handler(v) ~> intern_view(words),
 }
 
@@ -2548,26 +2538,25 @@ fn forked(seed, body) = match seed {
 // nothing further out; `forked` installs the same four with their seeds.
 handler judgment_core = row_gate ~> store_ages(ages_root()) ~> infer_ctx(ctx_root()) ~> fresh_for_inference
 
-// THE JUDGMENT'S LEDGERS, named once: the affine ledger, the region tracker
-// and the verify ledger. Every verb's root stands on them, and `forked`
-// installs an instance per fork beside the env view and the graph instance,
-// so what a fork accrues dies with it unless a keep replays it
-// (`branch_join`). A root that stood on fewer let a fork's consume read reach
-// no ledger at all (the fmt verb's teaching, found by the row).
-handler judgment_ledgers = affine_ledger ~> region_tracker ~> verify_ledger
+// THE JUDGMENT'S LEDGERS, named once: the affine ledger and the region
+// tracker. Every verb's root stands on them, and `forked` installs an
+// instance per fork beside the env view and the graph instance, so what a
+// fork accrues dies with it unless a keep replays it (`branch_join`). A root
+// that stood on fewer let a fork's consume read reach no ledger at all (the
+// fmt verb's teaching, found by the row). A claim is no ledger's: its
+// verdict is written at its node, in the graph instance it was judged in.
+handler judgment_ledgers = affine_ledger ~> region_tracker
 
 // The join: the fork's ledger facts enter the instances below in occurrence
 // order. The env entries are adopted — a name bound to its declaration,
 // whose schemes the graph keep merged already, so nothing is published
-// again and no scheme is re-derived from a value — and so are the decided
-// claims, verdicts over the graph the keep merged; the consumes and the
-// open claims re-perform, and the held reports re-enter. Runs after the
-// fork's installs close, so every perform here resolves to the instances the
-// fork stood over.
+// again and no scheme is re-derived from a value; the claims' verdicts came
+// with the graph keep; the consumes re-perform, and the held reports
+// re-enter. Runs after the fork's installs close, so every perform here
+// resolves to the instances the fork stood over.
 fn branch_join(facts) = match facts {
-  (entries, dfacts, vdebt, clog, vdecided, ctx, ages) => {
+  (entries, dfacts, clog, ctx, ages) => {
     each(adopt_entry, entries)
-    verify_adopt(vdecided)
     // The kept option's frame stack and store ages become the state below:
     // its frames and marks are balanced at its end, so the stack is the one
     // it was seeded with, and what it set — the declaration entry, the
@@ -2575,14 +2564,13 @@ fn branch_join(facts) = match facts {
     // here.
     inf_adopt(ctx)
     ages_adopt(ages)
-    // Both ledgers' logs are PREPEND-ordered; the replay walks from the
-    // tail so the root re-performs in occurrence order. Consumes re-check
-    // against the root's live set — a same-layer double-consume refuses
-    // HERE, deterministically, exactly as the join protocol demands. Only
-    // Own consumes ever enter the sites log (the arm's else branch), so
-    // the replay's ownership arg is Own by construction.
+    // The consume log is PREPEND-ordered; the replay walks from the tail so
+    // the root re-performs in occurrence order. Consumes re-check against
+    // the root's live set — a same-layer double-consume refuses HERE,
+    // deterministically, exactly as the join protocol demands. Only Own
+    // consumes ever enter the sites log (the arm's else branch), so the
+    // replay's ownership arg is Own by construction.
     branch_replay_consumes(clog, len(clog) - 1)
-    branch_replay_verify(vdebt, len(vdebt) - 1)
     // Each held report re-enters the root chain as a live one, so the
     // root arm counts it and every forwarder (the bank among them) sees it.
     each(replay_report, dfacts)
@@ -2607,17 +2595,6 @@ fn branch_replay_consumes(ref clog, i) = if i < 0 {
     (name, span) => {
       consume(name, Own, span)
       branch_replay_consumes(clog, i - 1)
-    },
-  }
-}
-
-fn branch_replay_verify(ref vdebt, i) = if i < 0 {
-  ()
-} else {
-  match vdebt[i] {
-    (modh, span, pred, reason) => {
-      verify_claim(modh, span, pred, reason)
-      branch_replay_verify(vdebt, i - 1)
     },
   }
 }
@@ -5529,7 +5506,7 @@ fn infer_seq_op(cname, fh, args, handle, answer, span: ValidSpan) = {
   // The row the call charges is its face's: where the face's claim held, the
   // row of the form beneath the primitive's check, which the lowering calls;
   // otherwise the primitive's own (`proven_form`).
-  match proven_form(cname, args, span) {
+  match proven_form(cname, args, handle, span) {
     Some(d) => calls_form(handle, handle, d),
     None => inf_add_row_at(handle, mutation_masked(handle, fh, substrate_row(fh), args)),
   }
@@ -5543,12 +5520,12 @@ fn infer_seq_op(cname, fh, args, handle, answer, span: ValidSpan) = {
 // spellings of one read carry one claim. Proven, the call is the form beneath
 // the check (`proven_twin`), whose declaration this answers so that the call
 // is linked to it, charges its row, and is lowered to it (`calls_form`);
-// refuted, the ledger refuses the call where it stands, since a read or a cut
+// refuted, the call is refused where it stands, since a read or a cut
 // the text fixes out of range is the program's meaning; open, the call keeps
 // the primitive, the primitive's own declared row carries the `Trap`, and the
 // claim is owed at the call, where `mentl check` prints it and the settle
 // asks it again (`owe_face_claim`).
-fn proven_form(cname: String, args, span: ValidSpan) = match face_claim(cname, args) {
+fn proven_form(cname: String, args, call, span: ValidSpan) = match face_claim(cname, args) {
   Some(pred) => match predicate_decide(pred) {
     Some(true) => {
       // The Trap stays with the parameters whose preconditions the proof
@@ -5560,23 +5537,18 @@ fn proven_form(cname: String, args, span: ValidSpan) = match face_claim(cname, a
         None => None,
       }
     },
-    Some(false) | None => owe_face_claim(pred, span),
+    Some(false) | None => owe_face_claim(pred, call, span),
   },
   None => None,
 }
 
-// A face claim the fragment refutes or leaves open is the ledger's, which
-// refuses the first where it stands and keeps the second where `mentl check`
-// prints it; the call keeps the primitive. A proven one keeps no entry,
-// because the call's link to the form beneath the check already records it
-// (`calls_form`).
-fn owe_face_claim(pred, span: ValidSpan) = {
-  verify_claim(
-    graph_module_current(),
-    span,
-    pred,
-    Located(span, Inferred("a sequence primitive's precondition"))
-  )
+// A face claim the fragment refutes or leaves open is written at the call:
+// the first is refused where it stands, and the second stays open where
+// `mentl check` prints it; the call keeps the primitive.
+// A proven one keeps no entry, because the call's link to the form beneath
+// the check already records it (`calls_form`).
+fn owe_face_claim(pred, call, span: ValidSpan) = {
+  verify_claim(call, span, pred, Located(span, Inferred("a sequence primitive's precondition")))
   None
 }
 
@@ -9540,15 +9512,11 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   graph_bind(handle, TVar(elem_h), Located(span, Inferred("subscript result")))
   // PARTIALITY IS A ROW FACT, one primitive over (TRAP): the read traps
   // where `0 <= i < len(xs)` fails, so the site raises that precondition as
-  // the claim it is (PInBounds) and reads the ledger's verdict — proven, the
-  // read is the unchecked traversal and charges no Trap; refuted, the ledger
-  // refuses at the site; open, the checked read's own row carries the Trap.
-  let proven = match verify_claim(
-    graph_module_current(),
-    span,
-    PInBounds(rh, ih),
-    Located(span, Inferred("a sequence read is partial"))
-  ) {
+  // the claim it is (PInBounds) and reads the claim's verdict — proven, the
+  // read is the unchecked traversal and charges no Trap; refuted, the read
+  // is refused at the site; open, the checked read's own row carries the
+  // Trap.
+  let proven = match verify_claim(handle, span, PInBounds(rh, ih), Located(span, Inferred("a sequence read is partial"))) {
     Some(held) => held,
     None => false,
   }
@@ -13591,7 +13559,7 @@ fn refuse_catch_all(scrut, arms) = match catch_all_arm(scrut, arms) {
 // precondition is (the TRAP law at `infer_index_force`), and located at the
 // node that charges the Trap a mismatch is, the let or the match, so the
 // claim stands where the program can stop: proven, it costs nothing;
-// refuted, the ledger refuses there (E_RefinementRejected); open, that node's
+// refuted, it is refused there (E_RefinementRejected); open, that node's
 // row carries the Trap, and `with !Trap` refuses it until the shape is proven
 // or matched. The value walk decides it (`shape_decide`, verify.mn) from
 // what the value's edges say it is.
@@ -13599,7 +13567,7 @@ fn claim_shape(scrut, handle, witness: String, arm) = match arm {
   (pat, _) => {
     let at = graph_span_of(pat)
     let proven = match verify_claim(
-      graph_module_current(),
+      pat,
       at,
       PPatternMatch(pat, scrut),
       Located(at, Inferred("a destructuring pattern is partial: `{witness}` escapes it"))
@@ -16509,7 +16477,7 @@ fn apply_let_annotation(ann, ann_ty, value_handle, span: ValidSpan) = match quan
     // walk follows the reference's link to it), so an open claim stays
     // debt and never becomes a fact. It used to be rebound onto the value's
     // class whatever its verdict — `let k: Positive = e - 1` read Positive
-    // at `100 / k` while the ledger still owed `0 < e - 1` (P0).
+    // at `100 / k` while `0 < e - 1` was still owed (P0).
     claim_refinement(resolved, value_handle, span)
     // The base unify: the annotation is a real CONSTRAINT, not decoration —
     // `let x: Int = "hi"` refused here (measured passing clean before this
@@ -16560,9 +16528,8 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   // OWN first-claim site (the caller that owes the precondition, the
   // declaration that owes the return) — discharged, pending, or refuted
   // THERE. Accruing again per consumer echoes one claim N times up the
-  // chain (a fixture with one honest claim surfaced five pendings); the
-  // ledger owns each proof question at one home, so the echo accrues
-  // nothing. A computation has no such leaf and raises, decided where it
+  // chain (a fixture with one honest claim surfaced five pendings); each
+  // proof question has one home, so the echo raises nothing. A computation has no such leaf and raises, decided where it
   // stands.
   TAlias(aname, inner) => if value_carries_alias(value_handle, aname) {
     Some(true)
@@ -16573,7 +16540,7 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   TRefined(_, PProvides(_)) => Some(true),
   // a refined structure claims its predicate and its parts
   TRefined(base, pred) => and_decide(
-    verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+    verify_claim(value_handle, span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
     cross_parts(base, value_handle, span)
   ),
   TFun(eps, eret, _) => {
@@ -16738,16 +16705,11 @@ fn opaque_surface(h, path, pt, span: ValidSpan) = match demand_refinement(pt) {
       Some(true)
     } else if pred_names_label(pred) {
       and_decide(
-        verify_claim(graph_module_current(), span, pred_without_labels(pred), Refinement(pred, PTrue)),
-        verify_claim(
-          graph_module_current(),
-          span,
-          subst_self(pred_only_labels(pred), h),
-          Refinement(pred, PTrue)
-        )
+        verify_claim(h, span, pred_without_labels(pred), Refinement(pred, PTrue)),
+        verify_claim(h, span, subst_self(pred_only_labels(pred), h), Refinement(pred, PTrue))
       )
     } else {
-      verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+      verify_claim(h, span, pred, Refinement(pred, PTrue))
     },
   },
   None => Some(true),
@@ -16916,7 +16878,7 @@ fn cross_position(value_handle, span: ValidSpan, pair) = match pair {
   (ap, ep) => if fn_position(param_ty(ap)) || fn_position(param_ty(ep)) {
     cross_fn_position(param_ty(ap), param_ty(ep), value_handle, span)
   } else {
-    match provision_verdict(param_ty(ep), param_ty(ap), span) {
+    match provision_verdict(param_ty(ep), param_ty(ap), value_handle, span) {
       PvStrict => (),
       PvHeld => pay_crossing(param_row(ap), value_handle),
       PvOpen => pay_crossing(param_row(ap), value_handle),
@@ -16954,16 +16916,16 @@ fn fn_usage(t) = match t {
 // debt, raised here.
 type ProvidedVerdict = PvStrict | PvHeld | PvOpen
 
-fn provision_verdict(provided, demand, span: ValidSpan) = match demand_refinement(demand) {
+fn provision_verdict(provided, demand, at, span: ValidSpan) = match demand_refinement(demand) {
   None => PvHeld,
   Some(found) => match found {
     (aname, pred) => match provided_of(provided) {
       Some(p) => match p {
         ProvidedAt(ns) => provided_claims(demand, span, ns),
-        ProvidedBeyond(ns) => provided_meet(provided_claims(demand, span, ns), open_demand(pred, span)),
-        ProvidedNone => open_demand(pred, span),
+        ProvidedBeyond(ns) => provided_meet(provided_claims(demand, span, ns), open_demand(pred, at, span)),
+        ProvidedNone => open_demand(pred, at, span),
       },
-      None => if refined_as(provided, aname) { PvHeld } else { open_demand(pred, span) },
+      None => if refined_as(provided, aname) { PvHeld } else { open_demand(pred, at, span) },
     },
   },
 }
@@ -16992,8 +16954,10 @@ fn provided_meet(a, b) = match a {
   PvStrict => b,
 }
 
-fn open_demand(pred, span: ValidSpan) = {
-  verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+// A demand nothing here can prove, owed as debt at the node it stands at: the
+// function value crossing, or the call that hands a source nothing names.
+fn open_demand(pred, at, span: ValidSpan) = {
+  verify_claim(at, span, pred, Refinement(pred, PTrue))
   PvOpen
 }
 
@@ -17019,9 +16983,9 @@ fn cross_fn_position(a_t, e_t, value_handle, span: ValidSpan) = match provided_o
     ProvidedAt(ns) => ns |> flat_map(fn_leaves) |> each(cross_provided(fn_usage(a_t), value_handle, span, ??)),
     ProvidedBeyond(ns) => {
       ns |> flat_map(fn_leaves) |> each(cross_provided(fn_usage(a_t), value_handle, span, ??))
-      usage_of_unknown(fn_usage(a_t), span)
+      usage_of_unknown(fn_usage(a_t), value_handle, span)
     },
-    ProvidedNone => usage_of_unknown(fn_usage(a_t), span),
+    ProvidedNone => usage_of_unknown(fn_usage(a_t), value_handle, span),
   },
   None => match fn_usage(e_t) {
     Some(stated) => match stated {
@@ -17032,7 +16996,7 @@ fn cross_fn_position(a_t, e_t, value_handle, span: ValidSpan) = match provided_o
         None => applied_unknowingly(sps, value_handle, span),
       },
     },
-    None => usage_of_unknown(fn_usage(a_t), span),
+    None => usage_of_unknown(fn_usage(a_t), value_handle, span),
   },
 }
 
@@ -17075,7 +17039,7 @@ fn applied_unknowingly(aps, value_handle, span: ValidSpan) = aps |> each({
     match demand_refinement(param_ty(ap)) {
       Some(found) => match found {
         (_, pred) => {
-          open_demand(pred, span)
+          open_demand(pred, value_handle, span)
           pay_crossing(param_row(ap), value_handle)
         },
       },
@@ -17085,13 +17049,13 @@ fn applied_unknowingly(aps, value_handle, span: ValidSpan) = aps |> each({
 })
 
 // A function nothing here can name, handed where a usage demands of its
-// result: the demand is debt.
-fn usage_of_unknown(usage, span: ValidSpan) = match usage {
+// result: the demand is debt, owed at the node that hands it.
+fn usage_of_unknown(usage, at, span: ValidSpan) = match usage {
   Some(found) => match found {
     (_, kret) => match demand_refinement(kret) {
       Some(d) => match d {
         (_, pred) => {
-          open_demand(pred, span)
+          open_demand(pred, at, span)
           ()
         },
       },
@@ -17130,7 +17094,7 @@ fn cross_result(aret, eret, body, value_handle, span: ValidSpan) = match fn_usag
               ()
             },
             None => {
-              verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+              verify_claim(value_handle, span, pred, Refinement(pred, PTrue))
               ()
             },
           }
@@ -17667,7 +17631,7 @@ fn source_into(usage, call_h, span: ValidSpan, src) = match usage {
         },
       },
       SrcContract(c, at) => class_part(c, TFun(kps, kret, mk_ef_pure()), at, span),
-      SrcUnknown => usage_of_unknown(usage, span),
+      SrcUnknown => usage_of_unknown(usage, call_h, span),
     },
   },
   None => source_unknowingly(call_h, span, src),

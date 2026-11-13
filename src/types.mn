@@ -14,7 +14,7 @@
 //   effects.mn (spec 01) → row algebra (normalize / subsumes / unify)
 //   clock.mn (spec 11)   → Clock / Tick / Sample / Deadline
 //   own.mn (spec 07)     → affine_ledger handler arms, escape check
-//   verify.mn (spec 02)  → verify_ledger handler arms
+//   verify.mn (spec 02)  → each claim decided and its verdict written at its node
 //   mentl.mn (spec 09)   → Capability / Context + Teach + Synth
 //                          + mentl_default (the Annotation a suggestion
 //                          carries, and the Teaching it answers with, live
@@ -2508,8 +2508,8 @@ type Annotation
 // it ranks first; a lock changes no proof today and ranks last, the one more
 // declarations stand on first.
 // `safe` says what the paid debt makes safe in the developer's words — the
-// division cannot fail, the index stays in bounds — since a count of
-// obligations is the ledger's view and never the sentence a person reads.
+// division cannot fail, the index stays in bounds — since a count of claims
+// is never the sentence a person reads.
 type Leverage = {
   discharged: Int,
   locks: [String],
@@ -2634,8 +2634,7 @@ type RowWait = {cell: Int, mask: [EffName], values: [Int]}
 //   verify   — primitive #6 (Refinement)       — pending obligations
 //   teach    — primitive #7 (Gradient)         — the gradient's Teaching
 //   why      — primitive #8 (HM + Reasons)     — the node's Reason chain, then its type's
-type CursorView
-  = CursorView(NodeKind, Proposal, [VerbFrame], RowFacet, Ownership, [(Int, Span, Predicate, Reason)], Teaching, [Reason])
+type CursorView = CursorView(NodeKind, Proposal, [VerbFrame], RowFacet, Ownership, [ClaimAt], Teaching, [Reason])
 
 // ─── The View — what Mentl Space paints, typed ───────────────────────
 //
@@ -2890,6 +2889,7 @@ type Version = {
   store_claims: [[[[StoreClaim]]]],
   superseded: [[[[Int]]]],
   tails_idx: [[(String, [Int])]],
+  verdicts: [[[[[(ClaimAt, ClaimVerdict)]]]]],
 }
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
@@ -2977,10 +2977,10 @@ fn reason_span_or_zero(ref reason) = match reason {
   | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => span_zero(),
 }
 
-// Inference + Verify ledger discharges obligations at construction
-// sites. Runtime-erased. Failed discharge surfaces as V_Pending or
-// V_Failed diagnostic with the predicate and the failing expression
-// span.
+// The judgment decides each claim where it is raised and writes its verdict
+// at the claim's node, so nothing is checked when the program runs. An
+// undecided claim is reported pending and a refuted one is refused, each
+// with its predicate and its span.
 type Handle = Int where 0 <= self
 
 type TagId = Int where 0 <= self && self <= 255
@@ -3789,8 +3789,8 @@ type Predicate
   // the path to the call. An explicit call of a sequence primitive raises its
   // face's claim as `xs[i]` does: proven, the call is the form beneath the
   // check (`proven_twin`) and charges no `Trap`; refuted, the call is refused;
-  // open, the primitive's own row carries the `Trap`, and the ledger owes
-  // nothing more, since that row already says the program can stop there.
+  // open, the primitive's own row carries the `Trap`, since that row already
+  // says the program can stop there, and the claim stays open at the call.
   | PSliceBounds(Int, Int, Int)
 
 // What one position of a function is handed: nothing yet — no application
@@ -4047,6 +4047,14 @@ effect GraphRead {
   // node, newest first. At a hole it is what the fill must satisfy; at a
   // let's value it is the annotation a reader of the binder may stand on.
   graph_claims_of(Int) -> [Ty]
+  // THE VERDICTS' read (PLAN §11.10): every claim decided at this node and
+  // what was decided of it, in the order the verdicts were written.
+  graph_verdicts_of(Int) -> [(ClaimAt, ClaimVerdict)]
+  // Every verdict this instance's own column holds, at a node the program
+  // still holds, in the order of the nodes. At a root instance, which no
+  // version seeds, that is every claim of the program; in a fork it is the
+  // verdicts at the nodes the fork judged.
+  graph_verdicts_written() -> [(ClaimAt, ClaimVerdict)]
   // The arena-roots column's read, by the install's handle: the emitter's
   // exit, the census and the caret read what may root an arena's extent.
   graph_arena_roots_at(Int) -> ArenaRoots
@@ -4265,6 +4273,15 @@ effect GraphWrite {
   // noted by infer.mn's claim_refinement where the claim is raised. A column
   // of the version, so a restored judgment's claims go with it.
   graph_claim_note(Int, Ty)
+  // THE VERDICTS' write (PLAN §11.10): a claim and what the judgment or the
+  // settle decided of it, noted at the node the claim stands at, beside the
+  // contract `graph_claim_note` keeps there, in place of the verdict written
+  // earlier for the same claim. The column is the only record of a claim.
+  // The claim rides whole because a reader asks where it was said: a call's
+  // claims about its arguments are said at the call, and an argument's own
+  // claims are said where it stands. A column of the version, so a fork's
+  // verdicts go with it and a dropped fork leaves none behind.
+  graph_verdict_note(Int, (ClaimAt, ClaimVerdict))
   // The arena-roots column's write: the judgment notes, at the install node
   // of each `~>` that opens an arena, what may root its extent, a column of
   // the version so a restored judgment's answer goes with it.
@@ -4662,24 +4679,18 @@ effect Progress {
 }
 
 // What an edit replaced in one module, as the generation boundary's clear
-// reads it: the whole module (its node and its name), or the top-level
-// statements a session judges again, as the line spans they stood at in the
-// text the replaced judgment read. A report or an obligation made there goes
-// with them, and everything else in the module stands.
-type Replaced = ReplacedModule(Int, String) | ReplacedExtents(Int, String, [Span])
+// reads it: the whole module, by its name, or the top-level statements a
+// session judges again, as the line spans they stood at in the text the
+// replaced judgment read. A report made there goes with them, and everything
+// else in the module stands. A claim made there needs no clear: the graph
+// marks the replaced nodes, and no read of a claim reaches one.
+type Replaced = ReplacedModule(String) | ReplacedExtents(String, [Span])
 
 // Whether a report made at `span` in the module named `dmod` went with what
 // an edit replaced. The bank keys its reports by the module's name.
 fn report_replaced(dmod: String, span, gone) = match gone {
-  ReplacedModule(_, name) => name == dmod,
-  ReplacedExtents(_, name, extents) => name == dmod && span_in_extents(span, extents),
-}
-
-// Whether an obligation raised at `span` in the module node `modh` went with
-// what an edit replaced. The ledger keys its obligations by the module's node.
-fn obligation_replaced(modh: Int, span, gone) = match gone {
-  ReplacedModule(h, _) => h == modh,
-  ReplacedExtents(h, _, extents) => h == modh && span_in_extents(span, extents),
+  ReplacedModule(name) => name == dmod,
+  ReplacedExtents(name, extents) => name == dmod && span_in_extents(span, extents),
 }
 
 fn span_in_extents(span, extents) = match span {
@@ -5508,67 +5519,21 @@ effect LowerScope {
   ls_judgment_note(Int, ([Int], Ty))
 }
 
-// Every claim performs `verify`; the ledger decides what its fragment can
-// and keeps the rest as pending debt.
-effect Verify {
-  // the module the obligation was raised in rides the perform: the ledger arm
-  // is graph-free (its row rides every install), so it cannot read the module
-  // itself, and a local span alone cannot name a file — two modules both have
-  // a line 8. Captured where it is live, carried, never re-derived.
-  // THE LEDGER ANSWERS ITS VERDICT (C5): Some(true) proven, Some(false)
-  // refused (reported at the site), None accrued as pending debt. A
-  // judgment that needs the outcome — the division site charging `Trap`
-  // only when its precondition stays open — reads it here, off the one
-  // decide, never a second decide beside the ledger's.
-  verify(Int, Span, Predicate, Reason) -> Option(Bool)
-  // The claims this program leaves open: what `mentl check` prints and the
-  // board counts.
-  verify_debt() -> [(Int, Span, Predicate, Reason)]
-  // What the declarations' own faces still owe: the program's open claims
-  // and every claim the settle proved only through what this program's
-  // calls hand a parameter, which another caller may not hand. Teach reads
-  // these, since a precondition there makes the claim hold for every caller.
-  verify_face_debt() -> [(Int, Span, Predicate, Reason)]
-  // The claims the settle proved only through what this program's calls
-  // hand a parameter: this program owes them nothing, and another caller
-  // may not hand the same. The traps facet names them, and the canvas marks
-  // them at their sites.
-  verify_handed() -> [(Int, Span, Predicate, Reason)]
-  // Every claim the ledger DECIDED, with its verdict — true proven, false
-  // refuted — at the module and span it was raised in. The canvas marks
-  // them at their sites; the decision was made once, here, and kept rather
-  // than discarded the moment it was returned.
-  verify_decided() -> [(Int, Span, Predicate, Bool)]
-  // The claims naming a label the judgment raised, each decided once the
-  // program is judged, by the settle in verify.mn, since what can reach a
-  // value is a fact of the whole program.
-  verify_flows() -> [(Int, Span, Predicate, Reason)]
-  // A kept fork's decided claims, adopted as the verdicts they are: decided
-  // over the graph the keep merged, so nothing is decided again and a
-  // refutation reported inside the fork is not reported twice.
-  verify_adopt(entries: [(Int, Span, Predicate, Bool)])
-  // Every claim still owed, asked again once the whole program is judged —
-  // a claim reads what the judgment may reach after it: a handler's later
-  // arm, a declaration a predicate's call reads later in the file — and kept
-  // as the verdict it now has: answers the claims refuted.
-  verify_reask() -> [(Int, Span, Predicate, Reason)]
-  // What the settle decided of every such claim and of every demand they
-  // stand on, replacing what the last settle decided: None owed, Some(true)
-  // proven, Some(false) refuted.
-  verify_settle(entries: [(Int, Span, Predicate, Reason, Option(Bool))])
-  // The generation boundary's clear, for what an edit replaced: the
-  // obligations raised in a replaced module, or within a replaced
-  // statement's extent, are dropped before the judgment re-accrues them, and
-  // every other stands, because a statement outside the re-judged cone was
-  // judged against exactly the program it is judged against now. It cleared
-  // the WHOLE ledger while the session re-derived the whole weave, which was
-  // the only thing that made that sound; and the warm compile, which
-  // re-judges a cone inside a restored image, never cleared at all —
-  // measured 2026-10-02 on boot 713745c6, one edit to an entry carrying one
-  // open claim and the warm compile reported it twice. Keyed by the module
-  // HANDLE so the arm stays graph-free.
-  verify_forget([Replaced])
-}
+// One claim the judgment raised: the node it stands at, the span it is said
+// at, what it claims and why it was raised. The node is the value a
+// refinement is claimed of, the operation a partial operation's claim
+// guards, the pattern a shape claim guards, or the function value a
+// crossing demand is made of. The module a claim was raised in is its
+// node's (`graph_module_of`), read where the claim is printed.
+type ClaimAt = {node: Int, pred: Predicate, span: Span, why: Reason}
+
+// What the judgment or the settle decided of a claim, written at its node
+// (`graph_verdict_note`), the only record of the claim. Open: the verifier
+// cannot decide it. Unsettled: open, and its reading met code the judgment
+// had not reached, so the settle asks it again once the program is judged.
+// Handed: proven only through what this program's calls hand a parameter,
+// which another caller may not hand. Proven, or refused.
+type ClaimVerdict = ClaimOpen | ClaimUnsettled | ClaimHanded | ClaimProven | ClaimRefused
 
 // Every VarRef performs consume(name, ownership, span), carrying authored
 // parameter ownership from the env lookup that already happened at the use-site.
@@ -6600,7 +6565,7 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
 // An operand standing beside an operator keeps the parentheses its source
 // needs when it is itself an operation: the partiality claim of
 // `100 / (k - 1)` rendered `100 / k - 1`, a different program (measured on
-// boot 8b071ba3 at the caret's Verify facet and in the ledger's line alike).
+// boot 8b071ba3 at the caret's Verify facet and in `mentl check`'s line alike).
 fn show_pred_atom(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(_, _, _)) => "({show_pred_operand(handle)})",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)

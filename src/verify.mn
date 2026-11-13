@@ -1,13 +1,14 @@
 // verify.mn — the refinement obligations: each claim decided where the
-// fragment can decide it, and the rest kept as honest debt.
+// fragment can decide it, and its verdict written at its node.
 //
-// `verify_ledger` is the Verify handler. A claim the fragment decides is
-// proven (no debt) or refused at its site (`E_RefinementRejected`); a claim
-// it cannot decide accrues as pending debt — the program compiles and the
-// debt is visible, countable and queryable (`mentl query <entry>
-// verification`). Deciding more is Verify's own solver growing its fragment
-// (PLAN §11, Verify's own solver); an external solver plugs in only as a
-// proposer whose certificate the kernel checks.
+// A claim the fragment decides is proven or refused at its site
+// (`E_RefinementRejected`); a claim it cannot decide is written open, and the
+// program compiles with the claim visible, countable and queryable (`mentl
+// query <entry> verification`). The graph's verdict column is the only record
+// of a claim (`graph_verdict_note`): a reader reads it at the node it holds,
+// below that node, or whole. Deciding more is Verify's own solver growing its
+// fragment (PLAN §11, Verify's own solver); an external solver plugs in only
+// as a proposer whose certificate the kernel checks.
 import types
 
 import arena
@@ -20,53 +21,6 @@ import graph
 
 import io
 
-// Each claim decided by `predicate_decide` where it can be, the verdict
-// recorded; an undecided claim kept as debt. A claim naming a label is the
-// settle's (`flow_settle`): kept among the flows the judgment raised, and
-// owed or decided as the latest settle left it.
-// A claim whose reading met code the judgment had not reached is kept
-// among the unsettled as well, the only debt the settle asks again.
-// A claim the settle proves only through what the calls hand a parameter
-// is kept among the handed: this program owes it nothing, but the
-// declaration still owes it to any other caller, so it stays in the debt
-// the declarations' own faces carry (`verify_face_debt`).
-handler verify_ledger with debt = [], decided = [], flows = [], handed = [], settled = [], unsettled = [] {
-  verify(modh, span, predicate, reason) => match decide_noting(predicate) {
-    (Some(true), _) => resume(Some(true)) with decided = [(modh, span, predicate, true)] ++ decided,
-    (Some(false), _) => resume(Some(false)) with decided = [(modh, span, predicate, false)] ++ decided,
-    (None, met) => if pred_names_label(predicate) {
-      resume(None) with flows = [(modh, span, predicate, reason)] ++ flows
-    } else if met {
-      resume(None) with debt = [(modh, span, predicate, reason)] ++ debt, unsettled = [(modh, span, predicate, reason)] ++ unsettled
-    } else {
-      resume(None) with debt = [(modh, span, predicate, reason)] ++ debt
-    },
-  },
-  verify_debt() => resume(debt ++ flat_map(settled_owed, settled)),
-  verify_face_debt() => resume(debt ++ flat_map(settled_owed, settled) ++ handed),
-  verify_handed() => resume(handed),
-  verify_decided() => resume(decided ++ flat_map(settled_verdict, settled)),
-  verify_flows() => resume(flows),
-  verify_adopt(entries) => resume() with decided = entries ++ decided,
-  verify_reask() => {
-    // The re-ask runs once the judgment has ended. Each claim is read first
-    // as the judgment read it, with no parameter read through its calls, so
-    // a verdict there holds for every caller. A claim still open is read
-    // again with every reference linked, where a parameter may be read as
-    // what its calls hand it (`reask_of`).
-    let asked = unsettled |> map(reasked_apart)
-    let verdicts = flat_map(reask_verdict, asked)
-    let through = flat_map(reask_handed, asked)
-    if len(verdicts) == 0 && len(through) == 0 {
-      resume([])
-    } else {
-      resume(flat_map(reask_refuted, asked)) with debt = debt |> filter(still_owed(verdicts, ??)) |> filter(still_owed(through, ??)), handed = through ++ handed, unsettled = flat_map(reask_owed, asked), decided = verdicts ++ decided
-    }
-  },
-  verify_settle(entries) => resume() with settled = entries,
-  verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided), flows = filter(debt_outside(gone, ??), flows), handed = filter(debt_outside(gone, ??), handed), settled = filter(settled_outside(gone, ??), settled), unsettled = filter(debt_outside(gone, ??), unsettled),
-}
-
 // A claim decided, and whether its reading met code the judgment had not
 // reached, which the settle may read differently once it has.
 fn decide_noting(predicate) = {
@@ -74,30 +28,75 @@ fn decide_noting(predicate) = {
   (verdict, unsettled_met())
 } ~> noting_unsettled
 
-fn still_owed(verdicts, entry) = match entry {
-  (modh, span, _, _) => !any({ (m, s, _, _) => m == modh && s == span }, verdicts),
+// The verdict an undecided claim is written with. A claim whose reading met
+// code the judgment had not reached is unsettled, the only kind the settle's
+// re-ask reads again. A claim naming a label is the flow settle's, which
+// decides every such claim once the program is judged, so it is written
+// open.
+fn open_verdict(pred, met) = if met && !pred_names_label(pred) { ClaimUnsettled } else { ClaimOpen }
+
+// Whether a noted verdict is the one asked about.
+fn verdict_is(wanted, noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (_, verdict) => verdict == wanted,
 }
+
+// Whether a claim is still owed, as `mentl check` prints it and the board
+// counts it: open, or open until the settle asks it again.
+fn is_owed(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (_, verdict) => verdict == ClaimOpen || verdict == ClaimUnsettled,
+}
+
+// Whether a declaration's face still owes a claim: owed, or proven only
+// through what this program's calls hand a parameter, which another caller
+// may not hand. Teach reads these, since a precondition or a stated return
+// makes such a claim hold for every caller.
+fn face_owes(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (_, verdict) => verdict == ClaimHanded || is_owed(noted),
+}
+
+// Whether a claim names a label, which the flow settle decides.
+fn names_label(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, _) => pred_names_label(claim.pred),
+}
+
+// A noted claim, kept where `keep` holds of the claim and its verdict.
+fn claim_kept(keep, noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, _) => if keep(noted) { [claim] } else { [] },
+}
+
+// The claims of the whole program that `keep` holds of, in the order of
+// their nodes. The column's read builds a list of every verdict of the
+// program, so each reader runs it in an extent whose exit reclaims that list
+// and keeps only the answer: the two settles in theirs (src/infer.mn), and
+// the readers below in an arena each. With the self-compile's reads of the
+// column run in the open, its peak stood 1,224 KB above a probe that read
+// the column not at all (2026-11-13).
+fn claims_where(keep) = graph_verdicts_written() |> flat_map(claim_kept(keep, ??))
+
+// The claims the program still owes.
+fn owed_claims() = claims_where(is_owed) ~> arena
+
+// The claims the program's faces still owe.
+fn face_debt() = claims_where(face_owes) ~> arena
+
+// The claims still owed at a node and below it.
+fn owed_below(h) = verdicts_below(h) |> flat_map(claim_kept(is_owed, ??))
 
 // What the settle's re-ask made of one claim: decided as the judgment
 // reads it, proven only through what the calls hand its parameters, or
 // still open.
 type Reask = ReaskDecided(Bool) | ReaskHanded | ReaskOpen
 
-fn reasked(entry) = match entry {
-  (_, _, pred, _) => (entry, reask_of(pred)),
-}
-
 // Each claim is asked again in an extent of its own, so the walk one claim
 // makes dies at that extent's exit and the settle holds one walk's memory at
 // a time: the wheel's 756 open claims asked in one extent raised the
 // self-compile's peak by 60 MB.
-fn reasked_apart(entry) = reasked(entry) ~> arena
+fn reasked_apart(pred) = reask_of(pred) ~> arena
 
 // The first reading is the judgment's own (`decide_noting`), where a
 // parameter is never read through its calls. Only a claim it leaves open is
-// read again with every reference linked. The linked handler is installed
-// here, around that reading, because a perform inside a ledger arm is
-// answered outside the ledger's install.
+// read again with every reference linked, where a parameter may be read as
+// what its calls hand it.
 fn reask_of(pred) = match decide_noting(pred) {
   (Some(held), _) => ReaskDecided(held),
   (None, _) => linked_reask(linked_decide(pred)),
@@ -113,56 +112,31 @@ fn linked_reask(verdict) = match verdict {
   None => ReaskOpen,
 }
 
-fn reask_owed(asked) = match asked {
-  (entry, ReaskOpen) => [entry],
-  (_, ReaskDecided(_)) | (_, ReaskHanded) => [],
-}
+// The settle's re-ask, once the whole program is judged: a claim reads what
+// the judgment may reach after it, a handler's later arm or a declaration a
+// predicate's call reads later in the file. Each unsettled claim is asked
+// again, and what the re-ask decides is written at the claim's node in place
+// of the unsettled verdict; a claim it leaves open stays unsettled, and a
+// claim refuted now is reported where it was said.
+fn reask_settle() = claims_where(verdict_is(ClaimUnsettled, ??)) |> each(reask_one)
 
-fn reask_verdict(asked) = match asked {
-  ((modh, span, pred, _), ReaskDecided(held)) => [(modh, span, pred, held)],
-  (_, ReaskHanded) | (_, ReaskOpen) => [],
-}
+fn reask_one(claim: ClaimAt) = reasked_noted(claim, reasked_apart(claim.pred))
 
-fn reask_handed(asked) = match asked {
-  (entry, ReaskHanded) => [entry],
-  (_, ReaskDecided(_)) | (_, ReaskOpen) => [],
-}
-
-fn reask_refuted(asked) = match asked {
-  (entry, ReaskDecided(false)) => [entry],
-  (_, ReaskDecided(true)) | (_, ReaskHanded) | (_, ReaskOpen) => [],
-}
-
-// The settle's re-ask: a claim refuted now is reported where it was raised.
-fn reask_settle() =
-  verify_reask() |> each({ (modh, span, pred, reason) => report_at(modh, ERefinementRejected(pred, span, reason)) })
-
-fn settled_owed(entry) = match entry {
-  (modh, span, pred, reason, None) => [(modh, span, pred, reason)],
-  _ => [],
-}
-
-fn settled_verdict(entry) = match entry {
-  (modh, span, pred, _, Some(held)) => [(modh, span, pred, held)],
-  _ => [],
-}
-
-fn settled_outside(gone, entry) = match entry {
-  (modh, span, _, _, _) => !any(obligation_replaced(modh, span, ??), gone),
-}
-
-// An obligation survives a forget unless an edit replaced what raised it:
-// its module whole, or the statement whose extent holds it. A decided claim
-// is the same four-place fact with its verdict where the debt carries its
-// Why, so one test serves both.
-fn debt_outside(gone, entry) = match entry {
-  (modh, span, _, _) => !any(obligation_replaced(modh, span, ??), gone),
+fn reasked_noted(claim: ClaimAt, asked) = match asked {
+  ReaskDecided(true) => graph_verdict_note(claim.node, (claim, ClaimProven)),
+  ReaskDecided(false) => {
+    graph_verdict_note(claim.node, (claim, ClaimRefused))
+    report_at(graph_module_of(claim.node), ERefinementRejected(claim.pred, claim.span, claim.why))
+  },
+  ReaskHanded => graph_verdict_note(claim.node, (claim, ClaimHanded)),
+  ReaskOpen => (),
 }
 
 // Compile-time decidable discharge. Returns Some(true) when the predicate
 // proves true on its GROUND operands alone; Some(false) when it proves false;
 // None at the undecidable boundary (a free variable with no `self` binding, a
-// call, a non-constant expression) — defers to the ledger or the SMT tier.
+// call, a non-constant expression) — the claim stays open, for the settle or a
+// solver's certificate.
 //
 // A PCompare decides iff BOTH operands reduce to ground constants under the
 // current `self` binding — the decidable ARITHMETIC FRAGMENT: literals, `self`
@@ -2705,7 +2679,7 @@ fn leaf_excludes(k, leaf) = match leaf {
 // of their low ends and the greatest of their high ends. Each end is a word,
 // and an end nothing bounds is the least or the greatest word, which is what
 // every word lies between. A postcondition and the Add fold answer here,
-// since a claim's own debt is the ledger's to carry.
+// since a claim's own debt stays open at the node where it was raised.
 // The fold starts from the end that covers nothing, and no leaf at all is a
 // value nothing bounds.
 fn leaves_low(leaves) =
@@ -3135,8 +3109,8 @@ fn leaf_unproven(leaf) = match leaf {
 //
 // What can reach a value is a fact of the whole program, so a claim naming a
 // label is decided once the program is judged (`flow_settle`): the judgment
-// hands each one to the ledger's flows, and every judgment of the program
-// decides them all again. A claim stands on what the claim's own function is
+// writes each one open at its node, and every settle of the program decides
+// them all again. A claim stands on what the claim's own function is
 // handed and on whether that function runs; both are DEMANDS, owed at every
 // call of it, the function's own calls among them.
 //
@@ -5540,28 +5514,26 @@ fn label_facts(d, label) = match label {
 }
 
 // Every claim naming the label inside a declaration, with what the settle
-// decided of it: proven, refused, or owed.
-fn decl_claim_facts(d, op) =
-  (verify_decided() |> flat_map(decided_claim_fact(d, op, ??))) ++ (verify_debt() |> flat_map(owed_claim_fact(d, op, ??)))
+// decided of it, read in the declaration's body: proven, refused, or owed.
+fn decl_claim_facts(d, op) = verdicts_below(d) |> flat_map(label_fact(op, ??))
 
-fn decided_claim_fact(d, op, entry) = match entry {
-  (modh, span, pred, held) => if claim_within(d, op, modh, span, pred) {
-    [if held { "proven" } else { "refused" } ++ ": {show_predicate(pred)} at {show_span(span)}"]
+fn label_fact(op, noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, verdict) => if any({ l => fst_of(l) == op }, pred_labels(claim.pred)) {
+    [fact_line(verdict, claim)]
   } else {
     []
   },
 }
 
-fn owed_claim_fact(d, op, entry) = match entry {
-  (modh, span, pred, why) => if claim_within(d, op, modh, span, pred) {
-    ["owed: {show_predicate(pred)} at {show_span(span)} — {show_reason(why)}"]
-  } else {
-    []
-  },
+fn fact_line(verdict, c: ClaimAt) = {
+  let said = "{show_predicate(c.pred)} at {show_span(c.span)}"
+  match verdict {
+    ClaimProven => "proven: {said}",
+    ClaimRefused => "refused: {said}",
+    ClaimHanded => "proven by its calls: {said}",
+    ClaimOpen | ClaimUnsettled => "owed: {said} — {show_reason(c.why)}",
+  }
 }
-
-fn claim_within(d, op, modh, span, pred) =
-  modh == graph_module_of(d) && span_contains(graph_span_of(d), span) && any({ l => fst_of(l) == op }, pred_labels(pred))
 
 fn fn_label_facts(d, fname: String, op, name: String) = match published_fn_ty(d) {
   Some(TFun(params, ret, _)) => {
@@ -5746,38 +5718,47 @@ fn verdict_and(a, b) = {
   verdict: and_decide(a.verdict, b.verdict),
 }
 
-// The settle: every claim naming a label decided over the judged program, and
-// the ledger handed what was decided. A refuted claim is reported where it was
-// raised, with the chain from the source that reaches it.
-fn flow_settle() = match verify_flows() {
-  [] => verify_settle([]),
-  claims => {
-    let done = until_settled(map(settle_claim, ??), claims) ~> flow_summaries(flow_stores())
-    done |> each(report_refuted)
-    verify_settle(map({ t => t.entry }, done))
-  },
+// The settle: every claim naming a label decided over the judged program.
+// Each verdict is written at its claim's node in place of the one it had,
+// and a refuted claim is reported where it was said, with the chain from the
+// source that reaches it.
+fn flow_settle() = match claims_where(names_label) {
+  [] => (),
+  claims => (until_settled(map(settle_claim, ??), claims) ~> flow_summaries(flow_stores())) |> each(note_settled),
 }
 
-fn report_refuted(t) = match t.entry {
-  (modh, span, pred, _, Some(false)) => report_at(modh, ERefinementRejected(pred, span, t.why)),
-  _ => (),
+fn note_settled(t) = match t.entry {
+  (claim, verdict) => settled_noted(claim, verdict, t.why),
+}
+
+fn settled_noted(claim: ClaimAt, verdict, why) = {
+  let node = claim.node
+  graph_verdict_note(node, (claim, settled_verdict(verdict)))
+  match verdict {
+    Some(false) => report_at(graph_module_of(node), ERefinementRejected(claim.pred, claim.span, why)),
+    Some(true) | None => (),
+  }
+}
+
+fn settled_verdict(verdict) = match verdict {
+  Some(true) => ClaimProven,
+  Some(false) => ClaimRefused,
+  None => ClaimOpen,
 }
 
 // One claim decided. A claim with no value to read — a contract claimed of a
 // part of a value built out of sight — stays owed where it was raised.
-fn settle_claim(claim) = match claim {
-  (modh, span, pred, reason) => {
-    let out = match pred {
-      PWithSelf(subject, inner) => claim_verdict(subject, inner),
-      PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-      | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => flow_verdict(None),
-    }
-    let why = match out.chain {
-      Some(c) => c,
-      None => reason,
-    }
-    {entry: (modh, span, pred, why, out.verdict), why}
-  },
+fn settle_claim(claim: ClaimAt) = {
+  let out = match claim.pred {
+    PWithSelf(subject, inner) => claim_verdict(subject, inner),
+    PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => flow_verdict(None),
+  }
+  let why = match out.chain {
+    Some(c) => c,
+    None => claim.why,
+  }
+  {entry: (ClaimAt{node: claim.node, pred: claim.pred, span: claim.span, why}, out.verdict), why}
 }
 
 fn escapes(r) = match graph_parent_of(r) {
@@ -6014,7 +5995,7 @@ fn subst_self(pred, value_handle) = PWithSelf(value_handle, pred)
 // The candidate gate's refinement half: a candidate SURFACES only when the
 // target's refinement DECIDES true on it (PLAN §5 sample-then-filter — the
 // proven survivors, which may be none). An undecided predicate is not a
-// proof, and assume-true is the Dafny {:axiom} cautionary the ledger
+// proof, and assume-true is the Dafny {:axiom} cautionary the verifier
 // exists to refuse. Transparent aliases recurse; an unrefined target
 // admits by type alone.
 fn refinement_admits(ty, value_handle) = match ty {
@@ -6022,7 +6003,7 @@ fn refinement_admits(ty, value_handle) = match ty {
   // parameter's precondition, a callee's declared return — is admitted
   // by that identity, which proves the declaration, never its discharge.
   // The layering is deliberate, each proof question at its one home: a
-  // callee's return obligation lives in the ledger AT ITS decl
+  // callee's return claim stands AT ITS decl
   // (discharged, pending, or refuted THERE); a refuted callee already
   // fails the program's own check leg (E_RefinementRejected at the decl),
   // so admitting its call here changes nothing observable; and executable
@@ -6232,22 +6213,37 @@ fn not_decide(ref e) = match e {
   None => None,
 }
 
-// A claim's one perform: the installed ledger answers its verdict — proven,
-// refused, open — and the site reports a refusal from the body, inside every
-// capture bracket the judgment installed, since an arm's performs resolve
-// outside its own install. A label's presence is never claimed: a value may
-// always be handled as though a source had reached it, so a position declared
-// to hold the label demands nothing of what it is handed, and the walk reads
-// the declaration as a source instead. Only the label's absence is owed.
-fn verify_claim(modh, span, pred, reason) = match owed_of(pred) {
+// One claim, decided where it is raised and written at its node, the only
+// record of it: proven, refused, or open where the fragment decided nothing
+// (unsettled where its reading met code the judgment had not reached). The
+// site that needs the outcome reads the answer, such as a division that
+// charges `Trap` only while its precondition stays open, and a refusal is
+// reported from the site's own body, inside every capture bracket the
+// judgment installed. A label's presence is never claimed: a value may
+// always be handled as though a source had reached it, so a position
+// declared to hold the label demands nothing of what it is handed, and the
+// walk reads the declaration as a source instead. Only the label's absence
+// is owed. The settle writes what it decides later over the verdict written
+// here (`reask_settle`, `flow_settle`).
+fn verify_claim(node, span, pred, reason) = match owed_of(pred) {
   None => Some(true),
   Some(owed) => {
-    let verdict = verify(modh, span, owed, reason)
-    match verdict {
-      Some(false) => report_refinement_rejected(owed, span, reason),
-      None | Some(_) => (),
+    let claim = ClaimAt{node, pred: owed, span, why: reason}
+    match decide_noting(owed) {
+      (Some(true), _) => {
+        graph_verdict_note(node, (claim, ClaimProven))
+        Some(true)
+      },
+      (Some(false), _) => {
+        graph_verdict_note(node, (claim, ClaimRefused))
+        report_refinement_rejected(owed, span, reason)
+        Some(false)
+      },
+      (None, met) => {
+        graph_verdict_note(node, (claim, open_verdict(owed, met)))
+        None
+      },
     }
-    verdict
   },
 }
 
@@ -6302,11 +6298,12 @@ fn without_presence(pred) = match pred {
 fn report_refinement_rejected(ref pred, ref span, ref reason) with !Mutate =
   report(ERefinementRejected(pred, span, reason))
 
-// The pending ledger speaks WHOLE — one line per obligation (span,
-// class, predicate) before the summary count. The count alone hid the
-// debt's composition: the 2026-07-30 sweep classified 138 obligations
-// only by growing per-entry projections one file at a time; this is
-// the complete projection at the one place the whole ledger is read.
+// The open claims are said WHOLE — one line per claim (span, class,
+// predicate), in the order of their nodes, before the summary count. The
+// count alone hid the debt's composition: the 2026-07-30 sweep classified
+// 138 obligations only by growing per-entry projections one file at a
+// time; this is the complete projection at the one place every open claim
+// is printed.
 // Spans render as the developer's own file:line through the graph's
 // NModule seams — the weave coordinate was hand-mapped four times in
 // one session before this projection existed.
@@ -6315,7 +6312,7 @@ fn report_verify_debt(debt) = {
   // register's scope hears (`debt_heard`). A user's own pending claim is
   // printed, since it says which claim was not checked, while the library's
   // stay quiet unless the scope hears every module. Measured 2026-10-12
-  // against the whole-ledger count this replaces: a hello-world reported
+  // against the count of every open claim this replaces: a hello-world reported
   // seventeen obligations it had no way to discharge, every one the
   // library's, while the lines beside the count filtered them out.
   let heard = debt_heard(debt, diag_scope_of())
@@ -6325,27 +6322,26 @@ fn report_verify_debt(debt) = {
   // judgment entered last.
   match heard {
     [] => (),
-    [first, ...rest] => match first {
-      (modh, s, _, _) => report_at(modh, VPending(len(rest) + 1, s)),
-    },
+    [first, ..._] => report_at(graph_module_of(first.node), VPending(len(heard), first.span)),
   }
 }
 
-// The open obligations a scope hears. The module rides each obligation, so
-// scoping is a compare of modules. The pending summary counts this list, and
-// the gate's verdict prints it.
-fn debt_heard(debt, ref scope) = filter({ (modh, _, _, _) => debt_in_scope(modh, scope) }, debt)
+// The open obligations a scope hears: those whose node was born in a module
+// the scope hears. The pending summary counts this list, and the gate's
+// verdict prints it.
+fn debt_heard(debt, ref scope) = filter(claim_heard(scope, ??), debt)
 
-fn debt_said(entry) = said(debt_text(entry))
+fn claim_heard(scope, claim: ClaimAt) = debt_in_scope(graph_module_of(claim.node), scope)
+
+fn debt_said(claim) = said(debt_text(claim))
 
 // One open obligation's line, as check and compile print it and the gate's
 // verdict carries it: the span is the developer's own coordinate.
-fn debt_text(entry) = match entry {
-  (modh, dspan, pred, _) => "verify: {obligation_text(modh, dspan, pred)}\n",
-}
+fn debt_text(claim: ClaimAt) =
+  "verify: {obligation_text(graph_module_of(claim.node), claim.span, claim.pred)}\n"
 
-// One open obligation said once: the ledger's summary lines and the Verify
-// facet at a caret read the same sentence.
+// One open obligation said once: `mentl check`'s lines and the Verify facet
+// at a caret read the same sentence.
 fn obligation_text(modh, dspan, pred) =
   "pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}"
 

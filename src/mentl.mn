@@ -112,7 +112,7 @@ handler mentl_default {
 
 // THE GRADIENT AT A DECLARATION (D4, 2026-10-02). Every annotation the
 // gradient proposes is PROVEN in a checkpoint bracket by the judgment's own
-// functions — the row gate's subsumption for a clause, the ledger's own
+// functions — the row gate's subsumption for a clause, the verifier's own
 // decision for a precondition's obligations and the call site's own claim
 // for its callers, the authored return's own claim for a postcondition — and
 // its leverage is what the bracket measured. Until D4 the gradient proposed
@@ -426,19 +426,16 @@ fn row_suggestion(c) = match c {
 
 // ── The open obligations a declaration owes ────────────────────────────
 //
-// The ledger's open claims raised inside the declaration's extent IN ITS
-// OWN MODULE — the obligation carries its module, and every module numbers
-// its lines from 1, so an extent alone matches a stranger's claim at the
-// same lines. A claim pending over an authored hole is the hole's demand,
-// paid by its fill, and is the proposer's to answer. The claims are the
-// ones the declaration's own face owes, so a claim this program's calls
-// prove is still taught: a precondition makes it hold for every caller.
+// The claims the declaration's own face still owes, read in its body down
+// its child edges (`verdicts_below`), so a stranger's claim on the same
+// lines of another module is never one of them. A claim this program's calls
+// prove is still taught: a precondition makes it hold for every caller. A
+// claim pending over an authored hole is the hole's demand, paid by its
+// fill, and is the proposer's to answer.
 fn open_obligations(h) =
-  verify_face_debt() |> filter(owed_at(graph_module_of(h), graph_span_of(h), ??))
+  verdicts_below(h) |> flat_map(claim_kept(face_owes, ??)) |> filter(not_a_holes_demand)
 
-fn owed_at(m, sp, o) = match o {
-  (dm, dsp, pred, _) => dm == m && span_overlaps(sp, dsp) && !claim_is_a_holes_demand(pred),
-}
+fn not_a_holes_demand(claim: ClaimAt) = !claim_is_a_holes_demand(claim.pred)
 
 // ── The precondition: an open obligation discharged ────────────────────
 //
@@ -461,9 +458,7 @@ fn precondition_suggestions(f, owed) = {
 // the applier's own parameter (tests/teach/need-is-own.mn) — or on a
 // lambda's inside the body, and neither is a position this declaration's
 // head can state.
-fn own_leans(f, o) = match o {
-  (_, _, pred, _) => predicate_leans(pred) |> flat_map(own_lean(f, ??)),
-}
+fn own_leans(f, claim: ClaimAt) = predicate_leans(claim.pred) |> flat_map(own_lean(f, ??))
 
 fn own_lean(f, lean) = match lean {
   (b, name) => match f.ty {
@@ -656,7 +651,7 @@ fn same_base(a, b) = match a {
 // THE PRECONDITION'S BRACKET. The candidate is stated on the parameter as an
 // authored refinement states it (its binder fact's precondition), and the
 // judgment's own decisions run against it: every open obligation of the
-// declaration through the ledger's decision, and every application of the
+// declaration through the verifier's decision, and every application of the
 // declaration the judgment drew through the call site's own two steps
 // (`dry_claim`). Counted on a trail of their own (`speculate`), undone,
 // built after. An application the edge does not hold — a partial's supplied
@@ -707,14 +702,12 @@ fn precondition_proven(i, name: String, counted) = match counted {
 
 // What paying an obligation makes safe, in the developer's words: the
 // instruction whose precondition the claim guards, else the claim itself.
-fn made_safe(o) = match o {
-  (_, _, pred, _) => match pred {
-    PTotalDiv(_, _, _) => "the division cannot fail",
-    PInBounds(_, _) => "the index stays in bounds",
-    PSliceBounds(_, _, _) => "the cut stays inside the sequence",
-    PWithSelf(_, _) | PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_)
-    | PPatternMatch(_, _) | PProvides(_) => "the claim holds",
-  },
+fn made_safe(claim: ClaimAt) = match claim.pred {
+  PTotalDiv(_, _, _) => "the division cannot fail",
+  PInBounds(_, _) => "the index stays in bounds",
+  PSliceBounds(_, _, _) => "the cut stays inside the sequence",
+  PWithSelf(_, _) | PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_)
+  | PPatternMatch(_, _) | PProvides(_) => "the claim holds",
 }
 
 // WHAT THE DEBT PAID UNLOCKS. A precondition that pays every open claim Trap
@@ -731,9 +724,7 @@ fn trap_leaves(f, paid) = match effect_entries_of(f.handle) |> filter(chain_ente
 
 fn chain_paid(paid, chain) = chain_sites(chain) |> any({ site => any(pays(site, ??), paid) })
 
-fn pays(site, o) = match o {
-  (_, sp, _, _) => span_overlaps(graph_span_of(site), sp),
-}
+fn pays(site, claim: ClaimAt) = span_overlaps(graph_span_of(site), claim.span)
 
 // The site a chain ends at — the construct that charges the effect itself —
 // as a list, empty for a reason that is no chain.
@@ -757,13 +748,9 @@ fn restate_param(b, contract) = match graph_binder_of(b) {
   None => (),
 }
 
-fn obligation_holds(o) = match o {
-  (_, _, pred, _) => verdict_holds(predicate_decide(pred)),
-}
+fn obligation_holds(claim: ClaimAt) = verdict_holds(predicate_decide(claim.pred))
 
-fn obligation_refuted(o) = match o {
-  (_, _, pred, _) => verdict_refuted(predicate_decide(pred)),
-}
+fn obligation_refuted(claim: ClaimAt) = verdict_refuted(predicate_decide(claim.pred))
 
 fn verdict_holds(v) = match v {
   Some(held) => held,
@@ -811,15 +798,15 @@ fn later_mint_of(h, h2) =
 
 // The claim an application raises at its argument under the candidate — the
 // call site's own two steps (`discharge_arg`: an unannotated parameter
-// handed straight in learns the precondition, then the claim) — answered by
-// a scratch ledger, its refutation narrated to no one.
+// handed straight in learns the precondition, then the claim) — its verdict
+// written in the fork the candidate is counted in, which `speculate` drops,
+// and its refutation narrated to no one.
 fn claim_at_call(contract, i, app_h) = {
   let args = application_args(app_h)
   if i < len(args) { dry_claim(contract, args[i]) } else { Some(true) }
 }
 
-fn dry_claim(contract, arg) =
-  learn_then_claim(contract, arg, graph_span_of(arg)) ~> verify_ledger ~> diag_quiet
+fn dry_claim(contract, arg) = learn_then_claim(contract, arg, graph_span_of(arg)) ~> diag_quiet
 
 fn learn_then_claim(contract, ah, sp: ValidSpan) = {
   learn_precondition(ah, contract)
@@ -837,7 +824,7 @@ fn learn_then_claim(contract, ah, sp: ValidSpan) = {
 fn return_suggestions(f) = if authored_return(f.retty) {
   []
 } else {
-  match verify_face_debt() |> flat_map(resting_on(f.handle, ??)) {
+  match face_debt() |> flat_map(resting_on(f.handle, ??)) {
     [] => [],
     resting => {
       let fitting = aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??))
@@ -857,15 +844,13 @@ fn authored_return(retty) = match graph_node_body(retty) {
 
 fn ret_fits(ret, alias) = alias_fits(chase_deep(ret), alias)
 
-fn resting_on(decl, o) = match o {
-  (_, _, pred, _) => match pred {
-    PWithSelf(h, _) => match value_calls(h, decl) {
-      [] => [],
-      chs => [(pred, chs)],
-    },
-    PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => [],
+fn resting_on(decl, claim: ClaimAt) = match claim.pred {
+  PWithSelf(h, _) => match value_calls(h, decl) {
+    [] => [],
+    chs => [(claim.pred, chs)],
   },
+  PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+  | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) | PSliceBounds(_, _, _) => [],
 }
 
 // The callee nodes through which a value IS a call to the declaration: the
@@ -926,7 +911,7 @@ fn return_proven(counted) = match counted {
 }
 
 fn dry_return_claim(contract, body) =
-  claim_refinement(contract, body, graph_span_of(body)) ~> verify_ledger ~> diag_quiet
+  claim_refinement(contract, body, graph_span_of(body)) ~> diag_quiet
 
 fn rest_on_contract(contract, r) = match r {
   (_, chs) => chs |> each(return_as(contract, ??)),
@@ -1191,12 +1176,10 @@ fn need_or_lift(f, owed) = match owed |> flat_map(need_of(f, ??)) {
 
 fn has_need(f, owed) = len(owed |> flat_map(need_of(f, ??))) > 0
 
-fn need_of(f, o) = match o {
-  (_, sp, pred, _) => match own_leans(f, o) {
-    [] => [],
-    [lean, ..._] => match lean {
-      (_, name, _) => [TeachNeed(name, pred, sp)],
-    },
+fn need_of(f, claim: ClaimAt) = match own_leans(f, claim) {
+  [] => [],
+  [lean, ..._] => match lean {
+    (_, name, _) => [TeachNeed(name, claim.pred, claim.span)],
   },
 }
 
@@ -1385,7 +1368,7 @@ fn show_capability(cap) = match cap {
 
 // What a suggestion buys, in the developer's words: what it makes safe, what
 // that unlocks and what it asks of the callers; or what it unlocks and who
-// stands on it. Never the ledger's count — "annotate this and you unlock
+// stands on it. Never a count of claims — "annotate this and you unlock
 // that" is the sentence a person reads (Morgan, 2026-10-27).
 fn show_leverage(lev) = match lev {
   Leverage(l) => if l.discharged > 0 {

@@ -3982,20 +3982,19 @@ for i in "${!compilers[@]}"; do
     fail "poly multicall (diagnostics: $mc_diags; see $mc_err)"
   fi
 
-  # ─── The decls facet (the bound-projection landing's gate) ──────────
-  # `query <fixture> "decls"` projects the decls COLUMN: every name the
-  # judged declarations declare, beside its declaration's site. Born RED
-  # 2026-08-07: the incumbent boot answered "error: unknown query: decls".
-  # Each of the fixture's three decls (lines 7/9/11) is listed ONCE, by
-  # name at its line — the retired whole-handle NBound walk seeded every
-  # fn-typed MENTION beside its decl, and the roster before 2026-10-06
-  # answered addresses alone, so it could not say what it listed.
-  df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-decls-facet.mn" "decls" 2>/dev/null)
-  df_once() { [ "$(printf '%s\n' "$df_out" | grep -cE "^  $1  at .*mn-decls-facet:$2:")" = 1 ]; }
-  if printf '%s' "$df_out" | grep -q "declared name(s)" && df_once inc 8 && df_once twice 10 && df_once main 12; then
+  # ─── The decls facet ─────────────────────────────────────────────────
+  # `query <fixture> "decls"` lists each name the judged declarations
+  # declare, beside its declaration's site, so each of the fixture's three
+  # (lines 8, 10 and 12) is listed once, by name at its line. The answer is
+  # read from a file: piped into `grep -q` it read false in 88 of 2,000 runs
+  # on the same answer (2026-11-13), when grep stopped at the first line and
+  # the writer's SIGPIPE failed the pipe under pipefail.
+  wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-decls-facet.mn" "decls" > "$dir/decls.out" 2>/dev/null
+  df_once() { [ "$(grep -cE "^  $1  at .*mn-decls-facet:$2:" "$dir/decls.out")" = 1 ]; }
+  if grep -q "declared name(s)" "$dir/decls.out" && df_once inc 8 && df_once twice 10 && df_once main 12; then
     pass "decls facet: each of the fixture's three decls listed once, by name at its line (8/10/12)"
   else
-    fail "decls facet (each decl once, by name at its line; got: $(printf '%s' "$df_out" | grep -E 'declared name|mn-decls-facet' | tr '\n' ' '))"
+    fail "decls facet (each decl once, by name at its line; got: $(grep -E 'declared name|mn-decls-facet' "$dir/decls.out" | tr '\n' ' '))"
   fi
 
   # ─── refs of follows the reference edge (M1, Hβ.lower.reach-edge-on-node)

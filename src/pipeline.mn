@@ -23,7 +23,6 @@
 //
 // Every other handler is imported from its owner module:
 //   graph_handler       → graph.mn
-//   verify_ledger       → verify.mn
 //   mentl_default       → mentl.mn
 //   query_default       → query.mn
 //   affine_ledger       → own.mn
@@ -78,9 +77,10 @@ import verify
 // its single instantiation; every inference-reaching chain installs the
 // bracket), inner to outer:
 //
-//   affine_ledger / region_tracker / verify_ledger — the analysis
-//     ledgers, innermost: arms are pure state over the ops inference
-//     performs (consume/borrow, region tags, proof debt).
+//   affine_ledger / region_tracker — the analysis ledgers, innermost:
+//     arms are pure state over the ops inference performs
+//     (consume/borrow, region tags). A claim's verdict is no ledger's:
+//     it is written at its node in the graph.
 //   lookup_ty_graph — the GraphRead → LookupTy bridge: its arms read
 //     the graph, so graph_handler sits outer to it.
 //   env_handler before graph_handler — env arms read the graph outer
@@ -211,8 +211,8 @@ wasi_filesystem ~> compile_context
 //   the wheel's own self-compile carries obligations that are structurally
 //   undecidable without the SMT handler swap, so refusing on pending would
 //   refuse the medium itself (the fleet's measured refutation of the
-//   blanket form). The ledger projects one summary diagnostic; the
-//   per-entry projections stay query/edit surfaces.
+//   blanket form). The open claims project one summary diagnostic; the
+//   per-claim projections stay query/edit surfaces.
 //   THE PLAN SETTLES. A clean judgment is planned (`emit_plan`), and the
 //   plan's settle point says every floor the module would carry — an offset,
 //   a shape or a specialization it cannot prove where the body is emitted,
@@ -227,7 +227,7 @@ wasi_filesystem ~> compile_context
 // verdict as data, the server outlives every refusal). The reports land
 // before the error count is read — the teaching precedes the tally it feeds.
 fn gate_reads(lowered) = {
-  report_verify_debt(verify_debt())
+  report_verify_debt(owed_claims())
   let holes = graph_holes_at()
   // The count binds BEFORE the hole report, so a hole is never counted
   // twice: report_holes raises E_UnresolvedHole, an error, and len(holes)
@@ -300,7 +300,7 @@ fn gated_compile(module: String, wat_path, audience) = {
   {
     errors: diag_errors(),
     left,
-    pending: debt_heard(verify_debt(), scope) |> map(debt_text),
+    pending: debt_heard(owed_claims(), scope) |> map(debt_text),
     reports: diag_banked(),
     scope,
     traps: trap_lines(),
@@ -524,7 +524,7 @@ fn pipeline_check(entry_module) = {
   // so a refinement the program states is never left unproven in silence.
   // It is not an error: the program still builds, as compile's own report
   // says.
-  report_verify_debt(verify_debt())
+  report_verify_debt(owed_claims())
   // Beside the open claims, how many places can still stop the program with
   // a trap, read off the traps facet, so a check that prints no claim never
   // hides a trap that no claim guards.
@@ -708,7 +708,7 @@ fn owed_site(path: String) = {
       }
       match filter(report_is_error, diag_banked()) {
         [first, ..._] => [report_site(first)],
-        [] => match filter(owed_claim(diag_scope_of(), ??), verify_debt()) {
+        [] => match filter(claim_heard(diag_scope_of(), ??), owed_claims()) {
           [ob, ..._] => [debt_site(ob)],
           [] => [],
         },
@@ -716,10 +716,6 @@ fn owed_site(path: String) = {
     },
   }
 } ~> wasi_filesystem ~> emit_context ~> quiet_context ~> arena
-
-fn owed_claim(scope, ob) = match ob {
-  (modh, _, _, _) => debt_in_scope(modh, scope),
-}
 
 // One program's answer to a SITE facet, kept to the program's own module —
 // what `mentl query <dir> …` asks of each program in a directory, since the
@@ -855,35 +851,27 @@ fn teach_project(ast) = {
   map_fn_stmts(ast, (name, handle) => (name, teach_gradient(handle))) |> render_gradients(tights)
 }
 
-// The banks the judgment already holds, read ONCE and attributed per
-// fn: a pending proof obligation belongs to the declaration whose own span
-// holds it, in that declaration's own module, so a line added elsewhere, or
-// a library's obligation on the same line numbers, never moves it onto
-// another function; tightenings by the name the collector banked. The audit
-// and the frontier are two projections of the same banks.
+// What the judgment holds about each declaration: the claims still owed in
+// its own body, read down its child edges (`owed_below`), so a line added
+// elsewhere, or a library's claim on the same line numbers, never moves onto
+// another function; and the tightenings the collector banked under its
+// name, read once. The audit and the frontier are two projections of the
+// same facts.
 fn audit_project(ast) =
-  map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
+  map_fn_stmts(ast, (name, handle) => (name, handle)) |> map(audit_of(tightenables(), ??)) |> render_audit
 
 fn decl_start_line(handle) = match graph_span_of(handle) {
   Span(sl, _, _, _) => sl,
 }
 
-// An obligation is the declaration's when it stands in the declaration's own
-// module and inside the declaration's own span.
-fn owned_by(handle, entry) = match entry {
-  (modh, dspan, _, _) => modh == graph_module_of(handle) && span_contains(graph_span_of(handle), dspan),
-}
-
-fn audit_walk(debt, tights, i, fns) = if i >= len(fns) {
-  []
-} else {
-  match fns[i] {
-    (name, handle) => {
-      let pending = filter(owned_by(handle, ??), debt)
-      let mine = filter({ (_, _, tname, _, _) => tname == name }, tights)
-      [build_audit_report(name, handle, lookup_ty(handle), pending, mine)] ++ audit_walk(debt, tights, i + 1, fns)
-    },
-  }
+fn audit_of(tights, f) = match f {
+  (name, handle) => build_audit_report(
+    name,
+    handle,
+    lookup_ty(handle),
+    owed_below(handle),
+    filter({ (_, _, tname, _, _) => tname == name }, tights)
+  ),
 }
 
 fn teach(entry_module) = analyze_fns(entry_module, teach_project)
@@ -1066,7 +1054,7 @@ fn teach_result_text(name: String, result, tights) = match result {
 }
 
 // The judgment's banked T_OverDeclared for a declaration, by the name the
-// collector banked it under (the audit's attribution, `audit_walk`).
+// collector banked it under (the audit's attribution, `audit_of`).
 fn banked_tightening(name: String, tights) = match find(tightening_named(name), tights) {
   Some(t) => match t {
     (declared, used, _, _, _) => Some((declared, used)),
@@ -1398,9 +1386,8 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, finishes: Bool, 
 }
 
 // One claim the verifier could not prove, as the claim and where it stands.
-fn pending_claim(entry) = match entry {
-  (modh, dspan, pred, _) => "{show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}",
-}
+fn pending_claim(claim: ClaimAt) =
+  "{show_predicate(claim.pred)} at {module_name_of_handle(graph_module_of(claim.node))}:{show_span(claim.span)}"
 
 // Query rendering — delegates to query.mn for Question parsing.
 // A census site speaks the developer's FILE and line, and both halves come
@@ -1432,25 +1419,23 @@ fn named_site_line(named) = match named {
 }
 
 fn roster_line(row) = match row {
-  (name, label, n) => "\n  {name}  {int_to_str(n)} {label}",
+  (name, label, sites) => "\n  {name}  {int_to_str(len(sites))} {label}",
 }
 
 // One line per undischarged obligation: the predicate the graph holds,
 // at the developer's own coordinates — the debt facet's site list.
 // The seam walk is GONE: the span is already the developer's own coordinate
-// and the module rides the obligation, so a line is one read and a name, with
-// no containment scan over every node to place it.
+// and the module is the claim's node's, so a line is two reads and a name,
+// with no containment scan over every node to place it.
 fn render_debt_lines(obligations) = obligations |> map(render_debt_line) |> str_concat_all
 
-fn render_debt_line(ob) = match ob {
-  (modh, s, pred, _) => "\n  {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(s)}",
-}
+fn render_debt_line(claim: ClaimAt) =
+  "\n  {show_predicate(claim.pred)} at {module_name_of_handle(graph_module_of(claim.node))}:{show_span(claim.span)}"
 
 fn render_smt_lines(obligations) = obligations |> map(render_smt_line) |> str_concat_all
 
-fn render_smt_line(ob) = match ob {
-  (modh, s, pred, _) => "\n; {module_name_of_handle(modh)}:{show_span(s)}\n{predicate_to_smt_lib(pred)}",
-}
+fn render_smt_line(claim: ClaimAt) =
+  "\n; {module_name_of_handle(graph_module_of(claim.node))}:{show_span(claim.span)}\n{predicate_to_smt_lib(claim.pred)}"
 
 // The import edges rendered as a verdict per edge. DEAD means the imported
 // module brings no name this one references — measured off the refs column,
@@ -1659,8 +1644,8 @@ fn render_query_result(result) = match result {
   QROwed(sites) => "→ {int_to_str(len(sites))} program(s) the medium owes{render_census_sites(sites)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRClaim(name, claim) => render_claim_rows(name, claim),
-  // Each place where the program can stop with a trap, with what the ledger
-  // says of the claim that guards it, then a count of each state.
+  // Each place where the program can stop with a trap, with the verdict of
+  // the claim that guards it, then a count of each state.
   QRTraps(entries) => "→ {int_to_str(len(entries))} place(s) where the program can stop with a trap{entries |> map(trap_line) |> str_concat_all}{trap_counts_line(entries)}",
   QRError(msg) => "error: {msg}",
 }

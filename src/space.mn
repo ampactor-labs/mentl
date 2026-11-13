@@ -157,18 +157,18 @@ fn space_module_view(v, needle) = match space_field_view(v) {
 // of owned values.
 fn canvas_of(v, field, ledger, lens) = {
   let nodes = module_handles(v.node)
-  let frames = nodes |> map(frames_at) |> flatten
-  let decided = filter(decided_here(v.node, ??), verify_decided())
-  let handed = filter(decided_here(v.node, ??), verify_handed())
-  let owed = module_pending(v.node)
-  let uses = nodes |> map(param_uses) |> flatten
-  let traces = nodes |> map(own_traces(uses, ??)) |> flatten
+  let frames = nodes |> flat_map(frames_at)
+  let noted = nodes |> flat_map(graph_verdicts_of)
+  let decided = noted |> filter(decided_noted)
+  let owed = noted |> flat_map(module_owed)
+  let uses = nodes |> flat_map(param_uses)
+  let traces = nodes |> flat_map(own_traces(uses, ??))
   let cells =
-    (nodes |> map(node_cells(v, ??)) |> flatten) ++ (field |> map(field_cell) |> flatten) ++ (ledger |> map(ledger_cell) |> flatten) ++ (frames |> map(frame_cells) |> flatten) ++ map(decided_cell, decided) ++ map(handed_cell, handed) ++ map(owed_cell, owed) ++ (traces |> map(trace_cells) |> flatten) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
+    (nodes |> flat_map(node_cells(v, ??))) ++ (field |> flat_map(field_cell)) ++ (ledger |> flat_map(ledger_cell)) ++ (frames |> flat_map(frame_cells)) ++ map(decided_cell, decided) ++ map(owed_cell, owed) ++ (traces |> flat_map(trace_cells)) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
   Canvas({
     frames,
     lines: count_lines(v.text) + 1,
-    marks: map(decided_mark, decided) ++ map(handed_mark, handed) ++ map(owed_mark, owed),
+    marks: map(decided_mark, decided) ++ map(owed_mark, owed),
     strip: strip_of(cells),
     tokens: canvas_tokens(v.text),
     traces,
@@ -547,12 +547,21 @@ fn frame_cell(verb, n, entry) = match entry {
   (k, sp) => cell_at(OnTopology, CellProven, canvas_verb_word(verb), sp, verb_role_text(frame_role(verb, k, n))),
 }
 
-// The claims the ledger decided, in this module: proven, refuted, or proven
-// only through what the program's calls hand a parameter. A provision (what
-// a body hands a function) and the trivial claim are facts of the walk, not
-// claims a developer wrote, so they mark nothing.
-fn decided_here(mh, entry) = match entry {
-  (m, _, pred, _) => m == mh && claim_is_marked(pred),
+// The claims decided at the module's nodes: proven, refuted, or proven only
+// through what the program's calls hand a parameter. A provision (what a
+// body hands a function) and the trivial claim are facts of the walk, not
+// claims a developer wrote, so they mark nothing; a claim still owed is
+// marked open (`module_owed`).
+fn decided_noted(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, _) => !is_owed(noted) && claim_is_marked(claim.pred),
+}
+
+// A claim the module still owes, as the Ledger lists it and the strip marks
+// it. A claim pending over a hole is the hole's own demand, carried by the
+// hole's position — filling it discharges the claim — so it is not a second
+// position beside the hole.
+fn module_owed(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, _) => if is_owed(noted) && !claim_is_a_holes_demand(claim.pred) { [claim] } else { [] },
 }
 
 fn claim_is_marked(pred) = match pred {
@@ -569,42 +578,37 @@ fn claim_is_marked(pred) = match pred {
   PInBounds(_, _) | PSliceBounds(_, _, _) => true,
 }
 
-fn decided_state(proven) = if proven { CellProven } else { CellRefused }
-
-fn decided_cell(entry) = match entry {
-  (_, sp, pred, proven) => cell_at(
-    OnVerify,
-    decided_state(proven),
-    if proven { "proven" } else { "refuted" },
-    sp,
-    show_predicate(pred)
-  ),
-}
-
-fn decided_mark(entry) = match entry {
-  (_, sp, pred, proven) => ProofMark(decided_state(proven), sp, show_predicate(pred)),
-}
-
-// A claim the program's calls prove holds at every call this program makes;
+// A decided claim's cell and mark, at the span the claim was said at. A
+// claim the program's calls prove holds at every call this program makes;
 // the declaration still owes it to any other caller, which the teach cell
 // beside it says.
-fn handed_cell(entry) = match entry {
-  (_, sp, pred, _) => cell_at(OnVerify, CellProven, "proven by its calls", sp, handed_text(pred)),
+fn decided_cell(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, verdict) => verdict_cell(verdict, claim.span, claim.pred),
 }
 
-fn handed_mark(entry) = match entry {
-  (_, sp, pred, _) => ProofMark(CellProven, sp, handed_text(pred)),
+fn decided_mark(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, verdict) => verdict_mark(verdict, claim.span, claim.pred),
+}
+
+fn verdict_cell(verdict, span, pred) = match verdict {
+  ClaimProven => cell_at(OnVerify, CellProven, "proven", span, show_predicate(pred)),
+  ClaimRefused => cell_at(OnVerify, CellRefused, "refuted", span, show_predicate(pred)),
+  ClaimHanded => cell_at(OnVerify, CellProven, "proven by its calls", span, handed_text(pred)),
+  ClaimOpen | ClaimUnsettled => cell_at(OnVerify, CellOpen, "pending", span, show_predicate(pred)),
+}
+
+fn verdict_mark(verdict, span, pred) = match verdict {
+  ClaimProven => ProofMark(CellProven, span, show_predicate(pred)),
+  ClaimRefused => ProofMark(CellRefused, span, show_predicate(pred)),
+  ClaimHanded => ProofMark(CellProven, span, handed_text(pred)),
+  ClaimOpen | ClaimUnsettled => ProofMark(CellOpen, span, show_predicate(pred)),
 }
 
 fn handed_text(pred) = "{show_predicate(pred)}, at every call the program makes"
 
-fn owed_cell(entry) = match entry {
-  (_, sp, pred, _) => cell_at(OnVerify, CellOpen, "pending", sp, show_predicate(pred)),
-}
+fn owed_cell(claim: ClaimAt) = verdict_cell(ClaimOpen, claim.span, claim.pred)
 
-fn owed_mark(entry) = match entry {
-  (_, sp, pred, _) => ProofMark(CellOpen, sp, show_predicate(pred)),
-}
+fn owed_mark(claim: ClaimAt) = verdict_mark(ClaimOpen, claim.span, claim.pred)
 
 // A diagnostic of the module, in the column of the aspect it speaks for: an
 // error refuses there, a narration narrates.
@@ -859,9 +863,11 @@ fn member_note(survivor) = match survivor {
 }
 
 // One open obligation at its own site: the module it was raised in and
-// the span, the predicate rendered as the ledger renders it.
-fn obligation_note(entry) = match entry {
-  (m, sp, pred, _) => NoteObligation(obligation_text(m, sp, pred), module_name_of_handle(m), sp),
+// the span, the predicate rendered as `mentl check` renders it.
+fn obligation_note(claim: ClaimAt) = {
+  let m = graph_module_of(claim.node)
+  let span = claim.span
+  NoteObligation(obligation_text(m, span, claim.pred), module_name_of_handle(m), span)
 }
 
 // The Teach facet says what it found: the annotation to add, the question
@@ -1050,29 +1056,33 @@ fn diag_interest(d) = match diag_severity(d) {
 
 // The Ledger — the module's own facts, ranked for the caret: every top-level
 // declaration by its proximity to the caret (the gradient's decay, read
-// between two handles), every pending obligation of the module, and every
-// tightening the judgment banked for it.
+// between two handles), every claim the module still owes, read at its
+// nodes, and every tightening the judgment banked for it.
 fn ledger_of(v, caret_h) = {
   let reach = module_reach_of(v.node)
-  let decls = latest_generation(filter(is_top_decl, module_handles(v.node)))
-  let decl_facts = map(decl_fact(??, caret_h, reach), decls)
-  let debt_facts = map(debt_fact(v.name, ??), module_pending(v.node))
+  let nodes = module_handles(v.node)
+  let decl_facts =
+    nodes |> filter(is_top_decl) |> latest_generation |> map(decl_fact(??, caret_h, reach))
+  let debt_facts =
+    nodes |> flat_map(graph_verdicts_of) |> flat_map(module_owed) |> map(debt_fact(v.name, ??))
   let tight_facts = map(tighten_fact, v.tights)
   rank_by(ledger_interest, decl_facts ++ debt_facts ++ tight_facts)
 }
-
-// The module's open proof obligations. A claim pending over a hole is the
-// hole's own demand, carried by the hole's position — filling it discharges
-// the claim — so it is not a second position beside the hole.
-fn module_pending(mh) =
-  filter({ (modh, _, pred, _) => modh == mh && !claim_is_a_holes_demand(pred) }, verify_debt())
 
 // The tightenings the judgment banked for the module.
 fn module_tightenings(target: String) =
   filter({ (_, _, _, _, dmod) => dmod == target }, tightenables())
 
-fn debt_fact(target: String, entry) = match entry {
-  (m, sp, pred, why) => LedgerObligation(obligation_text(m, sp, pred), show_predicate(pred), show_reason(why), target, sp),
+fn debt_fact(target: String, claim: ClaimAt) = {
+  let span = claim.span
+  let pred = claim.pred
+  LedgerObligation(
+    obligation_text(graph_module_of(claim.node), span, pred),
+    show_predicate(pred),
+    show_reason(claim.why),
+    target,
+    span
+  )
 }
 
 fn tighten_fact(entry) = match entry {

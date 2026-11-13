@@ -574,6 +574,28 @@ Each rule here was paid for by a stop or a wrong answer.
   or a `??` at the place the value is wanted, read at the caret. Where none
   of them can answer, the question is a verb gap: record it and build it
   ("Mentl builds Mentl", above).
+- When a fact moves into the graph, the store it lived in leaves in the
+  same landing, with every reader of that store. Box 4's first form wrote
+  each claim's verdict at its node and kept the ledger's lists beside the
+  column, so every open claim was stored twice and six readers still
+  scanned the lists for a matching position. Morgan asked whether it was a
+  band-aid (2026-11-13). It was, and the box was rewritten before it
+  landed.
+- To read the sites that moved a count, ask the candidate about both
+  sources instead of comparing two whole answers by hand. Run it in a
+  worktree of the committed source for the before side. `mentl query
+  src/main.mn "census in MODULE"` gives every shape's count in one module,
+  and `"census SHAPE in MODULE.NAME"` the sites in one declaration. The pin
+  beside the candidate on the committed source shows what the judgment
+  itself changed (2026-11-13).
+- A march reading is compared with the boot compiling the same source,
+  because the boot's own reading moves when the source does. On 2026-11-13
+  seven probe compilers were built to find why the candidate's journal held
+  4 entries more than the boot's 13,564. The boot compiling the same source
+  held 13,568, as the candidate did: the 13,564 came from a march on an
+  earlier form of the source. Before hunting a difference, run both
+  compilers on the one source, as the march does (`wt_wheel_root` in
+  tools/wt-env.sh).
 
 ## Conventions
 

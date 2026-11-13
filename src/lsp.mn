@@ -8,6 +8,8 @@
 // project each answer back to JSON.
 import types
 
+import cursor
+
 import driver
 
 import egraph
@@ -248,10 +250,17 @@ fn handle_hover(params) = match type_at_span(position_to_span(lsp_extract_positi
   Some((ty, reason)) => LspHoverResp(Some(hover_from_type(ty, reason))),
 }
 
-// handle_diagnostic — the open obligations the judged graph holds, each a
-// diagnostic at its site.
+// handle_diagnostic — the claims the document still owes, each a diagnostic
+// at its site, read at the nodes of the document's own module: the module the
+// driver minted under the document's file (`graph_module_now`). A document
+// the session has not judged has none.
 fn handle_diagnostic(params) =
-  LspDiagnosticResp(diagnostics_from_debt_lsp(verify_debt(), lsp_extract_uri(params)))
+  LspDiagnosticResp(document_claims(uri_to_path(lsp_extract_uri(params))) |> map(claim_diagnostic))
+
+fn document_claims(file: String) = match graph_module_now(file) {
+  Some(mh) => module_handles(mh) |> flat_map(graph_verdicts_of) |> flat_map(claim_kept(is_owed, ??)),
+  None => [],
+}
 
 // handle_definition — resolve the identifier at the cursor, then read
 // its binding span LIVE from the env entry's Located Reason (the graph
@@ -296,32 +305,19 @@ fn map_spans_to_locations(spans, uri, i, n, acc_rev) = if i >= n {
   map_spans_to_locations(spans, uri, i + 1, n, [loc] ++ acc_rev)
 }
 
-// diagnostics_from_debt_lsp — project each pending obligation (span,
-// predicate, reason) to an LSP LspDiagnostic. severity 1 = Error (a refinement
-// the path could not discharge). The predicate's text is the message; the
-// span is the obligation site (read live from the debt the graph holds).
-fn diagnostics_from_debt_lsp(debt, uri) with !Mutate =
-  map_debt_to_diagnostics(debt, 0, len(debt), [])
-
-fn map_debt_to_diagnostics(debt, i, n, acc_rev) with !Mutate = if i >= n {
-  reverse(acc_rev)
-} else {
-  match list_index(debt, i) {
-    (_modh, span, predicate, reason) => match span {
-      Span(sl, sc, el, ec) => {
-        let diag = LspDiagnostic(
-          sl,
-          sc,
-          el,
-          ec,
-          1,
-          "E_RefinementRejected",
-          "{show_predicate(predicate)}: {show_reason(reason)}"
-        )
-        map_debt_to_diagnostics(debt, i + 1, n, [diag] ++ acc_rev)
-      },
-    },
-  }
+// One owed claim as an LSP diagnostic at the span it is said at: severity 1,
+// an error, since the program leaves the refinement unproven there. The
+// predicate's text is the message, with the reason it was raised.
+fn claim_diagnostic(claim: ClaimAt) with !Mutate = match claim.span {
+  Span(sl, sc, el, ec) => LspDiagnostic(
+    sl,
+    sc,
+    el,
+    ec,
+    1,
+    "E_RefinementRejected",
+    "{show_predicate(claim.pred)}: {show_reason(claim.why)}"
+  ),
 }
 
 // handle_did_open — judge the opened module's link into the session's graph,

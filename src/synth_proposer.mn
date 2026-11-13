@@ -1104,12 +1104,21 @@ fn segment_verify(candidates, hole_h, below) = {
   judged |> map(joined)
 } ~> judgment_core
 
+// A proven candidate's facts join the root: the ledgers' facts through the
+// join every keep uses, and the verdicts of the claims it raised written at
+// the root as its fork wrote them, since `speculate` dropped the fork's
+// graph version and nothing came back with it.
 fn joined(judged) = match judged {
-  (verdict, Some(facts)) => {
+  (verdict, Some((facts, claims))) => {
     branch_join(facts)
+    claims |> each(noted_again)
     verdict
   },
   (verdict, None) => verdict,
+}
+
+fn noted_again(noted: (ClaimAt, ClaimVerdict)) = match noted {
+  (claim, _) => graph_verdict_note(claim.node, noted),
 }
 
 // Why a segment refused its candidate: the message its first report carried,
@@ -1119,12 +1128,10 @@ fn joined(judged) = match judged {
 // drop a candidate in silence, and a candidate the developer cannot see
 // refused is a guess they cannot audit. The message is the part about the
 // candidate; a line's module and span are wherever the judgment stood.
-fn refusal_reason(inner) with !Mutate = match inner {
-  (_, dfacts, _, _, _, _, _) => match dfacts {
-    [] => Inferred("the hole's refinement is not satisfied"),
-    [first, ..._] => match first {
-      (_, msg, _, _) => Inferred(msg),
-    },
+fn refusal_reason(dfacts) with !Mutate = match dfacts {
+  [] => Inferred("the hole's refinement is not satisfied"),
+  [first, ..._] => match first {
+    (_, msg, _, _) => Inferred(msg),
   },
 }
 
@@ -1141,19 +1148,18 @@ fn refusal_reason(inner) with !Mutate = match inner {
 // any comparison standing beside it.
 fn segment_judge(candidate, hole_h, below) = {
   let admitted = candidate_proven(candidate_node(candidate), hole_h, candidate_reason(candidate))
-  let vdebt = verify_debt() ++ verify_flows()
-  let clog = consume_log()
-  let pubs = env_entries()
   let dfacts = diag_banked()
   // The context cells this candidate bound, read while the binds are still
   // live — the drop that follows is exactly why the segment carries them
   // out as facts.
   let writes = context_writes(below)
-  let inner = (pubs, dfacts, vdebt, clog, verify_decided(), inf_seed(), ages_seed())
   if admitted && len(dfacts) == 0 {
-    (SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes}), Some(inner))
+    (
+      SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes}),
+      Some(((env_entries(), dfacts, consume_log(), inf_seed(), ages_seed()), graph_verdicts_written()))
+    )
   } else {
-    (SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []}), None)
+    (SegmentVerdict({proven: false, reason: refusal_reason(dfacts), writes: []}), None)
   }
 }
 

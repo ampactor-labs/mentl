@@ -338,17 +338,17 @@ type QueryResult
   // names — asked for by every reader who had to tell a record's
   // constructions from its patterns by opening each line.
   | QRRefs([(String, Span, Option(String))])
-  | QRVerifyDebt([(Int, Span, Predicate, Reason)])
+  | QRVerifyDebt([ClaimAt])
   // The banked reports the register hears, in report order: the kind, its
   // message, its module and the module's layer, the facts a check prints
   | QRReports([(DiagKind, String, String, Layer)])
   // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl query <f> "smt"`.
-  // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
+  // One read (`owed_claims`), two renders: `QRVerifyDebt` speaks the
   // predicate in the medium's own voice for a person, and this one speaks
   // each open claim's negation in a solver's, the question an external
   // proposer answers with a certificate. The payload is identical because
   // the FACT is.
-  | QRSmt([(Int, Span, Predicate, Reason)])
+  | QRSmt([ClaimAt])
   // every handler declaring an arm for the op, with the arm's address
   | QRHandlerProvider([(String, String)])
   // the name asked about, and one line per flow fact it states or owes
@@ -364,8 +364,10 @@ type QueryResult
   // comment line that carries a prose needle or a prose class, nothing for a
   // shape whose site is the whole answer (`census_note`).
   | QRCensus(String, [(String, Span, Option(String))])
-  // (the name a question asks it with, its label, its count) per shape
-  | QRCensusRoster([(String, String, Int)])
+  // (the name a question asks it with, its label, its sites) per shape: the
+  // count is the sites' length, so an `in` keeps one place's sites of every
+  // shape and the roster counts what stands there
+  | QRCensusRoster([(String, String, [(String, Span)])])
   // every name the judged declarations declare (count = len), each beside
   // its declaration's (module, span) site — a roster that answered
   // addresses alone could not say what it listed.
@@ -389,7 +391,7 @@ type QueryResult
   | QROwed([(String, Span)])
   // the derived badges (plain lines) + the fanout sites
   | QRWhere([String], [WhereSite])
-  // each place that can trap, beside what the ledger says of its claim
+  // each place that can trap, beside the verdict of the claim that guards it
   | QRTraps([(TrapSite, TrapClaim)])
   | QRError(String)
 
@@ -510,13 +512,13 @@ fn query_answer(q) = match q {
   // The claims raised at an explicit call of a partial primitive are counted
   // by a question of their own (`census call-claims`), so this one counts
   // the obligations the board bounded before those claims were raised.
-  QVerifyDebt => QRVerifyDebt(verify_debt() |> filter(raised_beside_a_call)),
+  QVerifyDebt => QRVerifyDebt(owed_claims() |> filter(raised_beside_a_call)),
   QReports => QRReports(filter(heard_now(diag_scope_of(), ??), diag_banked())),
   // The same bank, handed to the render that speaks solver. Nothing is
   // re-derived here and nothing may be: a second walk that collected the
   // obligations again would be the violation this facet's own subject —
   // the unreached serializer — was a symptom of.
-  QSmt => QRSmt(verify_debt()),
+  QSmt => QRSmt(owed_claims()),
   // The handler stack IS graph content (PLAN §2 — "the handler chain IS
   // the capability stack"): each handler decl is a HandlerDeclStmt whose
   // arms name the ops it provides. Which handlers provide OP are the decls
@@ -551,7 +553,7 @@ fn query_answer(q) = match q {
   QCost => QRCost(len(module_cells()), weave_line_extent(), graph_next()),
   QGhosts => QRGhosts(ghost_sites()),
   QOwed(dir) => QROwed(owed_programs(dir)),
-  QTraps => QRTraps(trap_sites() |> map(with_trap_claim(trap_ledger(), ??))),
+  QTraps => QRTraps(trap_sites() |> map(with_trap_claim)),
   QHeads => QRWhere(head_round_trip(), []),
   QWrittenBack => QRWhere(back_lines(written_back()), []),
   QIn(inner, m) => query_answer(inner) |> sites_in(m),
@@ -573,24 +575,69 @@ fn type_at_span(span) = match graph_snapshot() {
   },
 }
 
-// The sites of an answer that stand in module `m`, named as every site line
-// names its module. An answer that carries no sites has nothing to keep, and
-// says which facets a scope reads.
-fn sites_in(m, answer) = match answer {
-  QRRefs(sites) => QRRefs(filter(noted_in_module(m, ??), sites)),
-  QRCensus(label, sites) => QRCensus(label, filter(noted_in_module(m, ??), sites)),
-  QRGhosts(sites) => QRGhosts(filter(site_in_module(m, ??), sites)),
-  QROwed(sites) => QROwed(filter(site_in_module(m, ??), sites)),
-  QRDecls(named) => QRDecls(filter(named_in_module(m, ??), named)),
-  QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
-  QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
-  QRReports(entries) => QRReports(filter(report_in_module(m, ??), entries)),
+// Where an `in` keeps the sites of an answer: a module of the link, by its
+// name, or one top-level declaration of it, written `module.name`, by its
+// module and its extent.
+type Place = PlaceModule(String) | PlaceDecl(String, Span)
+
+// The place an `in` names, or the sentence that says which part of it names
+// nothing, which the query answers as its error in place of an empty list.
+type PlaceRead = PlaceFound(Place) | PlaceMissing(String)
+
+fn place_named(arg: String) = match split(".", arg) {
+  [m] => if module_held(m) {
+    PlaceFound(PlaceModule(m))
+  } else {
+    PlaceMissing("no module `{m}` in the link")
+  },
+  [m, name] => decl_place(m, name),
+  _ => PlaceMissing("`{arg}` names neither a module nor `module.name`, one of its declarations"),
+}
+
+fn module_held(m: String) = any({ p => p == m }, module_paths())
+
+// A top-level declaration of a module, by the name a person typed: the scope
+// resolves it, and its node says the module it was born in and its extent.
+fn decl_place(m: String, name: String) = if !module_held(m) {
+  PlaceMissing("no module `{m}` in the link")
+} else {
+  match name_decl(name) {
+    None => PlaceMissing("`{m}` declares no `{name}`"),
+    Some(d) => {
+      let home = module_name_of_handle(graph_module_of(d))
+      if home == m {
+        PlaceFound(PlaceDecl(m, graph_span_of(d)))
+      } else {
+        PlaceMissing("`{name}` is declared in `{home}`, not in `{m}`")
+      }
+    },
+  }
+}
+
+// The sites of an answer that stand at the place `m` names, a module or one
+// of its declarations, read once. An answer that carries no sites has nothing
+// to keep, and says which facets a scope reads.
+fn sites_in(m, answer) = match place_named(m) {
+  PlaceMissing(why) => QRError(why),
+  PlaceFound(place) => sites_at(place, answer),
+}
+
+fn sites_at(place, answer) = match answer {
+  QRRefs(sites) => QRRefs(filter(noted_at(place, ??), sites)),
+  QRCensus(label, sites) => QRCensus(label, filter(noted_at(place, ??), sites)),
+  QRGhosts(sites) => QRGhosts(filter(site_in_place(place, ??), sites)),
+  QROwed(sites) => QROwed(filter(site_in_place(place, ??), sites)),
+  QRDecls(named) => QRDecls(filter(named_at_place(place, ??), named)),
+  QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_at(place, ??), debt)),
+  QRSmt(debt) => QRSmt(filter(obligation_at(place, ??), debt)),
+  QRReports(entries) => QRReports(filter(report_at_place(place, ??), entries)),
+  QRCensusRoster(rows) => QRCensusRoster(rows |> map(roster_row_at(place, ??))),
   QRError(msg) => QRError(msg),
   unscoped @ (
     QRType(_, _) | QRUnresolved(_) | QREffects(_) | QROwnership(_) | QRWhy(_) | QRAbsent(_, _)
-    | QRHandlerProvider(_) | QRFlow(_, _) | QRCensusRoster(_) | QRModules(_) | QRImports(_)
-    | QRUnreferenced(_) | QRUnreachable(_) | QRPerforms(_) | QREnv(_) | QROrphanClaims(_)
-    | QRCost(_, _, _) | QRWhere(_, _) | QRClaim(_, _) | QRTraps(_)
+    | QRHandlerProvider(_) | QRFlow(_, _) | QRModules(_) | QRImports(_) | QRUnreferenced(_)
+    | QRUnreachable(_) | QRPerforms(_) | QREnv(_) | QROrphanClaims(_) | QRCost(_, _, _) | QRWhere(_, _)
+    | QRClaim(_, _) | QRTraps(_)
   ) => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, owed, decls, verification, smt, reports"),
 }
 
@@ -599,22 +646,28 @@ fn heard_now(scope, entry) = match entry {
   (diag, _, _, dlayer) => scope_hears(scope, diag, dlayer),
 }
 
-fn report_in_module(m, entry) = site_in_module(m, report_site(entry))
+fn report_at_place(place, entry) = site_in_place(place, report_site(entry))
 
 // Where a banked report stands: its module and the span its kind carries.
 fn report_site(entry) = match entry {
   (diag, _, dmod, _) => (dmod, diag_span(diag)),
 }
 
-fn site_in_module(m, site) = match site {
-  (path, span) => path == m,
+// A site stands at a module when it stands in it, and at a declaration when
+// it stands in the declaration's module and the declaration's extent holds
+// its span.
+fn site_in_place(place, site) = match site {
+  (path, span) => match place {
+    PlaceModule(m) => path == m,
+    PlaceDecl(m, extent) => path == m && span_contains(extent, span),
+  },
 }
 
-fn noted_in_module(m, site) = site_in_module(m, noted_address(site))
+fn noted_at(place, site) = site_in_place(place, noted_address(site))
 
-fn named_in_module(m, named) = site_in_module(m, name_site(named))
+fn named_at_place(place, named) = site_in_place(place, name_site(named))
 
-fn obligation_in_module(m, ob) = site_in_module(m, debt_site(ob))
+fn obligation_at(place, ob) = site_in_place(place, debt_site(ob))
 
 fn chase_type_deep(ref ty) = match ty {
   TVar(h) => match graph_chase(h) {
@@ -1532,7 +1585,11 @@ fn census_roster() = [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume]
   CsCallClaim
 ] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
 
-fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
+fn roster_row(shape) = (census_name(shape), census_label(shape), census_sites(shape))
+
+fn roster_row_at(place, row) = match row {
+  (name, label, sites) => (name, label, filter(site_in_place(place, ??), sites)),
+}
 
 // A shape by the name a question asks it with: the roster read, never a
 // second spelling of it.
@@ -1593,9 +1650,7 @@ fn unnoted(site) = match site {
   (m, s) => (m, s, None),
 }
 
-fn debt_site(ob) = match ob {
-  (modh, s, _, _) => (module_name_of_handle(modh), s),
-}
+fn debt_site(claim: ClaimAt) = (module_name_of_handle(graph_module_of(claim.node)), claim.span)
 
 fn name_site(named) = match named {
   (name, site) => site,
@@ -1612,7 +1667,7 @@ fn census_noted(shape) with !Mutate = if shape == CsWildcardOverSum {
 } else if shape == CsSilentTrap {
   silent_traps()
 } else if shape == CsCallClaim {
-  verify_debt() |> filter(raised_at_a_call) |> map(debt_site) |> map(unnoted)
+  owed_claims() |> filter(raised_at_a_call) |> map(debt_site) |> map(unnoted)
 } else {
   match graph_snapshot() {
     Graph(next, _) => census_walk(census_memo(shape, next), shape, 0, next, make_list(0)) ~> references_linked,
@@ -1935,7 +1990,7 @@ fn census_matches(memo, shape: CensusShape, h, body: NodeBody) = match shape {
   // the bank (`census_noted`), and no node is convicted here.
   CsWildcardOverSum => false,
   // The places that can trap and the claims at explicit calls are read off
-  // the row's sources and the ledger (`census_noted`), so no node is
+  // the row's sources and the verdict column (`census_noted`), so no node is
   // convicted here either.
   CsSilentTrap => false,
   CsCallClaim => false,
@@ -3839,23 +3894,11 @@ fn chain_enters(e: String, chain) = match chain {
 // each function once.
 type TrapSite = {node: Int, path: Option(Reason)}
 
-// What the ledger says of the claim that guards a place: proven by its
+// The verdict of the claim that guards a place: proven by its
 // operands once the program was judged, proven only through what the
 // program's calls hand a parameter, still pending, refused, or no claim at
 // all, so nothing the compiler checks says whether the program stops there.
 type TrapClaim = TrapProven | TrapHanded | TrapPending | TrapRefused | TrapUnchecked
-
-// The ledger as the facet reads it, once per question: the claims still
-// owed, the claims proven only through what the program's calls hand a
-// parameter, and the claims decided.
-type TrapLedger = {
-  decided: [(Int, Span, Predicate, Bool)],
-  handed: [(Int, Span, Predicate, Reason)],
-  owed: [(Int, Span, Predicate, Reason)],
-}
-
-fn trap_ledger() =
-  TrapLedger({decided: verify_decided(), handed: verify_handed(), owed: verify_debt()})
 
 fn trap_effect() = ENamed(vocab_handle("Trap"))
 
@@ -3960,45 +4003,43 @@ fn trap_handed(acc, v) = match called_decl(v) {
   None => node_children(v) |> fold(acc, trap_walk),
 }
 
-fn with_trap_claim(ledger, s) = (s, trap_claim(ledger, s))
+fn with_trap_claim(s) = (s, trap_claim(s))
 
-// The claim that guards a place: the ledger's entry at the place's own span,
-// since a claim stands at the node that charges its `Trap` (`claim_shape`
-// puts a destructure's there too), so no other node's claim is read as this
-// one's.
-fn trap_claim(ledger, s) = trap_claim_at(ledger, graph_module_of(s.node), graph_span_of(s.node))
-
-// Of several claims at one place, the one that says most about whether the
-// program can stop there: a refusal, then an open claim, then one proven
-// only through the calls, then one its operands prove.
-fn trap_claim_at(ledger, m, sp) = if any(trap_decided_at(m, sp, false, ??), ledger.decided) {
-  TrapRefused
-} else if any(trap_owed_at(m, sp, ??), ledger.owed) {
-  TrapPending
-} else if any(trap_owed_at(m, sp, ??), ledger.handed) {
-  TrapHanded
-} else if any(trap_decided_at(m, sp, true, ??), ledger.decided) {
-  TrapProven
-} else {
-  TrapUnchecked
+// The claim that guards a place, read at its node: each verdict written at
+// the place's own node or at one of its children and said at the place's
+// span. A call's claims about its arguments stand at the arguments and are
+// said at the call, and an argument's own claims are said where it stands,
+// so no other node's claim is read as this one's. Of several, the one that
+// says most about whether the program can stop there: a refusal, then an
+// open claim, then one proven only through the calls, then one its operands
+// prove.
+fn trap_claim(s) = {
+  let said =
+    [s.node] ++ node_children(s.node) |> flat_map(graph_verdicts_of) |> filter(claim_said_here(graph_span_of(s.node), ??))
+  if any(verdict_is(ClaimRefused, ??), said) {
+    TrapRefused
+  } else if any(is_owed, said) {
+    TrapPending
+  } else if any(verdict_is(ClaimHanded, ??), said) {
+    TrapHanded
+  } else if len(said) > 0 {
+    TrapProven
+  } else {
+    TrapUnchecked
+  }
 }
 
-fn trap_owed_at(m, sp, entry) = match entry {
-  (em, es, _, _) => em == m && es == sp,
+fn claim_said_here(here, noted) = match noted {
+  (claim, _) => said_here(here, claim),
 }
 
-fn trap_decided_at(m, sp, held: Bool, entry) = match entry {
-  (em, es, _, h) => em == m && es == sp && h == held,
-}
+fn said_here(here, claim: ClaimAt) = claim.span == here
 
 // The places in the program that no claim guards, as census sites, each
 // with its path into the library where it has one.
-fn silent_traps() = {
-  let ledger = trap_ledger()
-  trap_sites() |> filter(unguarded(ledger, ??)) |> map(trap_noted)
-}
+fn silent_traps() = trap_sites() |> filter(unguarded) |> map(trap_noted)
 
-fn unguarded(ledger, s) = trap_claim(ledger, s) == TrapUnchecked
+fn unguarded(s) = trap_claim(s) == TrapUnchecked
 
 fn trap_noted(s) = (
   module_name_of_handle(graph_module_of(s.node)),
@@ -4008,9 +4049,8 @@ fn trap_noted(s) = (
 
 fn library_said(r) = "inside the library, {show_reason(r)}"
 
-// One place as the facet and the proof gate print it: where it stands, what
-// the ledger says of its claim, and its path into the library where it has
-// one.
+// One place as the facet and the proof gate print it: where it stands, the
+// verdict of its claim, and its path into the library where it has one.
 fn trap_line(entry) = match entry {
   (s, claim) => "\n  {module_name_of_handle(graph_module_of(s.node))}:{show_span(graph_span_of(s.node))}: {claim_words(claim)}{trap_path_words(s.path)}",
 }
@@ -4050,29 +4090,24 @@ fn traps_said(entry: String) = {
 }
 
 // The places that can trap as the proof gate prints them, each on its line.
-fn trap_lines() = {
-  let ledger = trap_ledger()
-  trap_sites() |> map(with_trap_claim(ledger, ??)) |> map(trap_line)
-}
+fn trap_lines() = trap_sites() |> map(with_trap_claim) |> map(trap_line)
 
 // Whether an open claim was raised at an explicit call of a partial
 // primitive. A cut's bounds are raised nowhere else. A read's bounds stand
 // at a call when the list they bound is a call's argument: the node above
 // it reaches the primitive through its callee, where `xs[i]` draws its own
 // edge to the primitive it calls.
-fn raised_at_a_call(entry) = match entry {
-  (_, _, pred, _) => match pred {
-    PSliceBounds(_, _, _) => true,
-    PInBounds(recv, _) => match graph_parent_of(recv) {
-      Some(p) => graph_ref_decl(p) == None,
-      None => false,
-    },
-    PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
-    | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) => false,
+fn raised_at_a_call(claim: ClaimAt) = match claim.pred {
+  PSliceBounds(_, _, _) => true,
+  PInBounds(recv, _) => match graph_parent_of(recv) {
+    Some(p) => graph_ref_decl(p) == None,
+    None => false,
   },
+  PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+  | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) => false,
 }
 
-fn raised_beside_a_call(entry) = !raised_at_a_call(entry)
+fn raised_beside_a_call(claim: ClaimAt) = !raised_at_a_call(claim)
 
 // Fill a typed hole with THE sole proven survivor from the Synth chain,
 // returned WITH its Reason. The allowed row is the Context's — the

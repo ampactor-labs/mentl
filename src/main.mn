@@ -2423,12 +2423,12 @@ fn battery_check_pending_step(stem: String, module: String, line, col) = match b
   },
 }
 
-fn claim_starts_at(line, col, claim) = match claim {
-  (_, Span(l, c, _, _), _, _) => l == line && c == col,
+fn claim_starts_at(line, col, claim: ClaimAt) = match claim.span {
+  Span(l, c, _, _) => l == line && c == col,
 }
 
-fn claim_start(claim) = match claim {
-  (_, Span(l, c, _, _), _, _) => "{int_to_str(l)}:{int_to_str(c)}",
+fn claim_start(claim: ClaimAt) = match claim.span {
+  Span(l, c, _, _) => "{int_to_str(l)}:{int_to_str(c)}",
 }
 
 // The judgment as `mentl check` runs it — the link judged, nothing lowered —
@@ -2445,7 +2445,7 @@ fn battery_check(module: String) = {
 fn battery_pending(entry) = match entry {
   Some(mh) => {
     let scope = ScopeProject(module_layer_of_handle(mh))
-    verify_debt() |> filter({ (modh, _, _, _) => debt_in_scope(modh, scope) })
+    owed_claims() |> filter(claim_heard(scope, ??))
   },
   None => [],
 }
@@ -2470,7 +2470,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> stdout_console ~> wasi_filesystem ~> verify_ledger ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  audit(target) ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
 }
 
