@@ -43,6 +43,13 @@ fn names_index(sections) = if sections > 0 { sections - 1 } else { 0 }
 fn load_header(offset, address, size, rights, align) =
   [] |> with_words([1, offset, address, address, size, size, rights, align])
 
+// A Linux program whose `code` starts with its first instruction, in Thumb.
+// The whole file is loaded at 0x10000, headers and all, to read and to run
+// (5). The entry address is odd: the lowest bit set tells the machine the
+// code is Thumb.
+fn linux_program(code) =
+  file_header(0x10000 + headers() + 1, 0, 0) ++ load_header(0, 0x10000, headers() + len(code), 5, 4096) ++ code |> text
+
 // A section header: where a named part of the file stands and where it goes
 // in memory. `name` counts bytes into the names, `kind` is 1 for program
 // bytes and 3 for names, and `rights` adds 1 to write, 2 to load and 4 to

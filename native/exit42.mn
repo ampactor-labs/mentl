@@ -7,20 +7,11 @@ import io
 
 import elf
 
-// The address the program is loaded at.
-fn base() = 65536
-
 // Thumb code: movs r0, #42; movs r7, #1; svc 0. Linux reads r7 as the call
 // it is asked for, where 1 is exit, and r0 as the exit code.
 fn code() = [42, 32, 1, 39, 0, 223]
 
-// The whole file is loaded, headers and all, to read and to run (5). The
-// entry address is odd: the lowest bit set tells the machine the code is
-// Thumb.
-fn image() =
-  file_header(base() + headers() + 1, 0, 0) ++ load_header(0, base(), headers() + len(code()), 5, 4096) ++ code() |> text
-
 fn main() = {
-  image() |> print_string
+  code() |> linux_program |> print_string
   0
 }

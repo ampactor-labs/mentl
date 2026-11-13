@@ -1,0 +1,21 @@
+// expect: 1
+// The translator as a program: a WebAssembly module in, a program for the
+// Daisy Seed's processor out, written as a Linux program so the emulator
+// can run it.
+//   mentl run native/translate.mn < module.wasm > module.elf
+//   chmod +x module.elf; qemu-arm -cpu cortex-m7 module.elf; echo $?
+// The program calls the module's main and exits with what it answers, or
+// with 134 where the module traps. Run with nothing on its input, as a
+// battery runs it, it says the input is no module and stops with exit 1.
+import io
+
+import elf
+
+import translator
+
+fn main() = {
+  {
+    read_stdin() |> program |> flat_map(le16) |> linux_program |> print_string
+  } ~> fail_exit
+  0
+}

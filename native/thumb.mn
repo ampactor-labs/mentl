@@ -1,39 +1,137 @@
 // check: clean
 // Thumb instructions for the Daisy Seed's Cortex-M7, each as the 16-bit
 // halves the chip reads, and a program as lines that know where their loops
-// begin. The translator's code generator grows from this file (PLAN §11,
-// "The order from 2026-11-12", N0).
-//
+// and blocks begin and end. The translator's code generator is built from
+// this file (PLAN §11, "The order from 2026-11-12", N0).
+import io
+
 // One of the eight registers a 16-bit instruction can name.
 type Low = Int where 0 <= self && self <= 7
 
-// A number that fits a field of 5, 8 or 16 bits.
+// A number that fits a field of 3, 5, 7, 8, 10 or 16 bits.
+type Bits3 = Int where 0 <= self && self <= 7
+
 type Bits5 = Int where 0 <= self && self <= 31
 
+type Bits7 = Int where 0 <= self && self <= 127
+
 type Bits8 = Int where 0 <= self && self <= 255
+
+type Bits10 = Int where 0 <= self && self <= 1023
 
 type Bits16 = Int where 0 <= self && self <= 65535
 
 // How many values a field of an instruction can hold: 256 for eight bits.
 type Values = Int where 0 < self
 
-// When a branch is taken: every time, when the last test found nothing or
-// two equal numbers, or when it found something or a difference.
-type Cond = Always | Equal | NotEqual
+// When a branch is taken, after a comparison of a first number with a
+// second: every time; when they are equal or differ; when the first is
+// less or greater as numbers with a sign; or when it is below or above as
+// numbers without one.
+type Cond
+  = Always
+  | Equal
+  | NotEqual
+  | Less
+  | LessEqual
+  | Greater
+  | GreaterEqual
+  | Below
+  | BelowEqual
+  | Above
+  | AboveEqual
 
-// One line of a program: a 16-bit instruction, a 32-bit instruction as its
-// two halves in order, lines that can branch back to their own first line,
-// and a branch to the first line of the loop it stands in.
-type Line = Op(Int) | Wide(Int, Int) | Loop([Line]) | Again(Cond)
+// The four bits the chip reads a condition as.
+fn cond_bits(cond) = match cond {
+  Equal => 0,
+  NotEqual => 1,
+  AboveEqual => 2,
+  Below => 3,
+  Above => 8,
+  BelowEqual => 9,
+  GreaterEqual => 10,
+  Less => 11,
+  Greater => 12,
+  LessEqual => 13,
+  Always => 14,
+}
+
+// One line of a program. `Op` is a 16-bit instruction and `Wide` a 32-bit
+// one as its two halves in order. `Loop` and `Block` hold lines and their
+// size in bytes: a branch to a loop goes to its first line, and a branch to
+// a block goes past its last. `Again` is a short branch to the first line of
+// the loop it stands in. `Jump` is a long branch to the loop or block that
+// many levels out, 0 for the nearest. `Call` calls the function with that
+// number, and `StopIf` branches to the place where the program stops.
+type Line
+  = Op(Int)
+  | Wide(Int, Int)
+  | Loop(Int, [Line])
+  | Block(Int, [Line])
+  | Again(Cond)
+  | Jump(Cond, Int)
+  | Call(Int)
+  | StopIf(Cond)
+
+// How many bytes a line takes.
+fn size(line) = match line {
+  Op(_) => 2,
+  Again(_) => 2,
+  Wide(_, _) => 4,
+  Jump(_, _) => 4,
+  Call(_) => 4,
+  StopIf(_) => 4,
+  Loop(bytes, _) => bytes,
+  Block(bytes, _) => bytes,
+}
+
+fn size_of(lines) = lines |> map(size) |> sum
+
+fn loop_of(lines) = Loop(size_of(lines), lines)
+
+fn block_of(lines) = Block(size_of(lines), lines)
 
 // movs rd, #n
 fn move_byte(rd: Low, n: Bits8) = Op(0x2000 + rd * 256 + n)
 
+// cmp rn, #n
+fn compare_byte(rn: Low, n: Bits8) = Op(0x2800 + rn * 256 + n)
+
 // adds rd, #n
 fn add_byte(rd: Low, n: Bits8) = Op(0x3000 + rd * 256 + n)
 
-// lsls rd, rm, #n
+// adds rd, rn, #n
+fn add_small(rd: Low, rn: Low, n: Bits3) = Op(0x1C00 + n * 64 + rn * 8 + rd)
+
+// adds rd, rn, rm
+fn add_regs(rd: Low, rn: Low, rm: Low) = Op(0x1800 + rm * 64 + rn * 8 + rd)
+
+// subs rd, rn, rm: rn less rm.
+fn subtract_regs(rd: Low, rn: Low, rm: Low) = Op(0x1A00 + rm * 64 + rn * 8 + rd)
+
+// muls rd, rn, rd
+fn multiply_into(rd: Low, rn: Low) = Op(0x4340 + rn * 8 + rd)
+
+// lsls rd, rm, #n; with n at 0 it copies rm to rd.
 fn shift_left(rd: Low, rm: Low, n: Bits5) = Op(n * 64 + rm * 8 + rd)
+
+// lsls rd, rm: rd shifted left by the count in rm.
+fn shift_left_by(rd: Low, rm: Low) = Op(0x4080 + rm * 8 + rd)
+
+// lsrs rd, rm: rd shifted right, zeros coming in.
+fn shift_right_by(rd: Low, rm: Low) = Op(0x40C0 + rm * 8 + rd)
+
+// asrs rd, rm: rd shifted right, its sign coming in.
+fn shift_right_signed_by(rd: Low, rm: Low) = Op(0x4100 + rm * 8 + rd)
+
+// rors rd, rm: rd turned right by the count in rm.
+fn rotate_right(rd: Low, rm: Low) = Op(0x41C0 + rm * 8 + rd)
+
+// ands rd, rm
+fn and_into(rd: Low, rm: Low) = Op(0x4000 + rm * 8 + rd)
+
+// eors rd, rm
+fn xor_into(rd: Low, rm: Low) = Op(0x4040 + rm * 8 + rd)
 
 // orrs rd, rm
 fn or_into(rd: Low, rm: Low) = Op(0x4300 + rm * 8 + rd)
@@ -44,14 +142,57 @@ fn clear_bits(rd: Low, rm: Low) = Op(0x4380 + rm * 8 + rd)
 // tst rn, rm: the next branch reads whether the two share a set bit.
 fn test_bits(rn: Low, rm: Low) = Op(0x4200 + rm * 8 + rn)
 
-// rors rd, rm: rd turned right by the count in rm.
-fn rotate_right(rd: Low, rm: Low) = Op(0x41C0 + rm * 8 + rd)
+// cmp rn, rm: the next branch reads how rn stands to rm.
+fn compare_regs(rn: Low, rm: Low) = Op(0x4280 + rm * 8 + rn)
 
-// str rt, [rn, #4 * words]
+// mov rd, rm, which leaves the last comparison as it was.
+fn copy_reg(rd: Low, rm: Low) = Op(0x4600 + rm * 8 + rd)
+
+// push {r} and pop {r}: one register to and from the stack.
+fn push_reg(r: Low) = Op(0xB400 + i32_shl(1, r))
+
+fn pop_reg(r: Low) = Op(0xBC00 + i32_shl(1, r))
+
+// add sp, #4 * words: that many words leave the stack.
+fn drop_words(words: Bits7) = Op(0xB000 + words)
+
+// str rt, [rn, #4 * words] and ldr rt, [rn, #4 * words], for a word near rn.
 fn store_word(rt: Low, rn: Low, words: Bits5) = Op(0x6000 + words * 64 + rn * 8 + rt)
 
-// ldr rt, [rn, #4 * words]
 fn load_word(rt: Low, rn: Low, words: Bits5) = Op(0x6800 + words * 64 + rn * 8 + rt)
+
+// The same two for a word up to 1,023 words past rn, as 32-bit instructions.
+fn store_far(rt: Low, rn: Low, words: Bits10) = Wide(0xF8C0 + rn, rt * 4096 + words * 4)
+
+fn load_far(rt: Low, rn: Low, words: Bits10) = Wide(0xF8D0 + rn, rt * 4096 + words * 4)
+
+// sdiv rd, rn, rm and udiv rd, rn, rm: rn divided by rm, with and without
+// a sign.
+fn divide(rd: Low, rn: Low, rm: Low) = Wide(0xFB90 + rn, 0xF0F0 + rd * 256 + rm)
+
+fn divide_unsigned(rd: Low, rn: Low, rm: Low) = Wide(0xFBB0 + rn, 0xF0F0 + rd * 256 + rm)
+
+// mls rd, rn, rm, ra: ra less rn times rm, which is what a division leaves.
+fn multiply_subtract(rd: Low, rn: Low, rm: Low, ra: Low) =
+  Wide(0xFB00 + rn, ra * 4096 + rd * 256 + 0x10 + rm)
+
+// ite cond: of the two instructions after it, the chip runs the first where
+// the condition holds and the second where it does not.
+fn either(cond) = Op(0xBF00 + cond_bits(cond) * 16 + (1 - cond_bits(cond) % 2) * 8 + 4)
+
+// push {r7, lr}, mov r7, sp, mov sp, r7, bx r1 and svc 0: a function keeps
+// the caller's frame and its way back, marks its own frame, lets go of what
+// it stacked, and returns through register 1; and the program asks the
+// system for something.
+let save_frame = Op(0xB580)
+
+let mark_frame = Op(0x466F)
+
+let stack_to_frame = Op(0x46BD)
+
+let return_through_one = Op(0x4708)
+
+let system_call = Op(0xDF00)
 
 // A 32-bit instruction that puts a 16-bit number in a register. `top` is
 // 0xF240 to set the low half and clear the high one (movw), and 0xF2C0 to
@@ -92,7 +233,7 @@ fn clear_bit(at: Low, words: Bits5, bit: Bits5) = [
 ]
 
 // The chip reads a word in memory again and again until one bit of it is set.
-fn until_bit(at: Low, words: Bits5, bit: Bits5) = Loop([
+fn until_bit(at: Low, words: Bits5, bit: Bits5) = loop_of([
   load_word(scratch, at, words),
   move_byte(mask, 1),
   shift_left(mask, mask, bit),
@@ -100,30 +241,102 @@ fn until_bit(at: Low, words: Bits5, bit: Bits5) = Loop([
   Again(Equal)
 ])
 
+// Where the other parts of a program stand, in bytes from its first
+// instruction: the function with a number, and the place it stops.
+effect Places {
+  function_at(number: Int) -> Int
+  stop_at() -> Int
+}
+
+// The places of a program whose functions start at `starts`, in the order
+// of their numbers.
+handler placed(starts, stop) {
+  function_at(number) => resume(start_of(starts, number)),
+  stop_at() => resume(stop),
+}
+
+fn start_of(starts, number) = match starts {
+  [first, ...rest] => if number == 0 { first } else { start_of(rest, number - 1) },
+  [] => fail("a call names a function the program does not hold"),
+}
+
+// The place a branch `out` levels out goes to. `targets` holds the place of
+// each loop and block around the branch, the nearest first.
+fn target(targets, out) = match targets {
+  [first, ...rest] => if out == 0 { first } else { target(rest, out - 1) },
+  [] => fail("a branch names a loop or block that is not around it"),
+}
+
+// One bit of a number, counted from its lowest.
+fn bit_of(n, place) = i32_and(i32_shr_u(n, place), 1)
+
 // A count of halves, forward or back, as a field that holds `size` values.
 fn wrapped(n, size: Values) = (n + size) % size
 
-// A branch whose target stands `delta` bytes from the address four bytes
-// past the branch, which is where the chip counts from.
-fn branch(cond, delta) = match cond {
-  Always => 0xE000 + wrapped(delta / 2, 2048),
-  Equal => 0xD000 + wrapped(delta / 2, 256),
-  NotEqual => 0xD100 + wrapped(delta / 2, 256),
-}
-
-// One line added to the halves written so far. `start` is the offset of the
-// loop the line stands in, and `at` the offset the line itself is written
-// at, both in bytes from the program's first instruction.
-fn written(start, sofar, line) = match sofar {
-  (at, halves) => match line {
-    Op(half) => (at + 2, halves ++ [half]),
-    Wide(first, second) => (at + 4, halves ++ [first, second]),
-    Again(cond) => (at + 2, halves ++ [branch(cond, start - at - 4)]),
-    Loop(body) => body |> fold((at, halves), written(at, ??, ??)),
+// A short branch, 16 bits, whose target stands `delta` bytes from the
+// address four bytes past it, which is where the chip counts from. It
+// reaches 256 bytes back and 254 forward, or eight times that with no
+// condition.
+fn short_branch(cond, delta) = match cond {
+  Always => if -2048 <= delta && delta < 2048 {
+    0xE000 + wrapped(delta / 2, 2048)
+  } else {
+    fail("a short branch cannot reach {int_to_str(delta)} bytes")
+  },
+  Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual | Below | BelowEqual | Above
+  | AboveEqual => if -256 <= delta && delta < 256 {
+    0xD000 + cond_bits(cond) * 256 + wrapped(delta / 2, 256)
+  } else {
+    fail("a short branch on a condition cannot reach {int_to_str(delta)} bytes")
   },
 }
 
-// A program's instructions as halves, in the order the chip runs them.
-fn halves_of(lines) = match lines |> fold((0, []), written(0, ??, ??)) {
+// A long branch, 32 bits, as its two halves. With no condition it reaches
+// 16 MB either way, and `low` says whether it also keeps the way back
+// (0xD000, a call) or not (0x9000). The sign of the distance and the bits
+// of half of it stand in five fields.
+fn long_branch(low, delta) = if -16777216 <= delta && delta < 16777216 {
+  [
+    0xF000 + bit_of(delta, 24) * 1024 + i32_and(i32_shr_u(delta, 12), 1023),
+    low + (1 - i32_xor(bit_of(delta, 23), bit_of(delta, 24))) * 8192 + (1 - i32_xor(bit_of(delta, 22), bit_of(delta, 24))) * 2048 + i32_and(i32_shr_u(delta, 1), 2047)
+  ]
+} else {
+  fail("a long branch cannot reach {int_to_str(delta)} bytes")
+}
+
+// A long branch on a condition, which reaches 1 MB either way.
+fn far_branch(cond, delta) = match cond {
+  Always => long_branch(0x9000, delta),
+  Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual | Below | BelowEqual | Above
+  | AboveEqual => if -1048576 <= delta && delta < 1048576 {
+    [
+      0xF000 + bit_of(delta, 20) * 1024 + cond_bits(cond) * 64 + i32_and(i32_shr_u(delta, 12), 63),
+      0x8000 + bit_of(delta, 18) * 8192 + bit_of(delta, 19) * 2048 + i32_and(i32_shr_u(delta, 1), 2047)
+    ]
+  } else {
+    fail("a long branch on a condition cannot reach {int_to_str(delta)} bytes")
+  },
+}
+
+// One line added to the halves written so far. `targets` holds the place of
+// each loop and block around the line, the nearest first, and `at` is the
+// place the line itself is written at, all in bytes from the program's
+// first instruction.
+fn written(targets, sofar, line) = match sofar {
+  (at, halves) => match line {
+    Op(half) => (at + 2, halves ++ [half]),
+    Wide(first, second) => (at + 4, halves ++ [first, second]),
+    Again(cond) => (at + 2, halves ++ [short_branch(cond, target(targets, 0) - at - 4)]),
+    Jump(cond, out) => (at + 4, halves ++ far_branch(cond, target(targets, out) - at - 4)),
+    Call(number) => (at + 4, halves ++ long_branch(0xD000, function_at(number) - at - 4)),
+    StopIf(cond) => (at + 4, halves ++ far_branch(cond, stop_at() - at - 4)),
+    Loop(_, body) => body |> fold((at, halves), written([at] ++ targets, ??, ??)),
+    Block(bytes, body) => body |> fold((at, halves), written([at + bytes] ++ targets, ??, ??)),
+  },
+}
+
+// A program's instructions as halves, in the order the chip runs them. The
+// handler over this says where its functions and its stop stand.
+fn halves_of(lines) = match lines |> fold((0, []), written([], ??, ??)) {
   (_, halves) => halves,
 }

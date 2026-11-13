@@ -22,6 +22,4 @@ fn expected() = [
   Section({at: 31, count: 1, kind: Code, size: 6})
 ]
 
-fn main() = {
-  if sections_of(small_module()) == expected() { 0 } else { 1 }
-} ~> fail_exit
+fn main() = if sections_of(small_module()) == expected() { 0 } else { 1 } ~> fail_exit

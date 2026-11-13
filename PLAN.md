@@ -36,9 +36,13 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   N0 to N4 say what each machine holds.
 - No landing is in flight. A Mentl-written image runs on Morgan's spare
   Daisy Seed since 2026-11-12, loaded into its memory by the probe: the
-  first step of N1 (§11.B). The next three, in order: N0 (the medium
-  translates the WebAssembly it emits into Thumb-2, checked under an ARM
-  emulator); the rest of P1 (a battery writes its modules per folder);
+  first step of N1 (§11.B). The translator from WebAssembly to Thumb-2
+  takes whole numbers, locals, control flow and calls, the third of N0's
+  five steps. The next three, in order: the rest of N0 (memory, globals,
+  data and the host's calls, so the compiler's own modules translate and
+  the batteries answer both ways under an ARM emulator, then the rest of
+  the instruction set); the rest of P1 (a battery writes its modules per
+  folder);
   and T1 (a stated claim is proven or the program does not build, which
   starts by measuring what is pending today, by kind). §11.B holds the
   whole order.
@@ -1447,7 +1451,7 @@ Then the medium, bottom to top.
   every gate has judged, and writes the chip's. So it is the second large
   program written in Mentl, in the five operators from its first line, and
   the wheel's counts on the board do not move. It goes in five steps, and
-  two are built (2026-11-12). The first: `mentl run native/exit42.mn`
+  three are built (2026-11-12). The first: `mentl run native/exit42.mn`
   writes a 90-byte ARM program byte by byte, and `qemu-arm` runs it to
   exit 42. The second is the reader of a module's sections: `mentl run
   native/sections.mn < module.wasm` prints each section's kind, where its
@@ -1459,17 +1463,33 @@ Then the medium, bottom to top.
   reader keeps the bytes not yet read and takes them apart by pattern, so
   it indexes nothing and `mentl check` leaves it no claim. `native/` is a
   battery of the landing pass since the same day: each of its files
-  states its contract on its first line. The next three, each with its
-  fixtures passing both ways before the one after: whole numbers, locals,
-  control flow and calls; memory, globals, data and the three host calls
-  a program imports; then tail calls, calls through the table, block
-  memory operations, 64-bit integers and floats.
+  states its contract on its first line. The third translates whole
+  numbers, locals, blocks, loops, branches and calls: `mentl run
+  native/translate.mn < module.wasm > module.elf` writes a Linux program
+  that calls the module's `main` and exits with its answer, or with 134
+  where the module traps. 21 modules written by hand for it each answer
+  the same under the engine (`wasmtime --invoke main`) and, translated,
+  under `qemu-arm -cpu cortex-m7`: recursion 20,000 calls deep, a
+  function with 42 locals, branches that drop values out of nested
+  blocks, signed and unsigned comparison, division and remainder, shifts
+  by more than 31 bits, constants of every width, and the three traps (a
+  division by zero, the least number divided by -1, and `unreachable`).
+  A module that imports, touches memory or holds a 64-bit number is
+  refused, naming the byte. That run of both ways is a script of the
+  session's and no gate's: every module the compiler writes imports the
+  host's calls, so the batteries' run fixtures can answer both ways from
+  the fourth step on. `native/translates-a-recursive-call.mn` holds what
+  the emulator showed for one module, the instructions that ran to 89.
+  The next two, each with its fixtures passing both ways before the one
+  after: memory, globals, data and the three host calls a program
+  imports; then tail calls, calls through the table, block memory
+  operations, 64-bit integers and floats.
   A value lives on the machine's stack with its top in a register, a
   64-bit integer is two words, a float is in the floating-point unit's
   registers, and a callee removes its own arguments so a tail call can
-  reuse the frame. The instructions are chosen for one chip at a time, by
-  a handler the translator runs under, and N0 builds the handler for the
-  Seed's Cortex-M7. The emulator tells the chips apart (measured
+  reuse the frame. The instructions are the Cortex-M7's, written as
+  functions in `native/thumb.mn`; a handler that chooses them for one
+  chip at a time is still to be built. The emulator tells the chips apart (measured
   2026-11-12 on `qemu-arm` 11.1.3). Under `-cpu cortex-m7` and under `-cpu
   cortex-m0`, the three 16-bit instructions of `exit42` run to exit 42. A
   copy that opens with the 32-bit instruction `movw r0, #42` runs to exit

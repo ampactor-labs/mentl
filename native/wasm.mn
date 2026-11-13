@@ -14,10 +14,11 @@ effect Source {
   more() -> Bool
 }
 
-// A file's bytes, read from the first: `left` holds the bytes not read yet,
-// and `read` counts the ones that have been. A read past the last byte is
-// the file's fault: the reader says where the file ends and stops.
-handler reading(bytes) with left = bytes, read = 0 {
+// Bytes read from the first: `left` holds the bytes not read yet, and `read`
+// is the place of the next one in the file, which starts at `first` (0 for
+// a whole file, a section's place for its body). A read past the last byte
+// is the file's fault: the reader says where the bytes end and stops.
+handler reading(bytes, first) with left = bytes, read = first {
   byte() => match left {
     [next, ...rest] => resume(next) with left = rest, read = read + 1,
     [] => fail("the module ends at byte {int_to_str(read)}, inside a section that says it is longer"),
@@ -117,9 +118,98 @@ fn header() = if [byte(), byte(), byte(), byte(), byte(), byte(), byte(), byte()
   fail("this is not a WebAssembly module: it does not open with a zero byte, \"asm\" and version 1")
 }
 
-// A module's sections, in the file's order.
-fn sections_of(bytes) = {
-  header()
-  sections()
+// A module's sections, in the file's order. A file shorter than the eight
+// opening bytes is no module at all.
+fn sections_of(bytes) = if len(bytes) < 8 {
+  fail("this is not a WebAssembly module: it is {int_to_str(len(bytes))} bytes long, and a module opens with eight")
+} else {
+  {
+    header()
+    sections()
+    result()
+  } ~> collector ~> reading(bytes, 0)
+}
+
+// The kinds by the names `wasm-objdump -h` prints.
+fn kind_name(kind) = match kind {
+  Custom => "Custom",
+  Types => "Type",
+  Imports => "Import",
+  Functions => "Function",
+  Tables => "Table",
+  Memories => "Memory",
+  Globals => "Global",
+  Exports => "Export",
+  Start => "Start",
+  Elements => "Elem",
+  DataCount => "DataCount",
+  Code => "Code",
+  Data => "Data",
+}
+
+// A byte written as two hex digits after "0x", the way the WebAssembly
+// reference writes an instruction's number.
+fn hex_byte(b) = "0x" |> push(??, hex_nibble(b / 16 % 16)) |> push(??, hex_nibble(b % 16))
+
+// The one section of a kind, read by `reader` from its first byte, so the
+// places the reader names are the file's. A module without it is refused.
+fn read_section(bytes, parts, kind, reader) = match find(is_kind(kind, ??), parts) {
+  Some(s) => reader() ~> reading(body_of(bytes, s), s.at),
+  None => fail("the module has no {kind_name(kind)} section"),
+}
+
+// Whether a module holds a section of a kind.
+fn holds(parts, kind) = any(is_kind(kind, ??), parts)
+
+// A whole number with a sign, written seven bits to a byte like `number`.
+// The last byte's seventh bit is the sign.
+fn signed() = {
+  let b = byte()
+  if b < 64 { b } else if b < 128 { b - 128 } else { b - 128 + 128 * signed() }
+}
+
+// A list as the file writes one: its length, then that many items, each
+// read by `item`.
+fn listed(item) = {
+  items(number(), item)
   result()
-} ~> collector ~> reading(bytes)
+} ~> collector
+
+fn items(left, item) = if left > 0 {
+  yield(item())
+  items(left - 1, item)
+} else {
+  ()
+}
+
+// The bytes of a section's body, cut out of the file's. A section that says
+// it stands outside the file is the file's fault.
+fn body_of(bytes, s: Section) = {
+  let from = s.at
+  let to = from + s.size
+  if 0 <= from && from <= to && to <= len(bytes) {
+    slice(bytes, from, to)
+  } else {
+    fail("a section says it stands at bytes {int_to_str(from)} to {int_to_str(to)}, and the file has {int_to_str(len(bytes))}")
+  }
+}
+
+fn is_kind(kind, s: Section) = s.kind == kind
+
+// A function's shape: how many values it takes and how many it answers.
+// The translator takes 32-bit whole numbers and no other kind of value yet.
+fn shape() = if byte() == 0x60 {
+  (len(listed(whole_number)), len(listed(whole_number)))
+} else {
+  fail("byte {int_to_str(place() - 1)}: a function's shape opens with the byte 0x60")
+}
+
+fn whole_number() = if byte() == 0x7F {
+  ()
+} else {
+  fail("byte {int_to_str(place() - 1)}: a value that is no 32-bit whole number, which the translator does not take yet")
+}
+
+// One export: its name's bytes, what kind of thing it is (0 for a
+// function), and that thing's number.
+fn export() = (listed(byte), byte(), number())

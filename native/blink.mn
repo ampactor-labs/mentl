@@ -54,7 +54,7 @@ let switches = 7
 // An address of Thumb code is written with its lowest bit set.
 fn vectors() = [stack_top, start_at + 1] ++ repeat(14, stopped_at + 1)
 
-fn stay_here_on_a_fault(before) = before ++ [Loop([Again(Always)])]
+fn stay_here_on_a_fault(before) = before ++ [loop_of([Again(Always)])]
 
 // The chip starts on its own oscillator, which is only roughly 64 MHz: one
 // board measured 53.3 MHz. So the clock is taken from the crystal. `clocks`
@@ -95,7 +95,7 @@ fn start_the_timer(before) = before ++ set_word(timer, 0xE000E010) ++ set_word(s
 // the word in `next` is written to the port and then turned by 16 bits, so
 // it sets the pin one time and clears it the next.
 fn blink_forever(before) = before ++ [
-  Loop([
+  loop_of([
     until_bit(timer, 0, 16),
     load_word(scratch, ticks_at, 0),
     add_byte(scratch, 1),
@@ -114,9 +114,14 @@ fn blink_forever(before) = before ++ [
 fn program() =
   [] |> stay_here_on_a_fault |> run_from_the_crystal |> drive_the_light |> start_the_timer |> blink_forever
 
-fn image() = (vectors() |> flat_map(le32)) ++ (program() |> halves_of |> flat_map(le16))
+// The program calls no function and has no place to stop, so it names none.
+fn code() = program() |> halves_of ~> placed([], 0)
+
+fn image() = (vectors() |> flat_map(le32)) ++ (code() |> flat_map(le16))
 
 fn main() = {
-  memory_image(image_at, start_at + 1, image()) |> print_string
+  {
+    memory_image(image_at, start_at + 1, image()) |> print_string
+  } ~> fail_exit
   0
 }
