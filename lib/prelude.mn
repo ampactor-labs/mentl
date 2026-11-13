@@ -425,14 +425,24 @@ fn ends_with(s: String, suffix: String) =
 fn contains(s: String, sub: String) = index_of(s, sub) >= 0
 
 fn index_of(s: String, sub: String) = {
-  let slen = byte_len(s)
   let sublen = byte_len(sub)
-  fn search(i) = if i + sublen > slen {
-    -1
+  // An empty needle is found where the string starts. Any other needle is
+  // looked for by a walk that keeps the bytes it has not read yet and drops
+  // the first of them at each step. The needle has at least one byte, so a
+  // byte is dropped only when one is left, and no cut the walk makes can
+  // stop the program.
+  if sublen == 0 {
+    0
   } else {
-    if str_eq(str_slice(s, i, i + sublen), sub) { i } else { search(i + 1) }
+    fn search(rest: String, i) = if byte_len(rest) < sublen {
+      -1
+    } else if str_slice(rest, 0, sublen) == sub {
+      i
+    } else {
+      search(str_slice(rest, 1, byte_len(rest)), i + 1)
+    }
+    search(s, 0)
   }
-  search(0)
 }
 
 fn replace(s, old, new) = {

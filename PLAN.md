@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `39f3181a46eb`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `f106490d4d8a`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -38,12 +38,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   Daisy Seed since 2026-11-12, loaded into its memory by the probe: the
   first step of N1 (§11.B). The chip's code comes from the native
   projection, after the keystone and the memory landings (§4⑱); a
-  translator from WebAssembly, built first, was removed on 2026-11-13. The
-  next two, in order: the rest of P1 (a battery writes its modules per
-  folder);
-  and T1 (a stated claim is proven or the program does not build, which
-  starts by measuring what is pending today, by kind). §11.B holds the
-  whole order.
+  translator from WebAssembly, built first, was removed on 2026-11-13.
+  Since that day each battery writes its modules under the fixtures' own
+  paths and runs in a lane of its own. The next landing is T1 (a stated
+  claim is proven or the program does not build, which starts by
+  measuring what is pending today, by kind). §11.B holds the whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -964,6 +963,14 @@ accepts each program and `mentl run` shows the break.
   and `mentl why FILE main Trap` follows the install into the arm (a
   scratch program, 2026-11-11; the grid controller showed it until its
   printing stopped trapping; §11.1).
+- Nor does the census of places that can trap with no claim follow a
+  function handed to a library stage. A `step` that calls `replace`,
+  which can trap with no claim, is listed at that call when a walk calls
+  `step` by name. Handed to `fold`, it is missing, and the census lists
+  only the `fold` call (two scratch programs, 2026-11-13). Written as a
+  fold, the battery's walk took 100 places out of the compiler's count
+  this way, though no place gained a claim (a candidate compiler,
+  2026-11-13; §11.1).
 - `mentl teach` proposes locks, preconditions and lifts and little else,
   and lists every function's step in source order with nothing ranked
   (`mentl teach examples/pulse/course/07-bounds.mn`; §11.5).
@@ -1016,7 +1023,12 @@ accepts each program and `mentl run` shows the break.
 - A part read off a value out of sight, a list's element above all, is
   read as older memory, because the judgment keeps nothing of what a store
   put into an allocation. `mentl verify` counts the values the verifier's
-  walk cannot place (§11.8).
+  walk cannot place (§11.8). A walk that takes a parameter apart by
+  pattern adds to that count where the same walk by cuts does not: over a
+  string parameter `rest`, `match rest { [_, ...tail] => search(tail, i +
+  1), [] => -1 }` leaves `tail` unplaced, "part of the value taken apart",
+  and `search(str_slice(rest, 1, byte_len(rest)), i + 1)` leaves nothing
+  (a scratch program, 2026-11-13).
 - An arena opened inside a spawned branch sometimes keeps its region, in 10
   of 200 runs on 2026-11-11, when the other branch takes a chunk of the
   shared line between two of its own (§11.B, "Two checks that failed at random").
@@ -1326,8 +1338,8 @@ recommendations, gave it full permission to shape, design and implement
 the medium from the bottom up, and asked for a faster process and the
 newest engine (§4⑭ to ⑯). The landings below run in this order, each one
 commit and one pin, red on the pin first. A letter and a number name a
-landing in this list alone. Box 1 below is T3, Box 2 is the second half
-of L1, and Box 3 is the rest of P1.
+landing in this list alone. Box 1 below is T3, and Box 2 is the second
+half of L1.
 
 The pass gets fast first, because every later landing pays for it. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1339,34 +1351,6 @@ fixture, discards every kept result. The targets are a cold pass under 6
 minutes on four cores, a re-run after a fixture or document edit under 1
 minute, and no expectation kept by hand.
 
-- P1. The pass runs on every core. Built in part on 2026-11-12: every
-  check prints its seconds, and the batteries and the gates that measure
-  no time run side by side after the march. On the pinned compiler, with
-  kept results ignored, those checks took 380 seconds one after another
-  and 189, 178 and 179 seconds side by side, with no failure in three
-  runs. What is left needs the compiler. Every battery writes its modules
-  into one folder by fixture name alone, and micros and frontier hold two
-  fixtures of one name (`mn-feedback-deep-line`, `mn-unused-wide-param`),
-  so side by side one battery ran the other's module, and the two now
-  share a lane. A battery is to write each module under its own folder's
-  name, and to take a shard, so the 787 micros, 147 seconds in one
-  process, split across the cores. The frontier gate's legs stay one
-  serial loop of about 138 seconds until P3 moves them into fixtures. One
-  measurement decides a further step: where judging the library dominates
-  a fixture's compile, the battery judges the library once and forks the
-  graph per fixture. That measurement was taken on Morgan's machine on
-  2026-11-12, four cores, pin 11389157fa42. The micro battery compiles its
-  787 fixtures in 350 seconds in one process and runs them in 47, so a
-  fixture costs 0.445 seconds on average. A fixture that says only `fn
-  main() = 3` costs about 0.5 seconds, twenty of them in 10.8 seconds, and
-  `mentl check` on it takes 0.55 seconds where the verb's start alone
-  takes 0.17. So nearly all of a fixture's compile is the library's
-  judgment, made again for each fixture. The form is therefore the
-  library judged once (§11.8), and a split across cores is not built:
-  it would spread the same repeated judgment over more processes. What
-  stays of this item is Box 3 below: two folders that hold one fixture
-  name write one module path. The frontier gate's serial loop took 361
-  seconds on that machine, more than any battery but the micros.
 - P2. Cost is counted, never timed ("Two checks that failed at random",
   below). An instrumented build counts the calls the compiler makes while
   it compiles itself, by the route the arena's counters take, and the
@@ -1376,7 +1360,9 @@ minute, and no expectation kept by hand.
 - P3. What a command prints is a fixture's contract, replayed by `mentl
   test`. The legs of `tools/frontier-gate.sh` move into such fixtures in
   batches, each batch proven by running the old leg and the new contract
-  on one compiler, until the script is empty (§11.9).
+  on one compiler, until the script is empty (§11.9). The legs run in one
+  serial loop, which took 361 seconds on Morgan's machine on 2026-11-12,
+  more than any battery but the micros.
 - P4. A document's quoted output is re-run by a command that fails when
   the pin prints something else and rewrites the quote on request (§11.5).
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
@@ -1537,9 +1523,8 @@ Then the medium, bottom to top.
   the memory the first image is loaded into, are worked out at N1 with the
   board attached.
 
-The first stretch runs P1, T1, L1, T4, R2 and O1. P2 to P5
-and P7 are taken between them, each when the landing before it shows what
-it would save.
+The first stretch runs T1, L1, T4, R2 and O1. P2 to P5 and P7 are taken
+between them, each when the landing before it shows what it would save.
 
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
@@ -1643,8 +1628,8 @@ march run alone before any code changes.
 
    The form. In `battery_step`'s `ExpectRun` arm (`src/main.mn`), after the
    trusted compile, the module is compiled again under `~>
-   proofs(ProofsWitnessed)` to `battery_wat_path` of the stem followed by
-   `~w`, and a second line `RUN <stem>~w` follows the first, with the same
+   proofs(ProofsWitnessed)` to `battery_wat_path` of the fixture's module
+   path followed by `~w`, and a second line `RUN <stem>~w` follows the first, with the same
    exit and the same line a stop must say. In `tools/wt-env.sh`,
    `wt_battery`'s count of the fixtures it saw leaves out the verdicts
    whose stem ends in `~w`: one line replaced and none added, so the count
@@ -1809,119 +1794,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · Each fixture's module is named by its path, so the micro and
-   frontier batteries run side by side.** The rest of P1, written
-   2026-11-13. The builder gates it, under Morgan's word of 2026-11-12.
-
-   What a person sees. `mentl land` runs the micro battery and the
-   frontier battery in lanes of their own. A battery writes a fixture's
-   module into `.build/battery/` under the fixture's path, so
-   `tests/micros/mn-feedback-deep-line.mn` and
-   `tests/frontier/mn-feedback-deep-line.mn` no longer write one file.
-
-   Fails today, on pin 39f3181a46eb. Two scratch folders each hold one of
-   those two fixtures, which expect exits 3 and 84. Folder A's battery
-   compiles (`mentl test A`), then folder B's, and then A's module is run
-   from A's RUN line through `wt_battery_host`:
-
-       battery A: RUN mn-feedback-deep-line .build/battery/mn-feedback-deep-line.wat 3 0
-       battery B: RUN mn-feedback-deep-line .build/battery/mn-feedback-deep-line.wat 84 0
-       A's verdict: FAIL(run) mn-feedback-deep-line: exit=84 expected=3 diags=0
-
-   The landing pass did the same once in two runs, before the two
-   batteries were put in one lane (4bd4783a).
-
-   What it buys. On Morgan's machine on 2026-11-13 the shared lane was the
-   longest of the landing pass's side-by-side checks: the micro battery
-   took 332 seconds and the frontier battery 74 seconds after it, and the
-   nine checks together took 406 seconds. With a lane each, the longest
-   lane is the micro battery alone.
-
-   The form.
-   - `battery_wat_path(module: String) -> String` (`src/main.mn`) answers
-     `.build/battery/<module>.wat`, with every `/` of the module written
-     as `_`. `module` is the fixture's path without its `.mn`
-     (`path_to_module`), so `tests/micros/mn-x.mn` writes
-     `.build/battery/tests_micros_mn-x.wat`.
-   - `battery_step(path: String)` names the fixture's module and its
-     module path once, beside its stem and its text, and each arm reads
-     them. Its arms call `path_to_module(path)` eighteen times today,
-     one arm for each fixture.
-   - `battery_compile(module: String, wat: String)` compiles to `wat`, and
-     `battery_run_verdict(stem, wat, want, said, compiled)` prints `wat`
-     in the RUN line.
-   - `tools/state.sh` gives each battery a lane of its own and deletes the
-     two lines of comment that explained the shared lane, so `tools/`
-     shrinks.
-   - Box 1's form names the witness module as `battery_wat_path` of the
-     stem followed by `~w`. It becomes the module path with `~w` before
-     its `.wat`.
-
-   Edge cases. A battery over an absolute folder, as a scratch battery is,
-   writes names that begin with `_`. A folder given with a trailing `/`
-   is walked as the folder without it (`dir_base`). Two fixtures whose
-   paths differ only where one has `/` and the other `_`, such as
-   `a/b_c.mn` and `a_b/c.mn`, would still share a module file; no two
-   fixtures in the repository's battery folders do.
-
-   Refuses nothing new.
-
-   Left alone. A battery does not take a shard (P1 above says why). The
-   effect-identity gate stays after the batteries: it runs its fixture
-   through `tools/run-micro.sh`, which writes under `$TMPDIR`, so it shares
-   no file with a battery. `wt_battery_host` reads the module's path off
-   the RUN line and needs no change.
-
-   What pays for its code on the board. The candidate's `mentl verify`
-   said one limit would rise: the places that can trap with no claim,
-   3,214 to 3,215. The new place is the `replace` in `battery_wat_path`,
-   which can stop through `index_of`, whose `search` cuts `str_slice(s, i,
-   i + sublen)`. The guard keeps that cut inside the string, but proving
-   `0 <= i` would take induction over `search`'s calls, which the
-   verifier does not do. Eighteen places in the compiler trace to that one
-   cut: eight through `index_of`, eight through `replace` and two through
-   `contains`.
-
-   So `index_of` (lib/prelude.mn) answers 0 for an empty needle, as it
-   did, and for any other needle its `search` keeps the bytes it has not
-   read and cuts the first of them off at each step, `str_slice(rest, 1,
-   byte_len(rest))`. The needle has at least one byte, so a byte is cut
-   off only when one is left, and the verifier proves both of the walk's
-   cuts. A scratch copy without the empty-needle answer leaves the cut at
-   1 pending and keeps `Trap` in its row, so the proof reads that guard.
-   The row is `Memory + Alloc + Address + MemoryWrite + Diverge`, where it
-   held `Trap` as well. A walk that takes the bytes apart by pattern, `[_,
-   ...tail]`, also proves its cuts and drops `Diverge` too, but the memory
-   walk cannot place `tail`, a part taken from a parameter, so the count of
-   values it cannot place would rise from 32,094 to 32,095. Each scratch
-   form answers as the old walk does on seven inputs: a path's first `/`,
-   a needle at the end, a needle found after two false starts, an empty
-   needle in a string and in an empty string, a needle longer than the
-   string, and an absent needle.
-
-   The comparison is written `==`, as SYNTAX asks, where the old walk
-   called `str_eq` by name. The judgment charges `Trap` at a call of
-   `str_eq` and none at `==` on two strings, which runs the same function,
-   and §7 records that the answer at `==` is not yet proven. So the cuts
-   are a proof, and the comparison rests on that recorded answer.
-
-   Measured on the candidate: the places that can trap with no claim fall
-   from 3,214 to 3,205. Ten places leave: one in `asm`, two in `cli`, four
-   in `main`, the two calls of `contains` in `sections`, and one in
-   `space`. The `replace` in `battery_wat_path` joins. `replace` keeps two
-   cuts of its own, so its eight places stay, each now through those cuts.
-   The claims left open at explicit calls fall from 653 to 652; the one
-   that left is the old cut. The values the memory walk cannot place stay
-   at 32,094 and the index walks at 374. `index_of` gains ten lines, and
-   no fixture contract or gate script cites a line of lib/prelude.mn at or
-   below it.
-
-   Proves it. The same interleaving on the candidate: A's verdict is `PASS
-   mn-feedback-deep-line: exit=3` and B's is `exit=84`. The landing pass
-   runs each battery in its own lane, every battery with the count of
-   fixtures it had before (micros 797, frontier 219), and prints each
-   lane's seconds.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
@@ -2680,7 +2552,13 @@ both wall times. When the emit finds `spawn_task` reached, it emits the
 spawning module. The page's resident session activates the pool that its
 run role has. Emission, the classifier rounds and the judgment's
 binding-group levels are fanouts, the battery judges its library once, and
-Pulse renders block by block under `parallel_compose`. A schedule reaches a
+Pulse renders block by block under `parallel_compose`. The battery's part
+was measured on Morgan's machine on 2026-11-12, pin 11389157fa42: the
+micro battery compiled 787 fixtures in 350 seconds, 0.445 seconds each,
+and a fixture that says only `fn main() = 3` took about 0.5 seconds, so
+nearly all of a fixture's compile is the library judged again. Splitting
+the fixtures across processes would spread that repeated judgment, so it
+is not built. A schedule reaches a
 fanout through a function value created under it. Two branches that write
 disjoint ranges of one buffer run, each owning its slice of the memory the
 fanout passes it. Today they are refused as one buffer written from every

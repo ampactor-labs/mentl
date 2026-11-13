@@ -2215,7 +2215,10 @@ fn show_want(want) = match want {
   WantAsk(arm) => "ask {arm}",
 }
 
-fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
+// The file a fixture's module is written to: the fixture's module path, its
+// `.mn` already dropped, with every `/` written as `_`. So two folders that
+// hold one fixture name write two files, and two batteries can run at once.
+fn battery_wat_path(module: String) = ".build/battery/{replace(module, "/", "_")}.wat"
 
 // One micro, one fresh chain — the same chain compile_stdin drives, with
 // the emission STREAMED through wat_to_file into the battery's artifact
@@ -2233,8 +2236,8 @@ fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 // and the program lowered is the one its link holds. The battery hears every
 // module (`Census`), and the refuse contract compares the reports' CLASSES,
 // never the rendered lines, so no substring scan over prose decides a verdict.
-fn battery_compile(module: String, stem) = {
-  let judged = gated_compile(module, battery_wat_path(stem), Census)
+fn battery_compile(module: String, wat: String) = {
+  let judged = gated_compile(module, wat, Census)
   (judged.left, judged.errors, report_classes(judged.reports))
 }
 
@@ -2272,14 +2275,14 @@ fn battery_loop(micros: [String], i, fails) = if i >= len(micros) {
 // gate has already held at zero, and the line a stop must say, and the
 // command that invoked the battery runs the module and prints PASS or
 // FAIL(run) in this line's place.
-fn battery_run_verdict(stem, want, said, compiled) = match compiled {
+fn battery_run_verdict(stem, wat: String, want, said, compiled) = match compiled {
   (left, nerr, _) => match left {
     ArtifactRefused => {
       print_string("FAILC {stem}\n")
       1
     },
     ArtifactWritten(_) => {
-      print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
+      print_string("RUN {stem} {wat} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
       0
     },
   },
@@ -2288,32 +2291,35 @@ fn battery_run_verdict(stem, want, said, compiled) = match compiled {
 fn battery_step(path: String) = {
   let stem = path_stem(path)
   let src = fs_read_file(path)
+  // The driver takes the MODULE path, the file without its `.mn`, exactly
+  // as the CLI's address form hands it over (`path_to_module`), and a
+  // compiled module is written to the file that path names.
+  let module = path_to_module(path)
+  let wat = battery_wat_path(module)
   match battery_expect(src) {
     None => {
       print_string("NOEXPECT {stem}\n")
       1
     },
     Some(contract) => match contract {
-      // The driver takes the MODULE path — the file without its `.mn`, exactly
-      // as the CLI's address form hands it over (path_to_module, cli.mn).
-      ExpectPropose(line, col, want) => battery_propose_step(stem, path_to_module(path), line, col, want),
-      ExpectTeach(line, want) => battery_teach_step(stem, path_to_module(path), line, want),
-      ExpectUnreachable(want) => battery_reach_step(stem, path_to_module(path), want),
-      ExpectRefs(name, want) => battery_refs_step(stem, path_to_module(path), name, want),
-      ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, path_to_module(path), line, col, dline, dcol),
-      ExpectAt(line, col, want) => battery_at_step(stem, path_to_module(path), line, col, want),
-      ExpectWhy(line, col, want) => battery_why_step(stem, path_to_module(path), line, col, want),
-      ExpectWaits(line, col, want) => battery_waits_step(stem, path_to_module(path), line, col, want),
-      ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
+      ExpectPropose(line, col, want) => battery_propose_step(stem, module, line, col, want),
+      ExpectTeach(line, want) => battery_teach_step(stem, module, line, want),
+      ExpectUnreachable(want) => battery_reach_step(stem, module, want),
+      ExpectRefs(name, want) => battery_refs_step(stem, module, name, want),
+      ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, module, line, col, dline, dcol),
+      ExpectAt(line, col, want) => battery_at_step(stem, module, line, col, want),
+      ExpectWhy(line, col, want) => battery_why_step(stem, module, line, col, want),
+      ExpectWaits(line, col, want) => battery_waits_step(stem, module, line, col, want),
+      ExpectRename(line, col, name, want) => battery_rename_step(stem, module, line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
-      ExpectWrittenBack(want) => battery_written_back_step(stem, path_to_module(path), want),
-      ExpectRun(want, said) => battery_compile(path_to_module(path), stem) |> battery_run_verdict(stem, want, said),
+      ExpectWrittenBack(want) => battery_written_back_step(stem, module, want),
+      ExpectRun(want, said) => battery_compile(module, wat) |> battery_run_verdict(stem, wat, want, said),
       // The same contract over a build that keeps every check the judgment
       // proved away, so a wrong proof stops the run where its claim fails.
-      ExpectWitness(want, said) => (battery_compile(path_to_module(path), stem) ~> proofs(ProofsWitnessed)) |> battery_run_verdict(stem, want, said),
+      ExpectWitness(want, said) => (battery_compile(module, wat) ~> proofs(ProofsWitnessed)) |> battery_run_verdict(stem, wat, want, said),
       // The plan's verdict alone: the pages the written module's memory
       // begins with and may grow to, as the plan settled them.
-      ExpectMemory(pages, max) => match battery_compile(path_to_module(path), stem) {
+      ExpectMemory(pages, max) => match battery_compile(module, wat) {
         (left, _, _) => match left {
           ArtifactRefused => {
             print_string("FAILC {stem}\n")
@@ -2328,7 +2334,7 @@ fn battery_step(path: String) = {
           },
         },
       },
-      ExpectRefuse(cls) => match battery_compile(path_to_module(path), stem) {
+      ExpectRefuse(cls) => match battery_compile(module, wat) {
         // The contract is the gate's verdict: the artifact withheld, and the
         // named class among what the judgment reported.
         (left, nerr, classes) => if left == ArtifactRefused && any((c) => c == cls, classes) {
@@ -2344,7 +2350,7 @@ fn battery_step(path: String) = {
       // The judgment's verdict alone: the named class among what it banked
       // with nothing lowered, so `mentl check` refuses where the compile
       // does.
-      ExpectCheckRefuse(cls) => match battery_check(path_to_module(path)) {
+      ExpectCheckRefuse(cls) => match battery_check(module) {
         (nerr, classes, _) => if nerr > 0 && any((c) => c == cls, classes) {
           print_string("CHECK {stem} {cls}\n")
           0
@@ -2353,9 +2359,9 @@ fn battery_step(path: String) = {
           1
         },
       },
-      ExpectCheckClean => battery_check_clean_step(stem, path_to_module(path)),
-      ExpectCheckAccepted => battery_check_accepted_step(stem, path_to_module(path)),
-      ExpectCheckPending(line, col) => battery_check_pending_step(stem, path_to_module(path), line, col),
+      ExpectCheckClean => battery_check_clean_step(stem, module),
+      ExpectCheckAccepted => battery_check_accepted_step(stem, module),
+      ExpectCheckPending(line, col) => battery_check_pending_step(stem, module, line, col),
     },
   }
 }

@@ -65,10 +65,7 @@ if [ "${1:-}" = "--land" ]; then
     fell=$(echo "$GATE_OUT" | awk '/ — within / && $2 + 0 < $NF + 0')
     [ -z "$fell" ] || { printf '%s\n' "$fell" "▸ LAND STOPPED: lower each fallen ceiling in src/board.mn (a dated reason), then run \`mentl land\` again."; exit 1; }
     step "MARCH (the cost ratchets and the fixed point)" bash tools/march.sh
-    # Batteries write modules under .build/battery by fixture name alone. micros and frontier
-    # hold two fixtures of one name, so they share a lane, and effect-identity runs after.
-    battery() { local d rc=0; for d in "$@"; do gate "BATTERY $d" wt_battery "$cand" "$d" || rc=1; done; return $rc; }
-    side battery tests/micros tests/frontier; for d in tests/syntax tests/proposals tests/teach tests/crown native; do side battery "$d"; done
+    for d in tests/micros tests/frontier tests/syntax tests/proposals tests/teach tests/crown native; do side gate "BATTERY $d" wt_battery "$cand" "$d"; done
     side gate "PROOF-EXACTNESS" bash tools/proof-exactness-gate.sh fresh
     side gate "FRONTIER" bash tools/frontier-gate.sh --compiler fresh
     side memo_gate "INSTRUMENT" instrument "$cand" tools/instrument-gate.sh env MENTL_BOOT="$cand" bash tools/instrument-gate.sh

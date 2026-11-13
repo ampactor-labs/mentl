@@ -268,8 +268,10 @@ fn board_bounds() = [
   // (2026-11-06): a call's product keeps one slot per parameter, so the
   // index reads that rebuilt a partial's slots (its holes, its missing
   // parameters, the pipe's splice) left with them, and one read joined where
-  // a call's arguments are judged against their parameters.
-  Bound({ceiling: 653, question: QCensus(CsCallClaim)}),
+  // a call's arguments are judged against their parameters. 653 -> 652
+  // (2026-11-13): `index_of` drops the first byte of what it has not read at
+  // each step, so its cuts are proven inside the string.
+  Bound({ceiling: 652, question: QCensus(CsCallClaim)}),
   // THE PLACES THAT CAN TRAP WITH NO CLAIM CHECKED THERE (`mentl query
   // src/main.mn "census silent-trap"`): a place in the program's own modules
   // whose `Trap` reaches main's row while no claim stands at it, most of them
@@ -292,8 +294,12 @@ fn board_bounds() = [
   // `print_string`, `eprint_string` and the functions that flatten a list
   // answer that they never use `Trap`, and every place whose only trap was
   // that check left the count: 162 of the 3,376 the landing's own code had
-  // brought it to.
-  Bound({ceiling: 3214, question: QCensus(CsSilentTrap)}),
+  // brought it to. 3,214 -> 3,205 (2026-11-13): `index_of` and `contains`
+  // never use `Trap`, since the walk's cuts are proven and its comparison is
+  // `==`, which the judgment charges no `Trap`. The ten places that call them
+  // left the count. One place joined: the file a battery writes a fixture's
+  // module to is named by `replace`, which keeps two cuts of its own.
+  Bound({ceiling: 3205, question: QCensus(CsSilentTrap)}),
   // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
   // §4⑨): an install whose body applies a function nothing names (a field
   // of a parameter, a value out of sight), writes memory nothing names, or
