@@ -1846,7 +1846,7 @@ first two.
      `.build/battery/tests_micros_mn-x.wat`.
    - `battery_step(path: String)` names the fixture's module and its
      module path once, beside its stem and its text, and each arm reads
-     them. Its arms call `path_to_module(path)` seventeen times today,
+     them. Its arms call `path_to_module(path)` eighteen times today,
      one arm for each fixture.
    - `battery_compile(module: String, wat: String)` compiles to `wat`, and
      `battery_run_verdict(stem, wat, want, said, compiled)` prints `wat`
@@ -1873,10 +1873,25 @@ first two.
    no file with a battery. `wt_battery_host` reads the module's path off
    the RUN line and needs no change.
 
-   What pays for its code on the board. One `replace` for each fixture is
-   added, and sixteen calls of `path_to_module` leave `battery_step`. The
-   candidate's `mentl verify` is read before the landing pass, and the
-   payment is named here if a limit would rise.
+   What pays for its code on the board. The candidate's `mentl verify`
+   said one limit would rise: the places that can trap with no claim,
+   3,214 to 3,215. The new place is the `replace` in `battery_wat_path`,
+   which can stop through `index_of`, whose `search` cuts `str_slice(s, i,
+   i + sublen)`. The guard keeps that cut inside the string, but proving
+   `0 <= i` would take induction over `search`'s calls, which the
+   verifier does not do. Eighteen places in the compiler trace to that one
+   cut: eight through `index_of`, eight through `replace` and two through
+   `contains`. So `search` (lib/prelude.mn) keeps the bytes it has not read
+   and takes them apart by pattern, `[_, ...tail]`, cuts at 0, and
+   compares with `==`. Each cut then stands inside the bytes that are
+   left. A scratch copy checks with no claim open, its row is `Memory +
+   Alloc + Address + MemoryWrite` where `index_of`'s holds `Trap` and
+   `Diverge`, and it answers as `index_of` does on an empty string, an
+   empty needle, a needle longer than the string, a needle at the end and
+   one absent. `index_of` and `contains` then stop trapping, and the ten
+   places that call them leave the count. `replace` keeps two cuts of its
+   own, so its eight stay. No contract cites a line of lib/prelude.mn at
+   or below `index_of`.
 
    Proves it. The same interleaving on the candidate: A's verdict is `PASS
    mn-feedback-deep-line: exit=3` and B's is `exit=84`. The landing pass
