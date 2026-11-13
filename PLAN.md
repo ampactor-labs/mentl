@@ -1326,8 +1326,8 @@ recommendations, gave it full permission to shape, design and implement
 the medium from the bottom up, and asked for a faster process and the
 newest engine (§4⑭ to ⑯). The landings below run in this order, each one
 commit and one pin, red on the pin first. A letter and a number name a
-landing in this list alone. Box 1 below is T3, and Box 2 is the second
-half of L1.
+landing in this list alone. Box 1 below is T3, Box 2 is the second half
+of L1, and Box 3 is the rest of P1.
 
 The pass gets fast first, because every later landing pays for it. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1364,11 +1364,9 @@ minute, and no expectation kept by hand.
   judgment, made again for each fixture. The form is therefore the
   library judged once (§11.8), and a split across cores is not built:
   it would spread the same repeated judgment over more processes. What
-  stays of this item is the folder: two folders that hold one fixture
-  name write one module path (`mentl test` on two scratch folders prints
-  `.build/battery/mn-same-name.wat` for both), and the frontier gate's
-  serial loop took 361 seconds on that machine, more than any battery
-  but the micros.
+  stays of this item is Box 3 below: two folders that hold one fixture
+  name write one module path. The frontier gate's serial loop took 361
+  seconds on that machine, more than any battery but the micros.
 - P2. Cost is counted, never timed ("Two checks that failed at random",
   below). An instrumented build counts the calls the compiler makes while
   it compiles itself, by the route the arena's counters take, and the
@@ -1811,6 +1809,80 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · Each fixture's module is named by its path, so the micro and
+   frontier batteries run side by side.** The rest of P1, written
+   2026-11-13. The builder gates it, under Morgan's word of 2026-11-12.
+
+   What a person sees. `mentl land` runs the micro battery and the
+   frontier battery in lanes of their own. A battery writes a fixture's
+   module into `.build/battery/` under the fixture's path, so
+   `tests/micros/mn-feedback-deep-line.mn` and
+   `tests/frontier/mn-feedback-deep-line.mn` no longer write one file.
+
+   Fails today, on pin 39f3181a46eb. Two scratch folders each hold one of
+   those two fixtures, which expect exits 3 and 84. Folder A's battery
+   compiles (`mentl test A`), then folder B's, and then A's module is run
+   from A's RUN line through `wt_battery_host`:
+
+       battery A: RUN mn-feedback-deep-line .build/battery/mn-feedback-deep-line.wat 3 0
+       battery B: RUN mn-feedback-deep-line .build/battery/mn-feedback-deep-line.wat 84 0
+       A's verdict: FAIL(run) mn-feedback-deep-line: exit=84 expected=3 diags=0
+
+   The landing pass did the same once in two runs, before the two
+   batteries were put in one lane (4bd4783a).
+
+   What it buys. On Morgan's machine on 2026-11-13 the shared lane was the
+   longest of the landing pass's side-by-side checks: the micro battery
+   took 332 seconds and the frontier battery 74 seconds after it, and the
+   nine checks together took 406 seconds. With a lane each, the longest
+   lane is the micro battery alone.
+
+   The form.
+   - `battery_wat_path(module: String) -> String` (`src/main.mn`) answers
+     `.build/battery/<module>.wat`, with every `/` of the module written
+     as `_`. `module` is the fixture's path without its `.mn`
+     (`path_to_module`), so `tests/micros/mn-x.mn` writes
+     `.build/battery/tests_micros_mn-x.wat`.
+   - `battery_step(path: String)` names the fixture's module and its
+     module path once, beside its stem and its text, and each arm reads
+     them. Its arms call `path_to_module(path)` seventeen times today,
+     one arm for each fixture.
+   - `battery_compile(module: String, wat: String)` compiles to `wat`, and
+     `battery_run_verdict(stem, wat, want, said, compiled)` prints `wat`
+     in the RUN line.
+   - `tools/state.sh` gives each battery a lane of its own and deletes the
+     two lines of comment that explained the shared lane, so `tools/`
+     shrinks.
+   - Box 1's form names the witness module as `battery_wat_path` of the
+     stem followed by `~w`. It becomes the module path with `~w` before
+     its `.wat`.
+
+   Edge cases. A battery over an absolute folder, as a scratch battery is,
+   writes names that begin with `_`. A folder given with a trailing `/`
+   is walked as the folder without it (`dir_base`). Two fixtures whose
+   paths differ only where one has `/` and the other `_`, such as
+   `a/b_c.mn` and `a_b/c.mn`, would still share a module file; no two
+   fixtures in the repository's battery folders do.
+
+   Refuses nothing new.
+
+   Left alone. A battery does not take a shard (P1 above says why). The
+   effect-identity gate stays after the batteries: it runs its fixture
+   through `tools/run-micro.sh`, which writes under `$TMPDIR`, so it shares
+   no file with a battery. `wt_battery_host` reads the module's path off
+   the RUN line and needs no change.
+
+   What pays for its code on the board. One `replace` for each fixture is
+   added, and sixteen calls of `path_to_module` leave `battery_step`. The
+   candidate's `mentl verify` is read before the landing pass, and the
+   payment is named here if a limit would rise.
+
+   Proves it. The same interleaving on the candidate: A's verdict is `PASS
+   mn-feedback-deep-line: exit=3` and B's is `exit=84`. The landing pass
+   runs each battery in its own lane, every battery with the count of
+   fixtures it had before (micros 797, frontier 219), and prints each
+   lane's seconds.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
