@@ -44,8 +44,9 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   proven or the program does not build). Its first step, the debt
   measured by kind, was taken on 2026-11-13 and found eight calls in the
   compiler's own lexer that hand an unproven position to a read with no
-  check. The next landing is Box 4, §11.10 (a claim's verdict is a fact at its
-  node), which T1's refusal reads. §11.B holds the whole order.
+  check. The next landing is Box 4, §11.10: the graph holds the only record
+  of a claim, which T1's refusal reads, and a census can be asked of one
+  declaration. §11.B holds the whole order.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1827,117 +1828,198 @@ first two.
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
 
-3. **Box 4 · A claim's verdict is written at its node, and every reader
-   reads it there.** PLAN §11.10, written 2026-11-13 as T1's groundwork:
-   T1's refusal reads a call's verdict after the settle, and §9.8 forbids
-   building it on the span matching this box removes. The builder gates
+3. **Box 4 · The graph holds the only record of a claim, and every reader
+   reads it there.** PLAN §11.10, written 2026-11-13 as T1's groundwork
+   and rewritten the same day. T1's refusal reads a call's verdict after
+   the settle, and §9.8 forbids building it on the ledger's lists. The
+   first form wrote each verdict at its node and kept the ledger's lists
+   beside the column, so every open claim was stored twice, and six
+   readers still took the whole program's debt and kept the claims at a
+   matching position. Morgan asked whether that build was a band-aid. In
+   part it was, and this form deletes the second record. The builder gates
    it, under Morgan's word of 2026-11-12.
 
-   What a person sees. The caret on a value a claim is made of shows that
-   claim and its verdict. On pin f106490d4d8a, in the program of
-   tests/micros/mn-witness-proven-read-stops.mn, the caret on the call
-   `at([4, 5], k - 3)` answers `Verify: pending comparison 0 <= self at
-   at:5:12-5:29`, and the caret on `k - 3`, the value the claim is about,
-   answers no claim. `mentl query FILE traps`, the editor's strip and
-   `mentl teach` answer what they answer today, read from the nodes.
+   What a person sees.
+   - The caret on a value a claim is made of shows that claim and its
+     verdict. In the program of tests/micros/mn-witness-proven-read-stops.mn,
+     the caret on `k - 3` in `at([4, 5], k - 3)` answers `Verify: pending
+     comparison 0 <= self at at:5:12-5:29`. On pin f106490d4d8a it answers
+     no claim.
+   - The editor's diagnostics for a document are that document's open
+     claims. Today every document receives the whole program's, because
+     `diagnostics_from_debt_lsp` (src/lsp.mn) never reads the document it
+     is given.
+   - `mentl query src/main.mn "census silent-trap in verify.flow_settle"`
+     answers the three places in `flow_settle` that can trap with no claim.
+     Any site facet narrows to one top-level declaration the same way. An
+     `in` whose module is not in the link, or whose declaration that module
+     does not declare, is refused with a sentence that says which.
+   - `mentl check` prints the same open claims, in the order the parser met
+     their nodes, where the ledger printed the newest first. The summary
+     stands at the first of them.
+   - The traps facet, the strip and teach answer what they answer today.
 
-   Fails today, on pin f106490d4d8a. Every reader finds a claim's verdict
-   by matching a module and a span against the ledger's lists:
-   - the traps facet scans the ledger's decided, owed and handed lists
-     once for each of the wheel's 3,205 places (`trap_claim_at`,
-     src/query.mn);
-   - the strip filters the whole program's decided and handed lists for
-     each module it draws (`canvas_of`, src/space.mn);
-   - teach filters the faces' debt by module and overlapping span for each
-     declaration (`open_obligations`, `return_suggestions`, src/mentl.mn);
-   - the caret counts a claim as a node's when the claim's span lies
-     inside the node's (`verify_pending_at`, src/cursor.mn), so a claim
-     said at a call is never its argument's.
-   These readers hold 20 values the memory walk cannot place and 2 places
-   that can trap with no claim (each module's census read at the readers'
-   lines: 13 values in the traps facet's matching, 2 values and 2 places
-   in the strip's filters, 5 values in teach's).
+   Fails today, on pin f106490d4d8a.
+   - The ledger (`verify_ledger`, src/verify.mn) keeps six lists of claims,
+     each entry a module, a span, a predicate and a reason or a verdict,
+     and answers ten operations over them. The graph holds none of it.
+   - Every reader takes those lists and keeps the claims at a matching
+     module and span. `verify_debt()` is read at sixteen places. The traps
+     facet scans the decided, owed and handed lists once for each of the
+     wheel's 3,205 places (`trap_claim_at`, src/query.mn). The audit
+     filters the whole debt once for each declaration (`audit_walk`,
+     src/pipeline.mn), and teach does the same twice (`open_obligations`
+     and `return_suggestions`, src/mentl.mn). The strip filters the
+     program's debt twice for each module it draws, from `ledger_of` and
+     from `canvas_of` (src/space.mn), and its decided and handed lists once.
+   - A fork carries its ledger's lists out. A kept fork's open claims are
+     each performed again below it (`branch_replay_verify`, an index walk
+     in src/infer.mn), and its decided list is adopted (`verify_adopt`).
+   - An edit's forget filters each of the ledger's lists by the module and
+     span of what the edit replaced (`verify_forget`,
+     `obligation_replaced`), where the graph already marks every node an
+     edit replaced (`graph_supersede`, read by `graph_node_current`).
+   - `census silent-trap in verify.flow_settle` answers "→ 0 place(s) …",
+     and so does `census silent-trap in nosuchmodule` (both through the
+     resident session). To find `flow_settle`'s three places a person reads
+     `census silent-trap in verify` whole: 270 places, 52.6 KB. A receipt
+     must read the sites that moved its counts, and no verb answered that
+     for one declaration.
 
-   What it buys. Each reader reads one node where it scanned a list. A
-   fork's verdicts go with its version, so the fork's copy of the decided
-   list and `verify_adopt` leave. T1's refusal can read whether a call's
-   claim is still open after the settle.
+   What it buys. A claim and its verdict are one fact, written once by the
+   judgment and read where they stand. The `Verify` effect and its ledger
+   leave, and with them the fork's replay and adoption and the editor's
+   forget. T1's refusal reads whether a claim is open at the claim's node,
+   and can walk the declarations the reach keeps as the executable gate
+   walks their holes. A receipt reads the sites of each declaration it
+   touched, in an answer of a few lines.
 
    The form.
-   - `type ClaimAt = {node: Int, span: Span, pred: Predicate, why:
-     Reason}` (src/types.mn) is one claim: the node it stands at, the span
-     it is said at, what it claims and why it was raised. The node is the
-     value a refinement is claimed of, where `graph_claim_note` notes the
-     contract today; the operation a partial operation's claim guards; the
-     pattern a shape claim guards; or the function value a crossing demand
-     is made of. A claim's module is `graph_module_of(claim.node)`, read
-     where the claim is printed, so the ledger carries no module.
-   - `verify(ClaimAt) -> Option(Bool)` replaces `verify(Int, Span,
-     Predicate, Reason)`, and the ledger's lists hold `ClaimAt`.
-   - `type ClaimVerdict = ClaimOpen | ClaimHanded | ClaimProven |
-     ClaimRefused`, and a column of the graph's version,
-     `graph_verdict_note(h, (Predicate, ClaimVerdict))` and
-     `graph_verdicts_of(h) -> [(Predicate, ClaimVerdict)]` (src/graph.mn),
-     written the way `graph_claim_note` is.
-   - `verify_claim(node, span, pred, reason)` (src/verify.mn) writes
-     ClaimProven or ClaimRefused at the node when the ledger decides the
-     claim. A claim left open gets its verdict once, after the settle:
-     `reask_settle` writes what the re-ask decided (ClaimProven,
-     ClaimHanded, ClaimRefused), and then ClaimOpen at the node of each
-     claim still in the debt. `flow_settle` writes the label claims'
-     verdicts the same way.
+   - `type ClaimAt = {node: Int, pred: Predicate, span: Span, why: Reason}`
+     (src/types.mn) is one claim: the node it stands at, what it claims, the
+     span it is said at and why it was raised. The node is the value a
+     refinement is claimed of, the operation a partial operation's claim
+     guards, the pattern a shape claim guards, or the function value a
+     crossing demand is made of. A claim's module is
+     `graph_module_of(claim.node)`.
+   - `type ClaimVerdict = ClaimOpen | ClaimUnsettled | ClaimHanded |
+     ClaimProven | ClaimRefused`. ClaimUnsettled is a claim left open whose
+     reading met code the judgment had not reached (`walk_unsettled`): the
+     only open claims the settle asks again. ClaimHanded is a claim proven
+     only through what the program's calls hand a parameter.
+   - The verdict column, a column of the graph's version (src/graph.mn).
+     `graph_verdict_note(h, (ClaimAt, ClaimVerdict))` writes in place of
+     the verdict written earlier for the same claim at the node (the same
+     span and predicate). `graph_verdicts_of(h)` reads one node's.
+     `graph_verdicts_written()` reads every verdict this graph instance's
+     own column holds, at a node the program still holds (`current_at`),
+     in the order of the nodes: at the root instance the whole program's,
+     in a fork the verdicts at the nodes the fork judged.
+   - `verify_claim(node, span, pred, reason)` (src/verify.mn) decides the
+     claim (`decide_noting`) and writes its verdict at the node: proven,
+     refused, unsettled or open. A claim naming a label is written open,
+     and the flow settle decides it. The `Verify` effect, `verify_ledger`,
+     and its installs in `judgment_ledgers` (src/infer.mn) and in teach's
+     two dry claims (src/mentl.mn) leave.
+   - The settle reads the column. `reask_settle` asks each unsettled claim
+     again and writes what it decides; a claim it leaves open stays
+     unsettled. `flow_settle` decides each claim that names a label and
+     writes its verdict.
    - Each of the eleven claim sites in src/infer.mn passes its node:
      `partiality_claim` and `infer_index_force` their `handle`,
-     `claim_shape` its `pat`, `owe_face_claim` the call (`proven_form`
-     gains the call's `handle`), `apply_refinement_constraint` and the
-     opaque parts the value, `open_demand` and the return claim in
-     `cross_result` the crossing function value (`provision_verdict` and
-     `usage_of_unknown` gain it), and `branch_replay_verify` the node its
-     entry recorded.
-   - The readers read nodes. The traps facet's claim at a place is the
-     meet of the verdicts at the place's node and at its arguments' nodes,
-     since a call pays its guard for its arguments' claims. The strip marks
-     each node of the module by its verdicts, at the node's span. Teach
-     reads the open and handed verdicts at the nodes of a declaration's
-     extent. The caret reads its node and the nodes below it.
-     `decl_claim_facts` reads the label verdicts in a declaration's extent.
-   - What leaves: the ledger's `decided` and `handed` lists and the
-     operations that read them (`verify_decided`, `verify_handed`,
-     `verify_adopt`); the fork's copy of the decided list (the branch
-     snapshot in src/infer.mn and the segment in src/synth_proposer.mn);
-     `trap_ledger`, `trap_claim_at`, `trap_owed_at` and `trap_decided_at`;
-     the strip's `decided_here`; and teach's `owed_at`.
-   - The printers keep reading the open debt and take each claim's module
-     from its node: `report_verify_debt`, `debt_text`, `battery_pending`,
-     the LSP's diagnostics, and query's `verification`, `smt` and `census
-     call-claims`.
+     `claim_shape` its `pat`, `owe_face_claim` the call (`proven_form` gains
+     it), `apply_refinement_constraint` and the opaque parts the value, and
+     `open_demand` and the return claim in `cross_result` the crossing
+     function value (`provision_verdict` and `usage_of_unknown` gain it).
+     The node is a word, as the module was, so every call is read by hand.
+   - Each reader follows edges from what it holds.
+     - A place (`trap_claim`, src/query.mn) reads the verdicts at its node
+       and its children that were said at its span: a call's claims about
+       its arguments stand at the arguments and are said at the call.
+     - The caret (`verify_pending_at`, src/cursor.mn) reads the open
+       verdicts at its node and below it, by the walk over a body's
+       children that `row_of_subtree` makes (src/graph.mn).
+     - A declaration reads its body the same way: the audit
+       (`audit_project`, src/pipeline.mn, whose index walk becomes a `map`
+       over the declarations), teach's `open_obligations`, which keeps the
+       handed verdicts beside the open ones, and the label facts
+       (`decl_claim_facts`, src/verify.mn).
+     - A module reads the verdicts at the nodes it already holds
+       (`module_handles`): the strip's marks and the Ledger's obligations
+       (src/space.mn), and the editor's diagnostics for the document's
+       module (src/lsp.mn, whose index walk becomes a `map`).
+     - A whole-program reader reads the column: the executable gate and
+       `mentl check` (`gate_reads`, `pipeline_check`,
+       `report_verify_debt`), the compile's record (`gated_compile`), the
+       MCP gate's site (`owed_site`), the battery (`battery_pending`), the
+       queries `verification`, `smt` and `census call-claims`, and teach's
+       `return_suggestions`, which reads every open or handed claim as it
+       does today.
+   - A fork's claims stay in its version. `forked` (src/infer.mn) carries
+     no claims out, `first_held`'s keep brings the verdicts with the
+     version it merges (`graph_keep`), and `branch_replay_verify` and
+     `verify_adopt` leave. The proposer (`segment_judge`,
+     src/synth_proposer.mn) drops its forks, so a proven candidate's
+     verdicts are read from its fork's own column and written at the root
+     as the fork wrote them, where today its open claims are performed
+     again there and its decided ones adopted.
+   - The editor's forget (`forget_replaced`, `verify_forget`, and the
+     driver's and the MCP session's calls of it) leaves: a claim at a node
+     an edit replaced is never read, since every column read above asks
+     `current_at`.
+   - The census narrows to a declaration (src/query.mn). `in` takes a
+     module, or a module and one of its top-level declarations written
+     `module.name`. `sites_in` reads the place once, and keeps a site in a
+     declaration when the site stands in the declaration's module and the
+     declaration's extent holds its span. A place that names nothing is
+     refused (`QRError`).
 
-   Edge cases. A node can hold several claims: a structure's parts, or a
-   claim's label half beside its value half. It holds one verdict for
-   each, and a reader takes their meet: refused, then open, then handed,
-   then proven, the order `trap_claim_at` reads today. A claim judged
-   inside a fork writes the fork's version, which is kept or dropped with
-   it. A claim re-judged after an edit is forgotten with the declarations
-   it stood in (`verify_forget`), by node.
+   Edge cases. A node can hold several claims, a structure's parts or a
+   claim's label half beside its value half, one verdict each. A claim
+   judged in a fork writes the fork's version, kept or dropped with it. A
+   fork's own column holds the whole list of verdicts at each node it
+   wrote, so its read can include a claim its seed made at the same node;
+   written again at the root, that claim's verdict replaces itself. Teach's
+   dry claims run inside `speculate`, whose fork takes their verdicts away.
+   A nested function is not a top-level declaration: `in verify.inner` is
+   refused, and its sites are its enclosing declaration's. The first form
+   measured one place where the traps facet answers differently: at
+   cursor:281:3-281:55, a `map` call whose trap is the library's index,
+   the pin says "its claim is pending" because a claim about the lambda two
+   levels below is said at the same span, and the candidate says "no claim
+   is checked here", which is true of that trap.
 
-   Refuses nothing new.
+   Refuses: an `in` that names no module of the link or no declaration of
+   the module, where it answered zero.
 
-   Left alone. The lines `mentl check` prints and their coordinates,
-   since the debt keeps the span each claim is said at. The row notes that
-   charge `Trap` at an open partial operation, which the lowering reads
-   (`claim_open_at`). The places the traps facet finds.
+   Left alone. The row notes that charge `Trap` at an open partial
+   operation, which the lowering reads (`claim_open_at`). The places the
+   traps facet finds. The span a claim is said at, which a later step
+   replaces with the node it is said at ("Next", below). The cost of
+   `module_handles`, which reads every handle of the graph for each module
+   it is asked about.
 
-   What pays for its code on the board. The 20 values and 2 places of the
-   span matching leave with it. The record's field reads and the column's
-   reads are the new code's cost, which the candidate's `mentl verify`
-   measures before the landing pass; the receipt names both.
+   What pays for its code on the board. The committed wheel stands at both
+   limits: 3,205 places and 32,094 values (`mentl verify` on pin
+   f106490d4d8a). The ledger, its ten operations and six lists, the
+   readers' scans, the fork's replay and the forget leave. The column's
+   reads, the subtree reads and the census narrowing are the new code. The
+   candidate's `mentl verify` measures both, and the receipt names each
+   declaration that moved a count, read with the narrowed census: the
+   candidate on the committed source (a worktree) before and on the new
+   source after, with the sum held against the totals `mentl verify`
+   reports, and the pin beside the candidate on the committed source for
+   what the judgment itself changed.
 
-   Proves it. On the candidate, `mentl query FILE traps` answers the same
-   places with the same verdicts as the pin, read site by site, on the
-   wheel and the twelve lessons, and `mentl check` prints the same lines.
-   Every battery keeps its count of fixtures. The caret on `k - 3` in
-   tests/micros/mn-witness-proven-read-stops.mn answers its claim, open,
-   where the pin answers none.
+   Proves it. On the candidate: the caret on `k - 3` as above; `census
+   silent-trap in verify.flow_settle` answers the three places, and `in
+   nosuchmodule`, `in verify.nosuch` and `in query.flow_settle` are each
+   refused; `mentl check src/main.mn` prints the pin's lines, the open
+   claims among them in the parser's order; `mentl query FILE traps`
+   answers the twelve lessons, the grid controller, Pulse and Wasatch as
+   the pin does, and the wheel as the pin does but at cursor:281; every
+   battery keeps its count of fixtures, and each fixture or frontier leg
+   whose text changes is named in the receipt.
 
 **Next, in the order proposed.** These are not boxes yet. Each is cut into
 boxes when the ones above have landed, and Morgan reorders the list by
@@ -1986,7 +2068,10 @@ saying so.
   discharge it, lesson 7's four lines first. `mentl teach` ranks its steps
   by what each unlocks, and the refusal classes after the first each offer
   their proven fix (§11.5).
-- A claim's verdict is a fact at its node (§11.10).
+- A claim names the node where it is stated. Today a claim carries the
+  span it is said at, so a place finds its own claims by comparing spans,
+  and two nodes that share a span cannot be told apart. The claim's span
+  becomes that node, read where the claim is printed (§11.10).
 - The host's clock, randomness and sleep are real (§11.11). With it comes
   the first run of the whole medium on a small Linux machine: the engine's
   probe (`bash tools/wasmtime-get.sh probe <engine>`), the compiler
@@ -2787,18 +2872,15 @@ running out of memory as a row fact is step 1's).
 
 ### §11.10 · A claim's verdict is a fact at its node
 
-Where the ledger or the
-settle decides a claim, its verdict (open, proven, proven only through
-the program's calls, refused) is written at the claim's node, beside the
-claim the graph already keeps there (`graph_claim_note`), and every
-reader reads the node: `mentl check`'s printout, the traps facet, the
-editor's strip and teach's debt. The ledger keeps only the open debt it
-prints and the claims the settle asks again. Red today: the strip and the
-traps facet find a claim proven only through the calls by matching its
-module and span against the ledger's lists (`verify_handed`,
-`trap_owed_at`, `trap_decided_at`), which cost the board three places
-that can trap with no claim and eleven values the walk cannot place when
-the strip learned them (2026-11-06).
+Where the judgment or the settle decides a claim, its verdict (open, open
+until the settle asks again, proven only through the program's calls,
+proven, refused) is written at the claim's node, beside the contract the
+graph already keeps there (`graph_claim_note`). That column is the only
+record of the claim. A reader that holds a node reads the verdicts at it
+and below it; a reader of the whole program reads the column. Red today:
+the ledger keeps the claims in six lists beside the graph, and every
+reader takes those lists and keeps the claims at a matching module and
+span (§11.B, Box 4, measures it).
 
 ### §11.11 · The host's clock, randomness and sleep are real
 
