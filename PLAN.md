@@ -1881,17 +1881,41 @@ first two.
    `0 <= i` would take induction over `search`'s calls, which the
    verifier does not do. Eighteen places in the compiler trace to that one
    cut: eight through `index_of`, eight through `replace` and two through
-   `contains`. So `search` (lib/prelude.mn) keeps the bytes it has not read
-   and takes them apart by pattern, `[_, ...tail]`, cuts at 0, and
-   compares with `==`. Each cut then stands inside the bytes that are
-   left. A scratch copy checks with no claim open, its row is `Memory +
-   Alloc + Address + MemoryWrite` where `index_of`'s holds `Trap` and
-   `Diverge`, and it answers as `index_of` does on an empty string, an
-   empty needle, a needle longer than the string, a needle at the end and
-   one absent. `index_of` and `contains` then stop trapping, and the ten
-   places that call them leave the count. `replace` keeps two cuts of its
-   own, so its eight stay. No contract cites a line of lib/prelude.mn at
-   or below `index_of`.
+   `contains`.
+
+   So `index_of` (lib/prelude.mn) answers 0 for an empty needle, as it
+   did, and for any other needle its `search` keeps the bytes it has not
+   read and cuts the first of them off at each step, `str_slice(rest, 1,
+   byte_len(rest))`. The needle has at least one byte, so a byte is cut
+   off only when one is left, and the verifier proves both of the walk's
+   cuts. A scratch copy without the empty-needle answer leaves the cut at
+   1 pending and keeps `Trap` in its row, so the proof reads that guard.
+   The row is `Memory + Alloc + Address + MemoryWrite + Diverge`, where it
+   held `Trap` as well. A walk that takes the bytes apart by pattern, `[_,
+   ...tail]`, also proves its cuts and drops `Diverge` too, but the memory
+   walk cannot place `tail`, a part taken from a parameter, so the count of
+   values it cannot place would rise from 32,094 to 32,095. Each scratch
+   form answers as the old walk does on seven inputs: a path's first `/`,
+   a needle at the end, a needle found after two false starts, an empty
+   needle in a string and in an empty string, a needle longer than the
+   string, and an absent needle.
+
+   The comparison is written `==`, as SYNTAX asks, where the old walk
+   called `str_eq` by name. The judgment charges `Trap` at a call of
+   `str_eq` and none at `==` on two strings, which runs the same function,
+   and §7 records that the answer at `==` is not yet proven. So the cuts
+   are a proof, and the comparison rests on that recorded answer.
+
+   Measured on the candidate: the places that can trap with no claim fall
+   from 3,214 to 3,205. Ten places leave: one in `asm`, two in `cli`, four
+   in `main`, the two calls of `contains` in `sections`, and one in
+   `space`. The `replace` in `battery_wat_path` joins. `replace` keeps two
+   cuts of its own, so its eight places stay, each now through those cuts.
+   The claims left open at explicit calls fall from 653 to 652; the one
+   that left is the old cut. The values the memory walk cannot place stay
+   at 32,094 and the index walks at 374. `index_of` gains ten lines, and
+   no fixture contract or gate script cites a line of lib/prelude.mn at or
+   below it.
 
    Proves it. The same interleaving on the candidate: A's verdict is `PASS
    mn-feedback-deep-line: exit=3` and B's is `exit=84`. The landing pass
