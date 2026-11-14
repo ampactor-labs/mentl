@@ -282,6 +282,19 @@ order they run.
   refuses and how, what it leaves alone, and the command that proves it.
 - No box is written without a number, measured on the compiler's own
   source, that shows what the box buys.
+- A box lists every fact it reads. Beside each, it names the mechanism that
+  carries the fact, one of PLAN §4⑧'s five or a foundation the order has
+  already built, and a command whose answer on the pin shows it carried.
+  A read with no such command means the box is not ready: the box that
+  carries the fact is written and built first. A read through none of the
+  five is refused here. Walking a whole store and filtering out what is
+  stale is the shape that fails: Box 4's whole-program read of claims did
+  it because no face listed a declaration's claims and no reach walked the
+  program, and three compensations followed in one landing (2026-11-13).
+- A box names the compensations its landing lets leave, and the landing
+  deletes them.
+- PLAN §11.B holds one order, derived from these lists of reads. A box is
+  never moved ahead because it arrives sooner.
 - A box that adds code to the wheel says what pays for it. The board's
   counts of values the memory walk cannot place and of places that can trap
   with no claim grow with code, and neither limit may rise. So the box
@@ -304,8 +317,8 @@ order they run.
 
 ## The working loop
 
-1. **Choose the work and check the ground.** The work is the first box of
-   PLAN §11.B, once Morgan has gated it, unless a failing gate comes first,
+1. **Choose the work and check the ground.** The work is the first landing
+   of PLAN §11.B's order, unless a failing gate comes first,
    or a measured false proof that a real program hits, in `examples/`, in
    `lib/` or in the wheel. A problem that only a test fixture shows joins
    the §11 design that owns its mechanism, and the fixture becomes that

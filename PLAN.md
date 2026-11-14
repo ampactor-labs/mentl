@@ -46,10 +46,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   compiler's own lexer that hand an unproven position to a read with no
   check. The same day the graph came to hold the only record of a claim
   (§11.10): each claim's verdict is written at its node, and the caret,
-  the editor, the audit, teach and the gate read it there. The next
-  landing is T1's second step, the refusal of a call that leaves open a
-  claim its callee's body leans on, written as a box before it is built.
-  §11.B holds the whole order.
+  the editor, the audit, teach and the gate read it there. That evening
+  the plan's three orders became one (§11.B), in which every landing reads
+  only what earlier landings carry. The next landings are F4, a sum
+  bounded at both ends, and T1a, the lexer's eight positions stated where
+  they are made; then the gates (P3, P4, P7 and P5).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1273,15 +1274,19 @@ when its turn comes.
 
 **How the list works** (Morgan's method, 2026-11-10). A box is one bounded
 piece of work, fully specified in text before anyone builds it: what a
-person will see, the measurement that fails today, the files and functions
-it touches with their signatures, the edge cases, what it refuses and how,
-what it leaves alone, and the command that proves it. Morgan gates each box
-before it is built. A box is built exactly as written. A box that turns out
-unclear or wrong is a stop: the builder reports it, the box is rewritten,
-and Morgan gates it again. One box is in flight at a time. When a box
-lands, its commit deletes it from §11.B, brings §7 up to date, and carries
-the receipt in its message: the files changed, the output of the command
-that proves it, and anything that was unclear.
+person will see, the measurement that fails today, every fact it reads,
+the files and functions it touches with their signatures, the edge cases,
+what it refuses and how, what it leaves alone, and the command that proves
+it. Beside each fact it reads, a box names the mechanism that carries the
+fact and a command whose answer on the pin shows it carried; a fact no
+command shows is not carried, and the box that carries it comes first
+(§11.B). Since 2026-11-12 the builder gates each box, under Morgan's word.
+A box is built exactly as written. A box that turns out unclear or wrong
+is a stop: the builder reports it and rewrites the box before building
+again. One box is in flight at a time. When a box lands, its commit
+deletes it from §11.B, brings §7 up to date, and carries the receipt in
+its message: the files changed, the output of the command that proves it,
+and anything that was unclear.
 
 **What comes before any order.** A false proof that a user can hit (§0's
 property 2 failing on code that a real program contains) is fixed before
@@ -1335,26 +1340,85 @@ the last three.
 
 ### §11.B · The boxes, in the order they run
 
-Two boxes are written out. On 2026-11-10 Morgan approved a night's work on
-this branch ("I trust you and approve you to work through the night"), and
-the builder read that as his gate on the boxes here, in order. Later that
-day he turned the work to the oracle and gave the builder the reins for it.
-On 2026-11-11 he said that boxes were another session's suggestion for
-scoping work and that the builder had been holding to them too tightly. So
-a box here says what one landing does and what measures it, the oracle's
-boxes are built under the reins he gave, so Box 2 is built first, and Box
-1 waits on the two points marked for his word. Each landing's receipt is his to review, and a landing
-he did not mean is reverted on his word.
+On 2026-11-12 Morgan gave the builder full permission to shape, design and
+implement the medium from the bottom up, and asked for a faster process
+and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
+review, and a landing he did not mean is reverted on his word. Two boxes
+are written out, Box 1 and Box 2, below the order.
 
-**The order from 2026-11-12.** On that day Morgan approved the builder's
-recommendations, gave it full permission to shape, design and implement
-the medium from the bottom up, and asked for a faster process and the
-newest engine (§4⑭ to ⑯). The landings below run in this order, each one
-commit and one pin, red on the pin first. A letter and a number name a
-landing in this list alone. Box 1 below is T3, and Box 2 is the second
-half of L1.
+**The order from 2026-11-13.** This is the only order. Every landing in it
+reads only facts that earlier landings carry, so no landing is built to
+make up for a foundation that does not exist yet. It replaces three lists
+that disagreed: the order of 2026-11-12, its "first stretch", and a list of
+what came next. All three ran readers before the mechanisms they read.
+Box 4 showed the cost on 2026-11-13: its whole-program read of claims walks
+every cell the verdict column wrote and filters out the stale ones
+(`current_at`, then a set of the link's modules), with an arena at each
+caller, because neither the reach (§11.1(c)) nor the face's contract part
+(§11.3) was built. A reading of the commits since 2026-10-26 traced
+nearly every compensation to the same cause: a reader built before its
+foundation.
 
-The pass gets fast first, because every later landing pays for it. A cold
+A box lists every fact it reads. Beside each it names the mechanism that
+carries the fact, one of §4⑧'s five or a foundation this order has
+already built, and a command whose answer on the pin shows it carried. A
+read with no such command means the box is not ready, and the box that
+carries the fact is written and built first. A read through none of the
+five is refused at the box stage: walking a whole store and filtering it is
+the shape that fails. A box names the compensations its landing lets
+leave, and the landing deletes them.
+
+1. Before any order, by §11's rule. F4: a sum, a difference and a product
+   of bounded values are bounded at both ends, and the bound knows the
+   word can wrap (§11.3). Then T1a: the eight lexer positions are stated
+   where they are made and proven, which closes the false proof inside the
+   compiler.
+2. The gates tell the truth, because every receipt is judged by them. P3:
+   what a command prints is a fixture's contract, and the frontier gate's
+   legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
+   P7 and P5, the newest engine, which T4 needs for exception handling and
+   M5 for multiple memories.
+3. Leaves that read only carried facts. F1: a claim names the node where
+   it is stated, so no reader compares spans (§11.10). F2: a column that
+   holds a fact at few handles costs memory in proportion to those
+   handles, not to the range they fall in (the column part of
+   MENTL_MEMORY's M9). Every later landing that adds a column waits for
+   F2. Four allowances between 2026-11-06 and 2026-11-13 (141, 15, 10 and
+   186 KB) paid for facts kept in columns, each closed into the baseline;
+   the last was the verdict column's 687 pages of 64 cells, one cell for
+   each handle in a page's range whether a claim stands there or not. F3:
+   the column of what
+   each store puts into an allocation (§11.8), so the memory walk can place
+   what later boxes add. F5: a module is a scope (§11.4's first part).
+   Box 2, the second half of L1, reads only carried facts and goes here;
+   it leaves alone the case Morgan has yet to decide.
+4. The mechanisms. Each lands first with the answers that today's separate
+   walks give, then deletes those walks. K1: the reach (§11.1(c)). K2: the
+   face's contract part, in which each declaration publishes the claim
+   nodes its body raised, beside its parameters' guard rows, which are
+   already carried; Box 4's walk over the verdict column, its two filters
+   and its read arenas leave with K2. K3: the lowering column (§11.2, its
+   first part). K4: the index of the install that answers each operation
+   (§11.1(a)). K5: the face's row and the primitives' faces (§11.3). K6:
+   the whole-truth row (§11.1(b)). P2: the march is the compiler's own
+   verb, and cost is counted, never timed.
+5. Readers of the mechanisms. T1b: a call that leaves open a claim its
+   callee's body leans on is refused (reads K1, K2 and F1). T1c: an
+   undecided stated claim refuses the build. T1d: a predicate the verifier
+   cannot decide is refused where its type is declared. Then T2, R1, L1,
+   L2, L3, C1, C2, O1 and O2.
+6. The memory landings and the evaluator. M2, M6, T4 as the early form of
+   an extent's own exit, and M10; M8; the evaluator (§11.2, its second
+   part), with T3 as the agreement between the evaluator and the WAT emit;
+   the DSP arc (§11.7), before the fork's last pins, as §11's opening
+   requires; M5, M7, O3 and O4; R3; a seeded world (§11.15).
+7. The native projection, last: the chip part of M9, N0 to N4, and
+   MENTL_MEMORY's M11.
+
+The landings are described once below, by letter. A letter names a landing
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+
+The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
 stage prints its own. The six batteries took 3.4 minutes, compiling their
 1,277 fixtures one after another in one process. The frontier gate's 370
@@ -1386,8 +1450,6 @@ minute, and no expectation kept by hand.
   let-chains and rosters for the modules a landing touched, against the
   pin's. A landing adds no index walk, let-chain or roster.
 
-Then the medium, bottom to top.
-
 - T1. A stated claim is proven or the program does not build (§4⑮), in
   four steps. The first, the debt measured by kind, was taken on
   2026-11-13 on pin f106490d4d8a over the twelve lessons, both scores,
@@ -1412,24 +1474,31 @@ Then the medium, bottom to top.
   calls hold their callee's claim only on a part nothing proves: a sum
   whose bound ignores the word wrapping, a callee's stated return, which
   the verifier reads as still owed, or a let's own claim. The callee leans
-  on the claim in 73 of them. Second, a call that leaves open a claim its
-  callee's body leans on is refused, with the guard that settles it, and
-  the eight lexer positions are stated where they are made. The refusal
-  reads each claim's verdict after the settle, because a claim open where
-  the judgment meets it can be proven later through what the program's
-  calls hand it (a scratch program, 2026-11-13); §11.10's verdict column,
-  landed the same day, holds that verdict at the claim's node. Red first:
+  on the claim in 73 of them. T1a states the eight lexer positions where
+  they are made, once F4 bounds a sum at both ends: a position is made as
+  `pos + k`, and today the verifier bounds a sum on its low side only and
+  is blind to the word wrapping. T1b refuses a call that leaves open a
+  claim its callee's body leans on, with the guard that settles it. A
+  callee leans on a parameter's claim when a proof in its body stood on it:
+  `lean_trap` (src/infer.mn) moves that proof's `Trap` into the
+  parameter's guard row, and `pay_guard` charges the row at a call whose
+  argument does not hold the claim, while the check the proof removed
+  never runs. The refusal reads each claim's verdict after the settle,
+  because a claim open where the judgment meets it can be proven later
+  through what the program's calls hand it (a scratch program,
+  2026-11-13); §11.10's verdict column holds that verdict at the claim's
+  node, and K2's face lists a declaration's claims. Red first:
   tests/micros/mn-witness-proven-read-stops.mn is `at([4, 5], k - 3)`;
   it builds today and only its witness build stops.
   It becomes a fixture that must refuse, beside a guarded twin that must
   build and run. `keep_small(x + 1)`, where nothing leans on the claim,
   is refused with the 33 open calls of that kind once the verifier
   decides a Float range (§11.3), since 17 of them are `ReducibleAngle`
-  claims, in the library, lesson 7 and the two scores. Third, an
-  undecided stated claim refuses the build, once the first step's count of
-  such claims in `examples/`, `lib/` and the wheel is zero; R1 and §11.3
-  bring it there, most claims first. Fourth, a predicate the
-  verifier cannot decide is refused where its type is declared. A new
+  claims, in the library, lesson 7 and the two scores. T1c: an undecided
+  stated claim refuses the build, once the first step's count of such
+  claims in `examples/`, `lib/` and the wheel is zero; R1 and §11.3 bring
+  it there, most claims first. T1d: a predicate the verifier cannot decide
+  is refused where its type is declared. A new
   bound on the board holds the checks the compiler emits on a claim's
   behalf at their measured count, so the commit hook refuses a landing
   that adds one.
@@ -1446,8 +1515,9 @@ Then the medium, bottom to top.
 - R1. A pipeline over a list passes `!Alloc` and `!Trap`; a default arm
   answers the empty value; the five operators share one level; a pair
   fills a two-parameter stage (§4⑩, §4⑪, §11.13).
-- R2. Every declaration publishes one face, a module is a scope, and an
-  edit judges again only what it changed (§11.3, §11.4, §11.6).
+- R2 is divided by what each part reads: a module is a scope (F5), every
+  declaration publishes one face (K2, then K5), and an edit judges again
+  only what it changed (O1) (§11.3, §11.4, §11.6).
 - R3. The clock, randomness and sleep are real, then the component
   target, where a program's row is its import list and the network is
   real (§11.11, §11.14).
@@ -1465,12 +1535,14 @@ Then the medium, bottom to top.
   developer's words with the edit that settles it, and every verb answers
   narrowly (§11.5).
 - O1 to O4. The exploration of §4⑰ at scale, each on the one before. O1:
-  an edit costs what it changes, which stands on R2. O2: every position of
+  an edit costs what it changes, which stands on the face (K2, K5) and on
+  the reach's edit cone (K1). O2: every position of
   a program is explored, nearest the caret first, and each proposal says
   what it unlocks. O3: forks run on every core (§11.8). O4: a resident
   session streams its answers as they are proven (§11.6).
-- The keystone (§11.2): lowering as a column, the evaluator as a second
-  reading of every program, and deep recursion moved to the heap.
+- The keystone (§11.2) comes in two parts: lowering as a column (K3), and
+  later the evaluator as a second reading of every program, with deep
+  recursion moved to the heap (stage 6).
 - N0 to N4. The Daisy Seed (§4⑱). The chip's code is the native
   projection: a handler over the lowering column beside the WAT emit
   (§4⑧, §11.9, docs/NATIVE.md). It is built after the keystone above, and
@@ -1562,9 +1634,6 @@ Then the medium, bottom to top.
   back over the probe's serial line or the debug port. That wiring, and
   the memory the first image is loaded into, are worked out at N1 with the
   board attached.
-
-The first stretch runs T1, L1, T4, R2 and O1. P2 to P5 and P7 are taken
-between them, each when the landing before it shows what it would save.
 
 The boxes build one instrument. A false proof used to be found only when
 someone thought to write the program that exposes it (§7). A witness build
@@ -1669,10 +1738,13 @@ They leave when the gate's legs are read by the medium instead of the
 shell (§11.9).
 
 1. **Box 1 · Every battery runs each `// expect` fixture both ways.**
-   Gated with the night's work (2026-11-10). The count it waited on is zero
-   (§7). It needs the check that fails at random settled first. Two parts
-   of its form changed after the gate, by what was measured that night, and
-   are marked "for the gate" below.
+   Written 2026-11-10; it is T3, in stage 6 of the order, because its
+   single-judgment form needs the lowering column and the evaluator
+   (below), and built before them it would write into the `LowExpr`
+   walkers §11.2 deletes. The count it waited on is zero (§7), and the
+   first check that failed at random is settled. Two parts of its form
+   changed after it was written, by what was measured that night, and are
+   marked "for the gate" below.
 
    What a person sees. `mentl land` turns red when a proof is wrong on any
    fixture: every fixture that states `// expect: N` is built twice, once
@@ -1766,8 +1838,10 @@ core. `written-back` on lesson 8 and on the proposals fixture measures the
 first two.
 
 2. **Box 2 · A proposal is a whole expression, and a hole is filled only
-   where the program decides the answer.** Built under the reins of
-   2026-11-10; its receipt is Morgan's to review.
+   where the program decides the answer.** Written under the reins of
+   2026-11-10 and not built; it stands in stage 3 of the order. It leaves
+   alone `??` in a constructor's field until Morgan says whether that is a
+   value hole.
 
    What a person sees. At a hole the compiler offers calls and
    constructions complete, with their arguments, beside the names it
@@ -1851,11 +1925,12 @@ first two.
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
 
-**Next, in the order proposed.** These are not boxes yet. Each is cut into
-boxes when the ones above have landed, and Morgan reorders the list by
-saying so.
+**What some landings must make true.** Until 2026-11-13 this was a list of
+what came next, in an order of its own. Each item now stands in the order
+above under the letter at its start, and is cut into boxes when its turn
+comes.
 
-- A proposal is a whole expression, and it is the text that means what was
+- Box 2. A proposal is a whole expression, and it is the text that means what was
   proven. At a position that wants a value, a call or a construction is
   offered complete, each argument found by asking at that argument as at
   any hole, and a call that still holds `??` is offered only where a
@@ -1868,11 +1943,11 @@ saying so.
   otherwise" reaches zero and no expression moves to a worse answer. One
   question is Morgan's: whether `??` in a constructor's field, where the
   construction stands as a value, should be a value hole (§11.5).
-- The answer says what was searched: how many candidates were tried and
+- L3. The answer says what was searched: how many candidates were tried and
   how many proved, a question asked at the outermost place the proven ones
   differ and in the program's own names, and a refusal that names the
   argument nothing in scope fills (§11.5).
-- A refusal offers its proven fix, one class first: a name that resolves
+- L2. A refusal offers its proven fix, one class first: a name that resolves
   nowhere. The candidates are the nearest names in scope and the import of
   each library module that declares the name. Each is an edit judged in a
   fork by the route `written-back` uses (`rewritten_judged`), and the ones
@@ -1882,33 +1957,30 @@ saying so.
   else. Of the 413 promises seven readers drew from the old documents on
   2026-11-11, this is the one made most often: a refusal answered by a fix
   the compiler has already proven (§11.5).
-- The library's list walk is settled once, so a pipeline stands where a
+- R1. The library's list walk is settled once, so a pipeline stands where a
   claim is checked. The failing test is `fn energy(xs) with !Alloc = xs |>
   map(square) |> fold(0, plus)`, refused today while the same sum as an
   index walk is accepted (§11.13). The boards and the rewrite of the wheel
   in its own idiom both wait on it.
-- A fork runs on a second thread: an owner inside the fork for `Fail` and
+- O3. A fork runs on a second thread: an owner inside the fork for `Fail` and
   `Progress`, and a store walk that proves a fork's judgment stores only
   into memory the fork allocated (§11.8).
-- A default arm answers the empty value, and `mentl tighten` stops writing
+- R1. A default arm answers the empty value, and `mentl tighten` stops writing
   rosters (§4⑪, §11.13).
-- A pair fills a two-parameter stage, the five operators share one level,
+- R1. A pair fills a two-parameter stage, the five operators share one level,
   and the formatter writes one stage per line (§4⑩).
-- A pending claim is said in the developer's words with what would
+- L3. A pending claim is said in the developer's words with what would
   discharge it, lesson 7's four lines first. `mentl teach` ranks its steps
   by what each unlocks, and the refusal classes after the first each offer
   their proven fix (§11.5).
-- A claim names the node where it is stated. Today a claim carries the
+- F1. A claim names the node where it is stated. Today a claim carries the
   span it is said at, so a place finds its own claims by comparing spans,
   and two nodes that share a span cannot be told apart. The claim's span
   becomes that node, read where the claim is printed (§11.10).
-- The host's clock, randomness and sleep are real (§11.11). With it comes
+- R3. The host's clock, randomness and sleep are real (§11.11). With it comes
   the first run of the whole medium on a small Linux machine: the engine's
   probe (`bash tools/wasmtime-get.sh probe <engine>`), the compiler
   compiling itself, and a lesson through the speaker.
-- An extent can end early (§11.12), then the soundness core (§11.1), the
-  component target (§11.14), a seeded world (§11.15), and the keystone and
-  the designs after it in their dependency order (§11.2 to §11.9).
 
 Morgan decided on 2026-11-12 that nothing is checked on a claim's behalf
 when a program runs: a stated claim is proven or the program does not
@@ -2722,13 +2794,17 @@ the verdicts at it and below it (`verdicts_below`, src/graph.mn); a reader
 of the whole program reads the column (`graph_verdicts_written`) at the
 nodes that are current and born in a module the link holds now
 (`in_link_now`), since an edit can leave a module out of the link without
-replacing any of its statements.
+replacing any of its statements. That read is a compensation: it walks
+every cell the column ever wrote and filters out the stale ones, and each
+caller holds it in an arena, because no face lists a declaration's claims
+and no reach walks the program. K2 in §11.B's order removes it, with
+`in_link_now`, `link_held` and the read arenas.
 
-Open: a claim names the node where it is stated. A claim still carries
-the span it is said at, so a place finds its own claims by comparing that
-span with its own (`trap_claim`, src/query.mn), and two nodes that share a
-span cannot be told apart. The claim's span becomes that node, read where
-the claim is printed.
+Open, as F1 in §11.B's order: a claim names the node where it is stated.
+A claim still carries the span it is said at, so a place finds its own
+claims by comparing that span with its own (`trap_claim`, src/query.mn),
+and two nodes that share a span cannot be told apart. The claim's span
+becomes that node, read where the claim is printed.
 
 ### §11.11 · The host's clock, randomness and sleep are real
 
