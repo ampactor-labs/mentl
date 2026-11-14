@@ -1380,7 +1380,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1407,14 +1407,14 @@ leave, and the landing deletes them.
 
 1. Before any order, by §11's rule. F4 landed on 2026-11-14 (pin
    2fef21d48743): a sum, a difference and a product are bounded at both
-   ends, and a result that can wrap is a word nothing bounds. G1 is next:
-   a claim proven on its path passes the callee's guard to every
-   parameter whose precondition the proof admitted (§7's first false
-   proof). Written as a list of the path's parameters read after the
-   proof, G1 cost 5 places that can trap and 22 values the memory walk
-   cannot place, all in its own code (a probe compiler, 2026-11-13), so its
-   box names a form in which the path's proof says what it stood on as it
-   runs, and what pays for it. Then T1a: the eight lexer positions that
+   ends, and a result that can wrap is a word nothing bounds. G1 is next,
+   and Box 3 below writes it out: a proof says what it stood on at the
+   step that reads it, and the row a held claim guards goes to each
+   parameter whose precondition the proof does not hold without (§7's
+   first false proof). Written first as a list of the path's parameters
+   read after the proof, it cost 5 places that can trap and 22 values the
+   memory walk cannot place, all in its own code (a probe compiler,
+   2026-11-13). Then T1a: the eight lexer positions that
    come out of a scanner's answer are stated where they are made, which
    closes the false proof inside the compiler.
 2. The gates tell the truth, because every receipt is judged by them. P3:
@@ -1466,7 +1466,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box 3
+is G1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1974,6 +1975,200 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · G1 · A proof says what it stood on, and the row a held claim
+   guards goes there.** Written 2026-11-14 from seven probe compilers built
+   in a scratch worktree; every number below is one of their readings or
+   the pin's.
+
+   What a person sees. A function that proves a call's claim from another
+   parameter's precondition leans on that precondition, and a caller that
+   does not prove it cannot declare `!Trap`:
+
+   ```
+   type ValidOffset = Int where 0 <= self
+
+   fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+   fn via(q: ValidOffset, p) = if q <= p { at([4, 5], p) } else { 0 }
+
+   fn main(argv) with !Trap = via(len(argv) - 1000000, len(argv) - 999999)
+   ```
+
+   `mentl check` refuses `main`: "main is declared `with !Trap`, which
+   does not allow Trap, and main uses Trap: at …:15:28, a value handed to
+   `via`". Three programs that cannot trap, which the pin refuses, are
+   accepted (the edge cases below).
+
+   Fails today, on pin 2fef21d48743. `mentl check` accepts that program,
+   `mentl why FILE main Trap` answers "main never uses Trap", `mentl query
+   FILE traps` counts no place, and `mentl run` stops with "wasm trap: out
+   of bounds memory access". The same holds of a division: `fn inv(d:
+   Positive, e) = if d <= e { 100 / e } else { 0 }` under `main with !Trap
+   = inv(len(argv) - len(argv), 0)` is accepted and runs into "integer
+   divide by zero". It holds of a read written `xs[i]`, of an index bound
+   by a `let`, and through a second function, each accepted by the pin and
+   stopped by the engine.
+
+   The cause. When a claim holds, the row it guards has to go where its
+   proof stood: into the guard of each parameter whose precondition the
+   proof assumed, or onto the site itself where the proof stood on a claim
+   still owed. Three places in src/infer.mn decide this: `lean_guards` for
+   a division, a read and a cut, `pay_guard` for a callee's guard at a
+   call, and `provided_claim` for a function handed to a position. Each
+   walks the claimed value a second time and reads what the value can be.
+   A proof made on the path (`hyps_prove`, src/verify.mn) stands on the
+   precondition of whichever parameter the path's tests name, and the
+   value's own sources do not show that.
+
+   The form. The proof says what it stands on, at the step that reads it,
+   and the three places read what it said.
+
+   - src/types.mn. `effect Stands { stands_on(b: Int), stands_owed() }`.
+     `stands_on` names a parameter whose precondition a proof step read.
+     `stands_owed` says a step read a claim still owed where it was
+     stated: a callee's stated return, a let's own claim, a computed span.
+   - src/graph.mn. `no_state_walked`, the handler at the root of every
+     value walk, gains two arms that keep nothing. A reader that asks
+     nothing pays nothing, and none of the 42 places that install the root
+     changes.
+   - src/verify.mn. `effect Stood { stood_params() -> [Int], stood_owed()
+     -> Bool }` and `handler noting_stood with params = [], owed = false`,
+     which a reader installs around one claim. Only that handler answers
+     `Stood`, so a reader that asks what a proof stood on without
+     installing it does not build (`E_EffectUnhandled`).
+   - Five functions read an assumed contract as a proof step, and each
+     says so where the step proves: `leaf_nonneg` and `leaf_excludes`
+     through `stood_if(b, held)`, `bound_reaches` through
+     `leaf_proves(leaf, held)`, `leaves_carry_alias`, and the path in
+     `assumed_prove`. `leaf_stands(leaf)` says what one leaf's ends stand
+     on.
+   - The path. `hyps_prove(hyps, goal)` asks the path's own facts first,
+     in `gaps_prove(hyps, goal, base)`: the tests on the path, and that a
+     length is at least zero. A claim they prove stands on nothing.
+     Otherwise `assumed_prove(hyps, goal, facts, binders)` asks again with
+     the preconditions of the parameters the tests name. Where that holds,
+     `without_unneeded` drops each precondition the proof still holds
+     without, and the proof says the ones that remain.
+   - src/infer.mn. `guard_stood(row, at)` pays the row at the site where
+     the proof stood on an owed claim, and otherwise passes it to each
+     parameter the proof stood on. Each caller raises its claim and
+     settles it in one chain under the handler, `claim |> settle ~>
+     noting_stood`: `partiality_claim` and `infer_index_force` through
+     `trap_where_stood(handle, verdict) -> Bool`, `proven_form` through
+     `face_form(cname, pred, call, span)`, `discharge_arg` through
+     `pay_guard(row, contract, call_h, verdict)`, and `provided_claim`
+     through `provided_verdict(verdict)`. `discharge_arg` installs nothing
+     where the callee's guard owes nothing.
+   - `carry_guard` writes a parameter's guard only where the row adds to
+     what the parameter already owes (`owes_more`).
+
+   Every fact it reads, and what carries it.
+
+   - A parameter's precondition, stated or learned. The declaration's face
+     carries it (§4⑧), as the parameter's binder fact. `mentl where FILE
+     via` prints `q : ValidOffset`.
+   - A parameter's guard: the row its callers pay where they do not prove
+     its precondition. The same binder fact carries it, written where the
+     declaration's judgment ends. `mentl why
+     tests/crown/leak-guard-through-difference.mn main Trap` follows one
+     to the call that pays it: "main calls `back` at …:15:28 → at
+     …:13:29, a value handed to `at`".
+   - The tests on a claim's path. The graph's parent edges carry them.
+     `mentl check tests/crown/sound-guard-through-parameter.mn` prints
+     nothing, and the read inside its `at` is proven by the test above it.
+   - A claim's verdict. `verify_claim` answers it where the claim is
+     raised and writes it at the claim's node (§11.10). `mentl query FILE
+     verification` lists the claims still open.
+   - What a proof stood on. Nothing carries it today, and this box stores
+     nothing new: it lives in the handler for the extent of one claim, and
+     what is kept is the guard it leads to. Keeping it at the claim's
+     node, so that the caret can say why a claim holds, is a column, and
+     waits for F2.
+
+   What leaves. The second walks and their helpers: `lean_guards`,
+   `lean_trap`, `lean_face_operands`, `claim_leaves`, `part_claim_leaves`
+   and `claim_leaves_read` in src/infer.mn; `leaves_params`, `leaf_param`,
+   `leaves_unproven`, `leaf_unproven`, `proven_if` and `hyp_measures` in
+   src/verify.mn. F4's `leaves_any_word` leaves too. It made a sum that
+   can wrap a span of every word, so that a claim proven about it on its
+   path would charge the callee's guard at the call. The path now says
+   what it stood on, so such a sum is a value out of sight, as a division
+   is.
+
+   Edge cases, each a program run on the pin and on the last probe.
+
+   - A function whose own test proves the claim leans on nothing. `fn
+     direct(i: Small) = if 0 <= i && i < 2 { [4, 5][i] } else { 0 }`, with
+     `Small` an upper bound only, passed its Trap to `i` on the pin, since
+     `i` is among the index's sources. A `main with !Trap` that hands it a
+     number nothing bounds is refused by the pin and accepted by the
+     probe, and runs.
+   - A let that claims one refinement and holds a constant: `let k: Small
+     = 1`, then `at([4, 5], k)`. The constant proves the index is at least
+     zero. The pin charged the guard at the call because the value stands
+     under a let's claim. The probe charges nothing, since no step read
+     that claim.
+   - A sum kept in the word by the test above it: `fn next(pos:
+     ValidOffset, n) = if pos < n { at([4, 5, 6], pos + 1) } else { 0 }`.
+     The pin charged the guard inside `next`, so every caller carried
+     `Trap`. The probe passes it to `pos`: `next(len(argv), 2)` is accepted
+     under `!Trap`, and `next(len(argv) - 1000000, 2)` is refused.
+   - A claim that stood on a callee's stated return or on a computed span
+     still pays its row at the site, as on the pin
+     (tests/crown/leak-guard-through-difference.mn).
+   - Two preconditions of which either would do. In `fn two(q:
+     ValidOffset, r: ValidOffset, p) = if q <= p && r <= p { at([4, 5], p)
+     } else { 0 }` the proof says one of them, the one it tries to drop
+     last, which is `r`. A caller that proves `r` alone is accepted and
+     runs. A caller that proves neither is refused, where the pin accepts
+     it. A caller that proves `q` alone is refused though it cannot trap,
+     since a guard belongs to one parameter and cannot say "either".
+   - A refuted read charges no `Trap` at its own site any more, as a
+     refuted division never did. The checked read the lowering keeps
+     carries `Trap` in its own row, so `mentl check` on `fn main(argv)
+     with !Trap = [1, 2][5]` prints the same two errors as the pin.
+
+   Refuses, and how. `E_EffectMismatch` at the declaration whose row
+   forbids the effect, with the path to the call: "at L:C, a value handed
+   to `via`".
+
+   Left alone. A claim left open is still assumed by its callee when the
+   program runs (T1b). A let's claim that was proven is still read as
+   owed, and a span does not say which operands it was computed from, so
+   both still pay at the site (§11.3). A guard cannot say that either of
+   two preconditions would do (§11.3). The census of places that can trap
+   does not look inside a function handed to a library stage (§7), and
+   `without_unneeded`, which `fold` is handed, holds two calls of list
+   stages it does not count.
+
+   What pays for its code. Measured on the last probe with `MENTL_BOOT=…
+   mentl verify`: 37 bounds hold. Places that can trap with no claim stay
+   at 3,150. Every one the new code adds is a call of a library list
+   stage, traced by the census to the one index read in the library's
+   walk (`iterate_from`, lib/prelude.mn, R1), and the second walks that
+   leave held as many. Values the memory walk cannot place fall from
+   32,053 to 32,050, and roster arms from 1,349 to 1,348.
+
+   What it costs, from `bash tools/march.sh` on each probe. The first form
+   said every precondition the path admitted, and its self-compile held 10
+   KB more at its peak than the pin compiling the same source. With the
+   path's report switched off the two were equal, so the 10 KB was guard
+   rows written for parameters the tests merely named. Saying only the
+   preconditions the proof fails without brought it to 5 KB over. Writing
+   a guard only where it grows brought it to 6 KB under: 286,829 KB
+   against the pin's 286,835 KB, with the journal's high-water equal at
+   13,597 entries, the fixed point holding and the m3 leg at 22.22 s
+   against the pin's 22.13 s.
+
+   Proves it. Ten fixtures in tests/crown: `leak-` and `sound-`
+   `guard-through-other-parameter`, `guard-divisor-on-path` and
+   `guard-sum-on-path`; `leak-guard-read-on-path`, for the two spellings
+   of a read; `leak-guard-through-second-function`;
+   `sound-guard-own-test`; and `sound-guard-let-constant`. On the pin
+   seven of them fail: four programs that trap are accepted, and three
+   that cannot are refused. On the last probe `wt_battery` answers
+   "203/203 fixture contracts hold".
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
