@@ -625,6 +625,11 @@ fn stops_of(h) = match value_tails(h) {
     // the enclosing extent and leaves what is older where it is, so each stop
     // keeps its age.
     NExpr(PipeExpr(PTee, _, _)) => [StopBeyond(h)],
+    // A share builds its product where it stands. Its branches run one after
+    // another in the instance that shares the input, so the product is that
+    // instance's own fresh value, as a tuple written out is. What each
+    // branch answers is a part of it, which this walk does not follow.
+    NExpr(PipeExpr(PFanout(FanShare), _, _)) => [StopAlloc(h)],
     NExpr(MakeListExpr(parts)) | NExpr(MakeTupleExpr(parts)) => [StopProduct(h, parts)],
     NExpr(MakeRecordExpr(fields)) | NExpr(NamedRecordExpr(_, fields)) => [StopProduct(h, map(field_value, fields))],
     NExpr(RecordUpdateExpr(base, fields)) => [StopProduct(h, [base] ++ map(field_value, fields))],

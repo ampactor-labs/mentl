@@ -2,9 +2,9 @@
 // The interval fragment's acceptance face: a claim's lower bound, read off
 // the value's leaves, discharges what the ground fold alone cannot — `cap`
 // through the if-join's tails and the len floor, `bump` through Add over
-// its refined parameter's precondition (the fold is overflow-blind, a named
-// peer: the interval fragment assumes unbounded Int). `wild` is the
-// SOUNDNESS control: `v - 1` is a computation no leaf bounds, so it pends
+// its refined parameter's precondition, under a test that keeps the sum in
+// the word (a bare `v + 1` wraps at the greatest word). `wild` is the
+// SOUNDNESS control: `v - 1` can be one below zero, so it pends
 // visibly and still runs (debt surfaces, never blocks). Before P0 the
 // subtraction shared its operand's unification class, so it read Nat and a
 // runtime -1 escaped a `0 <= self` return. `wrap` proves the CALLEE leg: a
@@ -18,7 +18,7 @@ type Nat = Int where 0 <= self
 
 fn cap(xs) -> Nat = if len(xs) < 16 { 16 } else { len(xs) }
 
-fn bump(v: Nat) -> Nat = v + 1
+fn bump(v: Nat) -> Nat = if v < 1000000 { v + 1 } else { v }
 
 fn base() -> Nat = 7
 

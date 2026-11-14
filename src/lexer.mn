@@ -313,7 +313,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
   } else if stops_at_code(stop) {
     // A read ahead ends at the first byte of code, before it is lexed.
     (pos, line, col, buf, count)
-  } else if b == 34 && pos + 2 < n && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
+  } else if b == 34 && pos < n - 2 && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
     // triple-quoted multi-line string `"""..."""` — the multi-line
     // variant of the ONE string form (SYNTAX.md Strings). Interpolation
     // is still live (TStringPart/TStringSplice); leading whitespace
@@ -398,7 +398,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     let b2 = if pos + 1 < n { byte_at(source, pos + 1) } else { 0 }
     match two_char_kind(b, b2) {
       Some(kind) => match push_tok(buf, count, mk_tok(kind, line, col, line, col + 2)) {
-        (b1, c1) => lex_from(source, n, pos + 2, line, col + 2, b1, c1, stop, depth),
+        (b1, c1) => lex_from(source, n, past_two(n, pos), line, col + 2, b1, c1, stop, depth),
       },
       None => match single_char_kind(b) {
         Some(kind) => {
@@ -651,9 +651,9 @@ fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, 
 // de-indented line lexes at its true column (it used to restart at 1 after
 // every stripped indent).
 fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) = {
-  let body_start = if pos < n && byte_at(source, pos) == 10 { pos + 1 } else { pos }
-  let body_line = if pos < n && byte_at(source, pos) == 10 { line + 1 } else { line }
-  let body_col = if pos < n && byte_at(source, pos) == 10 { 1 } else { col }
+  let body_start = past_newline(source, n, pos)
+  let body_line = if body_start > pos { line + 1 } else { line }
+  let body_col = if body_start > pos { 1 } else { col }
   let end = scan_triple_end(source, n, body_start)
   let ci = triple_common_indent(source, n, body_start, end, 2147483647)
   // ci stays at the sentinel only when the body is empty/all-blank — then
@@ -675,9 +675,20 @@ fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, s
   )
 }
 
+// The position after a newline that stands at `pos`, and `pos` itself where
+// none stands there.
+fn past_newline(source, n: ValidOffset, pos: ValidOffset) -> ValidOffset =
+  if pos < n && byte_at(source, pos) == 10 { pos + 1 } else { pos }
+
+// The position two bytes after `pos`, or the source's end where fewer than
+// two bytes are left. Written with the end on the right of the test, `pos <
+// n - 1`, since `pos + 2 < n` would wrap for a position at the end of the
+// word.
+fn past_two(n: ValidOffset, pos: ValidOffset) -> ValidOffset = if pos < n - 1 { pos + 2 } else { n }
+
 // scan_triple_end — position of the opening byte of the closing `"""`
 // (three consecutive byte-34). Returns n (EOF) if unterminated.
-fn scan_triple_end(ref source, n: ValidOffset, pos: ValidOffset) = if pos + 2 >= n {
+fn scan_triple_end(ref source, n: ValidOffset, pos: ValidOffset) = if pos >= n - 2 {
   n
 } else if byte_at(source, pos) == 34 && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
   pos
@@ -850,7 +861,7 @@ fn base_digit(b, byte) = match b {
 //
 // Underscore is a visual separator — skipped during accumulation, never a
 // digit, never the byte a literal may end on.
-fn scan_number(ref source, n: ValidOffset, pos: ValidOffset, col) = if pos + 1 < n && byte_at(source, pos) == 48 {
+fn scan_number(ref source, n: ValidOffset, pos: ValidOffset, col) = if pos < n - 1 && byte_at(source, pos) == 48 {
   let prefix = byte_at(source, pos + 1)
   if prefix == 120 {
     scan_prefixed(source, n, pos + 2, col + 2, BHex)

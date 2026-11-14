@@ -2025,17 +2025,16 @@ type SelfBind = NoSelf | SelfNode(Int) | SelfVal(LitValue)
 //   · a call — and a pipe stage, the same application — is its callee's
 //     declared return, or a function-typed parameter's contract on its
 //     result
-//   · Add folds its operands' lower bounds
+//   · a sum, a difference and a product lie between the corners of their
+//     operands' spans, where no corner leaves the word
 // and each reader asks its own question of the leaves: a ROW fact
 // (partiality, a guard) stands on constants, lengths and preconditions
 // alone; a CLAIM's bound and echo may stand on a postcondition, which its
-// callee owes at its declaration, and on the Add fold, which models Int as
-// unbounded where the i32 floor wraps
-// (Hβ.verify.interval-fragment-assumes-unbounded-int). It replaced the
-// class reads and three compensations for them: a two-face "contamination
-// law" that read types only where a class boundary was crossed, a licence
-// refusing the echo to computation nodes, and a rebind exposing a let
-// annotation on its value's class.
+// callee owes at its declaration, and on a span computed from one. It
+// replaced the class reads and three compensations for them: a two-face
+// "contamination law" that read types only where a class boundary was
+// crossed, a licence refusing the echo to computation nodes, and a rebind
+// exposing a let annotation on its value's class.
 type Leaf
   // a constant — exact, at the word's own wrap
   = LPoint(LitValue)
@@ -2046,9 +2045,9 @@ type Leaf
   // and it is debt there until proven
   | LPost(Ty)
   // a word between two ends, where an end nothing bounds is the least or the
-  // greatest word: the Add fold's sum, whose low end is overflow-blind and
-  // whose high end is open, and a word an instruction bounds exactly, a
-  // masked or a shifted one
+  // greatest word: a sum, a difference or a product between the corners of
+  // its operands' spans, every word where a corner can wrap, and a word an
+  // instruction bounds exactly, a masked or a shifted one
   | LSpan(Int, Int)
   // len / byte_len: a length, never below zero
   | LLength

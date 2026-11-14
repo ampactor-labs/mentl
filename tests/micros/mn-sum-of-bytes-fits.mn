@@ -1,0 +1,11 @@
+// check: clean
+// Two bytes added fit sixteen bits. A sum lies between the sums of its
+// operands' ends, where neither sum leaves the word, so the return's claim
+// is proven from the two parameters' own ranges.
+type Bits8 = Int where 0 <= self && self <= 255
+
+type Bits16 = Int where 0 <= self && self <= 65535
+
+fn add(a: Bits8, b: Bits8) -> Bits16 = a + b
+
+fn main() = add(3, 4)

@@ -1,0 +1,11 @@
+// check: accepted
+// The sound twin of leak-guard-through-difference: `back` hands `at` its
+// own parameter, so `at`'s guard passes to that parameter, and `main` hands
+// `back` a length, which is never below 0. Nothing here can trap.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn back(pos: ValidOffset) = at([4, 5], pos)
+
+fn main(argv) with !Trap = back(len(argv))

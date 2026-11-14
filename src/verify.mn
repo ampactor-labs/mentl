@@ -507,7 +507,7 @@ handler deciding_at_call(call) {
 // and an operand nothing bounds leaves the face open, which is the row
 // fact `Trap` at the site. The answer is a ROW fact, so it stands only on
 // what is proven or assumed under contract (`leaves_exclude`), never on a
-// postcondition still owed or on the overflow-blind Add fold.
+// postcondition still owed, or on a span, which can be computed from one.
 // Two ground operands decide at their points through the one home the
 // integer folder asks (types.mn `int_op_defined`), so the claim and the fold
 // cannot disagree about which constants trap.
@@ -1679,16 +1679,68 @@ fn self_leaves(bind) = match bind {
 
 // Arithmetic is what its operands can be, pair by pair, where every value
 // either can be is a point: two points fold where the folder defines the
-// result, and a division the folder will not fold is out of sight. A sum of
-// anything else keeps the lower bound its operands' bounds reach.
+// result, and a division the folder will not fold is out of sight. Any
+// other sum, difference or product is read off the span each operand lies
+// in: each operand's leaves are shared by the two readers of its ends, the
+// first operand between `al` and `ah` and the second between `bl` and `bh`.
+// The answer is a word between the least and the greatest of the corners,
+// where every corner is the number it denotes. Where a corner passes either
+// end of the word the instruction wraps, and the answer can be any word. A
+// division or a remainder of anything but two constants is out of sight.
 fn arith_leaves(op, las, lbs) = if all(has_point, las) && all(has_point, lbs) {
   las |> flat_map({ a => lbs |> map(arith_pair(op, a, ??)) })
 } else {
+  let (al, ah) = las <| (leaves_low, leaves_high)
+  let (bl, bh) = lbs <| (leaves_low, leaves_high)
   match op {
-    BAdd => [LSpan(low_sum(leaves_low(las), leaves_low(lbs)), int_max_word())],
-    BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => leaves_unknown,
+    BAdd => if sum_in_word(al, bl) && sum_in_word(ah, bh) { [LSpan(al + bl, ah + bh)] } else { leaves_any_word },
+    BSub => if diff_in_word(al, bh) && diff_in_word(ah, bl) {
+      [LSpan(al - bh, ah - bl)]
+    } else {
+      leaves_any_word
+    },
+    BMul => if products_in_word(al, ah, bl, bh) {
+      [LSpan(least_product(al, ah, bl, bh), greatest_product(al, ah, bl, bh))]
+    } else {
+      leaves_any_word
+    },
+    BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => leaves_unknown,
   }
 }
+
+// A sum, a difference or a product that can wrap: a computed word nothing
+// bounds. It is a span, where a value out of sight is not, because a claim
+// about a computed word can still be proven on its path through a
+// parameter's precondition, and a span says the proof stood on more than
+// constants, so the callee's guard is charged where the claim stands
+// (`leaf_unproven`).
+let leaves_any_word = [LSpan(i32_min(), int_max_word())]
+
+// Whether `a + b` is the number it denotes: the sum neither passes the
+// greatest word nor falls below the least.
+fn sum_in_word(a, b) with Pure = if b >= 0 { a <= int_max_word() - b } else { a >= i32_min() - b }
+
+// Whether `a - b` is the number it denotes.
+fn diff_in_word(a, b) with Pure = if b >= 0 { a >= i32_min() + b } else { a <= int_max_word() + b }
+
+// Whether `a * b` is the number it denotes: the wrapped product divided by
+// one factor gives the other back. Zero times any word is zero, and -1
+// times a word is in the word unless the word is the least.
+fn product_in_word(a, b) =
+  if a == 0 { true } else if a == -1 { b != i32_min() } else { a * b / a == b }
+
+// Whether each of the four corner products of two spans is the number it
+// denotes.
+fn products_in_word(al, ah, bl, bh) =
+  product_in_word(al, bl) && product_in_word(al, bh) && product_in_word(ah, bl) && product_in_word(ah, bh)
+
+// The least and the greatest of the four corner products, asked only where
+// each is in the word.
+fn least_product(al, ah, bl, bh) =
+  al * bl |> int_min(al * bh) |> int_min(ah * bl) |> int_min(ah * bh)
+
+fn greatest_product(al, ah, bl, bh) =
+  al * bl |> int_max(al * bh) |> int_max(ah * bl) |> int_max(ah * bh)
 
 fn arith_pair(op, a, b) = match may_point(a) {
   Some((va, ma)) => match may_point(b) {
@@ -2655,7 +2707,7 @@ fn contract_alias(c) = match c {
 // A ROW fact, three-valued over the leaves (`and_decide`): proven when every
 // leaf excludes the point, on what is proven (a constant, a length) or
 // assumed under contract (a parameter's precondition) — never on a
-// postcondition still owed or on the Add fold; REFUTED when a leaf is the
+// postcondition still owed or on a computed span; REFUTED when a leaf is the
 // point itself; open otherwise, and open over no leaves at all.
 fn leaves_exclude(leaves, k) =
   if len(leaves) == 0 { None } else { fold(Some(true), leaf_exclude_step(k, ??, ??), leaves) }
@@ -2678,7 +2730,7 @@ fn leaf_excludes(k, leaf) = match leaf {
 // A CLAIM's span: the two ends that cover what every leaf can be, the least
 // of their low ends and the greatest of their high ends. Each end is a word,
 // and an end nothing bounds is the least or the greatest word, which is what
-// every word lies between. A postcondition and the Add fold answer here,
+// every word lies between. A postcondition and a computed span answer here,
 // since a claim's own debt stays open at the node where it was raised.
 // The fold starts from the end that covers nothing, and no leaf at all is a
 // value nothing bounds.
@@ -2737,9 +2789,6 @@ fn point_word(v, open) = match v {
 
 // The largest signed word — the identity of the lower bound's meet.
 fn int_max_word() with Pure = 2147483647
-
-// The sum of two operands' low ends: open where either is.
-fn low_sum(a, b) = if a == i32_min() || b == i32_min() { i32_min() } else { a + b }
 
 // A CLAIM's echo: every leaf names the refinement — a parameter's
 // precondition or a callee's postcondition carrying the alias — so the
@@ -3072,7 +3121,7 @@ fn ty_names_alias(ty, aname: String) = match ty {
 // What a held claim STANDS ON, for the row it guards: the parameters whose
 // preconditions it leaned on (the guard travels to them), and whether it
 // leaned on anything that is not a row fact — a postcondition still owed,
-// or the Add fold — in which case the guard is paid where the claim stands.
+// or a computed span — in which case the guard is paid where the claim stands.
 fn leaves_params(leaves) = leaves |> flat_map(leaf_param)
 
 fn leaf_param(leaf) = match leaf {

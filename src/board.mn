@@ -276,8 +276,11 @@ fn board_bounds() = [
   // each step, so its cuts are proven inside the string. 652 -> 651 the same
   // day: the editor's diagnostics read the claims at their own document's
   // nodes, and the walk that read each of the program's open claims with
-  // `list_index` left.
-  Bound({ceiling: 651, question: QCensus(CsCallClaim)}),
+  // `list_index` left. 651 -> 649 (2026-11-14): the lexer tested the byte
+  // after a triple-quoted string's opening three times, for the body's
+  // start, its line and its column, and now reads the line and the column
+  // off the start.
+  Bound({ceiling: 649, question: QCensus(CsCallClaim)}),
   // THE PLACES THAT CAN TRAP WITH NO CLAIM CHECKED THERE (`mentl query
   // src/main.mn "census silent-trap"`): a place in the program's own modules
   // whose `Trap` reaches main's row while no claim stands at it, most of them
@@ -408,8 +411,13 @@ fn board_bounds() = [
   // reads, with the set of the link's modules a whole read keeps verdicts
   // by, the strip's reads at the module's nodes and the census narrowed to
   // a declaration brought 60: 28 in the graph module, 17 in the space
-  // module, 14 in the query module and one in the MCP module.
-  Bound({ceiling: 32055, question: QCensus(CsUnplaced)}),
+  // module, 14 in the query module and one in the MCP module. 32,055 ->
+  // 32,053 (2026-11-14): the walk reads a share, `x <| (f, g)`, as the
+  // product it builds where it stands (`stops_of`). That places the two
+  // shares the cursor and the assembler held, and the two the verifier's
+  // arithmetic gained, where each operand's leaves are shared by the
+  // readers of its two ends.
+  Bound({ceiling: 32053, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

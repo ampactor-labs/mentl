@@ -1,0 +1,15 @@
+// check: refuse E_EffectMismatch
+// `at` reads its list unchecked below, since its parameter states it is at
+// least 0, and that trust is a guard its callers pay as `Trap` or pass to
+// the parameter their own proof stood on. `back` hands `at` a difference.
+// A difference is a computed word, so the guard is charged at that call,
+// and `main`, which hands `back` a number nothing bounds, cannot be
+// `!Trap`. A compiler that read a difference as out of sight dropped the
+// guard: it accepted this program, and the run stopped with a memory fault.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn back(pos: ValidOffset) = at([4, 5], pos - 0)
+
+fn main(argv) with !Trap = back(len(argv) - 1000000)

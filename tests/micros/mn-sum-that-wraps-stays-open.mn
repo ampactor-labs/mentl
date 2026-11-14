@@ -1,0 +1,13 @@
+// check: pending 11:29
+// A sum that can wrap proves nothing. The position `next` takes is at least
+// 0, and one more than the greatest word is the least word, so the claim
+// that the sum is at least 0 stays open where `next` hands it to `at`. A
+// compiler that gave a sum its operands' low ends proved the claim, and
+// the call in `main` then read the list at the index -2147483648.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn next(pos: ValidOffset) = at([4, 5], pos + 1)
+
+fn main() = next(2147483647)

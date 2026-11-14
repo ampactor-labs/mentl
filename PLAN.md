@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `476f3912620b`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `2fef21d48743`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -48,12 +48,12 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   (§11.10): each claim's verdict is written at its node, and the caret,
   the editor, the audit, teach and the gate read it there. That evening
   the plan's three orders became one (§11.B), in which every landing reads
-  only what earlier landings carry. The next landings close two false
-  proofs found that evening: G1, a claim proven on its path passes the
-  callee's guard to the parameters it stood on, then F4, a sum bounded at
-  both ends, which five probe compilers made exact. Then T1a, the lexer's
-  eight positions stated where they are made, and the gates (P3, P4, P7
-  and P5).
+  only what earlier landings carry. Its first landing, F4, closed two
+  false proofs on 2026-11-14: a sum that can wrap proves nothing, and a
+  callee's guard is charged where a claim about a sum, a difference or a
+  product is handed on. The next landing is G1, the same guard where the
+  value is no arithmetic result. Then T1a, the lexer's eight positions
+  stated where they are made, and the gates (P3, P4, P7 and P5).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -888,35 +888,29 @@ when its design lands. What was built, and when, is `git log` and
 from the command that prints it and is not written here. A gate that did
 not run counts as unknown, never as passing.
 
-**Programs the check accepts and the run breaks.** Six false proofs are
+**Programs the check accepts and the run breaks.** Five false proofs are
 open. The last four listed were run again on pin b46b71133838 on
-2026-11-10, and the first two were found on pin 476f3912620b on
-2026-11-13. `mentl check` accepts each program and `mentl run` shows the
-break.
+2026-11-10, and the first was run on pin 2fef21d48743 on 2026-11-14.
+`mentl check` accepts each program and `mentl run` shows the break.
 
-- A claim proven on its path through a parameter's precondition drops the
-  guard of the callee it is handed to. Over `type ValidOffset = Int where
-  0 <= self` and `fn at(xs, i: ValidOffset) = if i < len(xs) {
-  list_index(xs, i) } else { 0 }`, the function `fn back(pos: ValidOffset)
-  = at([4, 5], pos - 0)` proves `0 <= pos - 0` from `pos`'s own
-  precondition. The read inside `at` is unchecked because `at` trusts its
-  parameter, and that trust is a guard its callers pay as `Trap` or pass
-  to the parameter their proof stood on. Here it is neither charged at the
-  call nor passed to `pos`: the guard is read off what the value can be
-  (`pay_guard`, `lean_guards`, src/infer.mn), and a difference is out of
-  sight. So `fn main(argv) with !Trap = back(len(argv) - 1000000)` is
-  accepted, `mentl why FILE main Trap` answers that main never uses
-  `Trap`, and the run stops with an out-of-bounds memory fault (a scratch
-  program, 2026-11-13; G1 in §11.B's order). A sum hides the same hole
-  today only because its span counts as unproven.
-- A sum is given its operands' low ends as its own, whatever the word does
-  when it overflows. Over `type ValidOffset = Int where 0 <= self`, `fn
-  next(pos: ValidOffset) = at([4, 5], pos + 1)` is accepted, with the read
-  inside `at` proven, and `next(2147483647)` hands `at` the index
-  -2147483648. The read's address wraps to the list's first element, so
-  `mentl run` exits 4 where no element should be read (a scratch program,
-  2026-11-13; F4 in §11.B's order). With F4 the claim is printed as
-  pending, and the program is then one of the kind T1b refuses.
+- A claim proven on its path through another parameter's precondition
+  drops the guard of the callee it is handed to. Over `type ValidOffset =
+  Int where 0 <= self` and `fn at(xs, i: ValidOffset) = if i < len(xs) {
+  list_index(xs, i) } else { 0 }`, the read inside `at` is unchecked
+  because `at` trusts its parameter, and that trust is a guard its callers
+  pay as `Trap` or pass to the parameter their proof stood on. The guard
+  is read off what the value can be (`pay_guard`, `lean_guards`,
+  src/infer.mn), and a proof on the path stands on preconditions that
+  reading does not see (`binder_gaps`, src/verify.mn). In `fn via(q:
+  ValidOffset, p) = if q <= p { at([4, 5], p) } else { 0 }` the claim `0
+  <= p` is proven from `q`'s precondition and the test, and the guard is
+  neither charged at the call nor passed to `q`. So `fn main(argv) with
+  !Trap = via(len(argv) - 1000000, len(argv) - 999999)` is accepted,
+  `mentl why FILE main Trap` answers that main never uses `Trap`, and the
+  run stops with an out-of-bounds memory fault (a scratch program; G1 in
+  §11.B's order). Where the value handed on is a sum, a difference or a
+  product, the guard is charged at the call since 2026-11-14
+  (tests/crown/leak-guard-through-difference.mn).
 - A `!Trap` recursion a million calls deep stops with "call stack
   exhausted": running out of stack is a trap that no row shows (§11.2).
 - A handler of `trap` takes `Trap` out of the row while `trap` still stops
@@ -931,7 +925,11 @@ break.
   does not build (§4⑮), which is not built (§11.B, T1). The compiler's
   own lexer makes eight such calls: `lex_from`, `scan_string` and
   `triple_common_indent` read the source unchecked on a position nothing
-  proves is at least 0 (a probe compiler, 2026-11-13; T1).
+  proves is at least 0 (a probe compiler, 2026-11-13; T1). A sum that can
+  wrap is such a claim since 2026-11-14:
+  tests/micros/mn-sum-that-wraps-stays-open.mn prints its claim as
+  pending, builds, and `mentl run` exits 4 after reading its list at the
+  index -2147483648.
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
@@ -969,13 +967,12 @@ break.
   §11.13).
 - A claim proven only through the program's calls leaves the `Trap` in the
   row, so `with !Trap` cannot rest on it yet (§11.3).
-- The verifier bounds a sum on its low side only, and that bound is blind
-  to the word wrapping: `fn add(a: Bits8, b: Bits8) -> Bits16 = a + b` is
-  left pending. So are a difference, a product, `i32_or` and a signed
-  shift over a value that is no constant. A call that answers 300, passed
-  where a byte is wanted, is left pending where the same constant written
-  in place is refused, since a call's answers are read as values it may
-  take (a scratch program, 2026-11-12; §11.3).
+- `i32_or` and a signed shift over a value that is no constant are out of
+  the verifier's sight, where a sum, a difference, a product, a mask and
+  an unsigned shift carry both ends of their range. A call that answers
+  300, passed where a byte is wanted, is left pending where the same
+  constant written in place is refused, since a call's answers are read
+  as values it may take (a scratch program, 2026-11-12; §11.3).
 - A claim about a `let` whose value is an `if` is decided where the `let`
   is read, and not at each branch on that branch's own path. `let start =
   if pos < n { pos + 1 } else { pos }` followed by `hold_at(start)` is
@@ -1383,8 +1380,8 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two boxes
-are written out, Box 1 and Box 2, below the order.
+review, and a landing he did not mean is reverted on his word. Two
+boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
 reads only facts that earlier landings carry, so no landing is built to
@@ -1408,25 +1405,16 @@ five is refused at the box stage: walking a whole store and filtering it is
 the shape that fails. A box names the compensations its landing lets
 leave, and the landing deletes them.
 
-1. Before any order, by §11's rule. G1: a claim proven on its path passes
-   the callee's guard to every parameter whose precondition the proof
-   admitted, the first false proof §7 lists. It comes before F4, since
-   today a sum's span counts as unproven and so hides the hole for sums.
-   F4: a sum, a difference and a product of bounded values are bounded at
-   both ends, and the bound knows the word can wrap (§11.3). Today a sum
-   takes its operands' low ends as its own, so `pos + 1` over a parameter
-   that is at least 0 is proven at least 0 even where it wraps. Five probe
-   compilers made F4 exact on 2026-11-13. The value walk's sum, difference
-   and product become interval arithmetic that is exact where no corner
-   leaves the word and out of sight elsewhere (`arith_leaves`,
-   src/verify.mn), and the path's difference bounds, which already know a
-   sum can wrap, decide the rest. Nine claims in the lexer stood on the
-   wrap-blind sum. Each is proven honestly by three guards written with the
-   end on the right (`pos < n - 2` where `pos + 2 < n` can itself wrap) and
-   by two small functions that state a position with a declared return
-   (`past_newline`, `past_two`). The probe passes the whole board on that
-   source: 90 open obligations, 649 claims open at explicit calls (two
-   fewer), and no count higher. Then T1a: the eight lexer positions that
+1. Before any order, by §11's rule. F4 landed on 2026-11-14 (pin
+   2fef21d48743): a sum, a difference and a product are bounded at both
+   ends, and a result that can wrap is a word nothing bounds. G1 is next:
+   a claim proven on its path passes the callee's guard to every
+   parameter whose precondition the proof admitted (§7's first false
+   proof). Written as a list of the path's parameters read after the
+   proof, G1 cost 5 places that can trap and 22 values the memory walk
+   cannot place, all in its own code (a probe compiler, 2026-11-13), so its
+   box names a form in which the path's proof says what it stood on as it
+   runs, and what pays for it. Then T1a: the eight lexer positions that
    come out of a scanner's answer are stated where they are made, which
    closes the false proof inside the compiler.
 2. The gates tell the truth, because every receipt is judged by them. P3:
@@ -2286,10 +2274,10 @@ is judged, together with its row fact. Today the claim is owed and the
 sine's [-1, 1], affine combinations, a clamp), so a frequency computed from
 a sine or a product is decided (Pulse, Wasatch). A masked or shifted
 word carries both ends of its range (built 2026-11-12). A sum, a
-difference and a product of bounded values are to carry both ends the
-same way, with a result that can pass the word's end left open, so that
-two bytes added are proven to fit sixteen bits. Today that claim is left
-pending (§7).
+difference and a product of bounded values carry both ends the same way
+(built 2026-11-14): each lies between the corners of its operands' spans
+where no corner leaves the word, so two bytes added are proven to fit
+sixteen bits, and a result that can wrap is a word nothing bounds.
 The four sequence primitives' face carries parameters with no names, so
 `slice([1, 2, 3], start = 0, end = 2)` is refused with "no parameter
 named `start` on `slice`" while `mentl where` prints the declaration's
