@@ -48,9 +48,12 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   (§11.10): each claim's verdict is written at its node, and the caret,
   the editor, the audit, teach and the gate read it there. That evening
   the plan's three orders became one (§11.B), in which every landing reads
-  only what earlier landings carry. The next landings are F4, a sum
-  bounded at both ends, and T1a, the lexer's eight positions stated where
-  they are made; then the gates (P3, P4, P7 and P5).
+  only what earlier landings carry. The next landings close two false
+  proofs found that evening: G1, a claim proven on its path passes the
+  callee's guard to the parameters it stood on, then F4, a sum bounded at
+  both ends, which five probe compilers made exact. Then T1a, the lexer's
+  eight positions stated where they are made, and the gates (P3, P4, P7
+  and P5).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -885,18 +888,35 @@ when its design lands. What was built, and when, is `git log` and
 from the command that prints it and is not written here. A gate that did
 not run counts as unknown, never as passing.
 
-**Programs the check accepts and the run breaks.** Five false proofs are
-open. The first four were run again on pin b46b71133838 on 2026-11-10, the
-fifth was found on pin 476f3912620b on 2026-11-13. `mentl check` accepts
-each program and `mentl run` shows the break.
+**Programs the check accepts and the run breaks.** Six false proofs are
+open. The last four listed were run again on pin b46b71133838 on
+2026-11-10, and the first two were found on pin 476f3912620b on
+2026-11-13. `mentl check` accepts each program and `mentl run` shows the
+break.
 
+- A claim proven on its path through a parameter's precondition drops the
+  guard of the callee it is handed to. Over `type ValidOffset = Int where
+  0 <= self` and `fn at(xs, i: ValidOffset) = if i < len(xs) {
+  list_index(xs, i) } else { 0 }`, the function `fn back(pos: ValidOffset)
+  = at([4, 5], pos - 0)` proves `0 <= pos - 0` from `pos`'s own
+  precondition. The read inside `at` is unchecked because `at` trusts its
+  parameter, and that trust is a guard its callers pay as `Trap` or pass
+  to the parameter their proof stood on. Here it is neither charged at the
+  call nor passed to `pos`: the guard is read off what the value can be
+  (`pay_guard`, `lean_guards`, src/infer.mn), and a difference is out of
+  sight. So `fn main(argv) with !Trap = back(len(argv) - 1000000)` is
+  accepted, `mentl why FILE main Trap` answers that main never uses
+  `Trap`, and the run stops with an out-of-bounds memory fault (a scratch
+  program, 2026-11-13; G1 in §11.B's order). A sum hides the same hole
+  today only because its span counts as unproven.
 - A sum is given its operands' low ends as its own, whatever the word does
   when it overflows. Over `type ValidOffset = Int where 0 <= self`, `fn
   next(pos: ValidOffset) = at([4, 5], pos + 1)` is accepted, with the read
   inside `at` proven, and `next(2147483647)` hands `at` the index
   -2147483648. The read's address wraps to the list's first element, so
   `mentl run` exits 4 where no element should be read (a scratch program,
-  2026-11-13; F4 in §11.B's order).
+  2026-11-13; F4 in §11.B's order). With F4 the claim is printed as
+  pending, and the program is then one of the kind T1b refuses.
 - A `!Trap` recursion a million calls deep stops with "call stack
   exhausted": running out of stack is a trap that no row shows (§11.2).
 - A handler of `trap` takes `Trap` out of the row while `trap` still stops
@@ -956,6 +976,12 @@ each program and `mentl run` shows the break.
   where a byte is wanted, is left pending where the same constant written
   in place is refused, since a call's answers are read as values it may
   take (a scratch program, 2026-11-12; §11.3).
+- A claim about a `let` whose value is an `if` is decided where the `let`
+  is read, and not at each branch on that branch's own path. `let start =
+  if pos < n { pos + 1 } else { pos }` followed by `hold_at(start)` is
+  left pending where `hold_at(if pos < n { pos + 1 } else { pos })` is
+  proven (a probe compiler with F4's sum, 2026-11-13; the wrap-blind sum
+  hides it on the pin; §11.3).
 - A guard an arm writes over its handler's own state is not read as a
   fact. Inside an arm, `if 0 <= at && at < len(bytes) { byte_at(bytes,
   at) }` over the state field `at` is left pending, and the same guard
@@ -1084,6 +1110,12 @@ each program and `mentl run` shows the break.
 - An edit's cone has no cutoff: every declaration whose judgment read a
   rewritten one is judged again, whether or not what it publishes changed.
   A session derives its graph once each time it opens (§11.6).
+- A compile that reuses the analysis saved by the last one can refuse a
+  program the cold compile builds. After one edit to src/verify.mn, a
+  second `mentl compile src/main.mn` judged 2,439 declarations again in 20
+  modules and reported 83 `E_EffectMismatch` errors; with the saved
+  analysis removed, the same source compiled (2026-11-13; the gates
+  compile in a fresh directory and never reuse one; §11.6).
 
 **What a person meets.**
 
@@ -1376,12 +1408,26 @@ five is refused at the box stage: walking a whole store and filtering it is
 the shape that fails. A box names the compensations its landing lets
 leave, and the landing deletes them.
 
-1. Before any order, by §11's rule. F4: a sum, a difference and a product
-   of bounded values are bounded at both ends, and the bound knows the
-   word can wrap (§11.3). Today a sum takes its operands' low ends as its
-   own, so `pos + 1` over a parameter that is at least 0 is proven at least
-   0 even where it wraps, the first false proof §7 lists. Then T1a: the
-   eight lexer positions are stated where they are made and proven, which
+1. Before any order, by §11's rule. G1: a claim proven on its path passes
+   the callee's guard to every parameter whose precondition the proof
+   admitted, the first false proof §7 lists. It comes before F4, since
+   today a sum's span counts as unproven and so hides the hole for sums.
+   F4: a sum, a difference and a product of bounded values are bounded at
+   both ends, and the bound knows the word can wrap (§11.3). Today a sum
+   takes its operands' low ends as its own, so `pos + 1` over a parameter
+   that is at least 0 is proven at least 0 even where it wraps. Five probe
+   compilers made F4 exact on 2026-11-13. The value walk's sum, difference
+   and product become interval arithmetic that is exact where no corner
+   leaves the word and out of sight elsewhere (`arith_leaves`,
+   src/verify.mn), and the path's difference bounds, which already know a
+   sum can wrap, decide the rest. Nine claims in the lexer stood on the
+   wrap-blind sum. Each is proven honestly by three guards written with the
+   end on the right (`pos < n - 2` where `pos + 2 < n` can itself wrap) and
+   by two small functions that state a position with a declared return
+   (`past_newline`, `past_two`). The probe passes the whole board on that
+   source: 90 open obligations, 649 claims open at explicit calls (two
+   fewer), and no count higher. Then T1a: the eight lexer positions that
+   come out of a scanner's answer are stated where they are made, which
    closes the false proof inside the compiler.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
@@ -1396,8 +1442,14 @@ leave, and the landing deletes them.
    F2. Four allowances between 2026-11-06 and 2026-11-13 (141, 15, 10 and
    186 KB) paid for facts kept in columns, each closed into the baseline;
    the last was the verdict column's 687 pages of 64 cells, one cell for
-   each handle in a page's range whether a claim stands there or not. F3:
-   the column of what
+   each handle in a page's range whether a claim stands there or not. F3
+   starts from the count of unplaced values by what stopped the walk,
+   which no verb gives yet and which F3 grows as a census facet. Tallied
+   by hand from `census unplaced` on pin 476f3912620b, of 32,055 values:
+   12,947 are parts of a value taken apart, 12,803 are answers of calls
+   (`list_index` 668, `fold` 393, `flat_map` 370), 2,675 are answers of
+   effect operations, 1,407 are field reads, 1,233 are out of sight and
+   783 are answers of stages. F3 is the column of what
    each store puts into an allocation (§11.8), so the memory walk can place
    what later boxes add. F5: a module is a scope (§11.4's first part).
    Box 2, the second half of L1, reads only carried facts and goes here;
