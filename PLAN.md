@@ -885,10 +885,18 @@ when its design lands. What was built, and when, is `git log` and
 from the command that prints it and is not written here. A gate that did
 not run counts as unknown, never as passing.
 
-**Programs the check accepts and the run breaks.** Four false proofs are
-open, each run again on pin b46b71133838 on 2026-11-10. `mentl check`
-accepts each program and `mentl run` shows the break.
+**Programs the check accepts and the run breaks.** Five false proofs are
+open. The first four were run again on pin b46b71133838 on 2026-11-10, the
+fifth was found on pin 476f3912620b on 2026-11-13. `mentl check` accepts
+each program and `mentl run` shows the break.
 
+- A sum is given its operands' low ends as its own, whatever the word does
+  when it overflows. Over `type ValidOffset = Int where 0 <= self`, `fn
+  next(pos: ValidOffset) = at([4, 5], pos + 1)` is accepted, with the read
+  inside `at` proven, and `next(2147483647)` hands `at` the index
+  -2147483648. The read's address wraps to the list's first element, so
+  `mentl run` exits 4 where no element should be read (a scratch program,
+  2026-11-13; F4 in §11.B's order).
 - A `!Trap` recursion a million calls deep stops with "call stack
   exhausted": running out of stack is a trap that no row shows (§11.2).
 - A handler of `trap` takes `Trap` out of the row while `trap` still stops
@@ -1370,9 +1378,11 @@ leave, and the landing deletes them.
 
 1. Before any order, by §11's rule. F4: a sum, a difference and a product
    of bounded values are bounded at both ends, and the bound knows the
-   word can wrap (§11.3). Then T1a: the eight lexer positions are stated
-   where they are made and proven, which closes the false proof inside the
-   compiler.
+   word can wrap (§11.3). Today a sum takes its operands' low ends as its
+   own, so `pos + 1` over a parameter that is at least 0 is proven at least
+   0 even where it wraps, the first false proof §7 lists. Then T1a: the
+   eight lexer positions are stated where they are made and proven, which
+   closes the false proof inside the compiler.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
