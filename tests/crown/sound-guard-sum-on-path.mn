@@ -1,0 +1,12 @@
+// check: accepted
+// A sum that could wrap is kept in the word by the test above it, and the
+// claim about it is proven on the path through the first parameter's
+// precondition. The guard of `at` goes to that parameter, and `main` hands
+// it a length, which proves the precondition.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn next(pos: ValidOffset, n) = if pos < n { at([4, 5, 6], pos + 1) } else { 0 }
+
+fn main(argv) with !Trap = next(len(argv), 2)

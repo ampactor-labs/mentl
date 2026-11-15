@@ -1,0 +1,11 @@
+// check: refuse E_EffectMismatch
+// The twin of sound-guard-sum-on-path.mn. `main` hands the parameter that
+// `next` leans on a number nothing keeps at or above zero, so its `!Trap`
+// is refused.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn next(pos: ValidOffset, n) = if pos < n { at([4, 5, 6], pos + 1) } else { 0 }
+
+fn main(argv) with !Trap = next(len(argv) - 1000000, 2)

@@ -416,8 +416,13 @@ fn board_bounds() = [
   // product it builds where it stands (`stops_of`). That places the two
   // shares the cursor and the assembler held, and the two the verifier's
   // arithmetic gained, where each operand's leaves are shared by the
-  // readers of its two ends.
-  Bound({ceiling: 32053, question: QCensus(CsUnplaced)}),
+  // readers of its two ends. 32,053 -> 32,050 the same day: code left and
+  // came, and the walk places nothing it could not place before. The
+  // readers that walked a claimed value a second time, to learn what its
+  // proof stood on, left with the lists of leaves they built. The path's
+  // proof came to ask twice, first with no precondition admitted, and the
+  // judgment's readers to settle a guard from what the proof said.
+  Bound({ceiling: 32050, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -538,7 +543,10 @@ fn board_bounds() = [
   // against a constant on the left left with its two arms, and the readers
   // of a finite set's least member with theirs, when both ends of a value
   // became words. The three readers of a word primitive brought three.
-  Bound({ceiling: 1349, question: QCensus(CsWildcardRoster)}),
+  // 1,349 -> 1,348 (2026-11-14): the two readers that answered what a held
+  // claim stood on by a leaf's kind left with one such arm each, and the
+  // reader that says what a leaf's ends stand on brought one.
+  Bound({ceiling: 1348, question: QCensus(CsWildcardRoster)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs

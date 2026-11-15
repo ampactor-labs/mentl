@@ -809,7 +809,7 @@ fn leaf_nonneg(leaf) = match leaf {
     LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LLength => Some(true),
-  LParam(_, c) => proven_if(contract_low(c) >= 0),
+  LParam(b, c) => stood_if(b, contract_low(c) >= 0),
   LClaimed(_, beneath) => leaf_nonneg(beneath),
   LMay(beneath) => proves_only(leaf_nonneg(beneath)),
   LPost(_) => None,
@@ -1092,26 +1092,73 @@ fn term_less(a, b) = match a {
 
 fn offset_term(m, k) = if exact_offset(k) { Some(TermAt(m, k)) } else { None }
 
-// The hypotheses the path states, admitted round by round as the facts
-// already admitted keep their terms inside the word, beside what every term
-// is by itself — a length is at least zero, a parameter what its
-// precondition bounds; a disequation tightens a bound it sits at the edge of.
+// Whether the path proves a claim. The path's own facts are asked first:
+// the hypotheses it states, and that a length is at least zero. A claim
+// they prove stands on nothing. A claim they leave open is asked again with
+// what each parameter is by its precondition (`assumed_prove`).
 fn hyps_prove(hyps, goal) = {
-  let base = flat_map(hyp_measures, [goal] ++ hyps) |> unique |> flat_map(measure_gaps)
+  let stated = [goal] ++ hyps
+  let facts = stated |> flat_map(hyp_lengths)
+  gaps_prove(hyps, goal, facts) || assumed_prove(hyps, goal, facts, stated |> flat_map(hyp_binders) |> unique)
+}
+
+// The hypotheses are admitted round by round, as the facts already admitted
+// keep their terms inside the word, and a disequation tightens a bound it
+// sits at the edge of. Facts that contradict each other are a path never
+// taken, where every claim holds.
+fn gaps_prove(hyps, goal, base) = {
   let gaps = tightened(admitted(hyps, base))
   !consistent(gaps) || hyp_in_word(gaps, goal) && follows(gaps, goal)
 }
 
-fn hyp_measures(hyp) = match hyp {
-  Holds(_, TermAt(a, _), TermAt(b, _)) => [a, b],
+// The claim asked with the preconditions of the given parameters beside the
+// path's own facts. A proof that holds this way stands on each precondition
+// it does not hold without, and says so (`stands_on`), so the row the claim
+// guards goes to those parameters and to no other.
+fn assumed_prove(hyps, goal, facts, binders) = if len(binders) > 0 && holds_with(hyps, goal, facts, binders) {
+  binders |> fold(binders, without_unneeded(hyps, goal, facts, ??, ??)) |> each(stands_on)
+  true
+} else {
+  false
 }
 
+// Whether the claim holds with those parameters' preconditions admitted.
+fn holds_with(hyps, goal, facts, binders) =
+  gaps_prove(hyps, goal, facts ++ flat_map(binder_bounds, binders))
+
+// The parameters kept so far without one of them, where the claim still
+// holds without that one's precondition.
+fn without_unneeded(hyps, goal, facts, kept, b) = {
+  let rest = kept |> filter({ k => k != b })
+  if holds_with(hyps, goal, facts, rest) { rest } else { kept }
+}
+
+// What a hypothesis's two terms are with nothing assumed.
+fn hyp_lengths(hyp) = match hyp {
+  Holds(_, TermAt(a, _), TermAt(b, _)) => measure_gaps(a) ++ measure_gaps(b),
+}
+
+// The parameters among a hypothesis's two terms that a precondition bounds.
+fn hyp_binders(hyp) = match hyp {
+  Holds(_, TermAt(a, _), TermAt(b, _)) => assumed_binder(a) ++ assumed_binder(b),
+}
+
+// What a measure is with nothing assumed: a length is at least zero.
 fn measure_gaps(m) = match m {
-  MZero => [],
   MLength(_) => [AtMost(MZero, m, 0)],
-  MBinder(b) => binder_gaps(b, m),
+  MZero | MBinder(_) => [],
 }
 
+// The binder of a measure that a parameter's precondition bounds.
+fn assumed_binder(m) = match m {
+  MBinder(b) => if len(binder_gaps(b, m)) > 0 { [b] } else { [] },
+  MZero | MLength(_) => [],
+}
+
+fn binder_bounds(b) = binder_gaps(b, MBinder(b))
+
+// What a parameter's precondition says of it, as bounds on its measure: the
+// one place a path reads a precondition.
 fn binder_gaps(b, m) = match graph_binder_of(b) {
   Some(fact) => match fact {
     ParamFact(f) => match pre_contract(f.pre) {
@@ -1685,36 +1732,28 @@ fn self_leaves(bind) = match bind {
 // first operand between `al` and `ah` and the second between `bl` and `bh`.
 // The answer is a word between the least and the greatest of the corners,
 // where every corner is the number it denotes. Where a corner passes either
-// end of the word the instruction wraps, and the answer can be any word. A
-// division or a remainder of anything but two constants is out of sight.
+// end of the word the instruction wraps, and the answer is out of sight, as
+// a division or a remainder of anything but two constants is.
 fn arith_leaves(op, las, lbs) = if all(has_point, las) && all(has_point, lbs) {
   las |> flat_map({ a => lbs |> map(arith_pair(op, a, ??)) })
 } else {
   let (al, ah) = las <| (leaves_low, leaves_high)
   let (bl, bh) = lbs <| (leaves_low, leaves_high)
   match op {
-    BAdd => if sum_in_word(al, bl) && sum_in_word(ah, bh) { [LSpan(al + bl, ah + bh)] } else { leaves_any_word },
+    BAdd => if sum_in_word(al, bl) && sum_in_word(ah, bh) { [LSpan(al + bl, ah + bh)] } else { leaves_unknown },
     BSub => if diff_in_word(al, bh) && diff_in_word(ah, bl) {
       [LSpan(al - bh, ah - bl)]
     } else {
-      leaves_any_word
+      leaves_unknown
     },
     BMul => if products_in_word(al, ah, bl, bh) {
       [LSpan(least_product(al, ah, bl, bh), greatest_product(al, ah, bl, bh))]
     } else {
-      leaves_any_word
+      leaves_unknown
     },
     BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => leaves_unknown,
   }
 }
-
-// A sum, a difference or a product that can wrap: a computed word nothing
-// bounds. It is a span, where a value out of sight is not, because a claim
-// about a computed word can still be proven on its path through a
-// parameter's precondition, and a span says the proof stood on more than
-// constants, so the callee's guard is charged where the claim stands
-// (`leaf_unproven`).
-let leaves_any_word = [LSpan(i32_min(), int_max_word())]
 
 // Whether `a + b` is the number it denotes: the sum neither passes the
 // greatest word nor falls below the least.
@@ -1862,16 +1901,47 @@ fn leaf_may(leaf) = match leaf {
 // x, and an open end, the least or the greatest word, reaches only itself.
 fn bound_reaches(op, x, v) = match v {
   LVInt(n) => match op {
-    BGe => proven_if(leaf_low(x) >= n),
-    BGt => proven_if(leaf_low(x) > n),
-    BLe => proven_if(leaf_high(x) <= n),
-    BLt => proven_if(leaf_high(x) < n),
+    BGe => leaf_proves(x, leaf_low(x) >= n),
+    BGt => leaf_proves(x, leaf_low(x) > n),
+    BLe => leaf_proves(x, leaf_high(x) <= n),
+    BLt => leaf_proves(x, leaf_high(x) < n),
     BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BAnd | BOr | BConcat => None,
   },
   LVFloat(_) | LVString(_) | LVBool(_) => None,
 }
 
-fn proven_if(held) = if held { Some(true) } else { None }
+// A fact one of a leaf's ends proves, with what that end stands on said as
+// the proof is made.
+fn leaf_proves(leaf, held) = if held {
+  leaf_stands(leaf)
+  Some(true)
+} else {
+  None
+}
+
+// A fact a parameter's precondition proves, said as the proof is made.
+fn stood_if(b, held) = if held {
+  stands_on(b)
+  Some(true)
+} else {
+  None
+}
+
+// What a leaf's ends stand on: a parameter's precondition, which that
+// parameter's callers owe; a claim owed where it was stated, for a stated
+// return, a let's claim and a computed span; and nothing for a constant, a
+// length or a value out of sight, whose ends are every word's.
+fn leaf_stands(leaf) = match leaf {
+  LParam(b, _) => stands_on(b),
+  LPost(_) => stands_owed(),
+  LSpan(_, _) => stands_owed(),
+  LClaimed(_, beneath) => {
+    stands_owed()
+    leaf_stands(beneath)
+  },
+  LMay(beneath) => leaf_stands(beneath),
+  LPoint(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => (),
+}
 
 fn as_may(leaf) = match leaf {
   LPoint(_) => LMay(leaf),
@@ -2716,7 +2786,7 @@ fn leaf_exclude_step(k, acc, leaf) = and_decide(acc, leaf_excludes(k, leaf))
 
 fn leaf_excludes(k, leaf) = match leaf {
   LPoint(v) => not_decide(litval_eq(v, LVInt(k))),
-  LParam(_, c) => if contract_excludes(c, k) { Some(true) } else { None },
+  LParam(b, c) => stood_if(b, contract_excludes(c, k)),
   LLength => if k < 0 { Some(true) } else { None },
   LClaimed(_, beneath) => leaf_excludes(k, beneath),
   LMay(beneath) => proves_only(leaf_excludes(k, beneath)),
@@ -2796,8 +2866,12 @@ fn int_max_word() with Pure = 2147483647
 // was made.
 fn value_carries_alias(h, aname: String) = leaves_carry_alias(value_leaves(h, NoSelf), aname)
 
-fn leaves_carry_alias(leaves, aname: String) =
-  len(leaves) > 0 && all(leaf_carries(aname, ??), leaves)
+fn leaves_carry_alias(leaves, aname: String) = if len(leaves) > 0 && all(leaf_carries(aname, ??), leaves) {
+  leaves |> each(leaf_stands)
+  true
+} else {
+  false
+}
 
 // A value's leaves read at a path into it, along the edges the part was
 // carried on: each tail of a join, the node a construction in sight placed
@@ -3118,29 +3192,24 @@ fn ty_names_alias(ty, aname: String) = match ty {
   | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => false,
 }
 
-// What a held claim STANDS ON, for the row it guards: the parameters whose
-// preconditions it leaned on (the guard travels to them), and whether it
-// leaned on anything that is not a row fact — a postcondition still owed,
-// or a computed span — in which case the guard is paid where the claim stands.
-fn leaves_params(leaves) = leaves |> flat_map(leaf_param)
-
-fn leaf_param(leaf) = match leaf {
-  LParam(b, _) => [b],
-  LClaimed(_, beneath) => leaf_param(beneath),
-  LMay(beneath) => leaf_param(beneath),
-  LPoint(_) | LPost(_) | LSpan(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => [],
+// What the proofs made under one install stood on, asked by the reader that
+// settles the row a held claim guards: the parameters whose preconditions a
+// proof stood on, and whether one stood on a claim still owed where it was
+// stated.
+effect Stood {
+  stood_params() -> [Int]
+  stood_owed() -> Bool
 }
 
-fn leaves_unproven(leaves) = leaves |> any(leaf_unproven)
-
-// A let's claim is owed where the let stands, and nothing says the claim
-// decided here did not stand on it.
-fn leaf_unproven(leaf) = match leaf {
-  LPost(_) => true,
-  LSpan(_, _) => true,
-  LClaimed(_, _) => true,
-  LMay(beneath) => leaf_unproven(beneath),
-  LPoint(_) | LParam(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
+// One reader's install around one claim. It keeps what each proof made
+// under it says it stands on, and answers the reader. No other handler
+// answers `Stood`, so a reader that asks without this install does not
+// build.
+handler noting_stood with params = [], owed = false {
+  stands_on(b) => resume() with params = [b] ++ params,
+  stands_owed() => resume() with owed = true,
+  stood_params() => resume(params),
+  stood_owed() => resume(owed),
 }
 
 // A LABEL is an op named in a refinement over `self`: under `effect Trust {

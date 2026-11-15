@@ -1,0 +1,15 @@
+// check: refuse E_EffectMismatch
+// `at` reads its list with no check, because its index states that it is
+// never negative. `via` hands `at` its second parameter, and the claim that
+// this index is never negative is proven there from two things: the test
+// that the first parameter is no greater, and the first parameter's own
+// precondition. So `via` leans on its first parameter's precondition, and a
+// caller that does not prove it can trap. `main` hands that parameter a
+// number nothing keeps at or above zero, so its `!Trap` is refused.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn via(q: ValidOffset, p) = if q <= p { at([4, 5], p) } else { 0 }
+
+fn main(argv) with !Trap = via(len(argv) - 1000000, len(argv) - 999999)

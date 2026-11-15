@@ -540,7 +540,8 @@ fn arm_tails(h) = match value_tails(h) {
 }
 
 // No state entered: the root every value walk runs under, installed where
-// the graph is.
+// the graph is. What a proof says it stands on is kept by the reader that
+// asked for the proof, and by nobody here.
 handler no_state_walked {
   walking_state(_) => resume(false),
   walked_arg(_, _) => resume(None),
@@ -548,6 +549,8 @@ handler no_state_walked {
   walk_enter(_) => resume(None),
   walk_unsettled() => resume(),
   walk_linked() => resume(false),
+  stands_on(_) => resume(),
+  stands_owed() => resume(),
 }
 
 // Inside state `b`'s writers: `b` answers yes, and any other state is asked

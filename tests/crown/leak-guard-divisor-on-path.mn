@@ -1,0 +1,11 @@
+// check: refuse E_EffectMismatch
+// `inv` divides by its second parameter, and the division is proven total
+// on its path: the first parameter is at least 1 by its precondition, and
+// the test says the second is no less. So `inv` leans on its first
+// parameter's precondition. `main` hands that parameter zero, which nothing
+// proves positive, and a divisor of zero, so its `!Trap` is refused.
+type Positive = Int where 0 < self
+
+fn inv(d: Positive, e) = if d <= e { 100 / e } else { 0 }
+
+fn main(argv) with !Trap = inv(len(argv) - len(argv), 0)

@@ -514,33 +514,39 @@ fn partiality_gate(handle, op, lh, rh, span: ValidSpan) = match op {
 fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_deep(TVar(lh))) {
   ()
 } else {
-  match verify_claim(
+  verify_claim(
     handle,
     span,
     PTotalDiv(op, lh, rh),
     Located(span, Inferred("integer division is partial"))
-  ) {
-    Some(held) => if held {
-      // A precondition proved it total: the trap is what that parameter
-      // now guards, paid by any caller whose argument does not prove it.
-      lean_trap(rh)
-      lean_trap(lh)
-    } else {
-      ()
-    },
-    None => inf_add_row_at(handle, trap_row()),
-  }
+  ) |> trap_where_stood(handle) ~> noting_stood
+  ()
 }
 
-// The parameters whose preconditions a held row fact leaned on take the row
-// into their guards (verify.mn's leaves: a parameter's precondition is the
-// one assumption a row fact may stand on, and its callers discharge it).
-fn lean_guards(h, row) = leaves_params(value_leaves(h, NoSelf)) |> each(carry_guard(row, ??))
+// A partial operation's Trap, by the verdict of the claim that it is total.
+// A proven claim leaves the Trap where its proof stood (`guard_stood`), an
+// open one charges it at the site, and a refuted one is reported where the
+// claim was raised. The answer is whether the claim held.
+fn trap_where_stood(handle, verdict) = match verdict {
+  Some(held) => {
+    if held { guard_stood(trap_row(), handle) } else { () }
+    held
+  },
+  None => {
+    inf_add_row_at(handle, trap_row())
+    false
+  },
+}
 
-// A claim that holds and would trap where it failed leaves the Trap with
-// the parameters its proof stood on: a division's operands, a read's index,
-// a cut's bounds.
-fn lean_trap(h) = lean_guards(h, trap_row())
+// The row a held claim guards, settled by what the claim's proof said it
+// stood on (`Stands`, read here from the install around the claim). A proof
+// that stood on a claim still owed pays the row where the claim stands. Any
+// other proof passes the row to the guard of each parameter whose
+// precondition it stood on, and that parameter's callers pay it where their
+// argument does not prove the precondition. A proof that stood on neither
+// owes nothing.
+fn guard_stood(row, at) =
+  if stood_owed() { pay_row(row, at) } else { stood_params() |> each(carry_guard(row, ??)) }
 
 // The one-effect rows the judgment charges by name, each built once and
 // shared by every site that charges it (`vocab_handle`).
@@ -5526,20 +5532,21 @@ fn infer_seq_op(cname, fh, args, handle, answer, span: ValidSpan) = {
 // claim is owed at the call, where `mentl check` prints it and the settle
 // asks it again (`owe_face_claim`).
 fn proven_form(cname: String, args, call, span: ValidSpan) = match face_claim(cname, args) {
-  Some(pred) => match predicate_decide(pred) {
-    Some(true) => {
-      // The Trap stays with the parameters whose preconditions the proof
-      // stood on, paid by any caller whose argument does not prove them,
-      // as a proven division's operands do (`partiality_claim`).
-      lean_face_operands(args)
-      match proven_twin(cname) {
-        Some(twin) => env_resolve_linked(twin),
-        None => None,
-      }
-    },
-    Some(false) | None => owe_face_claim(pred, call, span),
-  },
+  Some(pred) => face_form(cname, pred, call, span) ~> noting_stood,
   None => None,
+}
+
+fn face_form(cname: String, pred, call, span: ValidSpan) = match predicate_decide(pred) {
+  Some(true) => {
+    // The Trap stays where the proof stood, as a proven division's does
+    // (`trap_where_stood`).
+    guard_stood(trap_row(), call)
+    match proven_twin(cname) {
+      Some(twin) => env_resolve_linked(twin),
+      None => None,
+    }
+  },
+  Some(false) | None => owe_face_claim(pred, call, span),
 }
 
 // A face claim the fragment refutes or leaves open is written at the call:
@@ -5550,21 +5557,6 @@ fn proven_form(cname: String, args, call, span: ValidSpan) = match face_claim(cn
 fn owe_face_claim(pred, call, span: ValidSpan) = {
   verify_claim(call, span, pred, Located(span, Inferred("a sequence primitive's precondition")))
   None
-}
-
-// The operands a proven face claim stood on, in the shapes `face_claim`
-// builds the claim from: a read's list and index, a cut's list and bounds.
-fn lean_face_operands(args) = match args {
-  [xs, i] => {
-    lean_trap(xs)
-    lean_trap(i)
-  },
-  [xs, start, end] => {
-    lean_trap(xs)
-    lean_trap(start)
-    lean_trap(end)
-  },
-  [] | [_] | [_, _, _, _, ..._] => (),
 }
 
 // The claim a primitive's face states of the arguments of a call with every
@@ -9516,24 +9508,15 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   // read is the unchecked traversal and charges no Trap; refuted, the read
   // is refused at the site; open, the checked read's own row carries the
   // Trap.
-  let proven = match verify_claim(handle, span, PInBounds(rh, ih), Located(span, Inferred("a sequence read is partial"))) {
-    Some(held) => held,
-    None => false,
-  }
   // An open claim is the site's own row fact, as an open division's is: the
   // Trap is charged here, read off the claim, never only through whichever
   // callee the link happens to carry (a program judged with no library
   // still traps at the read), and the note is the verdict the lowering reads
   // to choose the read it emits (`claim_open_at`). A proven claim leaves the
-  // Trap with the parameters whose preconditions the proof stood on, paid by
-  // any caller whose argument does not prove them, as a proven division's
-  // operands do (`partiality_claim`).
-  if proven {
-    lean_trap(ih)
-    lean_trap(rh)
-  } else {
-    inf_add_row_at(handle, trap_row())
-  }
+  // Trap where its proof stood, as a proven division's does
+  // (`trap_where_stood`).
+  let proven =
+    verify_claim(handle, span, PInBounds(rh, ih), Located(span, Inferred("a sequence read is partial"))) |> trap_where_stood(handle) ~> noting_stood
   // The sugar calls what its lowering performs: `xs[i]` emits the read the
   // claim's verdict chose, so the node is linked to it and charges its
   // declared row (`sugar_calls`). The tuple-const route stays chargeless:
@@ -15822,44 +15805,27 @@ fn guards_nothing_row(row) = match row {
 
 // A guarded precondition's claim at a call: inferred onto a parameter
 // handed straight through, raised and decided, and the row it guards paid
-// at the call unless the claim held STRICTLY — on constants, lengths and
-// preconditions, which the guard then travels to (`carry_guard`).
+// at the call unless the claim held, where the row goes where the claim's
+// proof stood (`guard_stood`). A structured contract's parts are claimed
+// under the same install, so the row follows what every part's proof stood
+// on. A guard that owes nothing asks nothing of the proof, so the claim is
+// raised with no install around it.
 fn discharge_arg(p, ah, span: ValidSpan, call_h) = {
   let contract = param_ty(p)
   learn_precondition(ah, contract)
-  let verdict = claim_refinement(contract, ah, span)
-  pay_guard(param_row(p), contract, verdict, ah, call_h)
+  if guard_owes_nothing(param_row(p)) {
+    claim_refinement(contract, ah, span)
+    ()
+  } else {
+    claim_refinement(contract, ah, span) |> pay_guard(param_row(p), contract, call_h) ~> noting_stood
+  }
 }
 
-fn pay_guard(row, contract, verdict, ah, call_h) = if guard_owes_nothing(row) {
-  ()
-} else if claim_held(verdict) && ty_carries_refinement(contract) {
-  let leaves = claim_leaves(contract, ah)
-  if leaves_unproven(leaves) {
-    pay_row(row, call_h)
-  } else {
-    leaves_params(leaves) |> each(carry_guard(row, ??))
-  }
+fn pay_guard(row, contract, call_h, verdict) = if claim_held(verdict) && ty_carries_refinement(contract) {
+  guard_stood(row, call_h)
 } else {
   pay_row(row, call_h)
 }
-
-// What a held claim stood on: the value's own leaves, and under a structured
-// contract every claimed part's — a part built in sight at each node it can
-// be, a part out of sight off the whole's leaves at the part. A structure
-// literal's own leaf is unknown, and reading it alone let a claim on its
-// parts pay no guard and carry none.
-fn claim_leaves(contract, h) =
-  value_leaves(h, NoSelf) ++ (value_parts(contract) |> flat_map(part_claim_leaves(h, ??)))
-
-fn part_claim_leaves(h, part) = match part {
-  (step, pt) => match part_read(h, step, claim_leaves_read(pt, ??)) {
-    Some(leaves) => leaves,
-    None => path_leaves(h, [step]),
-  },
-}
-
-fn claim_leaves_read(pt, n) = Some(claim_leaves(pt, n))
 
 // A guard's row as a call pays it: what its cell already holds is charged
 // at the call as closed names, and every cell still open — a declaration
@@ -15907,11 +15873,12 @@ fn claim_held(verdict) = match verdict {
 // parameter's fact owes; the exit writes the sum into the guard cell. A
 // parameter with no precondition is owed nothing by its callers, so a claim
 // that held without one stood on something else there, and nothing is
-// written.
+// written. Nor is a row the parameter already owes written again: every
+// proven read in a function passes the same Trap to the same parameter.
 fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
   Some(fact) => match fact {
     ParamFact(f) => match f.pre {
-      Stated(_) | Learned(_) => graph_binder_note(param_h, ParamFact({...f, owes: row_join(f.owes, row)})),
+      Stated(_) | Learned(_) => f.owes |> row_join(row) |> owes_more(param_h, f),
       Unstated | Unrefined => (),
     },
     PartFact(_) => (),
@@ -15919,6 +15886,11 @@ fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
   },
   None => (),
 }
+
+// A parameter's fact written with what it now owes, where that is more than
+// it owed.
+fn owes_more(param_h, f, owes) =
+  if owes == f.owes { () } else { graph_binder_note(param_h, ParamFact({...f, owes})) }
 
 // An UNANNOTATED parameter handed straight to a refined one LEARNS that
 // precondition: its own callers owe it from then on, and the claim here is
@@ -16935,14 +16907,15 @@ fn provided_claims(demand, span: ValidSpan, ns) =
 
 // A demand decided against one value handed, at that value's node: the
 // claim's own verdict, then what it stood on.
-fn provided_claim(demand, span: ValidSpan, n) = match apply_refinement_constraint(demand, n, span) {
-  Some(held) => if held {
-    let leaves = value_leaves(n, NoSelf)
-    if leaves_unproven(leaves) || len(leaves_params(leaves)) > 0 { PvHeld } else { PvStrict }
-  } else {
-    PvOpen
-  },
-  None => PvOpen,
+fn provided_claim(demand, span: ValidSpan, n) =
+  apply_refinement_constraint(demand, n, span) |> provided_verdict ~> noting_stood
+
+// A claim that held on constants and lengths alone is strict. One whose
+// proof stood on a precondition or on a claim still owed is held, and its
+// guard is paid where the function crosses.
+fn provided_verdict(verdict) = match verdict {
+  Some(true) => if stood_owed() || len(stood_params()) > 0 { PvHeld } else { PvStrict },
+  Some(false) | None => PvOpen,
 }
 
 fn provided_meet(a, b) = match a {

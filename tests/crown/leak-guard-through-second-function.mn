@@ -1,0 +1,18 @@
+// check: refuse E_EffectMismatch
+// The lean passes through two functions and a let. `via` proves the index
+// it hands `at` through its first parameter's precondition, with the index
+// bound by a let on the way. `outer` hands its own first parameter straight
+// to `via`, so it leans on that precondition in turn. `main` hands it a
+// number nothing keeps at or above zero, so its `!Trap` is refused.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn via(q: ValidOffset, p) = {
+  let r = p
+  if q <= r { at([4, 5], r) } else { 0 }
+}
+
+fn outer(a: ValidOffset, b) = via(a, b)
+
+fn main(argv) with !Trap = outer(len(argv) - 1000000, len(argv) - 999999)

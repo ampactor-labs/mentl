@@ -1,0 +1,13 @@
+// check: refuse E_EffectMismatch
+// A read written with brackets and one written as a call of `list_index`,
+// each proven in bounds on its path through the first parameter's
+// precondition. `main` hands that parameter a number nothing keeps at or
+// above zero, so its `!Trap` is refused.
+type ValidOffset = Int where 0 <= self
+
+fn pick(q: ValidOffset, p) = if q <= p && p < 2 { [4, 5][p] } else { 0 }
+
+fn take_at(q: ValidOffset, p) = if q <= p && p < 2 { list_index([4, 5], p) } else { 0 }
+
+fn main(argv) with !Trap =
+  pick(len(argv) - 1000000, len(argv) - 999999) + take_at(len(argv) - 1000000, len(argv) - 999999)

@@ -1,0 +1,9 @@
+// check: accepted
+// The twin of leak-guard-divisor-on-path.mn. `main` hands the parameter
+// that `inv` leans on a constant that is positive, so the division cannot
+// trap.
+type Positive = Int where 0 < self
+
+fn inv(d: Positive, e) = if d <= e { 100 / e } else { 0 }
+
+fn main(argv) with !Trap = inv(1, len(argv))

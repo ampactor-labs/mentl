@@ -1,0 +1,14 @@
+// check: accepted
+// A let that claims one refinement holds a constant, and the constant
+// itself proves the claim `at` makes of its index, so the call leans on
+// nothing and owes nothing.
+type ValidOffset = Int where 0 <= self
+
+type Small = Int where self <= 100
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn main(argv) with !Trap = {
+  let k: Small = 1
+  at([4, 5], k)
+}

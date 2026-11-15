@@ -2046,8 +2046,8 @@ type Leaf
   | LPost(Ty)
   // a word between two ends, where an end nothing bounds is the least or the
   // greatest word: a sum, a difference or a product between the corners of
-  // its operands' spans, every word where a corner can wrap, and a word an
-  // instruction bounds exactly, a masked or a shifted one
+  // its operands' spans, where no corner can wrap, and a word an instruction
+  // bounds exactly, a masked or a shifted one
   | LSpan(Int, Int)
   // len / byte_len: a length, never below zero
   | LLength
@@ -2107,6 +2107,19 @@ effect StateWalk {
   // runs, since the in-edge column is still being written, and true only
   // under the handler a reader installs once the judgment has ended
   walk_linked() -> Bool
+}
+
+// What a proof stands on, said by the proof where it reads it. A parameter's
+// precondition is assumed inside its function and owed by every caller
+// (`stands_on`, with the parameter's binder). A claim still owed where it was
+// stated is no fact yet: a callee's stated return, a let's own claim, a span
+// computed from an operand (`stands_owed`). The reader that settles the row a
+// held claim guards installs a handler around the claim that collects both
+// (src/verify.mn), and the root every value walk runs under keeps nothing
+// (src/graph.mn).
+effect Stands {
+  stands_on(b: Int)
+  stands_owed()
 }
 
 // Where a parameter's precondition comes from. An unannotated parameter

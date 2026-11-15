@@ -1,0 +1,12 @@
+// check: accepted
+// The twin of leak-guard-through-other-parameter.mn. `via` leans on its
+// first parameter's precondition to prove the index it hands `at`, and here
+// `main` hands that parameter a length, which is never negative, so nothing
+// can trap.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn via(q: ValidOffset, p) = if q <= p { at([4, 5], p) } else { 0 }
+
+fn main(argv) with !Trap = via(len(argv), len(argv) + 1)

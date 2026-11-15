@@ -1,0 +1,16 @@
+// check: accepted
+// Nothing here leans on a precondition. Each function's own test proves the
+// index is at least zero, so a caller is trap-free whatever it hands in,
+// and `main` hands in numbers that do not prove the parameters' claims.
+type ValidOffset = Int where 0 <= self
+
+type Small = Int where self <= 100
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn tested(q: Small, p) = if 0 <= q && q <= p { at([4, 5], p) } else { 0 }
+
+fn direct(i: Small) = if 0 <= i && i < 2 { [4, 5][i] } else { 0 }
+
+fn main(argv) with !Trap =
+  tested(len(argv) - 1000000, len(argv) - 999999) + direct(len(argv) - 1000000)
