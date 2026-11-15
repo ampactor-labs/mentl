@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `d95430724348`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `7b55b5ba47c5`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -52,11 +52,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   2026-11-14. F4: a sum that can wrap proves nothing. G1: a proof says
   what it stood on, so the guard a held claim carries goes to each
   parameter whose precondition the proof needed, and `!Trap` is refused
-  where a caller does not prove one. The next landing is F6: an alias
-  may name another alias, which the pin refuses and which T1a's form
-  needs (§7, "What a person meets"). Then T1a, the lexer's twelve open
-  position claims stated where the positions are made, and the gates
-  (P3, P4, P7 and P5).
+  where a caller does not prove one. F6 followed on 2026-11-15: an alias
+  may name another alias in any order of declaration, which T1a's form
+  needs. The next landing is T1a, the lexer's twelve open position claims
+  stated where the positions are made. Then the gates (P3, P4, P7 and
+  P5).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -66,9 +66,10 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   properties of §4⑭ waits.
 - Open decisions of Morgan's: the one-line license statement, whether
   `??` in a constructor's field is a value hole (§11.B, Box 2), and
-  whether an alias that names itself, `type Tree = [Tree]`, is a type or
-  is refused (§7, "What a person meets"; F6 leaves it refused as it is
-  today until he says).
+  whether an alias that names itself, `type Tree = [Tree]`, means a
+  recursive type. It is refused as an infinite type since 2026-11-15
+  (tests/micros/mn-alias-names-itself.mn), and stays refused until he
+  says.
 
 ---
 
@@ -1150,32 +1151,13 @@ accepts each program and `mentl run` shows the break.
 - An effect operation's parameters have no names. A type name that
   resolves nowhere is refused as arithmetic on it. A label on a sequence
   primitive's argument is refused as unknown (§11.3, §11.5).
-- An alias that names another alias is refused where a signature uses
-  it. After `type Meters = Int` and `type Far = Meters`, `fn far(m: Int)
-  -> Far = m` is told `E_TypeMismatch error: Meters vs Int`. So is an
-  alias of a list or a tuple that holds one, `type Pair = (Meters, Int)`,
-  as a return or a parameter. The same type written in place is accepted,
-  and so is the same alias on a `let`. The cause is an order: every alias
-  is registered before any signature is read (`pre_register_decls`,
-  src/infer.mn), but the names inside an alias's own type are resolved
-  only when the judgment reaches the alias's statement, and a signature
-  read in between takes the unresolved name for the bare name
-  (`named_type`). A probe compiler that resolved each alias's names where
-  the aliases are registered accepted ten such programs, a refinement
-  over an alias among them, and still refused three aliases written
-  outermost first, since an alias is handed out with whatever its inner
-  names had resolved to by then. An alias that names itself, `type Tree =
-  [Tree]`, is refused today with the same message, and that probe
-  accepted it; whether it is a type is not decided (scratch programs and
-  a probe compiler, 2026-11-14; §11.B, F6).
 - An alias of an applied sum type is refused where a pattern takes it
   apart: over `type MaybeInt = Option(Int)`, `fn or_zero(m: MaybeInt) =
   match m { Some(v) => v, None => 0 }` is told `E_TypeMismatch error:
   MaybeInt vs Option(a) — lookup Some`, and `fn some(n: Int) -> MaybeInt
   = Some(n)` is told `Option(Int) vs MaybeInt`, though SYNTAX's "Type
   aliases" says an alias and what it names are interchangeable (a scratch
-  program, 2026-11-15, on pin d95430724348 and on F6's last probe;
-  §11.3).
+  program, 2026-11-15, on pins d95430724348 and 7b55b5ba47c5; §11.3).
 - The verbs' own defects, found by running each one, are listed in §11.5.
 - A tuple pattern written as a parameter of a module-level function builds
   and runs, and its head does not print back as one declaration. `mentl
@@ -1404,7 +1386,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1435,21 +1417,21 @@ leave, and the landing deletes them.
    the same day (pin d95430724348): a proof says what it stood on at the
    step that reads it, and the row a held claim guards goes to each
    parameter whose precondition the proof does not hold without, which
-   closed the false proof that stood first in §7. Then T1a: the lexer
-   positions that come out of a scanner's answer are stated where they
-   are made, which closes the false proof inside the compiler. Measured
-   on pin d95430724348, `mentl check src/lexer.mn` prints twelve open
-   claims `0 <= self` on positions: six on a position taken out of the
-   five-part answer of `scan_string`, `scan_triple_string` or `lex_from`
-   or the pair `scan_ident` answers, five on a position out of
-   `scan_number`'s three constructors, and one on a `let` over
-   `scan_to_eol`'s answer. Two shapes settle such a claim on that pin
-   (scratch programs, 2026-11-14): a refinement on the constructor's
-   field, and a declared return on the scanner. Seven scanners answer the
-   same five parts, and one alias would state that answer once, but the
-   pin refuses an alias that names another alias (§7, "What a person
-   meets"). So F6 is next, before T1a: the names inside an alias are
-   resolved when the alias is first read.
+   closed the false proof that stood first in §7. F6 landed on
+   2026-11-15 (pin 7b55b5ba47c5): an alias may name another alias in any
+   order of declaration, and a refinement inside it keeps its bound where
+   a signature reads it. T1a is next: the lexer positions that come out of
+   a scanner's answer are stated where they are made, which closes the
+   false proof inside the compiler. Measured on pin d95430724348, `mentl
+   check src/lexer.mn` prints twelve open claims `0 <= self` on
+   positions: six on a position taken out of the five-part answer of
+   `scan_string`, `scan_triple_string` or `lex_from` or the pair
+   `scan_ident` answers, five on a position out of `scan_number`'s three
+   constructors, and one on a `let` over `scan_to_eol`'s answer. Two
+   shapes settle such a claim (scratch programs, 2026-11-14): a refinement
+   on the constructor's field, and a declared return on the scanner, which
+   one alias can state once for the seven scanners that answer the same
+   five parts (tests/micros/mn-alias-tuple-keeps-refinement.mn).
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
@@ -1499,8 +1481,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box 3
-is F6.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2009,174 +1990,6 @@ first two.
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
 
-3. **Box 3 · F6 · An alias may name another alias, in any order of
-   declaration.** Written 2026-11-15 from eight probe compilers built in a
-   scratch worktree; every number below is one of their readings or the
-   pin's.
-
-   What a person sees. An alias can be written in terms of another alias,
-   alone or inside a tuple or a list, and used as a return or a parameter,
-   wherever the two are declared:
-
-   ```
-   type Far = Mid
-   type Mid = Meters
-   type Pair = (Far, Int)
-   type Meters = Int
-
-   fn far(m: Int) -> Far = m
-   fn pair(m: Meters) -> Pair = (far(m), 1)
-   ```
-
-   `mentl check` accepts it, and a refinement inside such an alias keeps
-   its bound where a signature reads it: through `type ScanAt =
-   (ValidOffset, Int)` as a scanner's declared return, the position taken
-   out of the answer is proven at least 0. An alias that names itself, or
-   two that name each other, is refused as an infinite type at the name
-   that closes the circle.
-
-   Fails today, on pin d95430724348. `type Meters = Int`, `type Far =
-   Meters`, then `fn far(m: Int) -> Far = m` is told `E_TypeMismatch
-   error: Meters vs Int — return of fn → declared as far`. The same holds
-   for `type Pair = (Meters, Int)` and `type Lane = [Meters]` as a return
-   or a parameter, for a refinement over an alias, and for an alias of a
-   library alias (`type Line = Text` over `type Text = String`). The
-   scanner shape is told `ValidOffset vs Int`. `type Tree = [Tree]` is
-   told `Tree vs [Tree]`, at the signature that uses it.
-
-   The cause. Every alias is registered before any signature is read
-   (`pre_register_alias`, src/infer.mn), but as the type its author wrote,
-   with each name in it a cell that holds the bare name. The names are
-   resolved only when the judgment reaches the alias's own statement. A
-   signature read before that takes the bare name for a nominal type.
-
-   The form, all in src/infer.mn.
-
-   - `pre_register_decls` runs `type_decls_registered(stmts) ~>
-     type_decls_standing` where it ran `refuse_duplicate_type_decls` and
-     `each(pre_register_alias, stmts)`.
-   - `type_decls_registered(stmts)` is two passes over the statements:
-     `stmts |> each(type_decl_claimed)`, then `stmts |>
-     each(alias_registered)`. The claims come first, so every alias is
-     known before any is registered.
-   - `type_decl_claimed(h)` claims each type head's name once and refuses a
-     second claim with `EDuplicateTypeName`, as the index walk it replaces
-     did. It records where each declaration stands: `AliasWaiting(node,
-     ty)`, `RefineWaiting(node, base, pred)`, or `TypeSettled` for a
-     nominal type and a named row. A named row is registered here, as it
-     was.
-   - `effect TypeDeclStanding { type_decl_at(name: String) ->
-     Option(TypeDeclAt), type_decl_now(name: String, at: TypeDeclAt) }`
-     and `handler type_decls_standing with standing = smap_new()` hold
-     where each declaration stands for the extent of the registration. The
-     standing is the walk's dynamic state, held by a handler as the value
-     walk holds its own (`walk_entries`).
-   - `alias_registered(node)` registers the alias a statement declares,
-     through `alias_named_registered(name, at)`. A waiting alias is marked
-     `AliasResolving`, the aliases its written names denote are registered
-     first (`named_first`, which reads each name's arguments in turn),
-     then the alias itself is registered as its type read by
-     `quantify_ctor_ty`, every name in it already what the name denotes,
-     and it is marked `TypeSettled`. A refinement is registered as
-     `TAlias(name, TRefined(base, pred))` around its base read the same
-     way (`refined_alias`). A name that reaches an alias still
-     `AliasResolving` closes a circle and is refused there with
-     `EOccursCheck`.
-   - `named_type` hands out the registered alias as it stands. Its read of
-     the alias's written rows and its `chase_deep` of the alias's type on
-     every read leave, since registration already read both.
-   - The main walk's arm for a transparent alias links each written name to
-     its declaration and no longer reads the type (`quantify_ctor_ty`).
-
-   Every fact it reads, and what carries it.
-
-   - The type an alias declares, with each name in it a cell linked to the
-     declaration it denotes. The parse writes the statement and its cells
-     (`written_type_name`, src/parser.mn), and the main walk links each
-     cell (`link_written`). On the pin, over `type Meters = Int` and `type
-     Far = Meters`, `mentl query FILE "refs of Meters"` answers the one
-     written name inside `Far` ("at …:4:12-4:18 annotation"), and `mentl
-     where FILE Far` answers `type Far = Meters at …:4`.
-   - What a name denotes when the alias is registered: the env's entry for
-     the name (§4⑧'s face, held as an env entry), read by `type_decl_named`
-     as every signature reads a type name today. Names of nominal types
-     and named rows are registered later (`pre_register_stmt`), and a
-     nominal type is its bare name either way, so an alias that names one
-     reads the same before and after.
-   - Where each alias of these statements stands. Nothing carries it after
-     the registration, and nothing should: it is the walk's own state and
-     leaves with the handler's extent.
-
-   What leaves. `refuse_duplicate_type_decls`, an index walk over the
-   statements; `pre_register_alias`; `read_written_rows`, whose one reader
-   was `named_type`'s per-read pass; and the main walk's second reading of
-   each alias's type.
-
-   Edge cases, each run as a program on the pin and on the last probe.
-
-   - Aliases declared in the reverse of the order they depend on, four
-     deep, with the functions that use them written first: refused on the
-     pin, accepted on the probe.
-   - A refinement whose base is an alias, and an alias of a tuple holding
-     that refinement: refused on the pin, accepted on the probe.
-   - An alias that names an alias of the library: refused on the pin,
-     accepted on the probe, and the program runs to its exit.
-   - A function declared to answer an alias of an alias that answers a
-     string: refused on both, with `E_TypeMismatch`.
-   - `type Tree = [Tree]`: refused on both, now as `E_OccursCheck error:
-     infinite type: Tree occurs in Tree` at the name in its own
-     declaration. Whether such a declaration means a recursive type is
-     Morgan's to decide, and F6 keeps it refused.
-   - Two aliases that name each other: refused on both, now with
-     `E_OccursCheck` where the second name is written, beside a type
-     mismatch at the use that follows from it.
-
-   Refuses, and how. `E_OccursCheck` at the written name that closes a
-   circle of aliases. Every other refusal is the judgment's as before.
-
-   Left alone. An alias of an applied sum type, `type MaybeInt =
-   Option(Int)`, taken apart by `Some(v)`, is refused on the pin and on
-   the probe with `MaybeInt vs Option(a)` (§7). A record literal returned
-   where a nominal record is declared is refused with plain `Int` fields
-   too, so it is no matter of aliases. The registered alias holds the
-   fresh variables its lowercase names were read as, shared by every
-   reader, as the registered scheme of a nominal type does.
-
-   What pays for its code. Measured on the last probe with `MENTL_BOOT=…
-   mentl verify`: 37 bounds hold, and five counts fall. Places that can
-   trap with no claim go from 3,150 to 3,146, values the memory walk
-   cannot place from 32,050 to 32,046, claims open at explicit calls from
-   649 to 648, index walks from 372 to 371, and roster arms from 1,348 to
-   1,347.
-
-   What it costs, from `bash tools/march.sh` on the last probe: line peak
-   286,961 KB against the pin's 287,059 KB compiling the same source, the
-   journal's high-water equal at 13,606 entries, the fixed point holding,
-   and the m3 leg at 19.85 s against 20.10 s.
-
-   How the form was found. Three forms were measured before this one.
-   - Binding each written name's cell to the alias it denotes, and reading
-     through the cells, accepted every order of declaration. It lost the
-     refinement inside an alias: a cell holds a type's shape, with any
-     refinement stripped (`shape_of`, src/types.mn), so the scanner's
-     claim stayed pending. A refinement is a fact about a value, and the
-     alias has to be registered as one.
-   - Registering in dependency order with the standing threaded through
-     every function as a map answered every program, and left 17 more
-     values the memory walk cannot place. Each function answered the map,
-     and each read of that answer counted.
-   - With `named_type`'s per-read pass and `read_written_rows` gone, 10
-     remained. Holding the standing in a handler brought it to 4 under.
-
-   Proves it. Five fixtures in tests/micros: `mn-alias-names-alias.mn`
-   (`// expect: 7`), `mn-alias-tuple-keeps-refinement.mn` (`// check:
-   clean`), `mn-alias-names-itself.mn` and `mn-alias-cycle.mn` (`//
-   expect: refuse E_OccursCheck`), and `mn-alias-names-alias-wrong.mn`
-   (`// expect: refuse E_TypeMismatch`). On the pin four of the five fail.
-   On the last probe the micro battery answers 804 of 804, the crown 203
-   of 203, frontier 219 of 219, syntax 21 of 21, proposals 35 of 35 and
-   teach 24 of 24.
-
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
 above under the letter at its start, and is cut into boxes when its turn
@@ -2229,14 +2042,6 @@ comes.
   span it is said at, so a place finds its own claims by comparing spans,
   and two nodes that share a span cannot be told apart. The claim's span
   becomes that node, read where the claim is printed (§11.10).
-- F6. The names inside an alias are resolved when the alias is first
-  read, so an alias may name another alias in any order of declaration,
-  alone or inside a list or a tuple, wherever a type is written. Red
-  today: `type Meters = Int`, `type Far = Meters`, then `fn far(m: Int)
-  -> Far = m` is refused with `Meters vs Int` (§7, "What a person
-  meets"). Its box says how an alias that names itself is told apart and
-  what it is told, which is a question about the language for Morgan
-  where SYNTAX's "Type aliases" does not answer it.
 - R3. The host's clock, randomness and sleep are real (§11.11). With it comes
   the first run of the whole medium on a small Linux machine: the engine's
   probe (`bash tools/wasmtime-get.sh probe <engine>`), the compiler
@@ -2501,6 +2306,11 @@ guard cannot say that either of two preconditions would do. The first
 two close when a claim's verdict and what it stood on are facts at its
 node, read by the leaf that stands under it; the third needs a guard
 that names a choice of parameters.
+An alias is registered as the type it declares with every name in it
+already read (built 2026-11-15), in the order its names depend on, so an
+alias may name another alias and a refinement inside it keeps its bound
+where a signature reads it. An alias of an applied sum type is still
+refused where a pattern takes it apart (§7).
 The four sequence primitives' face carries parameters with no names, so
 `slice([1, 2, 3], start = 0, end = 2)` is refused with "no parameter
 named `start` on `slice`" while `mentl where` prints the declaration's

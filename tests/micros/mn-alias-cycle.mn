@@ -1,0 +1,10 @@
+// expect: refuse E_OccursCheck
+// Two aliases that name each other have no finite expansion either, and the
+// circle is refused as an infinite type where its second name is written.
+type Far = Near
+
+type Near = Far
+
+fn far(m: Far) = 1
+
+fn main() = far(1)

@@ -1,0 +1,25 @@
+// expect: 7
+// An alias may name another alias, in any order of declaration, alone or
+// inside a tuple or a list, as a return or as a parameter. `Far` is
+// declared before the alias it names, and `Meters` last of all.
+type Far = Mid
+
+type Mid = Meters
+
+type Pair = (Far, Int)
+
+type Lane = [Mid]
+
+type Meters = Int
+
+fn far(m: Int) -> Far = m
+
+fn pair(m: Meters) -> Pair = (far(m), 1)
+
+fn first(p: Pair) = match p {
+  (a, _) => a,
+}
+
+fn lane(m: Mid) -> Lane = [m, m]
+
+fn main() = first(pair(4)) + len(lane(2)) + 1

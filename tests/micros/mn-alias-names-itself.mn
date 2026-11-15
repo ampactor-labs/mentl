@@ -1,0 +1,10 @@
+// expect: refuse E_OccursCheck
+// An alias and the type it names are interchangeable, so an alias that
+// names itself has no finite expansion: `Tree` would be a list of itself
+// without end. It is refused as an infinite type where the name closes the
+// circle.
+type Tree = [Tree]
+
+fn leaves(t: Tree) = len(t)
+
+fn main() = leaves([])

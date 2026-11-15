@@ -1087,21 +1087,15 @@ fn refined_param(name, refinement, guards) = match quantify_ctor_ty(TName(refine
   (ty, _) => TParam(name, ty, Unmarked, Unmarked, None, guards),
 }
 
-// Two phases, and the order is load-bearing. Aliases are pure env writes
-// with no body dependence — pre-pass citizens — so they register FIRST,
-// before any fn signature quantifies its params, a primitive's face among
-// them (`register_primitives`). A fn used before its
-// alias is declared (`fn f(span: ValidSpan)` in parser.mn precedes
-// `type ValidSpan` in types.mn — src/ sorts before types.mn, which sorts
-// last in the concatenated wheel) then reads the LIVE alias edge instead
-// of baking a bare nominal TName that the main walk can never refine
-// (build_param_types re-resolves an alias name like Vs to TAlias(Vs, TRefined(Int, _)) and
-// unify(bare-TName Vs, Int) floors at the leaf — the `Span vs ValidSpan`
-// / `Int vs ValidOffset` class, 362 census errors, Carried-Truth: the
-// graph drew the alias edge; quantify_ctor_ty re-derived a nominal name).
+// Two phases, and the order matters. Aliases register first, before any
+// function signature reads a type, a primitive's face among them
+// (`register_primitives`), so a function written before the alias it names
+// (`fn f(span: ValidSpan)` in parser.mn, above `type ValidSpan` in
+// types.mn) reads the alias and not a bare nominal name the judgment could
+// never refine. Among themselves, aliases register in the order their names
+// depend on (`alias_registered`), whatever order they are declared in.
 fn pre_register_decls(stmts) = {
-  refuse_duplicate_type_decls(stmts, 0, len(stmts), smap_new())
-  each(pre_register_alias, stmts)
+  type_decls_registered(stmts) ~> type_decls_standing
   register_primitives()
   each(pre_register_effect, stmts)
   // The duplicate-fn refusal is keyed by THIS WALK's own seen-set, never
@@ -1114,66 +1108,117 @@ fn pre_register_decls(stmts) = {
   ()
 }
 
-// One `type` namespace, one walk: every type head — transparent alias,
-// refined alias, ADT/nominal record — claims its name once per registration
-// walk; a second claim reports EDuplicateTypeName at ITS decl span. Without
-// the refusal the decls silently MERGE: each decl's ctors tag from 0, so a
-// cross-tag match returns the wrong arm with zero diagnostics (measured:
-// exit 13 where 99 was meant — Halt, tag 0 of a second Signal decl, matched
-// the first decl's Go arm). Membership is a WALK-LOCAL seen-set, never an
-// env probe: a multi-variant decl registers only its CTOR names, so the env
-// holds nothing under the type name to probe, and the same name legitimately
-// re-registers across walks (the two-pass judge's trial and final; the main
-// walk overwriting pre-registered entries). Registration proceeds past the
-// report — productive under error; the armed class refuses the executable
-// at the gate. Both registration walks run it: the trial's copy is absorbed
-// by diag_quiet, the final's reports for real.
-fn refuse_duplicate_type_decls(stmts, i, n, seen) = if i >= n {
-  ()
-} else {
-  let h = list_index(stmts, i)
-  let span = graph_span_of(h)
-  let claimed = match graph_node_body(h) {
-    NStmt(AliasStmt(name, _)) => type_decl_claim(seen, name, span),
-    NStmt(RefineStmt(name, _, _)) => type_decl_claim(seen, name, span),
-    NStmt(TypeDefStmt(name, _)) => type_decl_claim(seen, name, span),
-    NStmt(RowAliasStmt(name, _)) => type_decl_claim(seen, name, span),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NRow(_) | NParam(_) => seen,
-  }
-  refuse_duplicate_type_decls(stmts, i + 1, n, claimed)
+// One `type` namespace: every type head (a transparent alias, a refinement,
+// a nominal record or sum, a named row) claims its name once per
+// registration, and a second claim is refused with EDuplicateTypeName at
+// its own declaration. Without the refusal two declarations of one name
+// merge silently: each one's constructors are tagged from 0, so a match
+// across them takes the wrong arm with no error (measured: exit 13 where 99
+// was meant). The claims are this registration's own, never the env's: a
+// sum registers only its constructors' names, so the env holds nothing
+// under the type's name, and one name is registered again by each later
+// judgment of the same tree. Registration goes on past the refusal, and the
+// error refuses the executable at the gate.
+//
+// The claims come first, so that every alias these statements declare is
+// known before any alias is registered (`alias_registered`).
+fn type_decls_registered(stmts) = {
+  stmts |> each(type_decl_claimed)
+  stmts |> each(alias_registered)
 }
 
-fn type_decl_claim(seen, name, span) = match smap_get(seen, name) {
-  Some(_) => {
-    report(EDuplicateTypeName(name, span))
-    seen
-  },
-  None => smap_add(seen, name, 1),
-}
-
-// The alias edges — registration's ONE home. The main walk keeps only
-// RefineStmt's predicate Verify obligation.
-fn pre_register_alias(ref node) = match graph_node_body(node) {
-  NStmt(RefineStmt(name, base_ty, pred)) => env_extend(
-    name,
-    Frozen([], TAlias(name, TRefined(base_ty, node_to_predicate(pred)))),
-    Declared(name),
-    FnScheme,
-    node
-  ),
-  NStmt(AliasStmt(name, ty)) => env_extend(name, Frozen([], TAlias(name, ty)), Declared(name), FnScheme, node),
+fn type_decl_claimed(h) = match graph_node_body(h) {
+  NStmt(AliasStmt(name, ty)) => type_decl_claim(name, AliasWaiting(h, ty), h),
+  NStmt(RefineStmt(name, base_ty, pred)) => type_decl_claim(name, RefineWaiting(h, base_ty, pred), h),
+  NStmt(TypeDefStmt(name, _)) => type_decl_claim(name, TypeSettled, h),
   // A named effect row is an ENV fact: the triples stored verbatim,
   // expansion at build_declared_row (Hβ.types.named-effect-rows).
   // The scheme's Ty is nominal only so the entry has a shape; the
   // row alias never participates in type unification.
-  NStmt(RowAliasStmt(name, effs)) => env_extend(name, Frozen([], TName(name, [])), Declared(name), RowAliasKind(effs), node),
+  NStmt(RowAliasStmt(name, effs)) => {
+    env_extend(name, Frozen([], TName(name, [])), Declared(name), RowAliasKind(effs), h)
+    type_decl_claim(name, TypeSettled, h)
+  },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => (),
 }
 
+fn type_decl_claim(name: String, at, h) = match type_decl_at(name) {
+  Some(_) => report(EDuplicateTypeName(name, graph_span_of(h))),
+  None => type_decl_now(name, at),
+}
+
+// Where each type declaration of the statements being registered stands,
+// for the extent of their registration (`type_decls_standing`).
+effect TypeDeclStanding {
+  type_decl_at(name: String) -> Option(TypeDeclAt)
+  type_decl_now(name: String, at: TypeDeclAt)
+}
+
+handler type_decls_standing with standing = smap_new() {
+  type_decl_at(name) => resume(smap_get(standing, name)),
+  type_decl_now(name, at) => resume() with standing = smap_add(standing, name, at),
+}
+
+// Where a type declaration of the statements being registered stands.
+type TypeDeclAt
+  // an alias not yet registered: its statement and the type it declares
+  = AliasWaiting(Int, Ty)
+  // a refinement not yet registered: its statement, its base and its
+  // predicate
+  | RefineWaiting(Int, Ty, Int)
+  // an alias whose own names are being resolved: a name that reaches it
+  // from there closes a circle
+  | AliasResolving
+  // registered, or a declaration that is no alias
+  | TypeSettled
+
+// The alias edges, registration's one home. An alias is registered as the
+// type it declares with every name that type writes already read as what
+// the name denotes, so that a refinement inside it stays where a signature
+// reads it. It is therefore registered after the aliases its names denote,
+// whatever order they are declared in. The main walk keeps a refinement's
+// predicate, and the link from each written name to its declaration.
+fn alias_registered(ref node) = alias_named_registered(stmt_decl_name(node), node)
+
+// The alias a name declares among these statements, registered where it is
+// still waiting. A name that denotes an alias whose own names are being
+// resolved has reached itself: an alias and the type it names are
+// interchangeable, so that alias would be an infinite type, and it is
+// refused at the given node, where the name is written.
+fn alias_named_registered(name: String, at) = match type_decl_at(name) {
+  Some(AliasWaiting(node, ty)) => alias_at_registered(name, node, ty, TAlias(name, ??)),
+  Some(RefineWaiting(node, base_ty, pred)) => alias_at_registered(name, node, base_ty, refined_alias(name, node_to_predicate(pred), ??)),
+  Some(AliasResolving) => report(EOccursCheck(at, TName(name, []), graph_span_of(at))),
+  Some(TypeSettled) | None => (),
+}
+
+fn refined_alias(name: String, pred, base) = TAlias(name, TRefined(base, pred))
+
+// One alias registered: the aliases its type names first, then itself, as
+// the given maker builds it from its type with every name read as what the
+// name denotes.
+fn alias_at_registered(name: String, node, ty, alias_of) = {
+  type_decl_now(name, AliasResolving)
+  written_cells(ty) |> each(named_first)
+  match quantify_ctor_ty(ty, [], Declared(name)) {
+    (resolved, _) => env_extend(name, Frozen([], alias_of(resolved)), Declared(name), FnScheme, node),
+  }
+  type_decl_now(name, TypeSettled)
+}
+
+// One written name, and the names its own arguments write in turn.
+fn named_first(c) = match graph_node_body(c) {
+  NTypeAnn(TName(name, args)) => {
+    alias_named_registered(name, c)
+    args |> flat_map(written_cells) |> each(named_first)
+  },
+  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_)
+  | NRow(_) | NParam(_) => (),
+}
+
 // The effect decls — registration's OWN phase, before any handler sig
-// (pre_register_alias's precedent one namespace over): a handler's
+// (the alias registration's precedent one namespace over): a handler's
 // identity derives its effect from the arms' op names THROUGH the effect
 // env, so a HandlerDeclStmt that precedes its EffectDeclStmt in source
 // order read an incomplete env and registered with a broken effect
@@ -2746,35 +2791,33 @@ fn infer_stmt(ref node) = {
       declaration_noted(node, name)
     },
     NStmt(ImportStmt(path)) => bind_declared(node, TUnit, path),
-    // Registered at pre_register_stmt (the one home — TAlias(name,
-    // TRefined(base, pred)), so X and its base unify transparently and
-    // the authored name travels for Reason chains). The predicate is judged
-    // here as the expression it is; the declaration raises no claim of its
-    // own — there is no value for `self` to be — and discharge lives at
-    // CONSTRUCTION sites, where apply_refinement_constraint substitutes the
-    // live value node for self (value-proof R2) and decides or pends against
-    // a value that exists.
+    // Registered with the other aliases before any signature is read
+    // (`alias_registered`), as TAlias(name, TRefined(base, pred)), so X and
+    // its base unify transparently and the authored name travels in Reason
+    // chains. The predicate is judged here as the expression it is. The
+    // declaration raises no claim of its own, since there is no value for
+    // `self` to be: a claim is raised where a value is built, and
+    // apply_refinement_constraint puts the value's node in its place.
     NStmt(RefineStmt(name, base_ty, pred)) => {
       each(link_written, written_cells(base_ty))
       judge_predicate(name, base_ty, pred)
       declaration_noted(node, name)
     },
-    // Transparent alias `type X = T`: registered at pre_register_stmt.
-    // No predicate, no Verify — the difference from RefineStmt is exactly
-    // the absent `where` (SYNTAX.md §«Type aliases»). Its body is read here,
-    // where it is declared, so each name it writes is linked to the
-    // declaration the name denotes.
+    // Transparent alias `type X = T`: registered with every name its type
+    // writes already read as what the name denotes (`alias_registered`).
+    // It has no predicate, which is the whole difference from a
+    // refinement (SYNTAX.md §«Type aliases»). Here each name it writes is
+    // linked to the declaration the name denotes.
     NStmt(AliasStmt(name, ty)) => {
       each(link_written, written_cells(ty))
-      let _ = quantify_ctor_ty(ty, [], Declared(name))
       declaration_noted(node, name)
     },
     NStmt(RowAliasStmt(name, effs)) => {
       // A named row's terms are judged where they are written, as a
       // clause's are at its declaration: each names an effect, a row alias
       // or a row variable, and an instance's arguments meet its effect's
-      // parameters. Registered at pre_register_alias; expanded where a
-      // signature reads it.
+      // parameters. Registered where the type declarations claim their
+      // names (`type_decl_claimed`); expanded where a signature reads it.
       let resolved = resolve_declared_instances(effs)
       check_effect_names(resolved, span)
       check_instance_args(resolved, span)
@@ -17834,22 +17877,6 @@ fn written_row_meaning(c, terms, owner) = match graph_chase(c) {
   },
 }
 
-// Every written row under an annotation's node, read for its meaning — an
-// alias's body is read through the alias, never through the intake, and a use
-// the walk reaches before the alias's own judgment reads the row it means,
-// never a variable a call could bind.
-fn read_written_rows(c, owner) = {
-  match graph_node_body(c) {
-    NRow(terms) => {
-      let _ = written_row_meaning(c, terms, owner)
-      ()
-    },
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
-    | NParam(_) => (),
-  }
-  each(read_written_rows(??, owner), body_child_handles(graph_node_body(c)))
-}
-
 // Each open edge becomes a quantified row variable, its mask kept: one the
 // author named (`with e`) is the signature's one cell for that name, the
 // parse's anonymous tail a cell of its own.
@@ -18017,18 +18044,13 @@ fn type_decl_named(name: String) = match env_resolve_type(name) {
 
 // A capitalized name standing alone: an alias binds as its TAlias, so
 // unification sees through it to its base; any other declaration keeps its
-// nominal identity. The alias's declared type holds the names its author
-// wrote as cells, and the type handed out reads each through to what it is
-// bound to: a type value is walked by readers that take a variable for a
-// variable (a helper's sig, a scheme's quantifier), and a written name is
-// never one.
+// nominal identity. An alias is registered with every name its type writes
+// already read as what the name denotes (`alias_registered`), so the type
+// handed out is that registration, a value with no written name in it.
 fn named_type(name: String, decl) = match decl {
   Some(d) => match graph_published(d) {
     Some((scheme, _, _)) => match judgment_ty(scheme) {
-      TAlias(an, inner) => {
-        each(read_written_rows(??, Declared(an)), written_cells(inner))
-        TAlias(an, chase_deep(inner))
-      },
+      alias @ TAlias(_, _) => alias,
       TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
       | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
       | TValue(_) => TName(name, []),

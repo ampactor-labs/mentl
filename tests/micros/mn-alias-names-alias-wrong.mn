@@ -1,0 +1,10 @@
+// expect: refuse E_TypeMismatch
+// An alias that names another alias still denotes a whole number, so a
+// function declared to answer one is refused when it answers a string.
+type Meters = Int
+
+type Far = Meters
+
+fn far(m: Int) -> Far = "seven"
+
+fn main() = far(1)

@@ -1,0 +1,16 @@
+// check: clean
+// A scanner's answer stated once, through an alias of a tuple whose first
+// part is a refined position. The position taken out of the answer keeps
+// its bound, so the read it is handed is proven in bounds.
+type ValidOffset = Int where 0 <= self
+
+type ScanAt = (ValidOffset, Int)
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn scan(n: ValidOffset, pos: ValidOffset, col) -> ScanAt =
+  if pos < n { scan(n, pos + 1, col + 1) } else { (pos, col) }
+
+fn main() = match scan(3, 0, 1) {
+  (p, _) => at([4, 5], p),
+}
