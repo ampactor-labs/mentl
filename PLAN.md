@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `7b55b5ba47c5`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `f23b73575a76`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -52,11 +52,13 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   2026-11-14. F4: a sum that can wrap proves nothing. G1: a proof says
   what it stood on, so the guard a held claim carries goes to each
   parameter whose precondition the proof needed, and `!Trap` is refused
-  where a caller does not prove one. F6 followed on 2026-11-15: an alias
-  may name another alias in any order of declaration, which T1a's form
-  needs. The next landing is T1a, the lexer's twelve open position claims
-  stated where the positions are made. Then the gates (P3, P4, P7 and
-  P5).
+  where a caller does not prove one. F6 and F7 followed on 2026-11-15: an
+  alias may name another alias in any order of declaration, and a claim
+  about an `if` or a `match` is decided at each branch for one part of the
+  value and through a `let`. Both are what T1a's form needs. The next
+  landing is T1a, which states the lexer's positions where they are made
+  and proves eleven of its twelve open position claims. Then the gates
+  (P3, P4, P7 and P5).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -961,12 +963,12 @@ accepts each program and `mentl run` shows the break.
   300, passed where a byte is wanted, is left pending where the same
   constant written in place is refused, since a call's answers are read
   as values it may take (a scratch program, 2026-11-12; §11.3).
-- A claim about a `let` whose value is an `if` is decided where the `let`
-  is read, and not at each branch on that branch's own path. `let start =
-  if pos < n { pos + 1 } else { pos }` followed by `hold_at(start)` is
-  left pending where `hold_at(if pos < n { pos + 1 } else { pos })` is
-  proven (a probe compiler with F4's sum, 2026-11-13; the wrap-blind sum
-  hides it on the pin; §11.3).
+- The path's proof knows what a parameter is by its precondition, and not
+  what a `let` or a destructured part is by its value. After `let line_end
+  = scan_to_eol(…)`, the claim `0 <= line_end + 1` under `line_end < end`
+  stays open, since the sum can wrap for the leaves and the path holds no
+  lower bound for `line_end` (src/lexer.mn's `triple_common_indent`; §11.B,
+  F8).
 - Three programs that cannot trap are refused under `!Trap`, because the
   guard a callee's parameter carries is paid where it need not be. A
   let's claim that was proven is still read as owed: `let k: Positive =
@@ -1386,7 +1388,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1420,10 +1422,10 @@ leave, and the landing deletes them.
    closed the false proof that stood first in §7. F6 landed on
    2026-11-15 (pin 7b55b5ba47c5): an alias may name another alias in any
    order of declaration, and a refinement inside it keeps its bound where
-   a signature reads it. F7 is next, and Box 3 below writes it out: a
+   a signature reads it. F7 landed the same day (pin f23b73575a76): a
    claim about a value that is an `if` or a `match` is decided at each of
    its branches when the claim is about one part of the value, and when it
-   reaches the value through a `let`. Then T1a: the lexer positions that
+   reaches the value through a `let`. T1a is next: the lexer positions that
    come out of a scanner's answer are stated where they are made, which
    closes the false proof inside the compiler. Measured on pin
    d95430724348, `mentl check src/lexer.mn` prints twelve open claims `0
@@ -1435,9 +1437,9 @@ leave, and the landing deletes them.
    (ValidOffset, Int, Int, [Token], Int)`, for the seven that answer five
    parts), a refined field on `scan_number`'s constructors, and a
    `ValidOffset` parameter on `triple_common_indent` prove eleven of the
-   twelve on F7's last probe and leave no new open claim. The tuple
-   answers' claims are open without F7. The twelfth needs the bound a
-   `let` has by its value inside the path's proof, which F8 brings.
+   twelve on F7's last probe and leave no new open claim. The twelfth
+   needs the bound a `let` has by its value inside the path's proof, which
+   F8 brings.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
@@ -1490,8 +1492,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box 3
-is F7.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1999,128 +2000,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · F7 · A claim about a value that is an `if` or a `match` is
-   decided at each branch, for one part of the value and through a
-   `let`.** Written 2026-11-15 from eleven probe compilers built in a
-   scratch worktree; every number below is one of their readings or the
-   pin's.
-
-   What a person sees. Two programs the pin leaves with an open claim check
-   clean:
-
-   ```
-   fn step(n: ValidOffset, pos: ValidOffset, col) -> (ValidOffset, Int) =
-     if pos >= n { (pos, col) } else if col > 3 { step(n, pos + 1, col + 1) } else { (pos + 1, col) }
-   ```
-
-   The declared return claims the tuple's first part, and the answer is a
-   join of two tuples and a call. And PLAN §7's let-join program:
-
-   ```
-   fn start_of(pos: ValidOffset, n: ValidOffset) = {
-     let start = if pos < n { pos + 1 } else { pos }
-     hold_at(start)
-   }
-   ```
-
-   `main with !Trap` over a function that hands such a `let` to `at` is
-   accepted where every branch is proven, and refused where one is not.
-
-   Fails today, on pin 7b55b5ba47c5. `mentl check` on the first program
-   prints `verify: pending comparison 0 <= self` at the declared return,
-   and on the second at the call of `hold_at`. The crown pair below: the
-   sound twin is refused with `E_EffectMismatch`.
-
-   The cause. A claim about a whole value that is a join is decided at each
-   tail on the tail's own path (`decide_with_self`, src/verify.mn), and two
-   readings do not do that.
-   - A claim about one part of a value reads the part through
-     `part_read`, which answers only where every tail built the value in
-     sight. One call among the tails sends the whole claim to the reading
-     of the whole value's leaves (`opaque_value_part`, src/infer.mn), which
-     has no path.
-   - A claim about a reference to a `let` is decided where the reference
-     stands, over the `let`'s value's leaves. A branch whose bound comes
-     from its own test, `pos + 1` under `pos < n`, is out of the leaves'
-     sight, since the sum can wrap.
-
-   The form.
-   - src/infer.mn, `value_part_claim(value_handle, span, part)`: where the
-     value is a join (`value_tails`), the part is claimed at each tail
-     (`claim_tail_part(span, part, acc, tail)`), a tail built in sight at
-     the node the part is, and a tail out of sight off its own leaves at
-     the part. Otherwise as today.
-   - src/verify.mn, `decide_with_self`: where the reading at the reference
-     leaves the claim open, `or_let_tails(inner, sh, verdict)` follows the
-     reference to its binder, and where that is a `let` (no binder fact),
-     decides the claim at the `let`'s value node, which splits a join into
-     its tails on their own paths. Only a proof is taken from there
-     (`proves_only`, `or_verdict(first, second)`), since the reference's
-     own path may exclude a tail that fails. This is sound because a path
-     speaks only of binders, which never change between where a value is
-     made and where it is read.
-   - src/verify.mn, `binder_gaps`: a parameter's bounds are read off its
-     leaf (`leaves_gaps(node_leaves(b), m)`, with `end_gaps`), which is its
-     precondition, the same bounds `domain_gaps` read off the precondition's
-     domain. `domain_gaps`, `lo_gaps` and `hi_gaps` leave.
-
-   Every fact it reads, and what carries it.
-   - The tails of a join: the graph's structure, `value_tails`, as every
-     claim about a whole join already reads them.
-   - A tail's own path: the parent edges, `path_hyps`, as G1's proofs read
-     them.
-   - A `let`'s value: the reference's edge to its binder,
-     `binder_read_by`, and a `let`'s binder is its value's node.
-   - A parameter's bounds: its leaf, `node_leaves`, as the value walk reads
-     it.
-   Each is answered on the pin by the caret at the node and by `mentl
-   check` on the scratch programs above.
-
-   What leaves. `domain_gaps`, `lo_gaps`, `hi_gaps`. The §7 entry for the
-   let-join program.
-
-   Edge cases, each run on the pin and on the last probe.
-   - A `let` whose value is an `if` with a branch that can be negative,
-     `let i = if c { pos - 1 } else { pos }`, handed to `at` under `main with
-     !Trap`: refused on both.
-   - The same with `if c && pos < 10 { pos + 1 } else { pos }`: refused on
-     the pin, accepted on the probe.
-   - A claim the reference's own path proves is decided there first, as
-     today; the branches are asked only when it stays open.
-
-   Left alone. A `let`'s or a destructured part's own bounds inside the
-   path's proof: after `let line_end = scan_to_eol(…)`, the claim `0 <=
-   line_end + 1` under `line_end < end` needs `line_end >= 0`, which only
-   the value's leaves say. Reading the leaves of every binder at every
-   proof proved it and multiplied the self-compile's peak memory by five
-   (line peak 1,597,101 KB against the pin's 287,047 KB; the m3 leg 27.64 s
-   against 19.04 s), so it waits for F8, a column that holds the bound
-   once, after F2.
-
-   What pays for its code. `mentl verify` on the last probe: 37 bounds
-   hold, values the memory walk cannot place fall from 32,046 to 32,043
-   (the three domain helpers leave), and no other count moves.
-
-   What it costs, from `bash tools/march.sh` on the last probe: line peak
-   287,030 KB, equal to the pin compiling the same source, the journal
-   equal at 13,610 entries, the fixed point holding, and the m3 leg at
-   19.09 s.
-
-   How the form was found. The first probe split a `let`'s reading into
-   its tails with a fold of its own, read the bounds of every `let` and
-   part, and answered each binder's reporting in a match: 18 more
-   unplaced values and one more place that can trap. Asking
-   `decide_with_self` at the `let`'s value node made the fold
-   unnecessary; reading a parameter's bounds off its leaf deleted three
-   helpers; and the binder bounds left for the memory they cost.
-
-   Proves it. `tests/micros/mn-part-of-join-proven.mn` and
-   `tests/micros/mn-let-join-proven.mn` (`// check: clean`), and the crown
-   pair `leak-let-join-branch.mn` (`// check: refuse E_EffectMismatch`)
-   and `sound-let-join-branch.mn` (`// check: accepted`). On the pin three
-   of the four fail. On the last probe every battery holds: micros 806 of
-   806, crown 205, frontier 219, syntax 21, proposals 35, teach 24.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

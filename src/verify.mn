@@ -1157,34 +1157,28 @@ fn assumed_binder(m) = match m {
 
 fn binder_bounds(b) = binder_gaps(b, MBinder(b))
 
-// What a parameter's precondition says of it, as bounds on its measure: the
-// one place a path reads a precondition.
+// What a parameter is by itself, as bounds on its measure: what its leaf
+// spans (`node_leaves`), which is its precondition, or what the call the
+// walk entered hands it. The one place a path reads a binder's bounds. A let
+// or a part of a value is bounded by what its value can be, which is read by
+// walking the value; walking it at every proof multiplied the self-compile's
+// peak memory by five, so those bounds are read here once a column holds
+// them.
 fn binder_gaps(b, m) = match graph_binder_of(b) {
-  Some(fact) => match fact {
-    ParamFact(f) => match pre_contract(f.pre) {
-      Some(c) => domain_gaps(ty_domain(c), m),
-      None => [],
-    },
-    PartFact(_) => [],
-    StateFact(_) => [],
-  },
-  None => [],
+  Some(ParamFact(_)) => leaves_gaps(node_leaves(b), m),
+  Some(StateFact(_)) | Some(PartFact(_)) | None => [],
 }
 
-fn domain_gaps(d, m) = match d {
-  DRange(lo, hi) => lo_gaps(lo, m) ++ hi_gaps(hi, m),
-  DFinite(_) | DUndecided => [],
+// The bounds a value's leaves give its measure: the least and the greatest
+// value every leaf can be, each where the difference arithmetic keeps it
+// exact. An end nothing bounds is the least or the greatest word, which no
+// exact offset reaches, so it says nothing.
+fn leaves_gaps(leaves, m) = {
+  let (lo, hi) = leaves <| (leaves_low, leaves_high)
+  end_gaps(lo, AtMost(MZero, m, 0 - lo)) ++ end_gaps(hi, AtMost(m, MZero, hi))
 }
 
-fn lo_gaps(lo, m) = match lo {
-  Some(l) => if exact_offset(l) { [AtMost(MZero, m, 0 - l)] } else { [] },
-  None => [],
-}
-
-fn hi_gaps(hi, m) = match hi {
-  Some(h) => if exact_offset(h) { [AtMost(m, MZero, h)] } else { [] },
-  None => [],
-}
+fn end_gaps(end, gap) = if exact_offset(end) { [gap] } else { [] }
 
 fn admitted(pending, gaps) = match filter(hyp_in_word(gaps, ??), pending) {
   [] => gaps,
@@ -1527,15 +1521,41 @@ fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) ~
 // signature claims every tail. Until 2026-09-27 a claim over a join was
 // never decided, so `fn note_hz(k) -> Hz = match k { 0 => 220.0, … }` left a
 // pending obligation behind every literal-armed match.
+//
+// A reference to a let is the let's value. Where that value is a join, a
+// claim the reference leaves open is asked again of each tail on the tail's
+// own path, which holds where the value was made and still holds where it is
+// read, since the binders a path speaks of never change. Only a proof is
+// taken from there: a tail the reference's own path excludes may fail.
 fn decide_with_self(inner, bind) = match bind {
   SelfNode(sh) => match value_tails(sh) {
     Some(tails) => fold(Some(true), decide_tail(inner, ??, ??), tails),
-    None => predicate_decide_at(inner, bind),
+    None => predicate_decide_at(inner, bind) |> or_let_tails(inner, sh),
   },
   NoSelf | SelfVal(_) => predicate_decide_at(inner, bind),
 }
 
 fn decide_tail(inner, acc, tail) = and_decide(acc, decide_with_self(inner, SelfNode(tail)))
+
+// The let's value is asked where it stands, which is its binder's node: a
+// let's binder holds no binder fact of its own. A join there is decided at
+// each of its tails.
+fn or_let_tails(inner, sh, verdict) = match verdict {
+  Some(true) => Some(true),
+  Some(false) | None => match binder_read_by(sh) {
+    Some(b) => match graph_binder_of(b) {
+      Some(_) => verdict,
+      None => decide_with_self(inner, SelfNode(b)) |> proves_only |> or_verdict(verdict),
+    },
+    None => verdict,
+  },
+}
+
+// The verdict a second reading proved, else the first reading's own.
+fn or_verdict(first, second) = match second {
+  Some(true) => Some(true),
+  Some(false) | None => first,
+}
 
 // What a handler declaration was published as: the residual row cell its
 // arms were judged under, its config, its state and its arms. None for a

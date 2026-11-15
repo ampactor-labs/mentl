@@ -1,0 +1,15 @@
+// check: refuse E_EffectMismatch
+// A let whose value is an `if` with a branch that can be negative. Each
+// branch is asked on its own path, and the position minus one is not
+// proven at least 0, so the claim `at` leans on stays open and its guard is
+// paid at the call. `main` declares `!Trap`, and is refused.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn pick(c, pos: ValidOffset) = {
+  let i = if c { pos - 1 } else { pos }
+  at([4, 5], i)
+}
+
+fn main(argv) with !Trap = pick(len(argv) == 0, 0)

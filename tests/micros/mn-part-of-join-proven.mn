@@ -1,0 +1,16 @@
+// check: clean
+// A declared return claims the first part of a tuple, and the answer is a
+// join whose tails are two tuples built in sight and a call. The claim is
+// decided at each tail: the position as it came in by its precondition, the
+// next position on its own path under the test that it is below n, and the
+// call by its own declared return.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn step(n: ValidOffset, pos: ValidOffset, col) -> (ValidOffset, Int) =
+  if pos >= n { (pos, col) } else if col > 3 { step(n, pos + 1, col + 1) } else { (pos + 1, col) }
+
+fn main() = match step(3, 0, 0) {
+  (p, _) => at([4, 5], p),
+}

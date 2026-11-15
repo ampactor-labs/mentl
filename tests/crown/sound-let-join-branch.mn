@@ -1,0 +1,16 @@
+// check: accepted
+// The twin of leak-let-join-branch.mn. Each branch of the let's value is at
+// least 0 on its own path, the position plus one under the test that the
+// position is below 10, so the claim `at` leans on is proven, its guard goes
+// to the position's parameter, and `main` hands that parameter a constant
+// that proves it.
+type ValidOffset = Int where 0 <= self
+
+fn at(xs, i: ValidOffset) = if i < len(xs) { list_index(xs, i) } else { 0 }
+
+fn pick(c, pos: ValidOffset) = {
+  let i = if c && pos < 10 { pos + 1 } else { pos }
+  at([4, 5], i)
+}
+
+fn main(argv) with !Trap = pick(len(argv) == 0, 0)

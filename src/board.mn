@@ -441,7 +441,12 @@ fn board_bounds() = [
   // values it took apart, and so did the main walk's second reading. The
   // registration in dependency order brought its own, with where each alias
   // stands held by a handler rather than handed from function to function.
-  Bound({ceiling: 32046, question: QCensus(CsUnplaced)}),
+  // 32,046 -> 32,043 the same day: code left and came, and the walk places
+  // nothing it could not place before. The path's proof reads a parameter's
+  // bounds off its leaf, so the three helpers that read them off the
+  // precondition's domain left. A claim about one part of a join, and about
+  // a let whose value is a join, came to be decided at each branch.
+  Bound({ceiling: 32043, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

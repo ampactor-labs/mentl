@@ -1,0 +1,14 @@
+// check: clean
+// A claim about a let whose value is an `if` is decided at each branch, on
+// that branch's own path: the position plus one, under the test that the
+// position is below n, is at least 0, and so is the position itself.
+type ValidOffset = Int where 0 <= self
+
+fn hold_at(i: ValidOffset) = i
+
+fn start_of(pos: ValidOffset, n: ValidOffset) = {
+  let start = if pos < n { pos + 1 } else { pos }
+  hold_at(start)
+}
+
+fn main() = start_of(1, 3)

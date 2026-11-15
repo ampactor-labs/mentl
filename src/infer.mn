@@ -16682,14 +16682,23 @@ fn field_step(f) = match f {
 fn claim_value_part(value_handle, span: ValidSpan, acc, part) =
   and_decide(acc, value_part_claim(value_handle, span, part))
 
-// One value part claimed: where the whole was built in sight, at every node
-// the part can be — an unannotated parameter placed there learns the
-// contract, as one handed straight in does — and otherwise off the whole's
-// leaves at the part.
-fn value_part_claim(value_handle, span: ValidSpan, part) = match part {
-  (step, pt) => match part_read(value_handle, step, claim_value_node(pt, span, ??)) {
-    Some(verdicts) => verdicts |> fold(Some(true), and_decide),
-    None => opaque_value_part(value_handle, [step], pt, span),
+fn claim_tail_part(span: ValidSpan, part, acc, tail) =
+  and_decide(acc, value_part_claim(tail, span, part))
+
+// One value part claimed. A join's part is that part of every value the join
+// can take, so it is claimed at each tail, as a claim about a whole join is
+// (verify.mn's `decide_with_self`): a tail built in sight at the node the
+// part is, and a tail out of sight, such as a call, off its own leaves at
+// the part. Where the whole was built in sight, the claim stands at every
+// node the part can be, and an unannotated parameter placed there learns the
+// contract, as one handed straight in does.
+fn value_part_claim(value_handle, span: ValidSpan, part) = match value_tails(value_handle) {
+  Some(tails) => tails |> fold(Some(true), claim_tail_part(span, part, ??, ??)),
+  None => match part {
+    (step, pt) => match part_read(value_handle, step, claim_value_node(pt, span, ??)) {
+      Some(verdicts) => verdicts |> fold(Some(true), and_decide),
+      None => opaque_value_part(value_handle, [step], pt, span),
+    },
   },
 }
 
