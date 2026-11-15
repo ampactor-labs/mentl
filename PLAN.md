@@ -1386,7 +1386,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1420,18 +1420,24 @@ leave, and the landing deletes them.
    closed the false proof that stood first in §7. F6 landed on
    2026-11-15 (pin 7b55b5ba47c5): an alias may name another alias in any
    order of declaration, and a refinement inside it keeps its bound where
-   a signature reads it. T1a is next: the lexer positions that come out of
-   a scanner's answer are stated where they are made, which closes the
-   false proof inside the compiler. Measured on pin d95430724348, `mentl
-   check src/lexer.mn` prints twelve open claims `0 <= self` on
-   positions: six on a position taken out of the five-part answer of
-   `scan_string`, `scan_triple_string` or `lex_from` or the pair
+   a signature reads it. F7 is next, and Box 3 below writes it out: a
+   claim about a value that is an `if` or a `match` is decided at each of
+   its branches when the claim is about one part of the value, and when it
+   reaches the value through a `let`. Then T1a: the lexer positions that
+   come out of a scanner's answer are stated where they are made, which
+   closes the false proof inside the compiler. Measured on pin
+   d95430724348, `mentl check src/lexer.mn` prints twelve open claims `0
+   <= self` on positions: six on a position taken out of the five-part
+   answer of `scan_string`, `scan_triple_string` or `lex_from` or the pair
    `scan_ident` answers, five on a position out of `scan_number`'s three
-   constructors, and one on a `let` over `scan_to_eol`'s answer. Two
-   shapes settle such a claim (scratch programs, 2026-11-14): a refinement
-   on the constructor's field, and a declared return on the scanner, which
-   one alias can state once for the seven scanners that answer the same
-   five parts (tests/micros/mn-alias-tuple-keeps-refinement.mn).
+   constructors, and one on a `let` over `scan_to_eol`'s answer. A
+   declared return on each scanner (one alias, `type LexAt =
+   (ValidOffset, Int, Int, [Token], Int)`, for the seven that answer five
+   parts), a refined field on `scan_number`'s constructors, and a
+   `ValidOffset` parameter on `triple_common_indent` prove eleven of the
+   twelve on F7's last probe and leave no new open claim. The tuple
+   answers' claims are open without F7. The twelfth needs the bound a
+   `let` has by its value inside the path's proof, which F8 brings.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
@@ -1455,8 +1461,11 @@ leave, and the landing deletes them.
    783 are answers of stages. F3 is the column of what
    each store puts into an allocation (§11.8), so the memory walk can place
    what later boxes add. F5: a module is a scope (§11.4's first part).
-   Box 2, the second half of L1, reads only carried facts and goes here;
-   it leaves alone the case Morgan has yet to decide.
+   F8, after F2: what a `let` or a destructured part can be is a fact at
+   its binder, held in a column and read by the path's proof, which
+   closes T1a's twelfth claim. Box 2, the second half of L1, reads only
+   carried facts and goes here; it leaves alone the case Morgan has yet to
+   decide.
 4. The mechanisms. Each lands first with the answers that today's separate
    walks give, then deletes those walks. K1: the reach (§11.1(c)). K2: the
    face's contract part, in which each declaration publishes the claim
@@ -1481,7 +1490,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box 3
+is F7.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1990,6 +2000,128 @@ first two.
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
 
+3. **Box 3 · F7 · A claim about a value that is an `if` or a `match` is
+   decided at each branch, for one part of the value and through a
+   `let`.** Written 2026-11-15 from eleven probe compilers built in a
+   scratch worktree; every number below is one of their readings or the
+   pin's.
+
+   What a person sees. Two programs the pin leaves with an open claim check
+   clean:
+
+   ```
+   fn step(n: ValidOffset, pos: ValidOffset, col) -> (ValidOffset, Int) =
+     if pos >= n { (pos, col) } else if col > 3 { step(n, pos + 1, col + 1) } else { (pos + 1, col) }
+   ```
+
+   The declared return claims the tuple's first part, and the answer is a
+   join of two tuples and a call. And PLAN §7's let-join program:
+
+   ```
+   fn start_of(pos: ValidOffset, n: ValidOffset) = {
+     let start = if pos < n { pos + 1 } else { pos }
+     hold_at(start)
+   }
+   ```
+
+   `main with !Trap` over a function that hands such a `let` to `at` is
+   accepted where every branch is proven, and refused where one is not.
+
+   Fails today, on pin 7b55b5ba47c5. `mentl check` on the first program
+   prints `verify: pending comparison 0 <= self` at the declared return,
+   and on the second at the call of `hold_at`. The crown pair below: the
+   sound twin is refused with `E_EffectMismatch`.
+
+   The cause. A claim about a whole value that is a join is decided at each
+   tail on the tail's own path (`decide_with_self`, src/verify.mn), and two
+   readings do not do that.
+   - A claim about one part of a value reads the part through
+     `part_read`, which answers only where every tail built the value in
+     sight. One call among the tails sends the whole claim to the reading
+     of the whole value's leaves (`opaque_value_part`, src/infer.mn), which
+     has no path.
+   - A claim about a reference to a `let` is decided where the reference
+     stands, over the `let`'s value's leaves. A branch whose bound comes
+     from its own test, `pos + 1` under `pos < n`, is out of the leaves'
+     sight, since the sum can wrap.
+
+   The form.
+   - src/infer.mn, `value_part_claim(value_handle, span, part)`: where the
+     value is a join (`value_tails`), the part is claimed at each tail
+     (`claim_tail_part(span, part, acc, tail)`), a tail built in sight at
+     the node the part is, and a tail out of sight off its own leaves at
+     the part. Otherwise as today.
+   - src/verify.mn, `decide_with_self`: where the reading at the reference
+     leaves the claim open, `or_let_tails(inner, sh, verdict)` follows the
+     reference to its binder, and where that is a `let` (no binder fact),
+     decides the claim at the `let`'s value node, which splits a join into
+     its tails on their own paths. Only a proof is taken from there
+     (`proves_only`, `or_verdict(first, second)`), since the reference's
+     own path may exclude a tail that fails. This is sound because a path
+     speaks only of binders, which never change between where a value is
+     made and where it is read.
+   - src/verify.mn, `binder_gaps`: a parameter's bounds are read off its
+     leaf (`leaves_gaps(node_leaves(b), m)`, with `end_gaps`), which is its
+     precondition, the same bounds `domain_gaps` read off the precondition's
+     domain. `domain_gaps`, `lo_gaps` and `hi_gaps` leave.
+
+   Every fact it reads, and what carries it.
+   - The tails of a join: the graph's structure, `value_tails`, as every
+     claim about a whole join already reads them.
+   - A tail's own path: the parent edges, `path_hyps`, as G1's proofs read
+     them.
+   - A `let`'s value: the reference's edge to its binder,
+     `binder_read_by`, and a `let`'s binder is its value's node.
+   - A parameter's bounds: its leaf, `node_leaves`, as the value walk reads
+     it.
+   Each is answered on the pin by the caret at the node and by `mentl
+   check` on the scratch programs above.
+
+   What leaves. `domain_gaps`, `lo_gaps`, `hi_gaps`. The §7 entry for the
+   let-join program.
+
+   Edge cases, each run on the pin and on the last probe.
+   - A `let` whose value is an `if` with a branch that can be negative,
+     `let i = if c { pos - 1 } else { pos }`, handed to `at` under `main with
+     !Trap`: refused on both.
+   - The same with `if c && pos < 10 { pos + 1 } else { pos }`: refused on
+     the pin, accepted on the probe.
+   - A claim the reference's own path proves is decided there first, as
+     today; the branches are asked only when it stays open.
+
+   Left alone. A `let`'s or a destructured part's own bounds inside the
+   path's proof: after `let line_end = scan_to_eol(…)`, the claim `0 <=
+   line_end + 1` under `line_end < end` needs `line_end >= 0`, which only
+   the value's leaves say. Reading the leaves of every binder at every
+   proof proved it and multiplied the self-compile's peak memory by five
+   (line peak 1,597,101 KB against the pin's 287,047 KB; the m3 leg 27.64 s
+   against 19.04 s), so it waits for F8, a column that holds the bound
+   once, after F2.
+
+   What pays for its code. `mentl verify` on the last probe: 37 bounds
+   hold, values the memory walk cannot place fall from 32,046 to 32,043
+   (the three domain helpers leave), and no other count moves.
+
+   What it costs, from `bash tools/march.sh` on the last probe: line peak
+   287,030 KB, equal to the pin compiling the same source, the journal
+   equal at 13,610 entries, the fixed point holding, and the m3 leg at
+   19.09 s.
+
+   How the form was found. The first probe split a `let`'s reading into
+   its tails with a fold of its own, read the bounds of every `let` and
+   part, and answered each binder's reporting in a match: 18 more
+   unplaced values and one more place that can trap. Asking
+   `decide_with_self` at the `let`'s value node made the fold
+   unnecessary; reading a parameter's bounds off its leaf deleted three
+   helpers; and the binder bounds left for the memory they cost.
+
+   Proves it. `tests/micros/mn-part-of-join-proven.mn` and
+   `tests/micros/mn-let-join-proven.mn` (`// check: clean`), and the crown
+   pair `leak-let-join-branch.mn` (`// check: refuse E_EffectMismatch`)
+   and `sound-let-join-branch.mn` (`// check: accepted`). On the pin three
+   of the four fail. On the last probe every battery holds: micros 806 of
+   806, crown 205, frontier 219, syntax 21, proposals 35, teach 24.
+
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
 above under the letter at its start, and is cut into boxes when its turn
@@ -2038,6 +2170,14 @@ comes.
   discharge it, lesson 7's four lines first. `mentl teach` ranks its steps
   by what each unlocks, and the refusal classes after the first each offer
   their proven fix (§11.5).
+- F8. What a `let` or a part of a value taken apart can be is a fact at its
+  binder, so the path's proof can read it: after `let line_end =
+  scan_to_eol(…)`, the claim `0 <= line_end + 1` under `line_end < end`
+  needs `line_end`'s own lower bound of 0. Read by walking the binder's
+  value at every proof, as a probe compiler did on 2026-11-15, it proved
+  that claim and multiplied the self-compile's peak memory by five
+  (1,597,101 KB against the pin's 287,047 KB), so the bound is a column
+  written once where the value is judged, after F2.
 - F1. A claim names the node where it is stated. Today a claim carries the
   span it is said at, so a place finds its own claims by comparing spans,
   and two nodes that share a span cannot be told apart. The claim's span
