@@ -52,9 +52,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   2026-11-14. F4: a sum that can wrap proves nothing. G1: a proof says
   what it stood on, so the guard a held claim carries goes to each
   parameter whose precondition the proof needed, and `!Trap` is refused
-  where a caller does not prove one. The next landing is T1a, the lexer's
-  eight positions stated where they are made. Then the gates (P3, P4, P7
-  and P5).
+  where a caller does not prove one. The next landing is F6: an alias
+  may name another alias, which the pin refuses and which T1a's form
+  needs (§7, "What a person meets"). Then T1a, the lexer's twelve open
+  position claims stated where the positions are made, and the gates
+  (P3, P4, P7 and P5).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1145,6 +1147,24 @@ accepts each program and `mentl run` shows the break.
 - An effect operation's parameters have no names. A type name that
   resolves nowhere is refused as arithmetic on it. A label on a sequence
   primitive's argument is refused as unknown (§11.3, §11.5).
+- An alias that names another alias is refused where a signature uses
+  it. After `type Meters = Int` and `type Far = Meters`, `fn far(m: Int)
+  -> Far = m` is told `E_TypeMismatch error: Meters vs Int`. So is an
+  alias of a list or a tuple that holds one, `type Pair = (Meters, Int)`,
+  as a return or a parameter. The same type written in place is accepted,
+  and so is the same alias on a `let`. The cause is an order: every alias
+  is registered before any signature is read (`pre_register_decls`,
+  src/infer.mn), but the names inside an alias's own type are resolved
+  only when the judgment reaches the alias's statement, and a signature
+  read in between takes the unresolved name for the bare name
+  (`named_type`). A probe compiler that resolved each alias's names where
+  the aliases are registered accepted ten such programs, a refinement
+  over an alias among them, and still refused three aliases written
+  outermost first, since an alias is handed out with whatever its inner
+  names had resolved to by then. An alias that names itself, `type Tree =
+  [Tree]`, is refused today with the same message, and that probe
+  accepted it; whether it is a type is not decided (scratch programs and
+  a probe compiler, 2026-11-14; §11.B, F6).
 - The verbs' own defects, found by running each one, are listed in §11.5.
 - A tuple pattern written as a parameter of a module-level function builds
   and runs, and its head does not print back as one declaration. `mentl
@@ -1404,9 +1424,21 @@ leave, and the landing deletes them.
    the same day (pin d95430724348): a proof says what it stood on at the
    step that reads it, and the row a held claim guards goes to each
    parameter whose precondition the proof does not hold without, which
-   closed the false proof that stood first in §7. T1a is next: the eight
-   lexer positions that come out of a scanner's answer are stated where
-   they are made, which closes the false proof inside the compiler.
+   closed the false proof that stood first in §7. Then T1a: the lexer
+   positions that come out of a scanner's answer are stated where they
+   are made, which closes the false proof inside the compiler. Measured
+   on pin d95430724348, `mentl check src/lexer.mn` prints twelve open
+   claims `0 <= self` on positions: six on a position taken out of the
+   five-part answer of `scan_string`, `scan_triple_string` or `lex_from`
+   or the pair `scan_ident` answers, five on a position out of
+   `scan_number`'s three constructors, and one on a `let` over
+   `scan_to_eol`'s answer. Two shapes settle such a claim on that pin
+   (scratch programs, 2026-11-14): a refinement on the constructor's
+   field, and a declared return on the scanner. Seven scanners answer the
+   same five parts, and one alias would state that answer once, but the
+   pin refuses an alias that names another alias (§7, "What a person
+   meets"). So F6 is next, before T1a: the names inside an alias are
+   resolved when the alias is first read.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
@@ -2017,6 +2049,14 @@ comes.
   span it is said at, so a place finds its own claims by comparing spans,
   and two nodes that share a span cannot be told apart. The claim's span
   becomes that node, read where the claim is printed (§11.10).
+- F6. The names inside an alias are resolved when the alias is first
+  read, so an alias may name another alias in any order of declaration,
+  alone or inside a list or a tuple, wherever a type is written. Red
+  today: `type Meters = Int`, `type Far = Meters`, then `fn far(m: Int)
+  -> Far = m` is refused with `Meters vs Int` (§7, "What a person
+  meets"). Its box says how an alias that names itself is told apart and
+  what it is told, which is a question about the language for Morgan
+  where SYNTAX's "Type aliases" does not answer it.
 - R3. The host's clock, randomness and sleep are real (§11.11). With it comes
   the first run of the whole medium on a small Linux machine: the engine's
   probe (`bash tools/wasmtime-get.sh probe <engine>`), the compiler
