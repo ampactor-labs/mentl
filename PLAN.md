@@ -64,8 +64,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   design and implement the medium; main follows every green pin; the
   engine is the newest stable release; work that serves none of the five
   properties of §4⑭ waits.
-- Open decisions of Morgan's: the one-line license statement, and whether
-  `??` in a constructor's field is a value hole (§11.B, Box 2).
+- Open decisions of Morgan's: the one-line license statement, whether
+  `??` in a constructor's field is a value hole (§11.B, Box 2), and
+  whether an alias that names itself, `type Tree = [Tree]`, is a type or
+  is refused (§7, "What a person meets"; F6 leaves it refused as it is
+  today until he says).
 
 ---
 
