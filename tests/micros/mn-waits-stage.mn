@@ -1,4 +1,4 @@
-// waits 5:27: g
+// transcript
 // A pipe into a stage that is handed a parameter waits on what the parameter
 // performs: the stage `map` is handed g, so the caret names g, never the
 // stage.

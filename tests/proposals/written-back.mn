@@ -1,4 +1,4 @@
-// written-back: 0 written back, 1 first, 8 among, 4 filled otherwise, 1 asked without, 0 nothing, 0 unread
+// transcript
 // Each call and each name that stands as a value below is replaced by `??`
 // and asked again: the first line counts how the proposer answered.
 type Meters = Meters(Float)

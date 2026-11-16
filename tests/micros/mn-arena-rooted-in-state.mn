@@ -1,4 +1,4 @@
-// at 20:10: ~> arena Alloc state
+// transcript
 // The writer `put` stores through an op's answer, and the handler that
 // answers `cells` resumes its state field, so the store lands in handler
 // state, which the install chain and the journal root. So the extent the

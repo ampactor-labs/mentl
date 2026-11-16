@@ -1,0 +1,8 @@
+$ mentl query tests/micros/mn-unreachable-edges.mn unreachable
+  → 5 fn decl(s); 2 the entry cannot reach
+
+  DEAD — in modules the entry reaches:
+    tests/micros/mn-unreachable-edges — 2 of 5 unreached
+        helper_dead
+        shadow
+

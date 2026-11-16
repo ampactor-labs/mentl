@@ -1,4 +1,4 @@
-// fmt: canonical
+// transcript
 // A refinement's predicate is the expression its author wrote, and the
 // formatter writes it back as written: `self > 0` stays `self > 0` and
 // `self != 0` stays `self != 0`. Rendered from the verifier's projection of

@@ -117,14 +117,15 @@ import test
 // naming the path. Outermost, the process installs its two writers once:
 // stdout's (`stdout_console`), and stderr's, a live line where fd 2 is a
 // terminal and the full lines alone into a pipe (`progress_stderr`).
-fn main(argv) = verb_answer(argv) ~> stdout_console ~> progress_stderr(fd_is_tty(2))
+fn main(argv) =
+  argv |> parse_cli_args |> verb_answer ~> stdout_console ~> progress_stderr(fd_is_tty(2))
 
 // What a command answers, said through the writers its caller installs: what
 // it prints goes to `print` and what it says beside that goes to `said`, and
 // a failure no route answers nearer is said there and answers exit 1. The
-// process installs the two writers once, above; a caller that wants the text
-// itself installs its own.
-fn verb_answer(argv) = match parse_cli_args(argv) {
+// process installs the two writers once, above; a transcript's replay
+// installs its own (`answer_kept`).
+fn verb_answer(parsed) = match parsed {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
 } ~> diagnostics_handler ~> intern_table ~> fail_said
@@ -169,7 +170,7 @@ fn dispatch_invocation(verb) = match verb {
   VAt(target, line, col) => at_run(target, line, col),
   VAccept(target, line, col) => accept_run(target, line, col),
   VRename(target, line, col, name) => rename_run(target, line, col, name),
-  VTest(target) => test_run(target),
+  VTest(mode, target) => test_run(mode, target),
   VAudit(target) => audit_run(target),
   VQuery(target, q) => query_run(target, q),
   VTeach(target) => teach_run(target),
@@ -1412,7 +1413,7 @@ fn session_answer(line, manifest) = match parse_cli_args(session_argv(line)) {
     VAccept(target, l, c) => session_accept(target, l, c, manifest),
     VEdit(_) | VDoc(_) | VMap(_) | VServe | VSpace(_) | VTighten(_) | VFmt(_, _) | VCompile(_)
     | VAsm(_) | VResume(_) | VCompileStdin | VRun(_, _) | VLand | VCheck(_) | VAt(_, _, _)
-    | VRename(_, _, _, _) | VTest(_) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch
+    | VRename(_, _, _, _) | VTest(_, _) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch
     | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
   },
 }
@@ -1436,7 +1437,7 @@ fn session_read(verb) = match verb {
   // The cold-only verbs answer MISS, so they take the cold path.
   VEdit(_) | VDoc(_) | VMap(_) | VServe | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_)
   | VResume(_) | VCompileStdin | VRun(_, _) | VLand | VCheck(_) | VAccept(_, _, _)
-  | VRename(_, _, _, _) | VTest(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession | VNew(_)
+  | VRename(_, _, _, _) | VTest(_, _) | VRepl | VMarch | VVerify(_) | VMcp | VSession | VNew(_)
   | VWith(_, _) | VWelcome => session_miss(),
 }
 
@@ -1511,7 +1512,7 @@ fn session_at_read(line, col) = match session_address("main", line, col) {
 // handler (timing). Execution of the test fns reaches the process boundary
 // (Hβ.cli.process-exec-wire, shared with run); the check + reporter chain
 // is the structural form, real now.
-fn test_run(target_opt) = {
+fn test_run(mode, target_opt) = {
   let entry_module = match target_opt {
     Some(t) => t,
     // default test entry module
@@ -1524,15 +1525,34 @@ fn test_run(target_opt) = {
   // per-micro isolation is the install itself), each WAT written to
   // .build/test/, and a manifest printed for the shim's exec loop (WASI has
   // no process-spawn; the shim owns exec — the one seam). One process
-  // replaces one wasmtime invocation per micro.
+  // replaces one wasmtime invocation per micro. Every transcript inside is
+  // judged after the programs, by running its commands. A transcript file
+  // is judged alone, and `--write` writes what a folder's transcripts, or
+  // one transcript's commands, print now.
   // The directory probe and the battery run in the SAME handler extent the
   // single-file sibling installs — the fs probe itself is a filesystem op,
   // so the bracket covers the scrutinee too; test_check_run keeps its own
   // inner chain, which shadows these installs for its extent.
   {
     match fs_list_dir(entry_module) {
-      Some(_) => battery_run(entry_module),
-      None => test_check_run(path_to_module(entry_module)),
+      Some(_) => match mode {
+        TestJudge => battery_run(entry_module),
+        TestWrite => transcripts_written(files_ending(dir_base(entry_module), ".transcript", Level)),
+      },
+      None => if ends_with(entry_module, ".transcript") {
+        match mode {
+          TestJudge => transcript_step(entry_module),
+          TestWrite => transcripts_written([entry_module]),
+        }
+      } else {
+        match mode {
+          TestJudge => test_check_run(path_to_module(entry_module)),
+          TestWrite => {
+            said("mentl test --write: writes transcripts, and {entry_module} is neither a transcript nor a folder of them\n")
+            2
+          },
+        }
+      },
     }
   } ~> wasi_filesystem ~> diagnostics_handler
 }
@@ -1557,31 +1577,16 @@ fn test_check_run(entry_module) =
 // judgment's half alone — the class banked with nothing lowered, so `mentl
 // check` refuses where the compile does. This contract
 // is the frontier bash's dissolution channel: a refusal leg becomes a
-// fixture the medium reads itself. `// unreachable: a b` is a facet's
-// contract: the fn declarations of the fixture's own layer that `main`
-// cannot reach, in source order, exactly — the deletion instruction the
-// unreachable facet gives a person. `// refs of Name: 1 call 4 pattern` is
-// the refs facet's: what stands at each reference to the declaration the
-// name denotes, counted by role — calls, values, patterns — the roles with
-// none unsaid. `// fmt: canonical` is the formatter's: the fixture is its own
-// render, byte for byte, through the render the fmt verb writes. `// declared
-// L:C at L2:C2` is the reference edge's: the name at L:C reads the
-// declaration that stands at L2:C2. `// rename L:C to NEW: N name(s)` is the
-// rename verb's, decided as the verb decides it with nothing written: the
-// names it writes, or `refuses <word>` for why it writes none. `// at L:C:
-// <shape>` is the caret's topology facet at the operator standing at L:C:
-// the shape the verb carries there, in the short form `show_shape_want`
-// writes (`<| x 2`, `>< 2 Seq`, `|> 2 product`, `~> rack Distort`, `<~ 1
-// stage`), so the sentence's voice may change without a fixture moving.
+// fixture the medium reads itself. `// declared L:C at L2:C2` is the
+// reference edge's: the name at L:C reads the declaration that stands at
+// L2:C2, a column no command prints yet. `// rename L:C to NEW: N name(s)`
+// is the rename verb's, decided as the verb decides it with nothing
+// written: the names it writes, or `refuses <word>` for why it writes none.
 // `// memory: P M` is the planned module's memory: the pages it begins with
 // and the pages it may grow to, read off the start the plan settled.
-// `// waits L:C: <values>` is the caret's Effects facet at L:C: the values
-// an open row there waits on, each by its text once, in the facet's order,
-// or `none` where the row is closed. `// why L:C: <text>` is the caret's
-// Why at L:C: one of the lines of the node's own chain, the sentence or a
-// hop beneath it, holds the text. `// written-back: <counts>` is the
-// written-back question's: each of the fixture's own calls and names asked
-// again as a hole, counted by answer in the order `back_counts` writes.
+// `// transcript` says the fixture's contract is what the commands in the
+// transcript of the same name print, which the battery judges as a member
+// of its own.
 type Expect
   // the exit, and the prefix of the line a stop must say on fd 2 ("" when
   // the contract names none)
@@ -1597,16 +1602,9 @@ type Expect
   | ExpectCheckPending(Int, Int)
   | ExpectPropose(Int, Int, ProposeWant)
   | ExpectTeach(Int, TeachWant)
-  | ExpectUnreachable(String)
-  | ExpectRefs(String, String)
   | ExpectDeclared(Int, Int, Int, Int)
   | ExpectRename(Int, Int, String, String)
-  | ExpectCanonical
-  | ExpectAt(Int, Int, String)
-  | ExpectWhy(Int, Int, String)
-  | ExpectWaits(Int, Int, String)
-  // the counts the written-back question answers for the fixture itself
-  | ExpectWrittenBack(String)
+  | ExpectTranscript
 
 // A teach fixture's contract (D4): what the gradient answers at the
 // declaration on line L — one proven annotation whose source is the text,
@@ -1651,29 +1649,17 @@ fn battery_expect(src) = {
     battery_propose_expect(src)
   } else if byte_len(src) >= 9 && str_eq(str_slice(src, 0, 9), "// teach ") {
     battery_teach_expect(src)
-  } else if byte_len(src) >= 16 && str_eq(str_slice(src, 0, 16), "// unreachable: ") {
-    Some(ExpectUnreachable(battery_line_rest(src, 16, 16)))
-  } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// refs of ") {
-    battery_refs_expect(src)
-  } else if byte_len(src) >= 6 && str_eq(str_slice(src, 0, 6), "// at ") {
-    battery_at_expect(src)
-  } else if byte_len(src) >= 7 && str_eq(str_slice(src, 0, 7), "// why ") {
-    battery_why_expect(src)
-  } else if byte_len(src) >= 9 && str_eq(str_slice(src, 0, 9), "// waits ") {
-    battery_waits_expect(src)
   } else if byte_len(src) >= 12 && str_eq(str_slice(src, 0, 12), "// declared ") {
     battery_declared_expect(src)
   } else if byte_len(src) >= 10 && str_eq(str_slice(src, 0, 10), "// rename ") {
     battery_rename_expect(src)
-  } else if byte_len(src) >= 17 && str_eq(str_slice(src, 0, 17), "// fmt: canonical") {
-    Some(ExpectCanonical)
+  } else if byte_len(src) >= 13 && str_eq(str_slice(src, 0, 13), "// transcript") {
+    Some(ExpectTranscript)
   } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// memory: ") {
     Some(ExpectMemory(
       battery_expect_digits(src, 11, 0),
       battery_expect_digits(src, battery_skip_digits(src, 11) + 1, 0)
     ))
-  } else if byte_len(src) >= 17 && str_slice(src, 0, 17) == "// written-back: " {
-    Some(ExpectWrittenBack(battery_line_rest(src, 17, 17)))
   } else if byte_len(src) >= 12 && str_slice(src, 0, 12) == "// witness: " {
     Some(ExpectWitness(
       battery_expect_digits(src, 12, 0),
@@ -1780,12 +1766,6 @@ fn battery_line_rest(src, start, i) = if i >= byte_len(src) {
   if b == 10 || b == 13 { str_slice(src, start, i) } else { battery_line_rest(src, start, i + 1) }
 }
 
-// `// refs of Name: <roles>` — the name to the colon, the roles after it.
-fn battery_refs_expect(src) = {
-  let colon = index_of(src, ":")
-  Some(ExpectRefs(str_slice(src, 11, colon), battery_line_rest(src, colon + 2, colon + 2)))
-}
-
 // `// declared L:C at L2:C2` — the reference's address, then its
 // declaration's.
 fn battery_declared_expect(src) = {
@@ -1796,36 +1776,6 @@ fn battery_declared_expect(src) = {
   let dline = battery_expect_digits(src, at_start, 0)
   let dcol_start = battery_skip_digits(src, at_start) + 1
   Some(ExpectDeclared(line, col, dline, battery_expect_digits(src, dcol_start, 0)))
-}
-
-// `// at L:C: <shape>` — the address, then the shape's short form after the
-// colon and one space.
-fn battery_at_expect(src) = {
-  let line = battery_expect_digits(src, 6, 0)
-  let col_start = battery_skip_digits(src, 6) + 1
-  let col = battery_expect_digits(src, col_start, 0)
-  let want_start = battery_skip_digits(src, col_start) + 2
-  Some(ExpectAt(line, col, battery_line_rest(src, want_start, want_start)))
-}
-
-// `// why L:C: <text>` — the address, then the text after the colon and one
-// space.
-fn battery_why_expect(src) = {
-  let line = battery_expect_digits(src, 7, 0)
-  let col_start = battery_skip_digits(src, 7) + 1
-  let col = battery_expect_digits(src, col_start, 0)
-  let want_start = battery_skip_digits(src, col_start) + 2
-  Some(ExpectWhy(line, col, battery_line_rest(src, want_start, want_start)))
-}
-
-// `// waits L:C: <values>` — the address, then the values after the colon
-// and one space.
-fn battery_waits_expect(src) = {
-  let line = battery_expect_digits(src, 9, 0)
-  let col_start = battery_skip_digits(src, 9) + 1
-  let col = battery_expect_digits(src, col_start, 0)
-  let want_start = battery_skip_digits(src, col_start) + 2
-  Some(ExpectWaits(line, col, battery_line_rest(src, want_start, want_start)))
 }
 
 // `// rename L:C to NEW: <want>` — the address, the name to its colon, the
@@ -1890,63 +1840,6 @@ fn battery_declared_step(stem, path: String, line, col, dline, dcol) = {
   }
 }
 
-// THE REFS BATTERY: the fixture's link judged as the query verb judges it,
-// and the references `mentl query <fixture> "refs of Name"` answers in the
-// fixture's own module — the node the link names, so a primitive the library
-// calls throughout is counted where the fixture writes it — counted by what
-// stands at each. The references are read inside the judgment that holds the
-// graph; only the counts cross out of it.
-fn battery_refs_step(stem, path: String, name: String, want: String) = {
-  let got = match driver_link(path) {
-    None => "nothing: the fixture did not load",
-    Some(fixture) => name_decls(name) |> flat_map(decl_ref_handles) |> filter({ h => graph_module_of(h) == fixture }) |> map(ref_role) |> refs_role_counts,
-  } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
-  if str_eq(got, want) {
-    print("PASS {stem}: refs of {name} {want}\n")
-    0
-  } else {
-    print("FAIL(refs) {stem}: wanted {want}, got {got}\n")
-    1
-  }
-}
-
-// THE FORMAT BATTERY: the fixture rendered as the fmt verb renders a file,
-// and the contract holds when the render is the fixture. A render that would
-// change it names the first line it changes.
-fn battery_fmt_step(stem, path: String, src: String) = {
-  let verdict = fmt_render_file(path, src)
-  match verdict {
-    FmtCanonical(_, _) => {
-      print("PASS {stem}: canonical\n")
-      0
-    },
-    FmtRenders(_, _, rendered) => match first_changed_line(src, rendered) {
-      (n, was, now) => {
-        print("FAIL(fmt) {stem}:{int_to_str(n)} renders `{now}` for `{was}`\n")
-        1
-      },
-    },
-    FmtRefused(_, lines) => {
-      print("FAIL(fmt) {stem}: {join("; ", lines)}\n")
-      1
-    },
-    FmtUnparsed(_, n) => {
-      print("FAIL(fmt) {stem}: its parse recovered from {int_to_str(n)} problem(s)\n")
-      1
-    },
-  }
-}
-
-// The roles in one order — calls, values, patterns, annotations — each with
-// its count, a role nothing stands in unsaid.
-fn refs_role_counts(roles) =
-  ["call", "value", "pattern", "annotation", "row", "arm"] |> flat_map(role_count(roles, ??)) |> join(" ", ??)
-
-fn role_count(roles, role: String) = match count({ r => r == role }, roles) {
-  0 => [],
-  n => ["{int_to_str(n)} {role}"],
-}
-
 // THE PROPOSAL BATTERY (C7): the fixture is judged at its hole through the
 // same address resolution and the same eight-aspect view the CLI's
 // `mentl <file>:<line>:<col>` builds, and the contract is compared to the
@@ -2005,140 +1898,6 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
     },
   }
 )
-
-// THE CARET'S SHAPE AT AN OPERATOR: the topology facet's own-verb frame at
-// the address, compared in the short form the contract is written in.
-fn battery_at_step(stem, path: String, line, col, want: String) = battery_view(
-  path,
-  line,
-  col,
-  {
-    None => {
-      print("FAIL(at) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
-      1
-    },
-    Some((_, view)) => match view {
-      CursorView(_, _, topology, _, _, _, _, _) => {
-        let got = shape_want_of(topology)
-        if str_eq(got, want) {
-          print("PASS {stem}: at {int_to_str(line)}:{int_to_str(col)} {want}\n")
-          0
-        } else {
-          print("FAIL(at) {stem}: wanted {want}, got {got}\n")
-          1
-        }
-      },
-    },
-  }
-)
-
-// THE CARET'S WHY: the lines of the node's own chain at the address, read
-// as the caret prints them, and the contract holds when one of them holds
-// the fixture's text. The lines are made inside the judgment that holds the
-// graph; only the text crosses out.
-fn battery_why_step(stem, path: String, line, col, want: String) = {
-  let said = match address_locate(driver_link(path), path, line, col) {
-    AddressNode(Viewed(v), _, ph) => match cursor_at_handle(ph) {
-      CursorView(_, _, _, _, _, _, _, why) => why_own_lines(ph, why, v),
-    },
-    AddressField(_) | AddressRefused => [],
-  } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
-  if any(str_contains(??, want), said) {
-    print("PASS {stem}: why at {int_to_str(line)}:{int_to_str(col)} {want}\n")
-    0
-  } else if len(said) == 0 {
-    print("FAIL(why) {stem}: no Why at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
-    1
-  } else {
-    print("FAIL(why) {stem}: wanted {want}, got {join("; ", said)}\n")
-    1
-  }
-}
-
-// THE CARET'S OPEN ROW: the Effects facet at the address, compared by the
-// values its row waits on, each by its text, so the sentence's voice may
-// change without a fixture moving.
-fn battery_waits_step(stem, path: String, line, col, want: String) = battery_view(
-  path,
-  line,
-  col,
-  {
-    None => {
-      print("FAIL(waits) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
-      1
-    },
-    Some((_, view)) => match view {
-      CursorView(_, _, _, row, _, _, _, _) => {
-        let names = facet_waits(row) |> flat_map(wait_values) |> map(value_text) |> unique
-        let got = if len(names) == 0 { "none" } else { join(" ", names) }
-        if str_eq(got, want) {
-          print("PASS {stem}: waits at {int_to_str(line)}:{int_to_str(col)} {want}\n")
-          0
-        } else {
-          print("FAIL(waits) {stem}: wanted {want}, got {got}\n")
-          1
-        }
-      },
-    },
-  }
-)
-
-// The shape of the verb at the caret, or `none` where the caret is not on a
-// verb: the last frame of the topology is the node's own.
-fn shape_want_of(frames) = fold("none", shape_want_step, frames)
-
-fn shape_want_step(acc, frame) = match frame {
-  VerbFrame(_, role) => match role {
-    VerbSite(shape) => show_shape_want(shape),
-    ChainSource | ChainStage(_, _) | FanBranch(_, _) | SeqList | SeqStage | ShareBranch(_, _)
-    | FanInput | InstallBody | InstallHandler | Recurrence | FeedbackDelay => acc,
-  },
-}
-
-// The shape's short form: the verb, then its facts in order.
-fn show_shape_want(shape) = match shape {
-  ShareShape(input, n) => {
-    let what = match input {
-      Some(name) => name,
-      None => "_",
-    }
-    "<| {what} {int_to_str(n)}"
-  },
-  FanShape(n, s) => ">< {int_to_str(n)} {schedule_word(s)}",
-  SeqFanShape(s) => ">< each {schedule_word(s)}",
-  ChainShape(k, n, merges) => "|> {int_to_str(k)} {int_to_str(n)}{if merges { " product" } else { "" }}",
-  InstallShape(name, effs, roots) => if len(effs) == 0 {
-    "~> {name}{extent_memory_word(roots)}"
-  } else {
-    "~> {name} {join(" ", effs)}{extent_memory_word(roots)}"
-  },
-  LoopShape(depth, owner) => match depth {
-    Some(n) => "<~ {int_to_str(n)} {owner}",
-    None => "<~ _ {owner}",
-  },
-  PerformShape(op, install) => match perform_install_said(install) {
-    Some((name, line)) => "perform {op} ~> {name} {int_to_str(line)}",
-    None => "perform {op} ~> ?",
-  },
-}
-
-// THE REACH BATTERY: the fixture's link judged as the query verb judges it,
-// and the names `mentl query <fixture> unreachable` lists compared to the
-// contract's, in source order. The rows are read inside the judgment that
-// holds the graph; only the names cross out of it.
-fn battery_reach_step(stem, path: String, want: String) = {
-  let dead = {
-    driver_link(path)
-    reach_report(module_cells()) |> filter(ur_row_is_dead) |> map({ (_, n, _, _) => n }) |> join(" ", ??)
-  } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
-  if str_eq(dead, want) {
-    print("PASS {stem}: unreachable {want}\n")
-    0
-  } else {
-    print("FAIL(dead) {stem}: wanted {want}, got {dead}\n")
-    1
-  }
-}
 
 // The eight-aspect view at a fixture's address — the one read both
 // contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it
@@ -2245,11 +2004,17 @@ fn battery_compile(module: String, wat: String) = {
   (judged.left, judged.errors, report_classes(judged.reports))
 }
 
+// What a battery judges: a program, by the contract on its first line, or a
+// transcript, by running its commands.
+type BatteryMember = ProgramAt(String) | TranscriptAt(String)
+
 fn battery_run(dir) = {
-  // The fixture paths are flat before the first micro: each step indexes
-  // them, and a flat sequence answers in one step. The fixtures are the
-  // directory's own .mn files, read by the one walk (`mn_files`).
-  let micros = list_to_flat(mn_files(dir_base(dir), Level))
+  // The members are flat before the first step: each step indexes them, and
+  // a flat sequence answers in one step. They are the directory's own .mn
+  // files, then its transcripts, read by the one walk (`files_ending`).
+  let root = dir_base(dir)
+  let members =
+    list_to_flat(map(ProgramAt, mn_files(root, Level)) ++ map(TranscriptAt, files_ending(root, ".transcript", Level)))
   // The artifact directory exists before the first module is written; a
   // directory already there answers the same (EEXIST is absorbed). The op,
   // never its impl: the row names what the battery does to the host.
@@ -2257,20 +2022,25 @@ fn battery_run(dir) = {
     fs_mkdir(".build")
     fs_mkdir(".build/battery")
   } ~> wasi_filesystem
-  battery_loop(micros, 0, 0)
+  battery_loop(members, 0, 0)
 }
 
-// Each micro's compile is an ARENA (lib/arena.mn): what the compile
-// allocated is dead once its verdict is printed, except what it stored into
-// memory older than the micro, so the battery's peak is one compile's live
-// set, never the sum, and a micro's output cannot depend on the micros
-// before it unless something it stored outlived it — which the arena's
-// census counts as moved.
-fn battery_loop(micros: [String], i, fails) = if i >= len(micros) {
+// Each member's step is an ARENA (lib/arena.mn): what the step allocated is
+// dead once its verdict is printed, except what it stored into memory older
+// than the step, so the battery's peak is one step's live set, never the
+// sum, and a member's verdict cannot depend on the members before it unless
+// something it stored outlived it — which the arena's census counts as
+// moved.
+fn battery_loop(members: [BatteryMember], i, fails) = if i >= len(members) {
   fails
 } else {
-  let step = battery_step(micros[i]) ~> arena
-  battery_loop(micros, i + 1, fails + step)
+  let step = battery_member_step(members[i]) ~> arena
+  battery_loop(members, i + 1, fails + step)
+}
+
+fn battery_member_step(member) = match member {
+  ProgramAt(path) => battery_step(path),
+  TranscriptAt(path) => transcript_step(path),
 }
 
 // A fixture that is compiled and run. Where the gate refused it, it fails
@@ -2308,15 +2078,9 @@ fn battery_step(path: String) = {
     Some(contract) => match contract {
       ExpectPropose(line, col, want) => battery_propose_step(stem, module, line, col, want),
       ExpectTeach(line, want) => battery_teach_step(stem, module, line, want),
-      ExpectUnreachable(want) => battery_reach_step(stem, module, want),
-      ExpectRefs(name, want) => battery_refs_step(stem, module, name, want),
       ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, module, line, col, dline, dcol),
-      ExpectAt(line, col, want) => battery_at_step(stem, module, line, col, want),
-      ExpectWhy(line, col, want) => battery_why_step(stem, module, line, col, want),
-      ExpectWaits(line, col, want) => battery_waits_step(stem, module, line, col, want),
       ExpectRename(line, col, name, want) => battery_rename_step(stem, module, line, col, name, want),
-      ExpectCanonical => battery_fmt_step(stem, path, src),
-      ExpectWrittenBack(want) => battery_written_back_step(stem, module, want),
+      ExpectTranscript => transcript_beside(stem, module),
       ExpectRun(want, said) => battery_compile(module, wat) |> battery_run_verdict(stem, wat, want, said),
       // The same contract over a build that keeps every check the judgment
       // proved away, so a wrong proof stops the run where its claim fails.
@@ -2370,22 +2134,18 @@ fn battery_step(path: String) = {
   }
 }
 
-// THE WRITTEN-BACK BATTERY: the fixture judged as the query verb judges it,
-// each of its own expressions asked again as a hole, and the counts compared
-// with the contract's. The counts are read inside the judgment that holds
-// the graph, and only their line crosses out of it.
-fn battery_written_back_step(stem: String, module: String, want: String) = match query_judged(module, { _ => back_counts(written_back()) }) {
-  Some(got) => if got == want {
-    print("PASS {stem}: written-back {want}\n")
+// A fixture whose contract is its transcript: the transcript of the same
+// name stands beside it, and the battery judges that transcript as a member
+// of its own.
+fn transcript_beside(stem: String, module: String) = {
+  let transcript = "{module}.transcript"
+  if fs_exists(transcript) {
+    print("PASS {stem}: its contract is {transcript}\n")
     0
   } else {
-    print("FAIL(back) {stem}: wanted {want}, and the proposer answers {got}\n")
+    print("FAIL(transcript) {stem}: its first line names a transcript, and {transcript} does not exist\n")
     1
-  },
-  None => {
-    print("FAIL(back) {stem}: the fixture never joined the weave\n")
-    1
-  },
+  }
 }
 
 // The judgment's verdict alone, the same check the refuse contract runs:
@@ -2452,6 +2212,255 @@ fn battery_pending(entry) = match entry {
     owed_claims() |> filter(claim_heard(scope, ??))
   },
   None => [],
+}
+
+// TRANSCRIPTS: what a command prints, as a fixture's contract. A transcript,
+// a file `<name>.transcript` beside a battery's fixtures,
+// holds commands as a person types them at the repository's root, each
+// followed by what it printed. A line `$ mentl <words>` is a command, and the
+// lines after it, up to the next command, are its answer: a line it printed
+// on stdout follows two spaces, a line it said on stderr follows `! `, an
+// empty stdout line is empty and an empty stderr line is `!`, a last line
+// that ended without a newline is followed by `[no newline]`, and an exit
+// other than 0 is the answer's last line, `[exit N]`. The lines before the
+// first command say what the transcript shows and are kept as written. A
+// command's words are separated by single spaces, and a quote is an
+// ordinary character, since every verb that reads a phrase joins its words.
+type Transcript = Transcript([String], [TranscriptCommand])
+
+// One command: the words after `$ mentl `, and the answer's lines.
+type TranscriptCommand = TranscriptCommand(String, [String])
+
+// A command run with its text kept, or why a transcript cannot run it.
+type Replay = Answered([String]) | Unreplayable(String)
+
+// What a verb said while a transcript ran it, in the order it said it: a
+// piece printed on stdout, or said on stderr.
+type SaidPiece = Printed(String) | SaidBeside(String)
+
+effect TranscriptBank {
+  pieces_taken() -> [SaidPiece]
+}
+
+// The writers a replayed verb speaks to: each piece kept in order, and the
+// progress of a step dropped, as a pipe's reader of stderr drops it.
+handler transcript_bank with pieces = [] {
+  print(text) => resume() with pieces = push(pieces, Printed(text)),
+  said(text) => resume() with pieces = push(pieces, SaidBeside(text)),
+  linked(_) => resume(),
+  parsing(_) => resume(),
+  judging(_, _, _) => resume(),
+  phase(_) => resume(),
+  step_ended() => resume(),
+  pieces_taken() => resume(pieces),
+}
+
+// The file's lines split at each command. A file ends with a newline, which
+// ends its last line and starts no line of its own.
+fn transcript_read(text: String) = {
+  let body = if ends_with(text, "\n") { str_slice(text, 0, byte_len(text) - 1) } else { text }
+  match split("\n$ mentl ", "\n{body}") {
+    [head, ...pieces] => Transcript(preamble_lines(head), map(transcript_command, pieces)),
+    [] => Transcript([], []),
+  }
+}
+
+fn preamble_lines(head: String) =
+  if byte_len(head) <= 1 { [] } else { lines(str_slice(head, 1, byte_len(head))) }
+
+fn transcript_command(piece: String) = match lines(piece) {
+  [words, ...answer] => TranscriptCommand(words, answer),
+  [] => TranscriptCommand("", []),
+}
+
+// The command line's own route, `verb_answer`, under writers that keep what
+// it says, inside an arena, so the replay holds one command's work at a time.
+fn replayed(words: String) = {
+  let parsed = words |> split(" ") |> program_argv |> parse_cli_args
+  match transcript_refusal(parsed) {
+    Some(why) => Unreplayable(why),
+    None => Answered(answer_kept(parsed)),
+  }
+}
+
+fn program_argv(words) = ["mentl"] ++ words
+
+fn answer_kept(parsed) = {
+  let exit = verb_answer(parsed)
+  answer_lines(exit, pieces_taken())
+} ~> transcript_bank
+
+// A transcript runs the verbs whose answer is text. Each verb that emits a
+// module, reads stdin, writes a file or runs the host's own work is refused
+// with its own reason.
+fn transcript_refusal(parsed) = match parsed {
+  ParseError(_) => None,
+  Invocation(verb) => verb_refusal(verb),
+}
+
+fn verb_refusal(verb) = match verb {
+  VCheck(_) => None,
+  VAt(_, _, _) => None,
+  VQuery(_, _) => None,
+  VDoc(_) => None,
+  VMap(_) => None,
+  VVerify(_) => None,
+  VWelcome => None,
+  VSpace(_) => None,
+  VAudit(target) => stdin_refusal(target),
+  VTeach(target) => match target {
+    Some(t) => stdin_refusal(t),
+    None => None,
+  },
+  VFmt(mode, _) => match mode {
+    FmtCheck => None,
+    FmtWrite => Some("fmt without --check writes the files it renders"),
+  },
+  VCompile(_) => Some("compile's answer is a module, not text"),
+  VAsm(_) => Some("asm's answer is a module's bytes, not text"),
+  VResume(_) => Some("resume's answer is a module, not text"),
+  VCompileStdin => Some("a bare mentl compiles stdin"),
+  VRun(_, _) => Some("the host runs a module"),
+  VEdit(_) => Some("edit reads its person's answers on stdin"),
+  VServe => Some("serve reads its client on stdin"),
+  VRepl => Some("repl reads its lines on stdin"),
+  VMcp => Some("mcp reads its client on stdin"),
+  VSession => Some("session reads its lines on stdin"),
+  VTighten(_) => Some("tighten writes the files it tightens"),
+  VAccept(_, _, _) => Some("accept writes the file it accepts into"),
+  VRename(_, _, _, _) => Some("rename writes the files it renames in"),
+  VNew(_) => Some("new writes a file"),
+  VMarch => Some("march writes the generation it emits"),
+  VTest(_, _) => Some("test runs a battery"),
+  VLand => Some("the host runs the landing pass"),
+  VWith(_, _) => Some("--with installs a handler by name"),
+}
+
+fn stdin_refusal(target: String) =
+  if target == "-" { Some("the target - is the program on stdin") } else { None }
+
+// The answer's lines, from the pieces in order: the pieces on one stream
+// that follow each other join, so how a verb split its writes never shows.
+fn answer_lines(exit, pieces) =
+  (pieces |> fold([], said_joined) |> flat_map(run_lines)) ++ exit_lines(exit)
+
+fn said_joined(runs, piece) = match runs {
+  [] => [piece],
+  [_, ..._] => match joined_with(last(runs), piece) {
+    Some(run) => push(drop_last(runs), run),
+    None => push(runs, piece),
+  },
+}
+
+fn joined_with(run, piece) = match (run, piece) {
+  (Printed(a), Printed(b)) => Some(Printed(a ++ b)),
+  (SaidBeside(a), SaidBeside(b)) => Some(SaidBeside(a ++ b)),
+  (Printed(_), SaidBeside(_)) | (SaidBeside(_), Printed(_)) => None,
+}
+
+fn run_lines(run) = match run {
+  Printed(text) => (text |> ended_lines |> map(printed_line)) ++ unended_mark(text),
+  SaidBeside(text) => (text |> ended_lines |> map(beside_line)) ++ unended_mark(text),
+}
+
+// A run's lines, each with its newline taken off.
+fn ended_lines(text: String) = if byte_len(text) == 0 {
+  []
+} else if ends_with(text, "\n") {
+  lines(str_slice(text, 0, byte_len(text) - 1))
+} else {
+  lines(text)
+}
+
+// A run whose last line has no newline after it is followed by the marker,
+// a line the two line forms never write.
+fn unended_mark(text: String) =
+  if byte_len(text) == 0 || ends_with(text, "\n") { [] } else { ["[no newline]"] }
+
+fn printed_line(line: String) = if byte_len(line) == 0 { "" } else { "  {line}" }
+
+fn beside_line(line: String) = if byte_len(line) == 0 { "!" } else { "! {line}" }
+
+fn exit_lines(exit) = if exit == 0 { [] } else { ["[exit {int_to_str(exit)}]"] }
+
+// THE TRANSCRIPT BATTERY: each command run as the command line runs it, and
+// the contract holds when every answer is the one the transcript says. A miss
+// names the command, the answer's first line that differs and both forms of
+// it.
+fn transcript_step(path: String) = {
+  let stem = path_stem(path)
+  match transcript_read(fs_read_file(path)) {
+    Transcript(_, commands) => match commands |> flat_map(command_miss) {
+      [] => {
+        print("PASS {stem}: {int_to_str(len(commands))} command(s) print what it says\n")
+        0
+      },
+      [miss, ..._] => {
+        print("FAIL(transcript) {stem}: {miss}\n")
+        1
+      },
+    },
+  }
+}
+
+fn command_miss(command) = match command {
+  TranscriptCommand(words, want) => match replayed(words) {
+    Unreplayable(why) => ["`mentl {words}` does not run in a transcript: {why}"],
+    Answered(got) => if got == want {
+      []
+    } else {
+      match first_changed_line(unlines(want), unlines(got)) {
+        (n, was, now) => [
+          "`mentl {words}`, line {int_to_str(n)} of its answer: the transcript says `{was}`, and it printed `{now}`"
+        ],
+      }
+    },
+  },
+}
+
+// `mentl test --write`: each transcript written with what its commands print
+// now. A transcript with a command that cannot run is written not at all.
+fn transcripts_written(paths) = paths |> map(transcript_written) |> fold(0, max)
+
+fn transcript_written(path: String) = {
+  let text = fs_read_file(path)
+  match transcript_read(text) {
+    Transcript(preamble, commands) => {
+      let answers = map(command_replay, commands)
+      match answers |> flat_map(replay_refusal) {
+        [why, ..._] => {
+          said("test: {path} not written — {why}\n")
+          1
+        },
+        [] => {
+          let written = unlines(preamble ++ flat_map(command_written, zip(commands, answers))) ++ "\n"
+          if written == text {
+            print("test: {path} says what its commands print\n")
+          } else {
+            fs_write_file(path, written)
+            print("test: wrote {path}\n")
+          }
+          0
+        },
+      }
+    },
+  }
+}
+
+fn command_replay(command) = match command {
+  TranscriptCommand(words, _) => replayed(words),
+}
+
+fn replay_refusal(replay) = match replay {
+  Unreplayable(why) => [why],
+  Answered(_) => [],
+}
+
+fn command_written(pair) = match pair {
+  (TranscriptCommand(words, _), replay) => match replay {
+    Answered(got) => ["$ mentl {words}"] ++ got,
+    Unreplayable(_) => ["$ mentl {words}"],
+  },
 }
 
 // assert_reporter — the Test effect's pass/fail reporter handler. Each

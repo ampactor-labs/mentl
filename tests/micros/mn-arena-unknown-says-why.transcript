@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-arena-unknown-says-why.mn:18:20
+  Query: run({put}, keep) ~> arena : [Int]
+  Topology: the ~> installs `arena` over everything to its left, answering Alloc; what may root the extent it opens is not known, since the call at line 18 applies a function whose writes the judgment cannot name, so its exit keeps what it cannot read
+  Effects: Memory + Arena + Alloc + Trap + Address + MemoryWrite + Mutate
+  Why: through ~>, at tests/micros/mn-arena-unknown-says-why:18
+       handler attachment
+       its type: returned from fn, at tests/micros/mn-arena-unknown-says-why:18
+       the call to run
+       unification

@@ -1,4 +1,4 @@
-// why 8:13: declared len, at lists:167
+// transcript
 // The caret's Why line at a call of a library function names the module
 // that declares it, never the file the caret is in.
 fn greeting(name) = "hello, " ++ name

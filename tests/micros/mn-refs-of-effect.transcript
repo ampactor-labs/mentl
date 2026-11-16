@@ -1,0 +1,5 @@
+$ mentl query tests/micros/mn-refs-of-effect.mn refs of Ping in tests/micros/mn-refs-of-effect
+  → 3 reference(s)
+    at tests/micros/mn-refs-of-effect:18:22-18:26  row
+    at tests/micros/mn-refs-of-effect:16:18-16:22  row
+    at tests/micros/mn-refs-of-effect:14:15-14:19  row

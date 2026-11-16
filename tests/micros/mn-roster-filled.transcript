@@ -1,0 +1,1 @@
+$ mentl fmt --check tests/micros/mn-roster-filled.mn

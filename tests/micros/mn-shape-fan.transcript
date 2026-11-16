@@ -1,0 +1,5 @@
+$ mentl tests/micros/mn-shape-fan.mn:9:25
+  Query: (inc(1)) >< (dbl(2)) : (Int, Int)
+  Topology: the >< runs 2 branches, each owning its input, in sequence, since no schedule is installed over it
+  Effects: Pure
+  Why: the product of the >< branches' results, each branch owning its input, at tests/micros/mn-shape-fan:9

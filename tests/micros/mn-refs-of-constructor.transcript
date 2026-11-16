@@ -1,0 +1,7 @@
+$ mentl query tests/micros/mn-refs-of-constructor.mn refs of Node in tests/micros/mn-refs-of-constructor
+  → 5 reference(s)
+    at tests/micros/mn-refs-of-constructor:21:11-21:15  call
+    at tests/micros/mn-refs-of-constructor:16:8-16:21  pattern
+    at tests/micros/mn-refs-of-constructor:16:3-16:28  pattern
+    at tests/micros/mn-refs-of-constructor:15:3-15:19  pattern
+    at tests/micros/mn-refs-of-constructor:11:3-11:16  pattern

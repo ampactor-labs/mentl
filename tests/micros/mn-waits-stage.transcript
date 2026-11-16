@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-waits-stage.mn:5:27
+  Query: xs |> map(g) : [a]
+  Topology: the |> runs 1 stage in sequence
+  Effects: Alloc + Address + Memory + MemoryWrite + Diverge + Trap, and whatever `g` performs
+  Why: the call to map, at tests/micros/mn-waits-stage:5
+       result
+       its type: returned from fn, at tests/micros/mn-waits-stage:5
+       the call to map
+       unification

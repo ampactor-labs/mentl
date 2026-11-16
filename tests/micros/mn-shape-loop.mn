@@ -1,4 +1,4 @@
-// at 4:35: <~ 1 ramp
+// transcript
 // The caret on a `<~` says how far back the cycle reads and which function's
 // record owns the line.
 fn ramp(x) = ((prev) => prev + x) <~ delay(1)

@@ -1,6 +1,6 @@
-// why 9:38: the value handed to this slot
+// transcript
 // The `??` marks the slot the pipe fills, where the value the pipe hands,
-// `x`, stands, so the hole takes that value's type, Int, the declared type
+// x, stands, so the hole takes that value's type, Int, the declared type
 // of minus's first parameter. Pin 47767c1238b2 left the hole's type free and
 // offered `x` alone at it, which `mentl accept` wrote, and the program then
 // failed to build.

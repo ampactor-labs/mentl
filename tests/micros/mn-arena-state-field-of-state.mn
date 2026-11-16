@@ -1,4 +1,4 @@
-// at 27:10: ~> arena Alloc state
+// transcript
 // The one provider of `cells` resumes `s.table`, a field of a state record,
 // and the one provider of `cells_let` resumes a let bound to a state field.
 // `put` and `put_let` store into those answers with no install in sight, so

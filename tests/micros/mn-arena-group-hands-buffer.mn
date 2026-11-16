@@ -1,4 +1,4 @@
-// at 38:11: ~> arena Alloc free
+// transcript
 // Two functions that call each other hand a buffer back and forth, as the
 // lexer's lex_from and scan_string do: `fill` hands its buffer to
 // `splice`, and `splice` hands what `fill` returns back to `fill`. Every

@@ -794,13 +794,6 @@ fn said_pure(r) = match r {
   SaidOpen(_, _) => false,
 }
 
-// What the facet's rows wait on, the evaluation's first.
-fn facet_waits(row) = match row {
-  Evaluates(r) => said_waits(r),
-  WhenCalled(e, c) => said_waits(e) ++ said_waits(c),
-  HoleRow => [],
-}
-
 fn said_waits(r) = match r {
   SaidClosed(_) => [],
   SaidOpen(_, waits) => waits,

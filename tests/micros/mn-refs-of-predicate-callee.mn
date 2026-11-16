@@ -1,4 +1,4 @@
-// refs of even: 1 call
+// transcript
 // A refinement's predicate is judged as the expression it is, so the function
 // it calls is referenced there: `refs of even` answers the predicate's call,
 // and a function a refinement alone stands on is never read as dead.

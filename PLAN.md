@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `5328358b48d8`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `1818fc1554e0`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -60,7 +60,10 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   position claims are proven; the twelfth waits for F8. The gates came
   next. P3a landed the same day: a verb says its answer through the two
   writers its caller installs, so `mentl test` can run a verb and keep
-  its text. The next landing is P3b, the transcripts, then P4, P7 and P5.
+  its text. P3b followed: what a command prints is a fixture's contract,
+  kept in a transcript that `mentl test` replays and `mentl test --write`
+  writes. The next landing is P3c, the frontier gate's first batch of
+  legs as transcripts, then P4, P7 and P5.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1009,7 +1012,12 @@ accepts each program and `mentl run` shows the break.
   no path, while `mentl check` prints the arm's pending claim at its line
   and `mentl why FILE main Trap` follows the install into the arm (a
   scratch program, 2026-11-11; the grid controller showed it until its
-  printing stopped trapping; §11.1).
+  printing stopped trapping; §11.1). The census of places that can trap
+  with no claim does not follow them either: when P3b deleted the two
+  battery steps that called the query module's `reach_report` and
+  `back_counts` directly, their 24 places left the compiler's count,
+  while `mentl query FILE unreachable` and `written-back` still reach them
+  through the query handler's arms (a candidate compiler, 2026-11-15).
 - Nor does the census of places that can trap with no claim follow a
   function handed to a library stage. A `step` that calls `replace`,
   which can trap with no claim, is listed at that call when a walk calls
@@ -1393,7 +1401,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1441,9 +1449,10 @@ leave, and the landing deletes them.
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 144 lines that pipe into `grep -q`.
    Its first part, P3a, landed on 2026-11-15 (pin 5328358b48d8): a verb
-   says its answer through the writers its caller installs. P3b, the
-   transcripts, is Box 3, and P3c, the frontier gate's first batch,
-   follows it. Then P4, P7 and P5, the newest engine, which T4 needs for
+   says its answer through the writers its caller installs. P3b landed the
+   same day (pin 1818fc1554e0): what a command prints is a fixture's
+   contract, kept in a transcript. P3c, the frontier gate's first batch,
+   is next. Then P4, P7 and P5, the newest engine, which T4 needs for
    exception handling and M5 for multiple memories.
 3. Leaves that read only carried facts. F1: a claim names the node where
    it is stated, so no reader compares spans (§11.10). F2: a column that
@@ -1492,8 +1501,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
-3 is P3b.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1535,10 +1543,13 @@ minute, and no expectation kept by hand.
   P3 lands in parts. P3a, built 2026-11-15, lets a caller keep a verb's
   text: `main` is `verb_answer` under the process's two writers, no verb
   runner installs its own stdout console, the wheel's src/ writes text
-  only through `print` and `said`, and `fail_said` answers exit 1. P3b
-  (Box 3) builds the transcript, its replay and its writer, and turns the
-  battery's seven forms of an answer written by hand into transcripts,
-  whose steps pay for its code. P3c moves the frontier gate's first batch:
+  only through `print` and `said`, and `fail_said` answers exit 1. P3b,
+  built the same day, made a transcript a battery member: `mentl test`
+  replays its commands through `verb_answer` and `mentl test --write`
+  writes their answers, and the battery's seven forms of an answer written
+  by hand became 35 transcripts, whose steps' deletion paid for its code.
+  A transcript refuses each verb that writes files, reads stdin or emits a
+  module, with that verb's reason. P3c moves the frontier gate's first batch:
   the legs that read a verb's text on one fixture and need nothing else,
   each proven by running the old leg and the transcript on one compiler.
   Each later batch brings what its legs need: a filesystem handler,
@@ -1934,8 +1945,10 @@ proved (§5, the felt endpoint). Five measurements say where that stands.
   yet; `note_hz` for the call `frame(buf, build_rig(rate()))`; and
   `{voice: ??}` for `build_rig(rate())`. A fill is the compiler saying it
   is sure, so each of the three is a wrong answer given as certain.
-  `tests/proposals/written-back.mn` holds its own counts on its first
-  line, so the proposals battery fails when they move.
+  tests/proposals/written-back.transcript holds what `mentl query
+  tests/proposals/written-back.mn written-back` prints, its counts and
+  each expression's answer, so the proposals battery fails when they
+  move.
 
 So the search is short of candidates long before it is short of time, and
 it is sure in places where it should ask. The order that follows is:
@@ -2031,149 +2044,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · P3b · What a command prints is a fixture's contract.**
-   Written 2026-11-15. It was measured with pin 5328358b48d8 judging the
-   edited source, and with a probe compiler built from that source.
-
-   What a person sees. A transcript, a file `<name>.transcript` beside a
-   battery's fixtures, holds commands as a person types them at the
-   repository's root, each followed by what it printed:
-
-   ```
-   $ mentl tests/micros/mn-shape-share.mn:9:18
-     Query: x <| (inc, dbl) : (Int, Int)
-     Topology: the <| shares `x` with 2 branches, borrowed, so they cannot race
-     Effects: Pure
-     Why: the product of the <| branches' results, the input borrowed by each, at tests/micros/mn-shape-share:9
-   ```
-
-   `mentl test <folder>` runs each command inside itself, by the route the
-   command line runs, and passes the transcript when every answer is the
-   one it holds. A miss names the command, the first line of its answer
-   that differs, and both forms of that line. `mentl test --write <path>`
-   writes under each command what it prints now, for one transcript or
-   every transcript in a folder, so no expected text is kept by hand. The
-   35 fixtures whose first line held an expected answer written by hand
-   name a transcript instead, and the seven battery steps that judged those
-   answers leave.
-
-   Fails today, on pin 5328358b48d8.
-   - `mentl test .build/p3b-probe`, a folder holding three transcripts, one
-     with a wrong line and one naming `compile`, prints nothing and exits
-     0. The battery reads only `.mn` files, so nobody judges a transcript.
-   - `mentl test --write <file>` reads `--write` as a module and stops with
-     E_MissingModule.
-   - 35 fixtures keep an expected answer by hand on their first line, in
-     seven forms: `// at` (13), `// why` (3), `// waits` (6), `// refs of`
-     (8), `// unreachable:` (1), `// written-back:` (1) and `// fmt:
-     canonical` (3). Seven battery steps judge them, and each installs its
-     own copy of the judgment's chain (`~> cursor_default ~> synth_default
-     ~> mentl_default ~> infer_context`, twelve handlers) beside the route
-     the command line runs, so the battery judges a second route, not the
-     one a person uses.
-
-   The form.
-   - src/cli.mn: `type TestMode = TestJudge | TestWrite`, the verb
-     `VTest(TestMode, Option(String))`, and `test_verb_args`, which reads
-     `--write`. `opt_path`, which only `test` used, leaves.
-   - src/main.mn: `main(argv) = argv |> parse_cli_args |> verb_answer ~>
-     stdout_console ~> progress_stderr(fd_is_tty(2))`, and `verb_answer`
-     takes the parsed command, so a replay parses the words once.
-   - src/main.mn, the transcript. `type Transcript = Transcript([String],
-     [TranscriptCommand])` holds the lines before the first command and the
-     commands; `type TranscriptCommand = TranscriptCommand(String,
-     [String])` holds the words after `$ mentl ` and the answer's lines.
-     `transcript_read` splits a file at each line that begins `$ mentl `.
-     `replayed(words)` splits the words at single spaces, parses them with
-     `parse_cli_args` and answers `type Replay = Answered([String]) |
-     Unreplayable(String)`. It runs `verb_answer` under `transcript_bank`,
-     the handler of `effect TranscriptBank { pieces_taken() -> [SaidPiece]
-     }`, `print` and Progress, which keeps each `print` as `Printed(text)`
-     and each `said` as `SaidBeside(text)` in order and drops a step's
-     progress, as a pipe's reader of stderr does. `answer_lines` joins the
-     pieces on one stream that follow each other, writes a stdout line after
-     two spaces and a stderr line after `! ` (an empty one as an empty line
-     and as `!`), follows a last line that ended without a newline with the
-     line `[no newline]`, and ends with `[exit N]` where the exit is not 0.
-   - `verb_refusal(verb)` gives each of the 29 verbs its own arm. The verbs
-     whose answer is text run: check, the caret, query, doc, map, verify,
-     help, space, `fmt --check`, and audit and teach unless their target is
-     `-`, the program on stdin. Every other verb is refused with its own
-     reason: it emits a module, reads stdin, writes a file or runs the
-     host's own work.
-   - The battery. `type BatteryMember = ProgramAt(String) |
-     TranscriptAt(String)`. `battery_run` reads a folder's `.mn` files and
-     then its transcripts by one walk, `files_ending(root, suffix, reach)`,
-     of which `mn_files` is the `.mn` case. `transcript_step(path)` prints
-     `PASS <name>: N command(s) print what it says` or `FAIL(transcript)
-     <name>: …`. `test_run(mode, target)` judges or writes a folder, or one
-     transcript.
-   - A fixture whose first line is `// transcript` says its contract is the
-     transcript of the same name, and the battery passes it when that file
-     stands beside it.
-   - Leaving: `ExpectAt`, `ExpectWhy`, `ExpectWaits`, `ExpectRefs`,
-     `ExpectUnreachable`, `ExpectWrittenBack` and `ExpectCanonical`, their
-     four parsers, their seven steps (`battery_at_step`,
-     `battery_why_step`, `battery_waits_step`, `battery_refs_step`,
-     `battery_reach_step`, `battery_written_back_step` and
-     `battery_fmt_step`), and the helpers only they read: `shape_want_of`,
-     `shape_want_step`, `show_shape_want`, `refs_role_counts`,
-     `role_count`, query's `unplaced_write_word`, `extent_memory_word` and
-     `unplaced_address`, and cursor's `facet_waits`.
-   - tests/: each of the 35 fixtures' first lines becomes `// transcript`,
-     beside a transcript of the command its old contract stood for: the
-     caret at the contract's address for `at`, `why` and `waits`; `query
-     FILE refs of NAME in MODULE`, kept to the fixture's own module as the
-     old count was; `query FILE unreachable`; `query FILE written-back`;
-     and `fmt --check FILE`. The comment of
-     tests/micros/mn-pipe-filled-hole-takes-its-type.mn drops the backticks
-     around an `x` that resolves nowhere, which its transcript would
-     otherwise record as two warnings.
-   - tools/wt-env.sh: `wt_battery` counts a folder's `.mn` files and its
-     transcripts, on its one line.
-   - docs/SYNTAX.md's account of what the caret says at an operator, and
-     Box 2's account of tests/proposals/written-back.mn, say that the
-     transcript holds the answer.
-
-   Every fact it reads, and what carries it. The box reads no fact of the
-   graph beyond what these commands print.
-   - What a verb says reaches the writers its caller installs: P3a. On the
-     pin, `mentl query src/main.mn "refs of print_string"` lists in src/
-     only the two module sinks.
-   - A replayed answer is what the command line prints: on the probe, each
-     of the 35 transcripts' answers equals what the probe prints for the
-     same command as a separate process, on stdout, on stderr and in the
-     exit code.
-   - The fact each old form compared is in its transcript. Each `at`
-     short form is said by the caret's Topology line; for
-     mn-arena-unknown-says-why the short form named the call at 18:3 and
-     the line names the call at line 18, which holds that one call. Each
-     `why` text is a line of the Why facet, and each `waits` value is named
-     on the Effects line. Each `refs of` count is the roles the scoped query
-     lists, the unreachable names and the written-back counts are word for
-     word, and `fmt --check` prints nothing and exits 0.
-
-   Edge cases. A transcript that names a refused verb fails with that verb's
-   reason, and `--write` writes nothing for it. A transcript's commands run
-   in order, in the battery member's arena. A quote in a command is an
-   ordinary character, since the verbs that take a phrase (`query`, `map`)
-   join their words. `// declared L:C at L2:C2` stays, because no command
-   prints a declaration's column yet. `// rename` stays, because rename
-   writes files. `// propose` and `// teach` stay: they compare a
-   classification, and moving them is not this box.
-
-   What pays for its code. With the edits, `mentl verify` holds all 37
-   bounds, and four counts fall: places that can trap with no claim from
-   3,146 to 3,106, values the memory walk cannot place from 32,038 to
-   32,016, open obligations from 79 to 78, and rosters from 1,347 to
-   1,346. The seven steps' copies of the judgment's chain leave with them.
-
-   Proves it. On the candidate, `mentl test tests/micros` judges 840
-   members (806 programs and 34 transcripts) and tests/proposals 36, a
-   transcript with a wrong line fails naming it, and one that names
-   `compile` fails with its reason. `mentl land` passes, and the four
-   limits are lowered to what they measure.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

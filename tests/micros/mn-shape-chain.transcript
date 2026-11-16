@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-shape-chain.mn:12:34
+  Query: ((inc(1)) >< (dbl(2))) |> add(1) : Int
+  Topology: the |> runs 2 stages in sequence, this one completing stage 1, and the fanout's product fills the first stage's open slots
+  Effects: Pure
+  Why: the call to add, at tests/micros/mn-shape-chain:12
+       result
+       its type: returned from fn, at tests/micros/mn-shape-chain:12
+       the call to dbl
+       unification

@@ -1,0 +1,5 @@
+$ mentl tests/micros/mn-caret-declared-names-its-module.mn:8:13
+  Query: len : ([a]) -> Int with Memory
+  Effects: Memory when called
+  Why: len flows in here, at tests/micros/mn-caret-declared-names-its-module:8
+       declared len, at lists:167

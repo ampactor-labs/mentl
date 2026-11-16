@@ -1,0 +1,8 @@
+$ mentl tests/micros/mn-waits-through-install.mn:13:19
+  Query: f() ~> pong : a
+  Topology: the ~> installs `pong` over everything to its left, answering Ping
+  Effects: Alloc, and whatever `f` performs except Ping
+  Why: through ~>, at tests/micros/mn-waits-through-install:13
+       handler attachment
+       its type: returned from quiet
+       return of 'quiet'

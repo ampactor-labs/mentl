@@ -1771,26 +1771,6 @@ fn unplaced_write_said(w) with !Mutate = match w {
   StoresBeyond(site) => "the call at {unplaced_line(site)} stores into memory older than the extent that no claim names",
 }
 
-// The same write in the caret's short form: its kind in one word, then the
-// site's address.
-fn unplaced_write_word(w) with !Mutate = match w {
-  WritesUnnamed(site) => "unnamed {unplaced_address(site)}",
-  AppliesParameter(site, _) => "parameter {unplaced_address(site)}",
-  CallsMember(site, _) => "member {unplaced_address(site)}",
-  StoresBeyond(site) => "beyond {unplaced_address(site)}",
-}
-
-// What the judgment knows of the extent an install opens, in the caret's
-// short form, after the handler's name and effects: nothing for an install
-// that opens no arena.
-fn extent_memory_word(roots) with !Mutate = match roots {
-  OpensNoArena => "",
-  RootsFree => " free",
-  RootsInState => " state",
-  RootedAt(rs) => " rooted {int_to_str(len(rs))}",
-  RootsUnknown(w) => " unknown {unplaced_write_word(w)}",
-}
-
 fn unplaced_member(d) with !Mutate = match graph_node_body(d) {
   NStmt(FnStmt(name, _, _, _, _)) => "`{name}`",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
@@ -1799,10 +1779,6 @@ fn unplaced_member(d) with !Mutate = match graph_node_body(d) {
 
 fn unplaced_line(h) with !Mutate = match graph_span_of(h) {
   Span(line, _, _, _) => "line {int_to_str(line)}",
-}
-
-fn unplaced_address(h) with !Mutate = match graph_span_of(h) {
-  Span(line, col, _, _) => "{int_to_str(line)}:{int_to_str(col)}",
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {

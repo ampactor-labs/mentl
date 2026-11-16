@@ -1,0 +1,7 @@
+$ mentl tests/micros/mn-perform-names-its-install.mn:19:7
+  Query: gathered : () -> [Int] with Gather
+  Handler: Gather is served by `~> collect` at tests/micros/mn-perform-names-its-install:16:13
+  Topology: the perform of `gathered` is answered by the ~> `collect` at line 16, inside the body the ~> governs at tests/micros/mn-perform-names-its-install:16:13
+  Effects: Gather when called
+  Why: gathered flows in here, at tests/micros/mn-perform-names-its-install:19
+       declared gathered

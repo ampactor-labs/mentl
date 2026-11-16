@@ -1,4 +1,4 @@
-// waits 9:32: none
+// transcript
 // A hole standing as a stage of a pipe is an absence: running the pipe runs
 // whatever fills it, so the caret's Effects line says a hole states no row
 // and names no value that row waits on. Pin e99f1621510b read the hole as a

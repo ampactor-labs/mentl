@@ -1,0 +1,6 @@
+$ mentl query tests/micros/mn-refs-of-op.mn refs of tick in tests/micros/mn-refs-of-op
+  → 4 reference(s)
+    at tests/micros/mn-refs-of-op:19:3-19:7  call
+    at tests/micros/mn-refs-of-op:18:3-18:7  call
+    at tests/micros/mn-refs-of-op:14:3-14:7  arm
+    at tests/micros/mn-refs-of-op:10:3-10:7  arm

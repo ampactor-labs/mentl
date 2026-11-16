@@ -1,4 +1,4 @@
-// refs of Tree: 3 annotation
+// transcript
 // A name a type writes is linked where every declaration of the link is
 // registered: a field naming a type declared below it, and a type naming
 // itself, answer `refs of` as a function's annotation does.

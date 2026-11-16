@@ -618,9 +618,13 @@ type Reach = Level | Tree
 // "src/./." forever — measured: 3,000-byte paths, +2 per level, until the
 // alloc ceiling), `.build`'s artifacts and `.git`'s objects alike. A root
 // that is not a directory answers no files.
-fn mn_files(root, reach) = match fs_list_dir(root) {
+fn mn_files(root, reach) = files_ending(root, ".mn", reach)
+
+// The files under a directory whose names end in `suffix`, by the same walk:
+// the battery reads its transcripts this way beside its fixtures.
+fn files_ending(root, suffix: String, reach) = match fs_list_dir(root) {
   None => [],
-  Some(names) => mn_walk(root, reach, sort(names), 0, make_list(0)),
+  Some(names) => mn_walk(root, reach, suffix, sort(names), 0, make_list(0)),
 }
 
 // A walked path's own name without its `.mn` — the stem a fixture's
@@ -638,23 +642,23 @@ fn after_last_slash(path: String, i, at) = if i >= byte_len(path) {
   after_last_slash(path, i + 1, at)
 }
 
-fn mn_walk(dir, reach, names, i, acc) = if i >= len(names) {
+fn mn_walk(dir, reach, suffix: String, names, i, acc) = if i >= len(names) {
   acc
 } else {
   let name = names[i]
   if starts_with(name, ".") {
-    mn_walk(dir, reach, names, i + 1, acc)
+    mn_walk(dir, reach, suffix, names, i + 1, acc)
   } else {
     let path = if dir == "." { name } else { "{dir}/{name}" }
     match fs_list_dir(path) {
       Some(sub) => match reach {
-        Tree => mn_walk(dir, reach, names, i + 1, mn_walk(path, reach, sort(sub), 0, acc)),
-        Level => mn_walk(dir, reach, names, i + 1, acc),
+        Tree => mn_walk(dir, reach, suffix, names, i + 1, mn_walk(path, reach, suffix, sort(sub), 0, acc)),
+        Level => mn_walk(dir, reach, suffix, names, i + 1, acc),
       },
-      None => if ends_with(name, ".mn") {
-        mn_walk(dir, reach, names, i + 1, push(acc, path))
+      None => if ends_with(name, suffix) {
+        mn_walk(dir, reach, suffix, names, i + 1, push(acc, path))
       } else {
-        mn_walk(dir, reach, names, i + 1, acc)
+        mn_walk(dir, reach, suffix, names, i + 1, acc)
       },
     }
   }

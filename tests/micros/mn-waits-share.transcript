@@ -1,0 +1,5 @@
+$ mentl tests/micros/mn-waits-share.mn:6:18
+  Query: x <| (f, g) : (a, a)
+  Topology: the <| shares `x` with 2 branches, borrowed, so they cannot race
+  Effects: whatever `f` and `g` perform
+  Why: the product of the <| branches' results, the input borrowed by each, at tests/micros/mn-waits-share:6

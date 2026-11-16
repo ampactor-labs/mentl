@@ -1,4 +1,4 @@
-// refs of Node: 1 call 4 pattern
+// transcript
 // A constructor's references are every position that names it: the call that
 // builds a tree, and each pattern that takes one apart, nested or not, each
 // reaching the one declaration over the edge the judgment draws for a value

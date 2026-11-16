@@ -1,0 +1,5 @@
+$ mentl tests/micros/mn-shape-share.mn:9:18
+  Query: x <| (inc, dbl) : (Int, Int)
+  Topology: the <| shares `x` with 2 branches, borrowed, so they cannot race
+  Effects: Pure
+  Why: the product of the <| branches' results, the input borrowed by each, at tests/micros/mn-shape-share:9

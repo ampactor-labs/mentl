@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-pipe-stage-hole-states-no-row.mn:9:32
+  Query: ?? : (Int) -> Int with e
+  Propose: double  — inferred from the in-scope function double — row Pure admitted by Pure
+  Topology: stage 1 of 2 of the |> at tests/micros/mn-pipe-stage-hole-states-no-row:9:27
+  Effects: whatever its position permits — a hole states no row
+  Why: the call to ??, at tests/micros/mn-pipe-stage-hole-states-no-row:9
+       unification
+       its type: the call to ??, at tests/micros/mn-pipe-stage-hole-states-no-row:9
+       expected

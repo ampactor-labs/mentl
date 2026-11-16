@@ -1,0 +1,5 @@
+$ mentl query tests/micros/mn-refs-of-row-in-fn-type.mn refs of Both in tests/micros/mn-refs-of-row-in-fn-type
+  → 3 reference(s)
+    at tests/micros/mn-refs-of-row-in-fn-type:20:41-20:45  row
+    at tests/micros/mn-refs-of-row-in-fn-type:18:27-18:31  row
+    at tests/micros/mn-refs-of-row-in-fn-type:16:30-16:34  row

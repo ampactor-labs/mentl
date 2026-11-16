@@ -258,10 +258,16 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   it must be accepted (`// check: accepted`). `tests/proposals`, `tests/teach` and
   `tests/frontier` state their contract on the first line, where
   `// propose L:C:` and `// teach N:` refer to lines of the fixture itself.
-- Behavior that no first-line contract covers yet, such as a command's
-  printed text, an editing workflow or a project route, is checked by a leg
-  of `tools/frontier-gate.sh`. A leg refers to fixture line numbers, so a
-  line added near the top of a fixture shifts them. Add history at the end.
+- What a command prints is a transcript's contract: `<name>.transcript`
+  beside a battery's fixtures holds each command as typed at the
+  repository's root and what it printed, `mentl test` replays it, and
+  `mentl test --write <path>` writes the answers (never by hand). A
+  fixture whose first line is `// transcript` has the transcript of its
+  name as its contract. A transcript cannot run a verb that writes files,
+  reads stdin or emits a module, so an editing workflow or a project route
+  is still checked by a leg of `tools/frontier-gate.sh`. A leg and a
+  transcript refer to fixture line numbers, so a line added near the top
+  of a fixture shifts them. Add history at the end.
 - `mentl fmt --check` on a fixture that uses syntax the boot cannot parse
   must run through the candidate. A probe (`.build/probe/m2.wat`) can be
   compared only with output of the same binary. Patch probes there, never

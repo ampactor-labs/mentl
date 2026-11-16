@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-pipe-filled-hole-takes-its-type.mn:9:38
+! infer: W_CommentRefUnresolved Warning: comment on `minus` references `x`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks at tests/micros/mn-pipe-filled-hole-takes-its-type:1:1-1:14
+  Query: ?? : Int
+  Propose: 4 proven survivors — a tie:
+    the survivors are values in scope here — x — or a literal, 0 or 1 or -1: which one does this position mean?
+  Topology: stage 1 of 1 of the |> at tests/micros/mn-pipe-filled-hole-takes-its-type:9:27
+  Effects: Pure
+  Why: the value handed to this slot, at tests/micros/mn-pipe-filled-hole-takes-its-type:9
+       its type: declared x, at tests/micros/mn-pipe-filled-hole-takes-its-type:9

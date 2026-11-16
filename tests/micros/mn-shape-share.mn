@@ -1,4 +1,4 @@
-// at 9:18: <| x 2
+// transcript
 // The caret on a `<|` says what it shares and with how many branches.
 fn inc(n) = n + 1
 

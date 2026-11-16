@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-shape-install.mn:12:31
+  Query: (bump() + bump()) ~> counter : Int
+  Topology: the ~> installs `counter` over everything to its left, answering Count
+  Effects: Alloc
+  Why: through ~>, at tests/micros/mn-shape-install:12
+       handler attachment
+       its type: returned from fn, at tests/micros/mn-shape-install:12
+       the call to bump
+       unification

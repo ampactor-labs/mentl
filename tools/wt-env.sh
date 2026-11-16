@@ -234,7 +234,7 @@ wt_battery_host() {
 # (the gate memo at the end of this file).
 wt_battery() {
   local compiler="$1" dir="$2" label="${3:-$2}" out rc want seen bad key leg
-  want=$(ls "$dir"/*.mn 2>/dev/null | wc -l)
+  want=$(ls "$dir"/*.mn "$dir"/*.transcript 2>/dev/null | wc -l)
   leg="battery-${dir//\//_}"
   key=$(wt_memo_key_run "$compiler" "$dir" lib)
   if wt_memo_hit "$leg" "$key" >/dev/null; then

@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-waits-closed.mn:6:20
+  Query: inc(1) + inc(2) : Int
+  Effects: Pure
+  Why: the operator +, at tests/micros/mn-waits-closed:6
+       result
+       operand
+       its type: returned from fn, at tests/micros/mn-waits-closed:6
+       the call to inc
+       unification

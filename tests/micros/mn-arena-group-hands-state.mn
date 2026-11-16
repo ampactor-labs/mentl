@@ -1,4 +1,4 @@
-// at 29:10: ~> arena Alloc state
+// transcript
 // An op's answer handed to a function that stores into its parameter, where
 // the two functions call each other: `put` hands `cells()` to `write_n`, and
 // `write_n` calls `put` again. The handler that answers `cells` resumes its

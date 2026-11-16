@@ -1,4 +1,4 @@
-// unreachable: helper_dead shadow
+// transcript
 // The dead code `mentl query <entry> unreachable` names: the fn declarations
 // of the entry's own layer that the edges drawn from `main` never reach.
 // `table` runs before `main`, so what its init calls is live; the nested

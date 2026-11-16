@@ -1,0 +1,5 @@
+$ mentl query tests/micros/mn-refs-of-type-forward.mn refs of Tree in tests/micros/mn-refs-of-type-forward
+  → 3 reference(s)
+    at tests/micros/mn-refs-of-type-forward:7:36-7:40  annotation
+    at tests/micros/mn-refs-of-type-forward:7:30-7:34  annotation
+    at tests/micros/mn-refs-of-type-forward:5:22-5:26  annotation

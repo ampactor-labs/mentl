@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-arena-group-hands-buffer.mn:38:11
+  Query: start() ~> arena : Int
+  Topology: the ~> installs `arena` over everything to its left, answering Alloc; nothing the judgment sees can root the extent it opens, so its exit moves the result and reclaims the rest
+  Effects: Memory + Arena + Trap + Alloc + MemoryWrite + Address + Diverge
+  Why: through ~>, at tests/micros/mn-arena-group-hands-buffer:38
+       handler attachment
+       its type: returned from fn, at tests/micros/mn-arena-group-hands-buffer:38
+       the call to start
+       unification

@@ -1,4 +1,4 @@
-// waits 5:24: f
+// transcript
 // A call that hands a parameter to `map` waits on what the parameter
 // performs. The row of `map` itself is closed, so the caret names the
 // parameter and never `map`.

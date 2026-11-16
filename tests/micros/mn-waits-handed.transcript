@@ -1,0 +1,8 @@
+$ mentl tests/micros/mn-waits-handed.mn:5:24
+  Query: map(f, xs) : [a]
+  Effects: Alloc + Address + Memory + MemoryWrite + Diverge + Trap, and whatever `f` performs
+  Why: the call to map, at tests/micros/mn-waits-handed:5
+       result
+       its type: returned from fn, at tests/micros/mn-waits-handed:5
+       the call to map
+       unification

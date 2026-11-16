@@ -57,7 +57,7 @@ type EntryVerb
   // declaration at the address, or the one the reference there reaches,
   // renamed by one write at it
   | VRename(String, Int, Int, String)
-  | VTest(Option(String))
+  | VTest(TestMode, Option(String))
   | VAudit(String)
   // target, question — both required
   | VQuery(String, String)
@@ -111,12 +111,17 @@ fn opt_target(mk, words) = Invocation(mk(optional_target(words)))
 
 // The test verb takes a PATH: a directory is the battery it holds, wherever
 // it stands (`mentl test lib/dsp` reads that folder), and a file is the
-// module it names, so the word reaches the verb as written and the verb
-// resolves it.
-fn opt_path(mk, words) = Invocation(mk(match words {
-  [p, ..._] => Some(p),
-  [] => None,
-}))
+// module or the transcript it names, so the word reaches the verb as written
+// and the verb resolves it. `--write` writes under each command of a
+// transcript what that command prints now.
+fn test_verb_args(words) = match words {
+  ["--write", ...rest] => Invocation(VTest(TestWrite, first_of(rest))),
+  rest => Invocation(VTest(TestJudge, first_of(rest))),
+}
+
+// What `mentl test` does with a transcript: compare what each command prints
+// with what the transcript says, or write what it prints there.
+type TestMode = TestJudge | TestWrite
 
 // The verbs that take no words.
 fn bare_verb(verb, words) = Invocation(verb)
@@ -275,7 +280,12 @@ fn verb_specs() = [
     { [] => Invocation(VMap(None)), words @ [_, ..._] => Invocation(VMap(Some(join(" ", words)))) },
     "the read path by part — PLAN and SYNTAX listed by heading and by PLAN §11's steps, each with its line and size; a name serves the one part it answers"
   ),
-  VerbSpec("test", "[path]", opt_path(VTest, ??), "the test chain"),
+  VerbSpec(
+    "test",
+    "[--write] [path]",
+    test_verb_args,
+    "the test chain; a directory is its battery, and a transcript's commands are run and compared with what it says (--write writes what they print)"
+  ),
   VerbSpec(
     "new",
     "<name>",

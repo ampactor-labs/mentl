@@ -1,0 +1,3 @@
+$ mentl query tests/micros/mn-refs-of-predicate-callee.mn refs of even in tests/micros/mn-refs-of-predicate-callee
+  → 1 reference(s)
+    at tests/micros/mn-refs-of-predicate-callee:7:23-7:27  call

@@ -1,0 +1,8 @@
+$ mentl tests/micros/mn-shape-loop.mn:4:35
+  Query: ((prev) => prev + x) <~ delay(1) : a
+  Topology: the <~ feeds back the output 1 tick ago; its line is owned by `ramp` and allocated once
+  Effects: Mutate
+  Why: through <~, at tests/micros/mn-shape-loop:4
+       recurrence result
+       its type: returned from ramp
+       return of 'ramp'

@@ -1,4 +1,4 @@
-// waits 13:19: f
+// transcript
 // An install over a call of a parameter takes the effect it answers out of
 // what the call waits on: the caret names the parameter, and says that
 // `Ping` is answered here.

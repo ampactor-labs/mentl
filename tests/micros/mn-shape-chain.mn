@@ -1,4 +1,4 @@
-// at 12:34: |> 1 2 product
+// transcript
 // The caret on the first `|>` of a chain says how many stages the chain runs,
 // which stage this pipe completes, and that the fanout's product fills the
 // first stage's open slots.

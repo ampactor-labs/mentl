@@ -1,0 +1,1 @@
+$ mentl fmt --check tests/micros/mn-fmt-arm-prose.mn

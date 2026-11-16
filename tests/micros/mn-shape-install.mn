@@ -1,4 +1,4 @@
-// at 12:31: ~> counter Count
+// transcript
 // The caret on a `~>` names the handler it installs and the effects the
 // handler's arms answer.
 effect Count {

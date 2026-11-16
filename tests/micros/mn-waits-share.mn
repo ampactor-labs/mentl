@@ -1,4 +1,4 @@
-// waits 6:18: f g
+// transcript
 // The caret on a `<|` whose stages are parameters says that the row there
 // waits on what each stage performs, which each call of `both` decides. It
 // names the two stages, never the variables that stand for their rows.

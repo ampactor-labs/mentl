@@ -1,0 +1,4 @@
+$ mentl query tests/micros/mn-refs-of-type.mn refs of Shape in tests/micros/mn-refs-of-type
+  → 2 reference(s)
+    at tests/micros/mn-refs-of-type:12:20-12:25  annotation
+    at tests/micros/mn-refs-of-type:7:13-7:18  annotation

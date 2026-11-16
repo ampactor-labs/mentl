@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-arena-handed-writer-rooted.mn:15:20
+  Query: run({put}, keep) ~> arena : [Int]
+  Topology: the ~> installs `arena` over everything to its left, answering Alloc; stores at line 15 may root the extent it opens, which its exit journals
+  Effects: Memory + Arena + Alloc + Trap + Address + MemoryWrite
+  Why: through ~>, at tests/micros/mn-arena-handed-writer-rooted:15
+       handler attachment
+       its type: returned from fn, at tests/micros/mn-arena-handed-writer-rooted:15
+       the call to run
+       unification

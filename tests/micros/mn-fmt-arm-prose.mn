@@ -1,4 +1,4 @@
-// fmt: canonical
+// transcript
 effect Box {
   put(x: Int) -> Int
   take() -> Int

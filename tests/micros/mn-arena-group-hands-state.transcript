@@ -1,0 +1,9 @@
+$ mentl tests/micros/mn-arena-group-hands-state.mn:29:10
+  Query: put(3) ~> arena : Int
+  Topology: the ~> installs `arena` over everything to its left, answering Alloc; the stores inside the extent it opens all reach handler state, which the install chain and its exit's journal root, inside the body the ~> governs at tests/micros/mn-arena-group-hands-state:28:13
+  Effects: Memory + Arena + Cells + Trap + Address + MemoryWrite + Diverge + Mutate
+  Why: through ~>, at tests/micros/mn-arena-group-hands-state:29
+       handler attachment
+       its type: returned from fn, at tests/micros/mn-arena-group-hands-state:29
+       the call to put
+       unification

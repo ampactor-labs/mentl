@@ -1,4 +1,4 @@
-// fmt: canonical
+// transcript
 // A roster past the width is filled to it, each continuation line led by its
 // `|`: twenty-one names read as a paragraph, never a column.
 type Letter

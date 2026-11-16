@@ -1,4 +1,4 @@
-// at 19:7: perform gathered ~> collect 16
+// transcript
 // The caret on a perform names the install that answers it: gathered() in
 // main's body is answered by the collect installed at the body's foot, and
 // the edge the judgment wrote where the perform's row was charged is what

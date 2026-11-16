@@ -1,4 +1,4 @@
-// at 26:10: ~> arena Alloc state
+// transcript
 // The op `cells` has two providers: `cell_store` resumes its state field,
 // and `cell_fresh` resumes a list it builds in the arm. `put` stores into
 // the op's answer with no install in sight, so the store may reach the state

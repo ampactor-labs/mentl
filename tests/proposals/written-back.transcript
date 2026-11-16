@@ -1,0 +1,16 @@
+$ mentl query tests/proposals/written-back.mn written-back
+  → 14 expression(s) asked again as holes: 0 written back, 1 first, 8 among, 4 filled otherwise, 1 asked without, 0 nothing, 0 unread
+    at 10:50  d  asked, the author's text among the proven
+    at 11:22  t  asked, the author's text among the proven
+    at 12:19  Speed(m / s)  filled with Speed(??)
+    at 12:25  m  asked, the author's text among the proven
+    at 12:29  s  asked, the author's text among the proven
+    at 16:42  s  asked, the author's text among the proven
+    at 17:15  v  asked, the author's text first
+    at 24:6  show_speed(s)  asked without the author's text
+    at 24:17  s  asked, the author's text among the proven
+    at 21:11  Meters(100.0)  filled with Meters(??)
+    at 22:11  Seconds(9.58)  filled with Seconds(??)
+    at 23:11  speed(d, t)  filled with Speed(??)
+    at 23:17  d  asked, the author's text among the proven
+    at 23:20  t  asked, the author's text among the proven

@@ -1,4 +1,4 @@
-// refs of Shape: 2 annotation
+// transcript
 // A name written in a type is a reference: the judgment links each name an
 // annotation writes to the declaration it denotes, so `refs of Shape` answers
 // the parameter and the return that name the type.
