@@ -1,0 +1,3 @@
+$ mentl rename tests/micros/mn-rename-type.mn:4:6 Size
+  rename: nothing written — `Width` is written inside a type at tests/micros/mn-rename-type:6:13, and a type renders from its value, which keeps the name
+[exit 1]

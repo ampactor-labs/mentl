@@ -93,42 +93,32 @@ import test
 // lives where both can import it). This module keeps the DISPATCH:
 // running the proven verb is the entry's own job.
 //
-// ─── Entry — argv → Invocation → dispatch ─────────────────────────
+// ─── Entry — the process's host for one command ───────────────────
 //
-// Per EH §1.4: argv parses into EntryHandlerInvocation; dispatch
-// resolves the named entry-handler and runs it. Per Insight #1
-// (handler chain IS capability stack): each entry-handler's chain
-// places the surface adapter (terminal_transport / lsp_adapter /
-// wat_stdout) OUTERMOST = least trusted = sandbox boundary.
-// The PROCESS intern table — the root absorb for the stray Intern
-// extents (discovery parses, solo renders, session wire reads) that run
-// outside any infer_context bracket. Inner brackets install their own
-// tables and SHADOW this one for their whole extent, so a judgment's
-// intern identity never mixes with a stray's (a stray's handles stay
-// inside its own extent by construction). Intern is evidence-tier (two
-// handlers), so the executable gate's strict conjunct clears only
-// row-wise — this install IS the row cure and the live chain node the
-// stray performs dispatch through. Like every table, it is born holding
-// the medium's own vocabulary (intern.mn's state init).
-// A failure no route answers nearer is the verb's: `fail_said` says it on
-// stderr, and the verb answers exit 1. Every route's filesystem install
-// performs `Fail` where an op cannot do what it was asked, and its arms
-// resolve outside the install, so a path that does not read stops the verb
-// naming the path. Outermost, the process installs its two writers once:
-// stdout's (`stdout_console`), and stderr's, a live line where fd 2 is a
-// terminal and the full lines alone into a pipe (`progress_stderr`).
+// `main` parses the words, runs the verb, and installs what the process
+// provides, each once: the files the host opened (`wasi_filesystem`); a
+// failure no route answers nearer, said on stderr with exit 1
+// (`fail_said`); stdout's writer (`stdout_console`); and stderr's, a live
+// line where fd 2 is a terminal and the full lines alone into a pipe
+// (`progress_stderr`). The filesystem stands inside the failure's handler,
+// because an op that cannot do what it was asked performs `Fail` from its
+// arm, outside its own install, and the command stops naming the path. A
+// transcript's replay runs the same verb under a host of its own
+// (`answer_kept`).
 fn main(argv) =
-  argv |> parse_cli_args |> verb_answer ~> stdout_console ~> progress_stderr(fd_is_tty(2))
+  argv |> parse_cli_args |> verb_answer ~> wasi_filesystem ~> fail_said ~> stdout_console ~> progress_stderr(fd_is_tty(2))
 
-// What a command answers, said through the writers its caller installs: what
-// it prints goes to `print` and what it says beside that goes to `said`, and
-// a failure no route answers nearer is said there and answers exit 1. The
-// process installs the two writers once, above; a transcript's replay
-// installs its own (`answer_kept`).
+// What a command answers, said through the writers, and read from and
+// written to the files, its caller installs: what it prints goes to `print`,
+// what it says beside that goes to `said`, and every file it touches goes
+// through the `Filesystem` effect. Inside, the command's reports are banked
+// (`diagnostics_handler`), and a process intern table answers the names
+// parsed outside any judgment's bracket (`intern_table`); a judgment's
+// bracket installs its own table, which shadows this one for its extent.
 fn verb_answer(parsed) = match parsed {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
-} ~> diagnostics_handler ~> intern_table ~> fail_said
+} ~> diagnostics_handler ~> intern_table
 
 // dispatch_invocation — the substrate handlers (env/graph/diagnostics)
 // install ONCE at this outermost dispatch boundary: the program boundary
@@ -204,7 +194,7 @@ fn edit_run(target_opt) = {
   // innermost projection handler, its arms performing Synth, Teach, Verify
   // and Graph ops that reach the installs around them. The session draws its
   // own screen, so the compile's steps are never drawn over it.
-  mentl_edit_session(entry_module) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
+  mentl_edit_session(entry_module) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context ~> progress_stderr(false)
   0
 }
 
@@ -251,7 +241,7 @@ fn space_run(addr) = match addr {
     said("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
     2
   },
-  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context,
+  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context,
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -303,7 +293,7 @@ fn march_run() = match march_entry() {
       },
     }
   },
-} ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+} ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // The link's judgment with the streaming sink, as `mentl compile` reads it
 // (cold: the fixed point never restores an image) and under ScopeAll, so the
@@ -315,7 +305,7 @@ fn march_emit(entry, fd) = {
   driver_link_scoped(entry, Census)
   compile_remainder()
   (link_modules() |> map({ mh => module_of(mh).path }), diag_errors())
-} ~> wat_to_file(fd) ~> wasi_filesystem ~> compile_context
+} ~> wat_to_file(fd) ~> compile_context
 
 // The wheel's entry: the repo's own main, or the installed shim's mount when
 // the verb runs outside the repo. The repo's is named as the CLI names it
@@ -364,7 +354,7 @@ fn fmt_run(mode, targets) = {
   let stamps = fmt_stamps_read(key)
   let verdicts = map(fmt_target_verdict(smap_from_pairs(stamps), ??), files)
   fmt_settle(mode, key, stamps, verdicts)
-} ~> wasi_filesystem
+}
 
 // What one target named: a file to judge, or nothing at all.
 type FmtTarget = FmtPath(String) | FmtNothing(String)
@@ -770,7 +760,7 @@ fn tighten_run(target_opt) = {
       print("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(lifted)} head(s) lifted of the types the judgment derives, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
       if n + released + lifted + rostered > 0 { 0 } else { 1 }
     }
-  } ~> wasi_filesystem ~> mentl_default ~> infer_context
+  } ~> mentl_default ~> infer_context
 }
 
 // THE WRITTEN TYPES THE JUDGMENT DERIVES, LIFTED. The function declarations
@@ -1091,7 +1081,7 @@ fn serve_run() = {
   // module, and the judgment's writes land in infer_context installed HERE,
   // at the session boundary, so the graph persists across every hover,
   // definition and reference the session answers.
-  lsp_session() ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
+  lsp_session() ~> infer_context ~> progress_stderr(false)
   0
 }
 
@@ -1117,13 +1107,13 @@ fn doc_run(target_opt) = {
   {
     driver_link(entry_module)
     doc_render(entry_module, module_cells())
-  } ~> wasi_filesystem ~> mentl_default ~> infer_context
+  } ~> mentl_default ~> infer_context
   0
 }
 
 // The read path by part (src/sections.mn): the map, or the part a name
 // answers, on stdout.
-fn map_run(name) = match read_path_map(name) ~> wasi_filesystem {
+fn map_run(name) = match read_path_map(name) {
   (text, code) => {
     print(text)
     code
@@ -1204,7 +1194,7 @@ fn doc_lede_line(line: String) = "    {trim(line)}\n"
 // wires) — its handler body crosses out of the medium into the host
 // process boundary, named Hβ.cli.process-exec-wire.
 fn compile_run(target) = {
-  compile(target) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  compile(target) ~> wat_stdout ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   // The dispatch exit-code contract: main's value IS the process exit.
   // Refusal paths already exit nonzero through the gate; success is 0.
   0
@@ -1221,7 +1211,7 @@ fn asm_run(source) = match source {
     2
   },
   None => asm_write(read_stdin()),
-} ~> wasi_filesystem
+}
 
 fn asm_write(wat) = match assemble(wat) {
   Assembled(bytes) => {
@@ -1239,15 +1229,12 @@ fn asm_write(wat) = match assemble(wat) {
 // `mentl resume <image>` — the compile projection re-entered from a
 // persisted image (pipeline.mn resume_image); same outer belt as compile.
 fn resume_run(img) = {
-  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  resume_image(img) ~> wat_stdout ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
 }
 
-// Per Hβ.first-light.compile-stdin-substrate: stdin-source compile entry.
-// `mentl` with no args reads stdin via WASI fd_read (canonical Unix
-// `cmd <input` semantics). compile_stdin (pipeline.mn) carries its own
-// handler chain — wat_stdout for emit + wasi_filesystem (stdin via fd 0
-// goes through the same handler) + the substrate stack.
+// `mentl < FILE`: the program on stdin compiled, its module written to
+// stdout by `compile_stdin` (pipeline.mn).
 fn compile_stdin_run() = {
   compile_stdin() ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
@@ -1275,31 +1262,15 @@ fn land_run() = {
   2
 }
 
-// ─── check_run — diagnostics; no emit
+// ─── check_run — `mentl check`: the judgment's reports, nothing emitted
 //
-// Same handler chain as compile_run minus wat_stdout — the diagnostic
-// pipeline is the value; emission is suppressed.
+// The verb exits 1 when the judgment reported an error. The count is read
+// inside the chain that did the counting, so `pipeline_check` returns it:
+// a handler installed out here would never see those reports, since the
+// nearest install answers them.
 //
-// check's exit code IS the ledger, read live. It reported E_MissingModule and
-// exited 0 — a claim about the program ("fine") that the handler one frame away
-// knew was false. The read must sit INSIDE the chain: diagnostics_handler is
-// installed here, so the op resolves to the same install that did the counting.
-// Safe by measurement: nothing in tools/ or .githooks/ reads check's exit code
-// (every gate drives the wheel through stdin), so this cannot regress a gate —
-// and on the wheel's own source it will now exit nonzero, which is simply true
-// and is exactly what the census ratchet is driving to zero.
-// pipeline_check hands back its own error count — it owns the handler that did
-// the counting. Reading the tally from a handler installed out here returned 0
-// forever, because innermost-wins means those reports never reached this
-// install: the counter and the count are one handler. That cost a build to find.
-//
-// The chain this fn used to install is gone with it: pipeline_check already
-// installs wasi_filesystem / graph_handler / diagnostics_handler
-// at its own foot, so those were shadowed duplicates, and the surviving
-// expression is pure arithmetic over the count.
-//
-// No target is the PROJECT, whose entry is `main` wherever the resolver finds
-// it — the same default the board and the session open on.
+// No target is the project, whose entry is `main` wherever the resolver
+// finds it, the same default the board and the session open on.
 fn check_run(target_opt) = {
   let entry_module = match target_opt {
     Some(t) => t,
@@ -1318,7 +1289,7 @@ fn check_run(target_opt) = {
 // silence predicate at the terminal). Spans render back to file:line against
 // the text the module's node carries — the text its judgment read.
 fn at_run(target, line, col) =
-  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context
+  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
 
 // accept_run — the second graph operation at the address surface (C4).
 // `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
@@ -1331,12 +1302,12 @@ fn at_run(target, line, col) =
 // with the Why walking to the proposal it came from. A tie or a filled
 // position draws nothing, says why on stderr, and exits 1.
 fn accept_run(target, line, col) =
-  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context
+  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
 
 // The rename verb: decided by the rename module (`rename_at`), and its files
 // written only when the renamed program keeps every edge and judges clean.
 fn rename_run(target, line, col, name) =
-  rename_settle(rename_at(target, line, col, name)) ~> format_default ~> wasi_filesystem ~> infer_context
+  rename_settle(rename_at(target, line, col, name)) ~> format_default ~> infer_context
 
 fn rename_settle(v) = match v {
   Renamed(n, files) => {
@@ -1344,7 +1315,7 @@ fn rename_settle(v) = match v {
     print("rename: {int_to_str(n)} name(s) written in {int_to_str(len(files))} file(s); the program draws every edge it drew\n")
     0
   },
-  RenameRefused(_, why) => {
+  RenameRefused(why) => {
     print("rename: nothing written — {why}\n")
     1
   },
@@ -1529,10 +1500,6 @@ fn test_run(mode, target_opt) = {
   // judged after the programs, by running its commands. A transcript file
   // is judged alone, and `--write` writes what a folder's transcripts, or
   // one transcript's commands, print now.
-  // The directory probe and the battery run in the SAME handler extent the
-  // single-file sibling installs — the fs probe itself is a filesystem op,
-  // so the bracket covers the scrutinee too; test_check_run keeps its own
-  // inner chain, which shadows these installs for its extent.
   {
     match fs_list_dir(entry_module) {
       Some(_) => match mode {
@@ -1554,11 +1521,11 @@ fn test_run(mode, target_opt) = {
         }
       },
     }
-  } ~> wasi_filesystem ~> diagnostics_handler
+  } ~> diagnostics_handler
 }
 
 fn test_check_run(entry_module) =
-  pipeline_check(entry_module) ~> assert_reporter ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  pipeline_check(entry_module) ~> assert_reporter ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
@@ -1579,9 +1546,7 @@ fn test_check_run(entry_module) =
 // is the frontier bash's dissolution channel: a refusal leg becomes a
 // fixture the medium reads itself. `// declared L:C at L2:C2` is the
 // reference edge's: the name at L:C reads the declaration that stands at
-// L2:C2, a column no command prints yet. `// rename L:C to NEW: N name(s)`
-// is the rename verb's, decided as the verb decides it with nothing
-// written: the names it writes, or `refuses <word>` for why it writes none.
+// L2:C2, a column no command prints yet.
 // `// memory: P M` is the planned module's memory: the pages it begins with
 // and the pages it may grow to, read off the start the plan settled.
 // `// transcript` says the fixture's contract is what the commands in the
@@ -1603,7 +1568,6 @@ type Expect
   | ExpectPropose(Int, Int, ProposeWant)
   | ExpectTeach(Int, TeachWant)
   | ExpectDeclared(Int, Int, Int, Int)
-  | ExpectRename(Int, Int, String, String)
   | ExpectTranscript
 
 // A teach fixture's contract (D4): what the gradient answers at the
@@ -1651,8 +1615,6 @@ fn battery_expect(src) = {
     battery_teach_expect(src)
   } else if byte_len(src) >= 12 && str_eq(str_slice(src, 0, 12), "// declared ") {
     battery_declared_expect(src)
-  } else if byte_len(src) >= 10 && str_eq(str_slice(src, 0, 10), "// rename ") {
-    battery_rename_expect(src)
   } else if byte_len(src) >= 13 && str_eq(str_slice(src, 0, 13), "// transcript") {
     Some(ExpectTranscript)
   } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// memory: ") {
@@ -1776,44 +1738,6 @@ fn battery_declared_expect(src) = {
   let dline = battery_expect_digits(src, at_start, 0)
   let dcol_start = battery_skip_digits(src, at_start) + 1
   Some(ExpectDeclared(line, col, dline, battery_expect_digits(src, dcol_start, 0)))
-}
-
-// `// rename L:C to NEW: <want>` — the address, the name to its colon, the
-// verdict after it.
-fn battery_rename_expect(src) = {
-  let line = battery_expect_digits(src, 10, 0)
-  let col_start = battery_skip_digits(src, 10) + 1
-  let col = battery_expect_digits(src, col_start, 0)
-  let name_start = battery_skip_digits(src, col_start) + 4
-  let name_end = name_start + index_of(str_slice(src, name_start, byte_len(src)), ":")
-  Some(ExpectRename(
-    line,
-    col,
-    str_slice(src, name_start, name_end),
-    battery_line_rest(src, name_end + 2, name_end + 2)
-  ))
-}
-
-// THE RENAME BATTERY: the rename at the address decided as the verb decides
-// it, nothing written, and the contract holds when the verdict is the one the
-// fixture states — the names it writes, or the refusal by its word.
-fn battery_rename_step(stem, path: String, line, col, name: String, want: String) = {
-  let v = rename_at(path, line, col, name) ~> format_default ~> infer_context
-  let got = match v {
-    Renamed(n, _) => "{int_to_str(n)} name(s)",
-    RenameRefused(r, _) => "refuses {refusal_word(r)}",
-  }
-  if str_eq(got, want) {
-    print("PASS {stem}: rename {want}\n")
-    0
-  } else {
-    let why = match v {
-      Renamed(_, _) => "",
-      RenameRefused(_, reason) => " — {reason}",
-    }
-    print("FAIL(rename) {stem}: wanted {want}, got {got}{why}\n")
-    1
-  }
 }
 
 // THE DECLARATION BATTERY: the name at the address follows its reference
@@ -2016,12 +1940,9 @@ fn battery_run(dir) = {
   let members =
     list_to_flat(map(ProgramAt, mn_files(root, Level)) ++ map(TranscriptAt, files_ending(root, ".transcript", Level)))
   // The artifact directory exists before the first module is written; a
-  // directory already there answers the same (EEXIST is absorbed). The op,
-  // never its impl: the row names what the battery does to the host.
-  {
-    fs_mkdir(".build")
-    fs_mkdir(".build/battery")
-  } ~> wasi_filesystem
+  // directory already there answers the same (EEXIST is absorbed).
+  fs_mkdir(".build")
+  fs_mkdir(".build/battery")
   battery_loop(members, 0, 0)
 }
 
@@ -2079,7 +2000,6 @@ fn battery_step(path: String) = {
       ExpectPropose(line, col, want) => battery_propose_step(stem, module, line, col, want),
       ExpectTeach(line, want) => battery_teach_step(stem, module, line, want),
       ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, module, line, col, dline, dcol),
-      ExpectRename(line, col, name, want) => battery_rename_step(stem, module, line, col, name, want),
       ExpectTranscript => transcript_beside(stem, module),
       ExpectRun(want, said) => battery_compile(module, wat) |> battery_run_verdict(stem, wat, want, said),
       // The same contract over a build that keeps every check the judgment
@@ -2201,7 +2121,7 @@ fn claim_start(claim: ClaimAt) = match claim.span {
 fn battery_check(module: String) = {
   let entry = driver_link_scoped(module, Census)
   (diag_errors(), banked_classes(), battery_pending(entry))
-} ~> wasi_filesystem ~> compile_context
+} ~> compile_context
 
 // The claims left open in the named module's layer, the ones the check
 // verb's pending summary counts; the library's own open claims are not the
@@ -2214,15 +2134,18 @@ fn battery_pending(entry) = match entry {
   None => [],
 }
 
-// TRANSCRIPTS: what a command prints, as a fixture's contract. A transcript,
-// a file `<name>.transcript` beside a battery's fixtures,
+// TRANSCRIPTS: what a command prints and writes, as a fixture's contract. A
+// transcript, a file `<name>.transcript` beside a battery's fixtures,
 // holds commands as a person types them at the repository's root, each
 // followed by what it printed. A line `$ mentl <words>` is a command, and the
 // lines after it, up to the next command, are its answer: a line it printed
 // on stdout follows two spaces, a line it said on stderr follows `! `, an
 // empty stdout line is empty and an empty stderr line is `!`, a last line
-// that ended without a newline is followed by `[no newline]`, and an exit
-// other than 0 is the answer's last line, `[exit N]`. The lines before the
+// that ended without a newline is followed by `[no newline]`, then each file
+// it wrote is a line `[wrote PATH]` followed by the text's lines, each after
+// `> `, and an exit other than 0 is the answer's last line, `[exit N]`. What
+// a command writes is kept in the transcript's memory, so the commands after
+// it read it and the repository is never written. The lines before the
 // first command say what the transcript shows and are kept as written. A
 // command's words are separated by single spaces, and a quote is an
 // ordinary character, since every verb that reads a phrase joins its words.
@@ -2273,8 +2196,7 @@ fn transcript_command(piece: String) = match lines(piece) {
   [] => TranscriptCommand("", []),
 }
 
-// The command line's own route, `verb_answer`, under writers that keep what
-// it says, inside an arena, so the replay holds one command's work at a time.
+// The command line's own route, `verb_answer`, under the transcript's host.
 fn replayed(words: String) = {
   let parsed = words |> split(" ") |> program_argv |> parse_cli_args
   match transcript_refusal(parsed) {
@@ -2285,13 +2207,17 @@ fn replayed(words: String) = {
 
 fn program_argv(words) = ["mentl"] ++ words
 
+// One command under the transcript's host: writers that keep what it says,
+// the files the transcript's commands wrote laid over the repository's
+// (`files_kept`, holding them in the `memory_files` the transcript installs
+// once), and a failure said with exit 1, so the next command runs.
 fn answer_kept(parsed) = {
-  let exit = verb_answer(parsed)
-  answer_lines(exit, pieces_taken())
+  let exit = verb_answer(parsed) ~> files_kept ~> wasi_filesystem ~> fail_said
+  answer_lines(exit, pieces_taken(), written_taken())
 } ~> transcript_bank
 
-// A transcript runs the verbs whose answer is text. Each verb that emits a
-// module, reads stdin, writes a file or runs the host's own work is refused
+// A transcript runs every verb whose answer is text and files. Each verb
+// that emits a module, reads stdin or runs the host's own work is refused
 // with its own reason.
 fn transcript_refusal(parsed) = match parsed {
   ParseError(_) => None,
@@ -2312,10 +2238,11 @@ fn verb_refusal(verb) = match verb {
     Some(t) => stdin_refusal(t),
     None => None,
   },
-  VFmt(mode, _) => match mode {
-    FmtCheck => None,
-    FmtWrite => Some("fmt without --check writes the files it renders"),
-  },
+  VFmt(_, _) => None,
+  VTighten(_) => None,
+  VAccept(_, _, _) => None,
+  VRename(_, _, _, _) => None,
+  VNew(_) => None,
   VCompile(_) => Some("compile's answer is a module, not text"),
   VAsm(_) => Some("asm's answer is a module's bytes, not text"),
   VResume(_) => Some("resume's answer is a module, not text"),
@@ -2326,11 +2253,7 @@ fn verb_refusal(verb) = match verb {
   VRepl => Some("repl reads its lines on stdin"),
   VMcp => Some("mcp reads its client on stdin"),
   VSession => Some("session reads its lines on stdin"),
-  VTighten(_) => Some("tighten writes the files it tightens"),
-  VAccept(_, _, _) => Some("accept writes the file it accepts into"),
-  VRename(_, _, _, _) => Some("rename writes the files it renames in"),
-  VNew(_) => Some("new writes a file"),
-  VMarch => Some("march writes the generation it emits"),
+  VMarch => Some("march's answer is a module, the compiler's next generation"),
   VTest(_, _) => Some("test runs a battery"),
   VLand => Some("the host runs the landing pass"),
   VWith(_, _) => Some("--with installs a handler by name"),
@@ -2339,10 +2262,25 @@ fn verb_refusal(verb) = match verb {
 fn stdin_refusal(target: String) =
   if target == "-" { Some("the target - is the program on stdin") } else { None }
 
-// The answer's lines, from the pieces in order: the pieces on one stream
-// that follow each other join, so how a verb split its writes never shows.
-fn answer_lines(exit, pieces) =
-  (pieces |> fold([], said_joined) |> flat_map(run_lines)) ++ exit_lines(exit)
+// The answer's lines: the pieces in order, where the pieces on one stream
+// that follow each other join, so how a verb split its writes never shows;
+// then the files it wrote; then its exit.
+fn answer_lines(exit, pieces, written) =
+  (pieces |> fold([], said_joined) |> flat_map(run_lines)) ++ flat_map(written_lines, written) ++ exit_lines(exit)
+
+// A file the command wrote, as its answer shows it. A path with a dot-named
+// part holds what the medium keeps for itself, such as `.build/fmt.stamps`,
+// whose text differs with the build that wrote it, so it is kept and not
+// shown, as the project's walk never visits one (`mn_walk`).
+fn written_lines(file) = match file {
+  (path, text) => if any(starts_with(??, "."), split("/", path)) {
+    []
+  } else {
+    ["[wrote {path}]"] ++ (text |> ended_lines |> map(written_line)) ++ unended_mark(text)
+  },
+}
+
+fn written_line(line: String) = if byte_len(line) == 0 { ">" } else { "> {line}" }
 
 fn said_joined(runs, piece) = match runs {
   [] => [piece],
@@ -2390,9 +2328,9 @@ fn exit_lines(exit) = if exit == 0 { [] } else { ["[exit {int_to_str(exit)}]"] }
 fn transcript_step(path: String) = {
   let stem = path_stem(path)
   match transcript_read(fs_read_file(path)) {
-    Transcript(_, commands) => match commands |> flat_map(command_miss) {
+    Transcript(_, commands) => match commands |> flat_map(command_miss) ~> memory_files {
       [] => {
-        print("PASS {stem}: {int_to_str(len(commands))} command(s) print what it says\n")
+        print("PASS {stem}: {int_to_str(len(commands))} command(s) answer what it says\n")
         0
       },
       [miss, ..._] => {
@@ -2418,7 +2356,7 @@ fn command_miss(command) = match command {
   },
 }
 
-// `mentl test --write`: each transcript written with what its commands print
+// `mentl test --write`: each transcript written with what its commands answer
 // now. A transcript with a command that cannot run is written not at all.
 fn transcripts_written(paths) = paths |> map(transcript_written) |> fold(0, max)
 
@@ -2426,7 +2364,7 @@ fn transcript_written(path: String) = {
   let text = fs_read_file(path)
   match transcript_read(text) {
     Transcript(preamble, commands) => {
-      let answers = map(command_replay, commands)
+      let answers = map(command_replay, commands) ~> memory_files
       match answers |> flat_map(replay_refusal) {
         [why, ..._] => {
           said("test: {path} not written — {why}\n")
@@ -2435,7 +2373,7 @@ fn transcript_written(path: String) = {
         [] => {
           let written = unlines(preamble ++ flat_map(command_written, zip(commands, answers))) ++ "\n"
           if written == text {
-            print("test: {path} says what its commands print\n")
+            print("test: {path} says what its commands answer\n")
           } else {
             fs_write_file(path, written)
             print("test: wrote {path}\n")
@@ -2483,7 +2421,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  audit(target) ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
 }
 
@@ -2491,12 +2429,11 @@ fn audit_run(target) = {
 // module's judged graph. A DIRECTORY is a tree of independent programs, each its own
 // link as `mentl test <dir>` runs them, and a site facet answers across all
 // of them (`query_dir`), found under the roots a module name resolves
-// against (`driver_dir_path`). The directory probe is a filesystem op, so
-// the bracket covers it, as the battery's does.
+// against (`driver_dir_path`).
 fn query_run(target, question) = match driver_dir_path(dir_base(target)) {
   Some(dir) => query_dir(dir, question),
   None => query(target, question),
-} ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+} ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // Every program in the directory judged on its own fresh chain, each inside
 // an arena so the walk's peak is one judgment's live set, and asked the
@@ -2621,7 +2558,7 @@ fn verify_run(target_opt) = {
       verify_board(entry_module)
     },
   }
-} ~> wasi_filesystem ~> mentl_default ~> infer_context
+} ~> mentl_default ~> infer_context
 
 // THE PROJECT LINE beside the bounds: every narration the judgment made over
 // every module of the link, counted once whether or not a register rendered
@@ -2693,7 +2630,7 @@ fn teach_run(target_opt) = {
   // chain was the eighth found missing the analysis handlers, by design
   // pass not by trap; query_default's env_lookup / env_snapshot resolve
   // into the bracket's env).
-  teach(entry_module) ~> query_context ~> wasi_filesystem ~> infer_context
+  teach(entry_module) ~> query_context ~> infer_context
   0
 }
 
@@ -2709,7 +2646,7 @@ fn teach_run(target_opt) = {
 fn repl_run() = {
   // The line-eval runs infer; the core installs as the one bracket (the
   // driverless-zero-state class the bounds trap unmasked lives in its law).
-  repl_eval_line(read_stdin_line()) ~> query_context ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
+  repl_eval_line(read_stdin_line()) ~> query_context ~> infer_context ~> progress_stderr(false)
   0
 }
 
@@ -2750,7 +2687,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
 // itself — a write followed by the live read is unfalsifiable, and it is
 // the same `<~` the cursor session runs (draw the edge, re-project).
 fn new_project(name) = {
-  scaffold_project(name) ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  scaffold_project(name) ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
 }
 
@@ -2827,7 +2764,7 @@ fn welcome_run() = {
   project_directory()
   print(verb_catalog())
   0
-} ~> wasi_filesystem
+}
 
 // project_directory — the cursor law at the shell: read where you ARE and
 // name each source's next keystroke. The welcome opens with it; `new`

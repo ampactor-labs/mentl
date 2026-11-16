@@ -89,11 +89,9 @@ handler console_bank with lines = [] {
 // the gate did, the errors and reports the judgment made, and the open
 // obligations the proposal's layer hears.
 fn mcp_judge(source, wat_path) = {
-  {
-    fs_mkdir(".build")
-    fs_mkdir(".build/mcp")
-    fs_write_file("{mcp_proposal_module()}.mn", source)
-  } ~> wasi_filesystem
+  fs_mkdir(".build")
+  fs_mkdir(".build/mcp")
+  fs_write_file("{mcp_proposal_module()}.mn", source)
   gated_compile(mcp_proposal_module(), wat_path, Project)
 }
 
@@ -127,11 +125,10 @@ fn mcp_verdict_head(judged, wat_path) = match judged.left {
   },
 }
 
-fn mcp_earlier_build(wat_path) = {
-  let earlier = {
-    fs_exists(wat_path)
-  } ~> wasi_filesystem
-  if earlier { ". {wat_path} is the previous proven build, not this program." } else { "" }
+fn mcp_earlier_build(wat_path) = if fs_exists(wat_path) {
+  ". {wat_path} is the previous proven build, not this program."
+} else {
+  ""
 }
 
 // ─── The protocol surface — JSON-RPC response builders ───────────────
@@ -541,7 +538,7 @@ fn mcp_tool_call(id, params, at_read) = {
         },
         None => None,
       }
-      match read_path_map(section) ~> wasi_filesystem {
+      match read_path_map(section) {
         (text, code) => mcp_response(
           id,
           JObj([
@@ -706,11 +703,7 @@ fn session_run(answer) = if driver_module_path("main") == None {
   said("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
   session_line_loop(driver_manifest(), answer, session_current)
   0
-} ~>
-// The filesystem is the OUTERMOST install: an arm's performs resolve outer
-// of its own install, and the query handler's arms read the filesystem (the
-// census's path class asks whether a cited path names a file).
-query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
+} ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context ~> progress_stderr(false)
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -787,9 +780,6 @@ fn mcp_run(at_read) = {
   // stateful handler has no default that grounds it. The conditional lives
   // inside the bracket; the installs cost nothing on the empty path.
   {
-    // The artifact directory is made INSIDE the bracket, because that is
-    // where the Filesystem handler is: the op answers here, and this
-    // server's row says it creates directories.
     fs_mkdir(".build")
     fs_mkdir(".build/mcp")
     if driver_module_path("main") != None {
@@ -801,6 +791,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], at_read, { m => m })
     }
-  } ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
+  } ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context ~> progress_stderr(false)
   0
 }

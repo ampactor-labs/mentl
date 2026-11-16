@@ -1,4 +1,4 @@
-// rename 4:13 to by: 3 name(s)
+// transcript
 // A label is the name of the parameter its slot fills, so it follows the
 // parameter's rename.
 fn scale(x, factor = 2) = x * factor

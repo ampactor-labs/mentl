@@ -1,0 +1,11 @@
+$ mentl rename tests/micros/mn-rename-param.mn:4:10 count
+  fmt: wrote tests/micros/mn-rename-param.mn
+  rename: wrote tests/micros/mn-rename-param.mn
+  rename: 3 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-param.mn]
+> // transcript
+> // A parameter renames by one write at its binder, its uses following their
+> // edges and the comment's mention of `count` following its own.
+> fn twice(count) = count + count
+>
+> fn main() = twice(21) - 42

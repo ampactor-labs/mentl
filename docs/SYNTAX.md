@@ -2714,9 +2714,9 @@ renamed declaration captures a use of the new name, or when a mention
 resolves elsewhere. A name written inside a type is printed from the type's
 value, so a rename that reaches one is rejected. A rename is also rejected
 when the new name breaks the case rule or is a word of the language, and
-when the declaration is outside the program's own layer. The battery states
-each verdict as `// rename L:C to NEW: N name(s)` or `refuses <word>`
-(tests/micros/mn-rename-*.mn).
+when the declaration is outside the program's own layer. Each fixture's
+contract is the transcript beside it (tests/micros/mn-rename-*.transcript):
+what `mentl rename` prints, and each file it would write, kept in memory.
 
 ### Exhaustiveness
 

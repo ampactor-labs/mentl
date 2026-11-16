@@ -1,4 +1,4 @@
-// rename 3:4 to increment: 3 name(s)
+// transcript
 // `bump` adds one; a function renames at its head, and every stage naming it follows.
 fn bump(x) = x + 1
 

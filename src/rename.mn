@@ -4,7 +4,7 @@
 // edge reaches (`ref_spelling`), so renaming writes the declaration and each
 // comment that mentions it, along its mention edge, and nothing else. The
 // program is then judged again under the new name, its rewritten files read
-// from memory (`fs_overlay`), and its edges are compared with the edges it
+// from memory (`files_kept`), and its edges are compared with the edges it
 // drew before: a rename that moves any edge — a use another declaration of
 // the new name captures, a use of the new name the renamed declaration
 // captures, a mention that resolves elsewhere — or that leaves an error,
@@ -33,51 +33,19 @@ import strings
 
 import types
 
-// Why a rename writes nothing.
-type RenameRefusal
-  // the new name is not one the declaration can hold
-  = RfName
-  // the address holds no declaration and no reference to one
-  | RfDeclaration
-  // the declaration stands outside the program's own layer
-  | RfOutside
-  // a reference stands inside a type, which renders from its value
-  | RfType
-  // the program reports an error before the rename
-  | RfUnjudged
-  // a file the rename writes is not its own canonical render, or moved since
-  // it was judged
-  | RfCanonical
-  // the renamed program reports an error
-  | RfError
-  // the renamed program draws an edge somewhere else
-  | RfEdge
-
 // What a rename does: how many names it writes and each file it writes — its
 // path, its text and its render — or why it writes nothing.
-type RenameVerdict = Renamed(Int, [(String, String, String)]) | RenameRefused(RenameRefusal, String)
-
-// The word a battery contract names a refusal by.
-fn refusal_word(r) = match r {
-  RfName => "name",
-  RfDeclaration => "declaration",
-  RfOutside => "outside",
-  RfType => "type",
-  RfUnjudged => "unjudged",
-  RfCanonical => "canonical",
-  RfError => "error",
-  RfEdge => "edge",
-}
+type RenameVerdict = Renamed(Int, [(String, String, String)]) | RenameRefused(String)
 
 // The rename at an address, inside the bracket of the judgment that reads
 // it: the declaration the address names, what a rename owes before it
 // writes, the write, the renders, and the judgment of what it would write.
 fn rename_at(entry: String, line, col, new: String) = match driver_link(entry) {
-  None => RenameRefused(RfDeclaration, "{entry} did not load"),
+  None => RenameRefused("{entry} did not load"),
   Some(link) => match address_node(Some(link), entry, line, col) {
-    None => RenameRefused(RfDeclaration, "no node stands at {entry}:{int_to_str(line)}:{int_to_str(col)}"),
+    None => RenameRefused("no node stands at {entry}:{int_to_str(line)}:{int_to_str(col)}"),
     Some(n) => match renamed_target(n) {
-      None => RenameRefused(RfDeclaration, "the address holds no declaration and no reference to one"),
+      None => RenameRefused("the address holds no declaration and no reference to one"),
       Some(d) => rename_owed(entry, n, d, new),
     },
   },
@@ -108,22 +76,16 @@ fn spelled_at(d) = match decl_spelling(d) {
 fn rename_owed(entry: String, n, d, new: String) = {
   let old = spelled_at(d)
   match name_refusal(old, new) {
-    Some(why) => RenameRefused(RfName, why),
+    Some(why) => RenameRefused(why),
     None => if module_layer_of_handle(graph_module_of(d)) != module_layer_of_handle(graph_module_of(n)) {
-      RenameRefused(
-        RfOutside,
-        "`{old}` is declared in {module_name_of_handle(graph_module_of(d))}, outside the program's own layer"
-      )
+      RenameRefused("`{old}` is declared in {module_name_of_handle(graph_module_of(d))}, outside the program's own layer")
     } else {
       match typed_refusal(d, old) {
-        Some(why) => RenameRefused(RfType, why),
+        Some(why) => RenameRefused(why),
         None => {
           let errors = banked_errors()
           if errors > 0 {
-            RenameRefused(
-              RfUnjudged,
-              "the program reports {int_to_str(errors)} error(s) before the rename, and a rename keeps the edges of a program that judges clean"
-            )
+            RenameRefused("the program reports {int_to_str(errors)} error(s) before the rename, and a rename keeps the edges of a program that judges clean")
           } else {
             rename_written(entry, d, old, new)
           }
@@ -204,12 +166,12 @@ fn rename_written(entry: String, d, old: String, new: String) = {
   write_name(d, new)
   each(reword_mention(old, new, ??), graph_comment_refs_of(d))
   match fold(Renamed(0, []), module_written(old, new, ??, ??), zip(mods, before)) {
-    Renamed(0, _) => RenameRefused(RfDeclaration, "no page writes `{old}`"),
+    Renamed(0, _) => RenameRefused("no page writes `{old}`"),
     Renamed(n, files) => match judged_again(entry, files, print) {
-      Some((r, why)) => RenameRefused(r, why),
+      Some(why) => RenameRefused(why),
       None => Renamed(n, files),
     },
-    RenameRefused(r, why) => RenameRefused(r, why),
+    RenameRefused(why) => RenameRefused(why),
   }
 }
 
@@ -221,7 +183,7 @@ fn module_render(mh) = {
 }
 
 fn module_written(old: String, new: String, acc, pair) = match acc {
-  RenameRefused(_, _) => acc,
+  RenameRefused(_) => acc,
   Renamed(n, files) => match pair {
     (mh, was) => {
       let now = module_render(mh)
@@ -230,14 +192,11 @@ fn module_written(old: String, new: String, acc, pair) = match acc {
       } else {
         let m = module_of(mh)
         if was != m.text || fs_read_file(m.file) != m.text {
-          RenameRefused(
-            RfCanonical,
-            "{m.file} is not its own canonical render, or changed since it was judged — `mentl fmt` it, then rename"
-          )
+          RenameRefused("{m.file} is not its own canonical render, or changed since it was judged — `mentl fmt` it, then rename")
         } else {
           match names_only(m.text, now, old, new) {
             Some(k) => Renamed(n + k, push(files, (m.file, m.text, now))),
-            None => RenameRefused(RfCanonical, "{m.file} would change in more than the names the rename writes"),
+            None => RenameRefused("{m.file} would change in more than the names the rename writes"),
           }
         }
       }
@@ -369,28 +328,28 @@ fn place_of(at, h) = match wmap_get(at, h) {
 }
 
 // The renamed program, judged in a bracket of its own as the verb would write
-// it — its files read from memory — and its edges compared with the
-// program's. None where they agree and it judges clean; else why.
-fn judged_again(entry: String, files, print) =
-  renamed_verdict(entry, print) ~> fs_overlay(map(file_text, files)) ~> infer_context
+// it: each renamed file written to memory (`files_kept`), never to the host,
+// and its edges compared with the program's. None where they agree and it
+// judges clean; else why.
+fn judged_again(entry: String, files, print) = {
+  each(renamed_file_kept, files)
+  renamed_verdict(entry, print)
+} ~> files_kept ~> memory_files ~> infer_context
 
 fn renamed_verdict(entry: String, print) = match driver_link_scoped(entry, Unheard) {
-  None => Some((RfError, "the renamed program does not load")),
+  None => Some("the renamed program does not load"),
   Some(_) => {
     let errors = banked_errors()
     if errors > 0 {
-      Some((RfError, "the renamed program reports {int_to_str(errors)} error(s), printed above"))
+      Some("the renamed program reports {int_to_str(errors)} error(s), printed above")
     } else {
-      match first_moved(print, edge_print()) {
-        Some(why) => Some((RfEdge, why)),
-        None => None,
-      }
+      first_moved(print, edge_print())
     }
   },
 }
 
-fn file_text(f) = match f {
-  (path, _, text) => (path, text),
+fn renamed_file_kept(f) = match f {
+  (path, _, text) => fs_write_file(path, text),
 }
 
 // The first edge the renamed program draws that the program did not, said at

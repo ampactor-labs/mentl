@@ -187,9 +187,7 @@ fn compile(entry_module) = {
 // the warm-start cache (driver_compile_entry)
 persist_to_disk ~>
 // image_resume's refusal policy (probe-guarded)
-fail_exit ~>
-// FS — per-file byte I/O for driver / cache
-wasi_filesystem ~> compile_context
+fail_exit ~> compile_context
 
 // THE EXECUTABLE GATE (§0's "nothing executes unproven" at its honest scope).
 // Runs BETWEEN reachability and the first byte — wat_stdout streams every
@@ -305,7 +303,7 @@ fn gated_compile(module: String, wat_path, audience) = {
     scope,
     traps: trap_lines(),
   }
-} ~> wasi_filesystem ~> compile_context
+} ~> compile_context
 
 // The CLI's refusal: say the count when there are errors, and exit 1 with
 // nothing on stdout.
@@ -480,7 +478,7 @@ fn resume_image(img_path) = {
   said("warm: restoring the persisted image\n")
   image_resume(img_path)
   compile_remainder()
-} ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem ~> compile_context
+} ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> compile_context
 
 // The program on stdin is an entry: its import lines draw the DAG the walk
 // follows, as a file's do (`driver_text_scoped`), and every module of the
@@ -488,7 +486,7 @@ fn resume_image(img_path) = {
 fn compile_stdin() = {
   driver_text_scoped(read_stdin(), Census)
   compile_remainder()
-} ~> wat_stdout ~> wasi_filesystem ~> compile_context
+} ~> wat_stdout ~> compile_context
 
 // pipeline_check returns its own ERROR COUNT, because it owns the handler that
 // does the counting (the diagnostics_handler at the foot of this chain).
@@ -538,7 +536,7 @@ fn pipeline_check(entry_module) = {
     None => (),
   }
   diag_errors()
-} ~> wasi_filesystem ~> mentl_default ~> infer_context
+} ~> mentl_default ~> infer_context
 
 fn planned_as_compiled() =
   link_program() |> saturate_pass |> lower_program |> reachable_from_main |> plan_whole ~> emit_context
@@ -599,11 +597,7 @@ fn query_text(question, m: String) =
 fn query_judged(entry_module: String, read) = match driver_link(entry_module) {
   None => None,
   Some(_) => Some(read(entry_module)),
-} ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~>
-// the derivation's fs_read — handled in-chain, as compile/check do; outermost
-// of the query's own installs, because a query arm reads the filesystem too
-// and an arm's performs resolve outer of its own install
-wasi_filesystem ~> infer_context
+} ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
 
 // How deep a walk reads: the directory's own entries, or its whole tree.
 type Reach = Level | Tree
@@ -632,14 +626,6 @@ fn files_ending(root, suffix: String, reach) = match fs_list_dir(root) {
 fn path_stem(path: String) = {
   let leaf = str_slice(path, after_last_slash(path, 0, 0), byte_len(path))
   if ends_with(leaf, ".mn") { str_slice(leaf, 0, byte_len(leaf) - 3) } else { leaf }
-}
-
-fn after_last_slash(path: String, i, at) = if i >= byte_len(path) {
-  at
-} else if byte_at(path, i) == 47 {
-  after_last_slash(path, i + 1, i + 1)
-} else {
-  after_last_slash(path, i + 1, at)
 }
 
 fn mn_walk(dir, reach, suffix: String, names, i, acc) = if i >= len(names) {
@@ -724,7 +710,7 @@ fn owed_site(path: String) = {
       }
     },
   }
-} ~> wasi_filesystem ~> emit_context ~> quiet_context ~> arena
+} ~> emit_context ~> quiet_context ~> arena
 
 // One program's answer to a SITE facet, kept to the program's own module —
 // what `mentl query <dir> …` asks of each program in a directory, since the
@@ -845,10 +831,9 @@ fn analyze_fns(entry_module, projection) = {
   }
   projection(link_entry_decls()) |> print
 } ~>
-// The weave's own fs_read — handled in-chain, as compile/check do; the
-// judgment's bank, which the audit projection reads for the tightenings per
-// decl, is infer_context's own.
-wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
+// The judgment's bank, which the audit projection reads for the tightenings
+// per decl, is infer_context's own.
+mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
 
 // The pure projection pair — audit and teach as `ast -> String`, the ONE
 // home the CLI verb and the resident session's tool both call (the

@@ -1,0 +1,10 @@
+$ mentl rename tests/micros/mn-rename-fn.mn:3:4 increment
+  fmt: wrote tests/micros/mn-rename-fn.mn
+  rename: wrote tests/micros/mn-rename-fn.mn
+  rename: 3 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-fn.mn]
+> // transcript
+> // `increment` adds one; a function renames at its head, and every stage naming it follows.
+> fn increment(x) = x + 1
+>
+> fn main() = (41 |> increment |> increment) - 43

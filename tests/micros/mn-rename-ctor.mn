@@ -1,4 +1,4 @@
-// rename 8:3 to Empty: 3 name(s)
+// transcript
 // A constructor renames in its type's entry, and its patterns and its calls
 // follow their edges.
 type Box = Full(Int) | Nothing

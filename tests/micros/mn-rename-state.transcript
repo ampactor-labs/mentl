@@ -1,0 +1,17 @@
+$ mentl rename tests/micros/mn-rename-state.mn:8:22 total
+  fmt: wrote tests/micros/mn-rename-state.mn
+  rename: wrote tests/micros/mn-rename-state.mn
+  rename: 4 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-state.mn]
+> // transcript
+> effect Count {
+>   bump() -> Int
+> }
+>
+> // A state field renames at its binder: the arm's reads and the update that
+> // writes it follow their edges.
+> handler counter with total = 40 {
+>   bump() => resume(total) with total = total + 2,
+> }
+>
+> fn main() = (bump() ~> counter) - 40

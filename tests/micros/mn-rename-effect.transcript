@@ -1,0 +1,19 @@
+$ mentl rename tests/micros/mn-rename-effect.mn:4:8 Tally
+  fmt: wrote tests/micros/mn-rename-effect.mn
+  rename: wrote tests/micros/mn-rename-effect.mn
+  rename: 2 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-effect.mn]
+> // transcript
+> // An effect renames at its declaration, and the row that negates it follows
+> // its edge.
+> effect Tally {
+>   bump() -> Int
+> }
+>
+> handler counter {
+>   bump() => resume(1),
+> }
+>
+> fn quiet() with !Tally = 1
+>
+> fn main() = (bump() ~> counter) + quiet() - 2

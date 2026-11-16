@@ -1,0 +1,3 @@
+$ mentl rename tests/micros/mn-rename-outside.mn:3:13 size
+  rename: nothing written — `len` is declared in lists, outside the program's own layer
+[exit 1]

@@ -1,0 +1,11 @@
+$ mentl rename tests/micros/mn-rename-label.mn:4:13 by
+  fmt: wrote tests/micros/mn-rename-label.mn
+  rename: wrote tests/micros/mn-rename-label.mn
+  rename: 3 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-label.mn]
+> // transcript
+> // A label is the name of the parameter its slot fills, so it follows the
+> // parameter's rename.
+> fn scale(x, by = 2) = x * by
+>
+> fn main() = scale(21, by = 2) - 42

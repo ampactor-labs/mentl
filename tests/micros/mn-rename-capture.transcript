@@ -1,0 +1,3 @@
+$ mentl rename tests/micros/mn-rename-capture.mn:4:10 y
+  rename: nothing written — the name at tests/micros/mn-rename-capture:6:3 would read the declaration at tests/micros/mn-rename-capture:5:7, in the renamed text
+[exit 1]

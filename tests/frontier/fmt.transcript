@@ -1,0 +1,125 @@
+$ mentl fmt tests/frontier/fmt-demo/rich.mn
+  fmt: tests/frontier/fmt-demo/rich.mn:7 not canonical
+    -   Dark      => 0,
+    +   Dark => 0,
+  fmt: wrote tests/frontier/fmt-demo/rich.mn
+[wrote tests/frontier/fmt-demo/rich.mn]
+> // The fmt fixture: one of every structural form the totality landing
+> // added — block, lambda, match, records, interpolation, patterns.
+> type Shade = Dark | Bright(Int)
+>
+> fn pick(s) = match s {
+>   // the zero arm teaches the dark default
+>   Dark => 0,
+>   Bright(n) => n,
+> }
+>
+> fn describe(x, tag) = "{tag}: {x}"
+>
+> // The closed annotation is the concrete receiver the open-record field
+> // class needs (the lambda-param field read is that class's repro shape).
+> fn level_plus(a, b: {kind: String, level: Int}) = a + b.level
+>
+> // The destructure-param lambda: the render must re-sugar the desugared
+> // machine form back to the authored pattern (a canonical page never
+> // bakes minted names), and the prose-carrying tuple below must hold the
+> // vertical layout so each label stays glued to its own element.
+> fn spread(f, pair) = f(pair)
+>
+> fn keep(r) = r
+>
+> // The heads of postfix forms — a field read's receiver, a call's callee, an
+> // index's receiver — each an operator expression: postfix binds tighter than
+> // every operator, so the render must keep their parens or the re-parse takes
+> // the postfix onto the head's last operand (the boot of 2026-09-28 rendered
+> // `(r |> keep).level` as `r |> keep.level`).
+> fn heads(r) = (r |> keep).level - 5 + (((a, b) => a * b)(2, 3) - 6) + (([1, 2] ++ [3, 4])[2] - 3)
+>
+> // A module-scope `let` bound to a function literal IS the declaration: the
+> // binder form renders as `fn`, and the arm-list form keeps its literal, whose
+> // one parameter is minted and never reaches the page.
+> fn twice_of(x) = x * 2
+>
+> let or_zero = { Some(v) => v, None => 0 }
+>
+> fn main() = {
+>   let base = {kind: "b", level: 2}
+>   let lifted = {...base, level: 3}
+>   let g = (n) => n + 1
+>   let (lo, hi) = (1, pick(Bright(40)))
+>   let both = spread({ (a, b) => a + b }, (lo, hi))
+>   let labeled = (
+>     // the low end
+>     lo,
+>     // the high end
+>     hi
+>   )
+>   let (l2, _) = labeled
+>   let sharp = g((lo + hi) * 2) - (hi - lo) - 1
+>   describe(level_plus(lo, lifted) + hi, "sum")
+>   sharp + level_plus(lo, lifted) - 5 + both - hi - l2 + heads({kind: "c", level: 5}) + (twice_of(3) - 6) + (or_zero(Some(7)) - 7)
+> }
+$ mentl fmt tests/frontier/fmt-demo/rich.mn
+$ mentl fmt --check tests/frontier/fmt-demo/lets.mn
+$ mentl fmt tests/frontier/fmt-demo/recovered.mn
+! parser: P_ExpectedToken error: expected token: expected a name, found `[` at tests/frontier/fmt-demo/recovered:4:31-4:32
+! parser: P_UnexpectedToken error: unexpected token: ] at tests/frontier/fmt-demo/recovered:4:37-4:38
+! parser: P_UnexpectedToken error: unexpected token: = at tests/frontier/fmt-demo/recovered:4:39-4:40
+  fmt: tests/frontier/fmt-demo/recovered.mn not rendered — its parse recovered from 3 problem(s) a render cannot fix
+$ mentl fmt tests/frontier/fmt-demo/keyword-binder.mn
+! parser: P_UnexpectedToken error: unexpected token in pattern position at tests/frontier/fmt-demo/keyword-binder:5:7-5:10
+  fmt: tests/frontier/fmt-demo/keyword-binder.mn not rendered — its parse recovered from 1 problem(s) a render cannot fix
+$ mentl fmt no_such_module
+  fmt: no_such_module NOT written
+    names no directory, no file and no module (searched no_such_module.mn, src/no_such_module.mn, lib/no_such_module.mn, /mentl-home/src/no_such_module.mn, /mentl-home/lib/no_such_module.mn)
+  fmt: nothing written — 1 file(s) refused
+[exit 1]
+$ mentl fmt tests/frontier/fmt-demo/voicey.mn
+  fmt: tests/frontier/fmt-demo/voicey.mn:7 not canonical
+    - effect Ping { ping() -> Int }
+    + effect Ping {
+  fmt: wrote tests/frontier/fmt-demo/voicey.mn
+[wrote tests/frontier/fmt-demo/voicey.mn]
+> // The fmt row/retty/handler fixture — the census's blockers 1, 2, and 4
+> // seen RED on the pre-fix boot: the signed with-clause rendered as the
+> // literal text «invalid-effect» (the triples fed to the row constructor
+> // as bare EffNames), the handler decl trapped in render_handler_arms
+> // (open-record field reads), and the authored -> Int silently vanished
+> // (the discarded retty binder).
+> effect Ping {
+>   ping() -> Int
+> }
+>
+> effect Pong {
+>   pong_op() -> Int
+> }
+>
+> handler ponger with n = 38 {
+>   ping() => resume(n + 2),
+> }
+>
+> fn probe() -> Int with Ping + !Pong = ping()
+>
+> // Rung 3's face: a bare-expression if-branch renders its braces EXACTLY
+> // once (pre-fix the render double-wrapped the parsed BlockExpr and the
+> // inner braces re-parsed as the record pun — a value silently became a
+> // record).
+> fn clampish(n) -> Int = if n > 0 { n } else { 0 }
+>
+> // The parameter face: an effect's instance parameter and a handler's
+> // config parameter keep their authored annotations. Pre-fix the render
+> // dropped both (effect Tick(rate: Int) became effect Tick(rate)), and the
+> // declared Tick(2) then compared its Int against a bare variable and
+> // refused a program that ran before the render.
+> effect Tick(rate: Int) {
+>   tick_rate() -> Int
+> }
+>
+> handler ticker(r: Int) {
+>   tick_rate() => resume(r),
+> }
+>
+> fn rate_of() with Tick(2) = tick_rate()
+>
+> fn main() = (probe() ~> ponger) + clampish(-5) + (rate_of() ~> ticker(2))
+$ mentl fmt tests/frontier/fmt-demo/voicey.mn

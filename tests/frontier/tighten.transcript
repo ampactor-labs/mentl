@@ -1,0 +1,56 @@
+$ mentl tighten tests/frontier/tighten-demo/over.mn
+! infer: T_OverDeclared Warning: 'helper' names Memory + Alloc in its clause, but its body performs only Pure. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/tighten-demo/over:5:1-5:37
+  tighten: helper (tests/frontier/tighten-demo/over.mn:5)  with Memory + Alloc  →  (no clause — the row is projected)
+  tighten: 1 of 1 clause(s) applied, 0 ownership marker(s) released, 0 head(s) lifted of the types the judgment derives, 0 of 0 catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates
+[wrote tests/frontier/tighten-demo/over.mn]
+> // The tighten fixture: helper reserves Memory + Alloc while its body
+> // performs nothing, so T_OverDeclared carries the proven Pure row and
+> // the tighten verb writes the clause's residue — here nothing survives, so
+> // the clause is deleted and the row is projected (A4).
+> fn helper() = 42
+>
+> fn main() = helper()
+$ mentl check tests/frontier/tighten-demo/over.mn
+$ mentl tighten tests/frontier/tighten-demo/over.mn
+  mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head writes a type the judgment derives, and no catch-all stands over a sum
+$ mentl check tests/frontier/tighten-demo/wild.mn
+! infer: E_CatchAllOverSum error: the catch-all stands for `Box(_, _) | Blob` — a constructor declared later would join it unread; write the roster (`mentl tighten` writes it) at tests/frontier/tighten-demo/wild:13:3-13:4
+! infer: E_CatchAllOverSum error: the catch-all stands for `other @ (Line(_) | Box(_, _) | Blob)` — a constructor declared later would join it unread; write the roster (`mentl tighten` writes it) at tests/frontier/tighten-demo/wild:18:3-18:8
+[exit 1]
+$ mentl tighten tests/frontier/tighten-demo/wild.mn
+! infer: E_CatchAllOverSum error: the catch-all stands for `Box(_, _) | Blob` — a constructor declared later would join it unread; write the roster (`mentl tighten` writes it) at tests/frontier/tighten-demo/wild:13:3-13:4
+! infer: E_CatchAllOverSum error: the catch-all stands for `other @ (Line(_) | Box(_, _) | Blob)` — a constructor declared later would join it unread; write the roster (`mentl tighten` writes it) at tests/frontier/tighten-demo/wild:18:3-18:8
+  fmt: wrote tests/frontier/tighten-demo/wild.mn
+  tighten: tests/frontier/tighten-demo/wild.mn — 2 catch-all arm(s) written as the roster each stood for
+  tighten: 0 of 0 clause(s) applied, 0 ownership marker(s) released, 0 head(s) lifted of the types the judgment derives, 2 of 2 catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates
+[wrote tests/frontier/tighten-demo/wild.mn]
+> // The catch-all fixture: a `_` or a bare binder over a SUM is the roster the
+> // author declined to write (Morgan, 2026-10-13). The judgment refuses each
+> // such match, naming the roster; `mentl tighten` writes the roster in the
+> // arm's place — under the binder when the arm bound one, the comment the arm
+> // carries kept above it — and a second run finds nothing. The arm over a
+> // word stays: `_` there is the honest complement.
+> type Shape = Dot | Line(Int) | Box(Int, Int) | Blob
+>
+> fn sides(s) = match s {
+>   Dot => 0,
+>   Line(_) => 1,
+>   // a box and a blob have four sides each
+>   Box(_, _) | Blob => 4,
+> }
+>
+> fn named(s) = match s {
+>   Dot => "dot",
+>   other @ (Line(_) | Box(_, _) | Blob) => "many",
+> }
+>
+> fn sign(n) = match n {
+>   0 => 0,
+>   _ => 1,
+> }
+>
+> fn main() = sides(Box(2, 3)) + sign(len(named(Blob)))
+$ mentl check tests/frontier/tighten-demo/wild.mn
+$ mentl tighten tests/frontier/tighten-demo/wild.mn
+  mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head writes a type the judgment derives, and no catch-all stands over a sum
+$ mentl fmt --check tests/frontier/tighten-demo/wild.mn

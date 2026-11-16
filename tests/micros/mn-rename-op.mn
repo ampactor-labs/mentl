@@ -1,4 +1,4 @@
-// rename 3:3 to give: 3 name(s)
+// transcript
 effect Box {
   put(x: Int) -> Int
 }

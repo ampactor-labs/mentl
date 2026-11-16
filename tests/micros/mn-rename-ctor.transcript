@@ -1,0 +1,16 @@
+$ mentl rename tests/micros/mn-rename-ctor.mn:8:3 Empty
+  fmt: wrote tests/micros/mn-rename-ctor.mn
+  rename: wrote tests/micros/mn-rename-ctor.mn
+  rename: 3 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-ctor.mn]
+> // transcript
+> // A constructor renames in its type's entry, and its patterns and its calls
+> // follow their edges.
+> type Box = Full(Int) | Empty
+>
+> fn open(b) = match b {
+>   Full(v) => v,
+>   Empty => 0,
+> }
+>
+> fn main() = open(Empty) + open(Full(0))

@@ -1,0 +1,3 @@
+$ mentl rename tests/micros/mn-rename-keyword.mn:3:10 match
+  rename: nothing written — `match` is a word of the language
+[exit 1]

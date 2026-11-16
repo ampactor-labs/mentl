@@ -2074,68 +2074,17 @@ for i in "${!compilers[@]}"; do
     fail "audit-pipe-shape (the let-chain's |> invite is missing)"
   fi
 
-  # ── mentl tighten — the medium authors its own row tightening ───────
-  # T_OverDeclared / T_RowInventory are MachineApplicable proposals; the
-  # tighten verb writes each clause's RESIDUE — its negations and instance
-  # pins, or no clause (A4, 2026-09-27: the positive row is projected, never
-  # authored back). The fixture copies out (tighten MUTATES its target):
-  # helper reserves Memory + Alloc over a pure body; one run deletes the
-  # clause, a fresh check stays clean, and a second run finds nothing —
-  # the ratchet's fixpoint. RED on the pre-verb boot (unrecognized
-  # command; file untouched); the residue form seen RED on the boot that
-  # wrote `with Pure` back.
+  # ── tighten and fmt write files; a program run keeps what they mean ──
+  # What `mentl tighten` and `mentl fmt` write, and the checks around each,
+  # are the transcripts tests/frontier/tighten.transcript and
+  # tests/frontier/fmt.transcript. Running a program is the host's, so the
+  # legs below write a copy on disk and run it: the rostered match runs to 5,
+  # and a type check cannot tell (a+b)*c from a+b*c, so each fmt fixture
+  # answers the same before and after its render.
   tdemo="$dir/tighten-demo"
   mkdir -p "$tdemo"
-  cp "$ROOT/tests/frontier/tighten-demo/over.mn" "$tdemo/over.mn"
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp "$compiler" tighten over.mn) >"$dir/tighten.out" 2>&1
-  trc=$?
-  if [ $trc -eq 0 ] && grep -q '^fn helper() = 42' "$tdemo/over.mn"; then
-    pass "tighten authors the residue (with Memory + Alloc → no clause; the row is projected)"
-  else
-    fail "tighten authoring (exit=$trc; see $dir/tighten.out)"
-  fi
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp "$compiler" check over.mn) >/dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    pass "tighten result checks clean (fresh process)"
-  else
-    fail "tighten result check"
-  fi
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp "$compiler" tighten over.mn) >"$dir/tighten2.out" 2>&1
-  if grep -q 'nothing to tighten' "$dir/tighten2.out"; then
-    pass "tighten reaches its fixpoint (second run finds nothing)"
-  else
-    fail "tighten fixpoint (see $dir/tighten2.out)"
-  fi
-
-  # ── the catch-all over a sum is the roster the author declined to write ──
-  # (Morgan, 2026-10-13). wild.mn stands a `_` and a bare binder after other
-  # arms over `Dot | Line(Int) | Box(Int, Int) | Blob`, and a `_` over an Int.
-  # The judgment refuses the two over the sum, each naming its roster;
-  # tighten writes the rosters — the binder's as the binder over the group,
-  # the arm's comment kept; the result checks clean and runs to 5; the second
-  # run finds nothing; the file is canonical. RED on boot eed49486: both
-  # catch-alls accepted.
   cp "$ROOT/tests/frontier/tighten-demo/wild.mn" "$tdemo/wild.mn"
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check wild.mn) >"$dir/wild-refuse.out" 2>&1
-  wref=$?
-  if [ $wref -ne 0 ] && [ "$(grep -c 'E_CatchAllOverSum' "$dir/wild-refuse.out")" -eq 2 ] && grep -q 'other @ (Line(_) | Box(_, _) | Blob)' "$dir/wild-refuse.out"; then
-    pass "the judgment refuses each catch-all over a sum, naming its roster"
-  else
-    fail "catch-all over a sum (exit=$wref; see $dir/wild-refuse.out)"
-  fi
   (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" tighten wild.mn) >"$dir/wild-tighten.out" 2>&1
-  wrc=$?
-  if [ $wrc -eq 0 ] && grep -q '^  Box(_, _) | Blob => 4,' "$tdemo/wild.mn" && grep -q '^  // a box and a blob have four sides each$' "$tdemo/wild.mn" && grep -q '^  other @ (Line(_) | Box(_, _) | Blob) => "many",' "$tdemo/wild.mn" && grep -q '^  _ => 1,' "$tdemo/wild.mn"; then
-    pass "tighten writes the roster each catch-all stood for, the binder over its group, the arm's comment and the word's complement kept"
-  else
-    fail "wildcard-over-sum tighten (exit=$wrc; see $dir/wild-tighten.out)"
-  fi
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check wild.mn) >"$dir/wild-check.out" 2>&1
-  if [ $? -eq 0 ] && [ ! -s "$dir/wild-check.out" ]; then
-    pass "the rostered match checks clean"
-  else
-    fail "wildcard-over-sum check (see $dir/wild-check.out)"
-  fi
   # The wheel only emits; running is the mentl command's (run_module).
   run_module "$compiler" "$tdemo" wild "$dir/wild-run.out" "$dir/wild-run.err"
   wrun=$?
@@ -2144,171 +2093,35 @@ for i in "${!compilers[@]}"; do
   else
     fail "wildcard-over-sum run (exit=$wrun; see $dir/wild-run.err)"
   fi
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" tighten wild.mn) >"$dir/wild-tighten2.out" 2>&1
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" fmt --check wild.mn) >"$dir/wild-fmt.out" 2>&1
-  wfmt=$?
-  if grep -q 'nothing to tighten' "$dir/wild-tighten2.out" && [ $wfmt -eq 0 ]; then
-    pass "the roster is the fixpoint: a second run finds nothing and the file is canonical"
-  else
-    fail "wildcard-over-sum fixpoint (fmt=$wfmt; see $dir/wild-tighten2.out, $dir/wild-fmt.out)"
-  fi
 
-  # ── mentl fmt — layout is projection, never contract ────────────────
-  # The render is TOTAL over the surface and precedence-inverse (an
-  # operand looser than its parent re-wraps in the parens the parse
-  # consumed). Three legs, RED on the pre-verb boot: (1) BEHAVIORAL —
-  # the fixture compiles+runs to 42 before AND after fmt (typechecking
-  # cannot tell (a+b)*c from a+b*c; only behavior can); (2) idempotence
-  # byte-exact; (3) the render carries comments and authored annotations.
   fdemo2="$dir/fmt-demo"
   mkdir -p "$fdemo2"
-  cp "$ROOT/tests/frontier/fmt-demo/rich.mn" "$fdemo2/rich.mn"
-  wt_entry "$fdemo2/rich.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/pre.wat" 2>/dev/null \
-    && wt_asm "$fdemo2/pre.wat" "$fdemo2/pre.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/pre.wasm" >/dev/null 2>&1
-  fmt_pre=$?
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt rich.mn) >"$dir/fmt.out" 2>&1
-  fmt_rc=$?
-  wt_entry "$fdemo2/rich.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/post.wat" 2>/dev/null \
-    && wt_asm "$fdemo2/post.wat" "$fdemo2/post.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/post.wasm" >/dev/null 2>&1
-  fmt_post=$?
-  if [ $fmt_rc -eq 0 ] && [ "$fmt_pre" = "42" ] && [ "$fmt_post" = "42" ]; then
-    pass "fmt preserves behavior (42 before and after the canonical render)"
-  else
-    fail "fmt behavioral (fmt_rc=$fmt_rc pre=$fmt_pre post=$fmt_post; see $dir/fmt.out)"
-  fi
-  cp "$fdemo2/rich.mn" "$fdemo2/pass1.mn"
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt rich.mn) >/dev/null 2>&1
-  if cmp -s "$fdemo2/rich.mn" "$fdemo2/pass1.mn"; then
-    pass "fmt is idempotent (second render byte-identical)"
-  else
-    fail "fmt idempotence"
-  fi
-  # A destructuring let renders as the let the author wrote, never as the
-  # one-arm match the parse makes of it (RED on boot 50da7612: every
-  # let became a match one level deeper per destructure). The fixture is
-  # canonical as written, and runs to 22.
-  cp "$ROOT/tests/frontier/fmt-demo/lets.mn" "$fdemo2/lets.mn"
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt --check lets.mn) >"$dir/fmt-lets.out" 2>&1
-  lets_rc=$?
-  wt_entry "$fdemo2/lets.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/lets.wat" 2>/dev/null \
+  for fx in rich voicey; do
+    cp "$ROOT/tests/frontier/fmt-demo/$fx.mn" "$fdemo2/$fx.mn"
+    wt_entry "$fdemo2/$fx.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/$fx-pre.wat" 2>/dev/null \
+      && wt_asm "$fdemo2/$fx-pre.wat" "$fdemo2/$fx-pre.wasm" 2>/dev/null \
+      && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/$fx-pre.wasm" >/dev/null 2>&1
+    fmt_pre=$?
+    (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt "$fx.mn") >"$dir/fmt-$fx.out" 2>&1
+    fmt_rc=$?
+    wt_entry "$fdemo2/$fx.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/$fx-post.wat" 2>/dev/null \
+      && wt_asm "$fdemo2/$fx-post.wat" "$fdemo2/$fx-post.wasm" 2>/dev/null \
+      && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/$fx-post.wasm" >/dev/null 2>&1
+    fmt_post=$?
+    if [ $fmt_rc -eq 0 ] && [ "$fmt_pre" = "42" ] && [ "$fmt_post" = "42" ]; then
+      pass "fmt keeps what $fx.mn does (42 before and after the canonical render)"
+    else
+      fail "fmt behavioral $fx.mn (fmt=$fmt_rc pre=$fmt_pre post=$fmt_post; see $dir/fmt-$fx.out)"
+    fi
+  done
+  wt_entry "$ROOT/tests/frontier/fmt-demo/lets.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/lets.wat" 2>/dev/null \
     && wt_asm "$fdemo2/lets.wat" "$fdemo2/lets.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/lets.wasm" >/dev/null 2>&1
   lets_run=$?
-  if [ $lets_rc -eq 0 ] && [ "$lets_run" = "22" ]; then
-    pass "fmt writes a destructuring let as a let (canonical as authored, runs to 22)"
+  if [ "$lets_run" = "22" ]; then
+    pass "the destructuring lets fmt keeps as written run to 22"
   else
-    fail "fmt destructuring let (check rc=$lets_rc run=$lets_run; see $dir/fmt-lets.out)"
-  fi
-  # A parse that recovered is never rendered: an unexpected token only
-  # narrates, and fmt wrote the recovery's holes back over the author's
-  # clause (RED on boot b2920932 and its candidate: `[e - E]` became
-  # `+  = e - E` with two `??` lines; a keyword binder became `let _`, RED
-  # since boot 21f8e691). The file stays byte for byte.
-  for rec in recovered keyword-binder; do
-    cp "$ROOT/tests/frontier/fmt-demo/$rec.mn" "$fdemo2/$rec.mn"
-    (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt "$rec.mn") >"$dir/fmt-$rec.out" 2>&1
-    if cmp -s "$ROOT/tests/frontier/fmt-demo/$rec.mn" "$fdemo2/$rec.mn"; then
-      pass "fmt never writes a parse it recovered ($rec.mn stays as authored)"
-    else
-      fail "fmt wrote a recovered parse (see $fdemo2/$rec.mn, $dir/fmt-$rec.out)"
-    fi
-  done
-  # The re-sugar: the fixture's destructure-param lambda must render as
-  # its authored pattern, never the desugared __dp<handle> machine form
-  # (seen RED on the pre-resugar wheel: the fan's labeled branches baked
-  # minted names and the labels migrated one arm per pass).
-  #
-  # THE SPELLING WAS REWRITTEN 2026-09-20, the law updated rather than
-  # obeyed. This leg asserted `((a, b)) =>` — the param-position form —
-  # and went RED the day the arm-list literal landed, because a
-  # sole-param destructure now renders `{ (a, b) => … }` (SYNTAX
-  # §«Function literals»: a function is MINTED with an arm list, and the
-  # param-position spelling is a CASE of it that retires with
-  # `(params) => body`). The INVARIANT the leg exists for is untouched
-  # and in fact held harder: the minted machine name must never reach
-  # the page, and the arm list carries no param name at all. Only the
-  # canonical spelling moved, so only the spelling moves here.
-  if ! grep -q '__dp' "$fdemo2/rich.mn" && grep -q '{ (a, b) =>' "$fdemo2/rich.mn"; then
-    pass "fmt renders the destructure as an arm list (no minted name on the canonical page)"
-  else
-    fail "fmt destructure re-sugar (see $fdemo2/rich.mn)"
-  fi
-  # A module-scope `let` bound to a function literal is born a declaration
-  # (parser.mn `let_at_scope`): the binder form renders as `fn`, and the
-  # arm-list form keeps `let name = { arms }`, since its one parameter is
-  # minted. RED through boot 2d18aedd, where the fixture did not assemble.
-  if grep -q '^fn twice_of(x) = x \* 2$' "$fdemo2/rich.mn" \
-     && grep -q '^let or_zero = { Some(v) => v, None => 0 }$' "$fdemo2/rich.mn" \
-     && ! grep -q '__al' "$fdemo2/rich.mn"; then
-    pass "fmt renders a module let-lambda as the fn it is, an arm-list one as its literal"
-  else
-    fail "fmt module let-lambda (see $fdemo2/rich.mn)"
-  fi
-  # The annotation carry expects the SURFACE-canonical spelling — the
-  # authored `{kind: String, level: Int}` byte-for-byte (space-free,
-  # parse-sorted). The earlier banked `{ level: Int, kind: String }` was
-  # show_type's voice spacing, retired when the formatter grew its own
-  # surface-type projection.
-  if grep -q '^// The fmt fixture' "$fdemo2/rich.mn" && grep -q 'b: {kind: String, level: Int}' "$fdemo2/rich.mn" \
-     && grep -q 'the zero arm teaches the dark default' "$fdemo2/rich.mn"; then
-    pass "fmt carries comments and authored annotations"
-  else
-    fail "fmt prose/annotation carry"
-  fi
-  # ── a target that names no file and no module is refused, and no file
-  # appears. RED on boot c0b2828c: the resolver answered a fabricated
-  # `lib/<name>.mn` for a module with no file, and fmt wrote ANOTHER
-  # module's render there (lib/--check.mn held lib/memory.mn's text).
-  mkdir -p "$fdemo2/lib"
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt no_such_module) >"$dir/fmt-nothing.out" 2>&1
-  nothing_rc=$?
-  if [ $nothing_rc -ne 0 ] && [ ! -e "$fdemo2/lib/no_such_module.mn" ] && [ ! -e "$fdemo2/no_such_module.mn" ] \
-     && grep -q 'no_such_module' "$dir/fmt-nothing.out"; then
-    pass "fmt refuses a target that names nothing, and writes no file"
-  else
-    fail "fmt wrote or accepted a target that names nothing (rc=$nothing_rc; see $dir/fmt-nothing.out, $fdemo2/lib)"
-  fi
-  # ── fmt rungs 1/2/4 (the census's universal blockers) — RED pre-fix:
-  # the signed with-clause rendered «invalid-effect», every handler decl
-  # trapped in render_handler_arms, and authored `-> RetTy` dropped.
-  cp "$ROOT/tests/frontier/fmt-demo/voicey.mn" "$fdemo2/voicey.mn"
-  wt_entry "$fdemo2/voicey.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/vpre.wat" 2>/dev/null \
-    && wt_asm "$fdemo2/vpre.wat" "$fdemo2/vpre.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpre.wasm" >/dev/null 2>&1
-  vfmt_pre=$?
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt voicey.mn) >"$dir/vfmt.out" 2>&1
-  vfmt_rc=$?
-  wt_entry "$fdemo2/voicey.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/vpost.wat" 2>/dev/null \
-    && wt_asm "$fdemo2/vpost.wat" "$fdemo2/vpost.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpost.wasm" >/dev/null 2>&1
-  vfmt_post=$?
-  if [ $vfmt_rc -eq 0 ] && [ "$vfmt_pre" = "42" ] && [ "$vfmt_post" = "42" ]; then
-    pass "fmt row/retty/handler behavioral (42 before and after)"
-  else
-    fail "fmt row/retty/handler behavioral (rc=$vfmt_rc pre=$vfmt_pre post=$vfmt_post; see $dir/vfmt.out)"
-  fi
-  if grep -q 'with Ping + !Pong' "$fdemo2/voicey.mn" && grep -q -- '-> Int' "$fdemo2/voicey.mn" && grep -q 'ping() => resume' "$fdemo2/voicey.mn" && ! grep -qF '{ {' "$fdemo2/voicey.mn"; then
-    pass "fmt carries the signed row, the retty, the handler arm; braces never accrete"
-  else
-    fail "fmt row/retty/handler/brace carry (see $fdemo2/voicey.mn)"
-  fi
-  # The parameter face — RED on boot 43aeb30f: the effect and handler heads
-  # rendered each parameter's NAME alone, so the render deleted an authored
-  # annotation (effect Tick(rate: Int) became effect Tick(rate)) and the
-  # declared instance Tick(2) then refused against a bare variable.
-  if grep -qF 'effect Tick(rate: Int)' "$fdemo2/voicey.mn" && grep -qF 'handler ticker(r: Int)' "$fdemo2/voicey.mn"; then
-    pass "fmt carries effect and handler parameter annotations"
-  else
-    fail "fmt parameter annotations dropped (see $fdemo2/voicey.mn)"
-  fi
-  cp "$fdemo2/voicey.mn" "$fdemo2/vpass1.mn"
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt voicey.mn) >/dev/null 2>&1
-  if cmp -s "$fdemo2/voicey.mn" "$fdemo2/vpass1.mn"; then
-    pass "fmt row/retty/handler idempotent"
-  else
-    fail "fmt row/retty/handler idempotence"
+    fail "fmt destructuring let run (exit=$lets_run)"
   fi
 
   # ── THE GRADIENT READS ADDRESSES (D3) ─────────────────────────────
@@ -2346,33 +2159,6 @@ for i in "${!compilers[@]}"; do
     pass "gradient accept: the session's head is the field's head, and the clause lands in its declaration"
   else
     fail "gradient accept (main.mn now: $(tr '\n' '|' < "$gadir/main.mn" | head -c 200); see $dir/gradient-accept.err)"
-  fi
-  fdemo="$ROOT/tests/frontier/propose-fan-demo"
-  pdemo="$ROOT/tests/frontier/propose-demo"
-  # ── THE ACCEPT IS A GRAPH WRITE, THE TEXT ITS PROJECTION (C4) ──────
-  # `mentl accept hole.mn:9:37` on a scratch copy: the accept edge is drawn
-  # with the survivor's proof, the module re-derives, the file carries the
-  # projection (`= 1`, no `??`), and the projection the verb prints — the
-  # address form over the re-derived graph — walks its Why to the accepted
-  # proposal. RED on boot 4bc10808: no accept verb (exit 2, file untouched).
-  adir="$dir/accept"
-  mkdir -p "$adir" && cp "$pdemo/hole.mn" "$adir/hole.mn"
-  aout=$(cd "$adir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$adir" --dir /tmp "$compiler" accept hole.mn:9:37 2>"$dir/accept.err")
-  if [ $? -eq 0 ] && grep -q 'with Pure = 1$' "$adir/hole.mn" && ! grep -q '??' "$adir/hole.mn" \
-     && printf '%s' "$aout" | grep -q '^Query: 1 : Int' \
-     && printf '%s' "$aout" | grep -q '^Why: accepted `1` — proposed: .*integer inhabitants'; then
-    pass "cursor-address accept (the edge drawn with its proof; the file its projection; the Why walks to the proposal)"
-  else
-    fail "cursor-address accept (got: $(printf '%s' "$aout" | head -3); file: $(grep -c '??' "$adir/hole.mn") hole(s); see $dir/accept.err)"
-  fi
-  # A TIE DRAWS NOTHING: bit.mn's two survivors are the question, never a
-  # guess — the verb refuses, exits 1, and the file keeps its hole.
-  cp "$fdemo/bit.mn" "$adir/bit.mn"
-  tout=$(cd "$adir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$adir" --dir /tmp "$compiler" accept bit.mn:8:30 2>"$dir/accept-tie.err")
-  if [ $? -ne 0 ] && grep -q 'proven survivors — a tie is a question' "$dir/accept-tie.err" && grep -q '= ??' "$adir/bit.mn"; then
-    pass "cursor-address accept refuses a tie (the question stands; the hole stays)"
-  else
-    fail "cursor-address accept tie (rc=$?; see $dir/accept-tie.err; got: $tout)"
   fi
   # ONE RENDERER FOR THE DEVELOPER'S EYE (render lane, 2026-10-06). `doc`
   # and `where` render every type through the formatter's projection with
@@ -2427,43 +2213,6 @@ for i in "${!compilers[@]}"; do
     pass "teach battery refuses a contract at a line with no declaration"
   else
     fail "teach battery refuses a contract at no declaration (got: $(printf '%s' "$tbr_out" | head -2))"
-  fi
-  # THE ACCEPT WRITES WHAT THE GRADIENT PROVED (D4): `mentl accept` at a
-  # declaration writes the Teaching's annotation into its head through the
-  # formatter's head render, and the module re-judges with the debt gone —
-  # a precondition (the division total, no pending claim). RED on boot 6f62b7c4: the
-  # accept at a declaration answered "no proposal at this position". A
-  # refinement over a parameter written `n: Int` replaces the written type,
-  # and the head's census counts `Int` present as the base NonZero declares.
-  tadir="$dir/teach-accept"
-  rm -rf "$tadir"; mkdir -p "$tadir"
-  cp "$ROOT/tests/teach/precondition-weakest.mn" "$tadir/pre.mn"
-  cp "$ROOT/tests/teach/precondition-over-a-plain-type.mn" "$tadir/plain.mn"
-  wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept pre.mn:12:1 > /dev/null 2>"$dir/teach-accept-pre.err"
-  tapre=$?
-  wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept plain.mn:8:1 > /dev/null 2>"$dir/teach-accept-plain.err"
-  taplain=$?
-  # The debt is the fixture's own. The file route's summary counts the
-  # entry's own layer since 2026-10-12 (the user-link leg below holds it),
-  # so a bare program's count over the same link is zero; it is still read
-  # and subtracted, a no-op that keeps this leg honest should the summary
-  # ever widen again. Any error counts outright.
-  printf 'fn main() = 0\n' > "$tadir/bare.mn"
-  ta_pending() { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile "$1" 2>&1 >/dev/null \
-    | awk '/ error/ {e++} /verification obligations pending/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/) p=$i} END {print (e+0) " " (p+0)}'; }
-  read -r _ tabase <<<"$(ta_pending bare.mn)"
-  tadebt=0
-  for taf in pre.mn plain.mn; do
-    read -r tae tap <<<"$(ta_pending "$taf")"
-    tadebt=$((tadebt + tae + tap - tabase))
-  done
-  if [ "$tapre" = 0 ] && [ "$taplain" = 0 ] \
-     && [ "$(sed -n 12p "$tadir/pre.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
-     && [ "$(sed -n 8p "$tadir/plain.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
-     && [ "$tadebt" = 0 ]; then
-    pass "teach accept: a precondition and a refinement over a written Int written into their heads, the debt gone"
-  else
-    fail "teach accept (pre exit=$tapre line: $(sed -n 12p "$tadir/pre.mn"); plain exit=$taplain line: $(sed -n 8p "$tadir/plain.mn"); debt lines=$tadebt)"
   fi
   # ── the user's link is the user's (2026-10-12) ─────────────────────
   # A module's LAYER (User | Lib | Compiler) is read off the root that

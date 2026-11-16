@@ -1,4 +1,4 @@
-// rename 3:10 to match: refuses name
+// transcript
 // A word of the language is never a name.
 fn twice(n) = n + n
 

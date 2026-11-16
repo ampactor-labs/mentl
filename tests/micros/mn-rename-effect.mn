@@ -1,4 +1,4 @@
-// rename 4:8 to Tally: 2 name(s)
+// transcript
 // An effect renames at its declaration, and the row that negates it follows
 // its edge.
 effect Count {

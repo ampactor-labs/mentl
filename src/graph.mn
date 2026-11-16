@@ -602,7 +602,10 @@ fn stops_of(h) = match value_tails(h) {
     // (`is_address_op`), except that word_addr applied to a word answers memory
     // nothing in sight names (`word_as_address`). Any other op of the substrate stays a call the readers
     // answer by what the op does, an op of another effect is answered by its
-    // install, and a function call is read by its claim.
+    // install, and a function call is read by its claim. Once every reference
+    // is linked, every handler's arm has been drawn onto its op, and an op
+    // whose arms all abandon, such as `fail`, never answers its perform: as a
+    // word, it is no memory and has no parts (`callee_abandons`).
     NExpr(CallExpr(callee, args)) => if is_memory_read(callee) {
       [memory_read_stop(h, callee)]
     } else if is_address_op(callee) {
@@ -612,6 +615,8 @@ fn stops_of(h) = match value_tails(h) {
       }
     } else if substrate_op(callee) {
       [StopCall(h, callee, args)]
+    } else if walk_linked() && callee_abandons(callee) {
+      [StopWord(h)]
     } else if callee_is_op(callee) {
       [StopPerform(h, graph_perform_install_of(h))]
     } else {
@@ -681,6 +686,16 @@ fn stops_of_binder(b) = match graph_binder_of(b) {
 fn callee_is_op(callee) with !Mutate = match graph_ref_decl(callee) {
   Some(d) => match graph_published(d) {
     Some((_, _, EffectOpScheme(_, _, _))) => true,
+    Some(_) | None => false,
+  },
+  None => false,
+}
+
+// Whether a reference names an op whose every handler's arm never resumes,
+// the discipline its published entry joins from the arms (`Abandon`).
+fn callee_abandons(callee) with !Mutate = match graph_ref_decl(callee) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, EffectOpScheme(_, _, disc))) => disc == Abandon,
     Some(_) | None => false,
   },
   None => false,

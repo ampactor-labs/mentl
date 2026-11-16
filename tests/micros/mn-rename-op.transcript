@@ -1,0 +1,17 @@
+$ mentl rename tests/micros/mn-rename-op.mn:3:3 give
+  fmt: wrote tests/micros/mn-rename-op.mn
+  rename: wrote tests/micros/mn-rename-op.mn
+  rename: 3 name(s) written in 1 file(s); the program draws every edge it drew
+[wrote tests/micros/mn-rename-op.mn]
+> // transcript
+> effect Box {
+>   give(x: Int) -> Int
+> }
+>
+> // An op renames in its effect's entry: the arm that serves it and the call
+> // that performs it follow their edges.
+> handler doubled {
+>   give(v) => resume(v + v),
+> }
+>
+> fn main() = (give(21) ~> doubled) - 42

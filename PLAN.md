@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `1818fc1554e0`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `6546ad532797`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -63,8 +63,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   its text. P3b followed: what a command prints is a fixture's contract,
   kept in a transcript that `mentl test` replays and `mentl test --write`
   writes. P3c moved the frontier gate's 56 legs that read a verb's text
-  on one fixture into 17 transcripts. The rest of P3 waits on what its
-  legs need (§11.B, P3); P4, P7 and P5 follow.
+  on one fixture into 17 transcripts. P3d followed on 2026-11-16: the
+  filesystem is installed once, at `main`, and a transcript keeps what
+  its commands write in memory, so `fmt`, `tighten`, `accept`, `rename`
+  and `new` run in one. The rest of P3 waits on what its legs need
+  (§11.B, P3); P4, P7 and P5 follow.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1182,9 +1185,10 @@ accepts each program and `mentl run` shows the break.
 - The page cannot play a lesson (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
   calls. The landing pass, the march and the batteries' host loop are shell
-  scripts under tools/ (§11.9). 38 lines of the frontier gate pipe a
+  scripts under tools/ (§11.9). 36 lines of the frontier gate pipe a
   compiler's answer into `grep -q` (144 before P3c moved 56 legs into
-  transcripts, 2026-11-15), which can read a present answer as absent at
+  transcripts, 2026-11-15, and 38 before P3d moved 20 more, 2026-11-16),
+  which can read a present answer as absent at
   random (§11.B, "Three checks that failed at random"); P3's later
   batches move them.
 
@@ -1403,7 +1407,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1454,8 +1458,10 @@ leave, and the landing deletes them.
    says its answer through the writers its caller installs. P3b landed the
    same day (pin 1818fc1554e0): what a command prints is a fixture's
    contract, kept in a transcript. P3c landed the same day: the gate's 56
-   legs that read a verb's text on one fixture are 17 transcripts. P3's
-   later batches are cut into boxes as their groundwork comes. Then P4, P7
+   legs that read a verb's text on one fixture are 17 transcripts. P3d
+   landed on 2026-11-16 (pin 6546ad532797): the filesystem is installed once,
+   at `main`, and a transcript keeps what its commands write in memory.
+   P3's later batches are cut into boxes as their groundwork comes. Then P4, P7
    and P5, the newest engine, which T4 needs for exception handling and M5
    for multiple memories.
 3. Leaves that read only carried facts. F1: a claim names the node where
@@ -1505,8 +1511,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
-3 is P3d.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1553,18 +1558,24 @@ minute, and no expectation kept by hand.
   replays its commands through `verb_answer` and `mentl test --write`
   writes their answers, and the battery's seven forms of an answer written
   by hand became 35 transcripts, whose steps' deletion paid for its code.
-  A transcript refuses each verb that writes files, reads stdin or emits a
-  module, with that verb's reason. P3c, built the same day, moved the
-  frontier gate's first batch: the 56 legs that read a verb's text on one
-  fixture became 17 transcripts in tests/frontier, and the gate fell to
-  315 legs, 3,393 lines and 38 lines that pipe into `grep -q`. Each later
-  batch brings what its legs need: a filesystem handler,
-  installed once at `main`, that keeps a transcript's writes in memory,
-  for `fmt`, `tighten`, `accept` and `rename`, and for a project folder,
-  which retires a transcript's refusal of the verbs that write; stdin, for
-  an `edit` session; `// expect:` fixtures, for the legs that compile and
-  run a program; and a form for the legs that compare against an outside
-  program, a warm image or an LSP exchange.
+  A transcript refuses each verb that reads stdin or emits a module, with
+  that verb's reason. P3c, built the same day, moved the frontier gate's
+  first batch: the 56 legs that read a verb's text on one fixture became
+  17 transcripts in tests/frontier. P3d, built 2026-11-16, installed the
+  filesystem once, at `main`, where 39 routes had each installed their
+  own, and a replayed command runs over `files_kept ~> memory_files`
+  (lib/fs.mn), the in-memory filesystem the rename verb also judges its
+  rewritten program over: what a command writes is shown in its answer
+  under `[wrote PATH]` and read by the commands after it, and the
+  repository is never written. So `fmt`, `tighten`, `accept`, `rename`
+  and `new` run in a transcript; 20 legs became three transcripts, and the
+  battery's rename contract became the transcripts of its 11 fixtures. The
+  gate fell to 295 legs, 3,142 lines and 36 lines that pipe into `grep
+  -q`. A project folder needs nothing more: its imports resolve from the
+  repository's root. Each later batch brings what its legs need: stdin,
+  for an `edit` session; `// expect:` fixtures, for the legs that compile
+  and run a program; and a form for the legs that compare against an
+  outside program, a warm image or an LSP exchange.
 - P4. A document's quoted output is re-run by a command that fails when
   the pin prints something else and rewrites the quote on request (§11.5).
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
@@ -1855,8 +1866,8 @@ pipe, and under `set -o pipefail` the writer's SIGPIPE made the condition
 read false: 88 of 2,000 runs on that one answer. The leg now reads the
 answer from a file, as the gate's relocation legs already did, and read
 false in none of 2,000 runs. On 2026-11-15 the frontier gate held 144
-lines that pipe a captured answer into `grep -q`, and 38 after P3c the
-same day. Any of them whose answer is written
+lines that pipe a captured answer into `grep -q`, 38 after P3c the same
+day, and 36 after P3d on 2026-11-16. Any of them whose answer is written
 in more than one chunk can read false the same way, and a negated one,
 `! printf … | grep -q`, can read true, which passes a leg that should fail.
 They leave when the gate's legs are read by the medium instead of the
@@ -2051,141 +2062,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · P3d · The filesystem is installed once, at `main`, and a
-   transcript keeps what its commands write in memory.** Written
-   2026-11-16 and measured on a candidate compiler built from the changed
-   source, beside pin 1818fc1554e0 on the committed source.
-
-   What a person sees. `mentl test` replays `fmt`, `tighten`, `accept`,
-   `rename` and `new`. Each file a command writes stands in its answer, a
-   line `[wrote PATH]` followed by the text, and the commands after it in
-   the transcript read what it wrote; the repository is never written.
-   Three transcripts in tests/frontier (tighten, fmt, accept) hold what 20
-   legs of tools/frontier-gate.sh checked, and the gate falls from 3,393
-   lines to 3,142, from 315 legs to 295 (294 pass and the one expected
-   red), and from 38 lines that pipe captured text into `grep -q` to 36. The 11 rename fixtures in tests/micros become transcripts that
-   show the renamed text, where their contract was a count of names or the
-   word for a refusal. And any program can run over files kept in memory
-   by installing `~> files_kept ~> memory_files` (lib/fs.mn).
-
-   Fails today, on pin 1818fc1554e0.
-   - `mentl query src/main.mn "refs of wasi_filesystem"` answers 39
-     installs: 26 in src/main.mn, 8 in src/pipeline.mn and 5 in
-     src/mcp.mn, one around each route. A transcript's replay cannot put
-     its own filesystem under a route's install, so `verb_refusal` refuses
-     every verb that writes a file: `fmt` without `--check`, `tighten`,
-     `accept`, `rename` and `new`.
-   - The 20 gate legs read what those verbs wrote through patterns over a
-     copy on disk, each checking the lines its patterns name; two of their
-     lines pipe captured text into `grep -q`.
-   - The battery's rename contract, `// rename L:C to NEW: N name(s)` or
-     `refuses <word>`, checks a count and a word, and never the text the
-     rename would write.
-   - Two forms hold a file in memory for a judgment: `fs_overlay`
-     (lib/fs.mn), a static list rename judges its rewritten program over,
-     and none for a transcript.
-
-   The form.
-   - `main` is `argv |> parse_cli_args |> verb_answer ~> wasi_filesystem
-     ~> fail_said ~> stdout_console ~> progress_stderr(fd_is_tty(2))`, and
-     `verb_answer` loses `~> fail_said`. A filesystem arm that cannot do
-     what it was asked performs `Fail` outside its own install, so the
-     failure's handler stands outside the filesystem's. The 39 inner
-     installs leave, with the comments that explained where each stood.
-   - In lib/fs.mn, `fs_overlay` is replaced by two handlers. `files_kept`
-     answers `Filesystem`: a path a write was kept at reads as written,
-     and every other path reads through the filesystem outside; a write
-     is kept; a directory stands once asked for; a removal, a rename and
-     an image answer false, since none reaches the host; a stream through
-     a descriptor fails naming its path, since no descriptor stands for a
-     kept file; a listing is the host's names and each kept file in the
-     directory, in byte order. `memory_files` answers `effect KeptFiles {
-     kept_files() -> [(String, String)]; keep_file(String, String);
-     written_taken() -> [(String, String)] }`, holding each path's last
-     text and what was written since the last `written_taken`.
-     `after_last_slash` moves from src/pipeline.mn to lib/fs.mn, where
-     `path_stem` and `kept_name_in` both see it.
-   - The rename verb's `judged_again` writes the renamed files into
-     `files_kept ~> memory_files` and judges the program there.
-   - The replay: `answer_kept` runs `verb_answer(parsed) ~> files_kept ~>
-     wasi_filesystem ~> fail_said` inside `transcript_bank`, and
-     `transcript_step` and `transcript_written` install `memory_files`
-     once around a transcript's commands. An answer's lines end with each
-     file the command wrote: `[wrote PATH]`, then each line after `> `,
-     an empty one as `>`, and `[no newline]` where the text ends without
-     one, before `[exit N]`. A path with a dot-named part, such as
-     `.build/fmt.stamps`, holds what the medium keeps for itself and
-     differs with the build that wrote it, so it is kept and not shown,
-     as the project's walk never visits one.
-   - `verb_refusal` answers None for `fmt`, `tighten`, `accept`, `rename`
-     and `new`; `march` keeps a refusal, "march's answer is a module, the
-     compiler's next generation".
-   - The rename contract leaves: `ExpectRename`, `battery_rename_expect`,
-     `battery_rename_step`, and with them `refusal_word` and the eight
-     `RenameRefusal` kinds, which nothing else read; a refusal is
-     `RenameRefused(String)`, its reason. The 11 fixtures' first line is
-     `// transcript`, and `mentl test --write` writes their transcripts.
-   - The memory walk (`stops_of`, src/graph.mn): once every reference is
-     linked (`walk_linked`), a perform of an op whose every handler's arm
-     abandons (`callee_abandons`, the discipline `Abandon` its published
-     entry joins from the arms) reads as a word: no memory and no parts,
-     since it never answers. Before the link, the discipline is still
-     being joined as handlers are judged, so the walk reads the perform as
-     it did. This is what lets `files_kept` fail without cost: an arm that
-     fails answers its install with `fail`'s answer, which the walk read
-     as any memory, 11 values at rename's install.
-
-   Every fact it reads, and what carries it.
-   - The `Filesystem` effect's ops: the effect's face, `mentl where
-     src/main.mn Filesystem`.
-   - Which install answers a perform: the install chain, `mentl where
-     src/main.mn verb_answer` listing each `~>` and what it absorbs.
-   - An op's resume discipline: its published entry, `mentl where
-     src/main.mn fail` answering `resume a ->0 answer`.
-   - Whether every reference is linked: the walk's own `walk_linked`,
-     which `param_roots` already reads.
-   - What a replayed command printed: P3b's `answer_kept`.
-
-   What pays for it, measured with `MENTL_BOOT=<candidate> mentl verify`
-   and `census … in MODULE` on both compilers.
-   - Values the walk cannot place, 32,016 → 32,006. lib/fs.mn +13
-     (`fs_overlay`'s 17 leave, the two handlers add 30); src/graph.mn +2
-     (`callee_abandons`); src/main.mn −5 (the rename contract's 16 leave,
-     the replay's files add 11). The walk places 20 answers of an op
-     that never returns: 14 of `asm_refuse` in src/asm.mn, and 2 each of
-     `fail` in src/infer.mn, src/intern.mn and lib/prelude.mn. Without it,
-     rename's install would add 11.
-   - Places that can trap with no claim, 3,106 → 3,105: the rename
-     contract's two `str_eq` calls leave src/main.mn, and `path_stem`'s
-     call of `after_last_slash`, a library function now, counts once in
-     src/pipeline.mn.
-   - Claims open at a call of a partial primitive stay 648: the rename
-     contract's two leave, and `kept_name_in`'s two `str_slice` calls
-     come.
-   - Rosters 1,346, open obligations 78 and arenas with unknown roots 23
-     do not move.
-   - The census of the modules it touches: index walks lib/fs.mn 3 → 4
-     and src/pipeline.mn 3 → 2 (`after_last_slash` moved); `match` sites
-     src/main.mn 160 → 158, lib/fs.mn 16 → 19, src/rename.mn 44 → 42 and
-     src/graph.mn 222 → 224; `~>` sites src/main.mn 295 → 265,
-     src/pipeline.mn 177 → 169, src/mcp.mn 39 → 34 and src/rename.mn
-     10 → 11.
-
-   Left alone. A verb that reads stdin (`edit`, `serve`, `repl`, `mcp`,
-   `session` and a `-` target) and one that emits a module stay refused.
-   The gate keeps the four legs that run what a verb wrote: the rostered
-   match runs to 5, rich.mn and voicey.mn answer 42 before and after their
-   render, and lets.mn runs to 22. The course's accept and render, the
-   gradient accept on stdin and the user-link legs wait for their own
-   batches. `rename` and `tighten` print `fmt: wrote PATH` beside their
-   own line for each file they write, on the pin as on the candidate, and
-   §11.5 records it.
-
-   Proves it. `mentl query src/main.mn "refs of wasi_filesystem"`: 2.
-   `mentl test tests/micros` and `tests/frontier` pass, the 11 rename
-   transcripts and the three new ones among them. The gate: 294 pass, 0
-   red, 1 expected red. `mentl land` passes.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
@@ -2662,7 +2538,11 @@ build's, though `mentl run` with `resume` reads it. `mentl repl` prints
 no answers. `mentl query` answers an unknown question with exit 0 and
 cannot list its questions; `ownership NAME` answers a count of
 parameters, and `unresolved` a count with no sites. `mentl rename`
-reports two names written for three changed lines. `mentl edit` prints a
+reports two names written for three changed lines. `mentl rename` and
+`mentl tighten` say `fmt: wrote PATH` beside their own line for each file
+they write, a second report naming a verb nobody ran
+(tests/micros/mn-rename-fn.transcript, 2026-11-16, on pin 1818fc1554e0 as
+on the candidate). `mentl edit` prints a
 placeholder where its Why belongs. The gate's server names its version
 "first-light". A session answers `where` and `query` and misses on
 `why`. The prelude imports `threading` and uses nothing from it, which

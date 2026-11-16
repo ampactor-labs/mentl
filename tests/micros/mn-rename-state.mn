@@ -1,4 +1,4 @@
-// rename 8:22 to total: 4 name(s)
+// transcript
 effect Count {
   bump() -> Int
 }
