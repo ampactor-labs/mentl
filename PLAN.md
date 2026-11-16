@@ -1403,7 +1403,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1505,7 +1505,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
+3 is P3d.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2050,6 +2051,141 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · P3d · The filesystem is installed once, at `main`, and a
+   transcript keeps what its commands write in memory.** Written
+   2026-11-16 and measured on a candidate compiler built from the changed
+   source, beside pin 1818fc1554e0 on the committed source.
+
+   What a person sees. `mentl test` replays `fmt`, `tighten`, `accept`,
+   `rename` and `new`. Each file a command writes stands in its answer, a
+   line `[wrote PATH]` followed by the text, and the commands after it in
+   the transcript read what it wrote; the repository is never written.
+   Three transcripts in tests/frontier (tighten, fmt, accept) hold what 20
+   legs of tools/frontier-gate.sh checked, and the gate falls from 3,393
+   lines to 3,142, from 315 legs to 295 (294 pass and the one expected
+   red), and from 38 lines that pipe captured text into `grep -q` to 36. The 11 rename fixtures in tests/micros become transcripts that
+   show the renamed text, where their contract was a count of names or the
+   word for a refusal. And any program can run over files kept in memory
+   by installing `~> files_kept ~> memory_files` (lib/fs.mn).
+
+   Fails today, on pin 1818fc1554e0.
+   - `mentl query src/main.mn "refs of wasi_filesystem"` answers 39
+     installs: 26 in src/main.mn, 8 in src/pipeline.mn and 5 in
+     src/mcp.mn, one around each route. A transcript's replay cannot put
+     its own filesystem under a route's install, so `verb_refusal` refuses
+     every verb that writes a file: `fmt` without `--check`, `tighten`,
+     `accept`, `rename` and `new`.
+   - The 20 gate legs read what those verbs wrote through patterns over a
+     copy on disk, each checking the lines its patterns name; two of their
+     lines pipe captured text into `grep -q`.
+   - The battery's rename contract, `// rename L:C to NEW: N name(s)` or
+     `refuses <word>`, checks a count and a word, and never the text the
+     rename would write.
+   - Two forms hold a file in memory for a judgment: `fs_overlay`
+     (lib/fs.mn), a static list rename judges its rewritten program over,
+     and none for a transcript.
+
+   The form.
+   - `main` is `argv |> parse_cli_args |> verb_answer ~> wasi_filesystem
+     ~> fail_said ~> stdout_console ~> progress_stderr(fd_is_tty(2))`, and
+     `verb_answer` loses `~> fail_said`. A filesystem arm that cannot do
+     what it was asked performs `Fail` outside its own install, so the
+     failure's handler stands outside the filesystem's. The 39 inner
+     installs leave, with the comments that explained where each stood.
+   - In lib/fs.mn, `fs_overlay` is replaced by two handlers. `files_kept`
+     answers `Filesystem`: a path a write was kept at reads as written,
+     and every other path reads through the filesystem outside; a write
+     is kept; a directory stands once asked for; a removal, a rename and
+     an image answer false, since none reaches the host; a stream through
+     a descriptor fails naming its path, since no descriptor stands for a
+     kept file; a listing is the host's names and each kept file in the
+     directory, in byte order. `memory_files` answers `effect KeptFiles {
+     kept_files() -> [(String, String)]; keep_file(String, String);
+     written_taken() -> [(String, String)] }`, holding each path's last
+     text and what was written since the last `written_taken`.
+     `after_last_slash` moves from src/pipeline.mn to lib/fs.mn, where
+     `path_stem` and `kept_name_in` both see it.
+   - The rename verb's `judged_again` writes the renamed files into
+     `files_kept ~> memory_files` and judges the program there.
+   - The replay: `answer_kept` runs `verb_answer(parsed) ~> files_kept ~>
+     wasi_filesystem ~> fail_said` inside `transcript_bank`, and
+     `transcript_step` and `transcript_written` install `memory_files`
+     once around a transcript's commands. An answer's lines end with each
+     file the command wrote: `[wrote PATH]`, then each line after `> `,
+     an empty one as `>`, and `[no newline]` where the text ends without
+     one, before `[exit N]`. A path with a dot-named part, such as
+     `.build/fmt.stamps`, holds what the medium keeps for itself and
+     differs with the build that wrote it, so it is kept and not shown,
+     as the project's walk never visits one.
+   - `verb_refusal` answers None for `fmt`, `tighten`, `accept`, `rename`
+     and `new`; `march` keeps a refusal, "march's answer is a module, the
+     compiler's next generation".
+   - The rename contract leaves: `ExpectRename`, `battery_rename_expect`,
+     `battery_rename_step`, and with them `refusal_word` and the eight
+     `RenameRefusal` kinds, which nothing else read; a refusal is
+     `RenameRefused(String)`, its reason. The 11 fixtures' first line is
+     `// transcript`, and `mentl test --write` writes their transcripts.
+   - The memory walk (`stops_of`, src/graph.mn): once every reference is
+     linked (`walk_linked`), a perform of an op whose every handler's arm
+     abandons (`callee_abandons`, the discipline `Abandon` its published
+     entry joins from the arms) reads as a word: no memory and no parts,
+     since it never answers. Before the link, the discipline is still
+     being joined as handlers are judged, so the walk reads the perform as
+     it did. This is what lets `files_kept` fail without cost: an arm that
+     fails answers its install with `fail`'s answer, which the walk read
+     as any memory, 11 values at rename's install.
+
+   Every fact it reads, and what carries it.
+   - The `Filesystem` effect's ops: the effect's face, `mentl where
+     src/main.mn Filesystem`.
+   - Which install answers a perform: the install chain, `mentl where
+     src/main.mn verb_answer` listing each `~>` and what it absorbs.
+   - An op's resume discipline: its published entry, `mentl where
+     src/main.mn fail` answering `resume a ->0 answer`.
+   - Whether every reference is linked: the walk's own `walk_linked`,
+     which `param_roots` already reads.
+   - What a replayed command printed: P3b's `answer_kept`.
+
+   What pays for it, measured with `MENTL_BOOT=<candidate> mentl verify`
+   and `census … in MODULE` on both compilers.
+   - Values the walk cannot place, 32,016 → 32,006. lib/fs.mn +13
+     (`fs_overlay`'s 17 leave, the two handlers add 30); src/graph.mn +2
+     (`callee_abandons`); src/main.mn −5 (the rename contract's 16 leave,
+     the replay's files add 11). The walk places 20 answers of an op
+     that never returns: 14 of `asm_refuse` in src/asm.mn, and 2 each of
+     `fail` in src/infer.mn, src/intern.mn and lib/prelude.mn. Without it,
+     rename's install would add 11.
+   - Places that can trap with no claim, 3,106 → 3,105: the rename
+     contract's two `str_eq` calls leave src/main.mn, and `path_stem`'s
+     call of `after_last_slash`, a library function now, counts once in
+     src/pipeline.mn.
+   - Claims open at a call of a partial primitive stay 648: the rename
+     contract's two leave, and `kept_name_in`'s two `str_slice` calls
+     come.
+   - Rosters 1,346, open obligations 78 and arenas with unknown roots 23
+     do not move.
+   - The census of the modules it touches: index walks lib/fs.mn 3 → 4
+     and src/pipeline.mn 3 → 2 (`after_last_slash` moved); `match` sites
+     src/main.mn 160 → 158, lib/fs.mn 16 → 19, src/rename.mn 44 → 42 and
+     src/graph.mn 222 → 224; `~>` sites src/main.mn 295 → 265,
+     src/pipeline.mn 177 → 169, src/mcp.mn 39 → 34 and src/rename.mn
+     10 → 11.
+
+   Left alone. A verb that reads stdin (`edit`, `serve`, `repl`, `mcp`,
+   `session` and a `-` target) and one that emits a module stay refused.
+   The gate keeps the four legs that run what a verb wrote: the rostered
+   match runs to 5, rich.mn and voicey.mn answer 42 before and after their
+   render, and lets.mn runs to 22. The course's accept and render, the
+   gradient accept on stdin and the user-link legs wait for their own
+   batches. `rename` and `tighten` print `fmt: wrote PATH` beside their
+   own line for each file they write, on the pin as on the candidate, and
+   §11.5 records it.
+
+   Proves it. `mentl query src/main.mn "refs of wasi_filesystem"`: 2.
+   `mentl test tests/micros` and `tests/frontier` pass, the 11 rename
+   transcripts and the three new ones among them. The gate: 294 pass, 0
+   red, 1 expected red. `mentl land` passes.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
