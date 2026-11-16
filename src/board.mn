@@ -450,7 +450,13 @@ fn board_bounds() = [
   // bounds off its leaf, so the three helpers that read them off the
   // precondition's domain left. A claim about one part of a join, and about
   // a let whose value is a join, came to be decided at each branch.
-  Bound({ceiling: 32043, question: QCensus(CsUnplaced)}),
+  // 32,043 -> 32,038 the same day: code left and came, and the walk places
+  // nothing it could not place before. A verb says its answer through the
+  // two writers its caller installs. The session's own copy of the query
+  // line left with the three answers it held, the failure policy's exit of
+  // the process left with two, and the repl's console install with one; the
+  // one query line both now read brought one.
+  Bound({ceiling: 32038, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

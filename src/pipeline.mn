@@ -568,14 +568,19 @@ fn query(entry_module, question) = match query_judged(entry_module, query_render
     // (Hβ.query.unreadable-source-refusal — the census printed "0 sites"
     // for a file the judge could not read). Productive-under-error stays for
     // JUDGED files; a missing entry refuses the question itself.
-    eprint_string("mentl query: no source to project — {entry_module} never joined the weave\n")
+    said("mentl query: no source to project — {entry_module} never joined the weave\n")
     1
   },
   Some(_) => 0,
 }
 
-fn query_render(question, m: String) =
-  ask(parse_query_string(m, question)) |> render_query_result |> println
+fn query_render(question, m: String) = query_text(question, m) |> print
+
+// The answer to a question as the query verb says it: the rendered result
+// and the end of its line. The cold verb prints it, and the resident session
+// answers it on its wire.
+fn query_text(question, m: String) =
+  "{ask(parse_query_string(m, question)) |> render_query_result}\n"
 
 // The entry judged and read: `read` runs over the judged graph, inside the
 // chain that judged it, and None says the entry never joined the weave.
@@ -834,7 +839,7 @@ fn analyze_fns(entry_module, projection) = {
   } else {
     driver_link(entry_module)
   }
-  projection(link_entry_decls()) |> print_string
+  projection(link_entry_decls()) |> print
 } ~>
 // The weave's own fs_read — handled in-chain, as compile/check do; the
 // judgment's bank, which the audit projection reads for the tightenings per
@@ -979,13 +984,15 @@ fn judging_line(i, n, name) = if byte_len(name) == 0 {
   "mentl · judging {int_to_str(i + 1)}/{int_to_str(n)} groups · {name}"
 }
 
-// The compiler's failure policy at the program boundary: the failure said
+// The compiler's failure policy at the verb's boundary: the failure said
 // through the one stderr writer, so it never lands beside a live line, and
-// the process exits 1.
+// the verb answers exit 1. The arm does not resume, so its answer ends
+// everything the handler is installed over, and a caller that runs a verb
+// inside itself keeps running.
 handler fail_said {
   fail(msg) => {
     said("{msg}\n")
-    proc_exit(1)
+    1
   },
 }
 

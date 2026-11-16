@@ -110,16 +110,24 @@ import test
 // row-wise — this install IS the row cure and the live chain node the
 // stray performs dispatch through. Like every table, it is born holding
 // the medium's own vocabulary (intern.mn's state init).
-// A failure no route answers nearer is the process's: `fail_said` says it on
-// stderr and exits 1. Every route's filesystem install performs `Fail` where
-// an op cannot do what it was asked, and its arms resolve outside the
-// install, so a path that does not read stops the verb naming the path.
-// Outermost, stderr has one writer: a live line where fd 2 is a terminal,
-// the full lines alone into a pipe (`progress_stderr`).
-fn main(argv) = match parse_cli_args(argv) {
+// A failure no route answers nearer is the verb's: `fail_said` says it on
+// stderr, and the verb answers exit 1. Every route's filesystem install
+// performs `Fail` where an op cannot do what it was asked, and its arms
+// resolve outside the install, so a path that does not read stops the verb
+// naming the path. Outermost, the process installs its two writers once:
+// stdout's (`stdout_console`), and stderr's, a live line where fd 2 is a
+// terminal and the full lines alone into a pipe (`progress_stderr`).
+fn main(argv) = verb_answer(argv) ~> stdout_console ~> progress_stderr(fd_is_tty(2))
+
+// What a command answers, said through the writers its caller installs: what
+// it prints goes to `print` and what it says beside that goes to `said`, and
+// a failure no route answers nearer is said there and answers exit 1. The
+// process installs the two writers once, above; a caller that wants the text
+// itself installs its own.
+fn verb_answer(argv) = match parse_cli_args(argv) {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
-} ~> diagnostics_handler ~> intern_table ~> fail_said ~> progress_stderr(fd_is_tty(2))
+} ~> diagnostics_handler ~> intern_table ~> fail_said
 
 // dispatch_invocation — the substrate handlers (env/graph/diagnostics)
 // install ONCE at this outermost dispatch boundary: the program boundary
@@ -204,7 +212,7 @@ fn edit_run(target_opt) = {
 // own file — so the module-aware proximity ranks that module's absences above
 // the rest of the link's.
 fn mentl_edit_session(entry_module) = match driver_link(entry_module) {
-  None => eprint_string("mentl edit: {entry_module} did not load — nothing to edit\n"),
+  None => said("mentl edit: {entry_module} did not load — nothing to edit\n"),
   Some(mh) => {
     patch_set_target(entry_module)
     cursor_session(entry_start_caret(mh))
@@ -239,10 +247,10 @@ fn entry_start_caret(mh) =
 // (`session_read`).
 fn space_run(addr) = match addr {
   None => {
-    eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
+    said("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
     2
   },
-  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> infer_context,
+  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context,
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -261,7 +269,7 @@ fn space_run(addr) = match addr {
 // nothing on one.
 fn march_run() = match march_entry() {
   None => {
-    print_string("march: no wheel source found — run beside the repo (src/main.mn) or through the installed shim\n")
+    print("march: no wheel source found — run beside the repo (src/main.mn) or through the installed shim\n")
     1
   },
   Some(entry) => {
@@ -273,20 +281,20 @@ fn march_run() = match march_entry() {
     match march_emit(entry, fd) {
       (names, errors) => {
         fs_close(fd)
-        print_string("march: link {join(" ", names)}\n")
+        print("march: link {join(" ", names)}\n")
         if errors > 0 {
           fs_unlink(new_path)
-          print_string("march: {int_to_str(len(names))} modules · census {int_to_str(errors)}\n")
-          print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
+          print("march: {int_to_str(len(names))} modules · census {int_to_str(errors)}\n")
+          print("march: the judgment REFUSES — no verdict from a refused wheel\n")
           1
         } else {
           fs_rename(new_path, wat_path)
-          print_string("march: {int_to_str(len(names))} modules · census 0 · the generation is {wat_path}\n")
+          print("march: {int_to_str(len(names))} modules · census 0 · the generation is {wat_path}\n")
           match self_compile_breaches() {
             [] => 0,
             breaches => {
               let lines = (breaches) >< (self_compile_refusal)
-              print_string(join("", lines))
+              print(join("", lines))
               1
             },
           }
@@ -294,7 +302,7 @@ fn march_run() = match march_entry() {
       },
     }
   },
-} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+} ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // The link's judgment with the streaming sink, as `mentl compile` reads it
 // (cold: the fixed point never restores an image) and under ScopeAll, so the
@@ -537,14 +545,14 @@ fn fmt_settle(mode, key: String, stamps, verdicts) = {
     FmtCheck => {
       fmt_stamps_write(key, stamps, verdicts)
       if len(renders) + len(refused) > 0 {
-        print_string("fmt: {int_to_str(len(renders))} of {int_to_str(len(verdicts))} file(s) not canonical, {int_to_str(len(refused))} refused — `mentl fmt` writes the first\n")
+        print("fmt: {int_to_str(len(renders))} of {int_to_str(len(verdicts))} file(s) not canonical, {int_to_str(len(refused))} refused — `mentl fmt` writes the first\n")
         1
       } else {
         0
       }
     },
     FmtWrite => if len(refused) > 0 {
-      print_string("fmt: nothing written — {int_to_str(len(refused))} file(s) refused\n")
+      print("fmt: nothing written — {int_to_str(len(refused))} file(s) refused\n")
       1
     } else {
       each(fmt_write, renders)
@@ -566,16 +574,16 @@ fn fmt_is_render(v) = match v {
 
 fn fmt_print_refused(v) = match v {
   FmtRefused(path, lines) => {
-    print_string("fmt: {path} NOT written\n")
+    print("fmt: {path} NOT written\n")
     each(fmt_print_reason, lines)
   },
   FmtCanonical(_, _) | FmtRenders(_, _, _) | FmtUnparsed(_, _) => (),
 }
 
-fn fmt_print_reason(line) = print_string("  {line}\n")
+fn fmt_print_reason(line) = print("  {line}\n")
 
 fn fmt_print_unparsed(v) = match v {
-  FmtUnparsed(path, n) => print_string("fmt: {path} not rendered — its parse recovered from {int_to_str(n)} problem(s) a render cannot fix\n"),
+  FmtUnparsed(path, n) => print("fmt: {path} not rendered — its parse recovered from {int_to_str(n)} problem(s) a render cannot fix\n"),
   FmtCanonical(_, _) | FmtRenders(_, _, _) | FmtRefused(_, _) => (),
 }
 
@@ -583,7 +591,7 @@ fn fmt_print_unparsed(v) = match v {
 // and the render's beside it.
 fn fmt_print_would(v) = match v {
   FmtRenders(path, src, rendered) => match first_changed_line(src, rendered) {
-    (n, was, now) => print_string("fmt: {path}:{int_to_str(n)} not canonical\n  - {was}\n  + {now}\n"),
+    (n, was, now) => print("fmt: {path}:{int_to_str(n)} not canonical\n  - {was}\n  + {now}\n"),
   },
   FmtCanonical(_, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => (),
 }
@@ -591,7 +599,7 @@ fn fmt_print_would(v) = match v {
 fn fmt_write(v) = match v {
   FmtRenders(path, _, rendered) => {
     fs_write_file(path, rendered)
-    print_string("fmt: wrote {path}\n")
+    print("fmt: wrote {path}\n")
   },
   FmtCanonical(_, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => (),
 }
@@ -755,10 +763,10 @@ fn tighten_run(target_opt) = {
     // changed is refused here and rewritten by the next run's judgment.
     let rostered = apply_pattern_tightenings(rosters)
     if len(cands) + len(rosters) == 0 && released == 0 && lifted == 0 {
-      print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head writes a type the judgment derives, and no catch-all stands over a sum\n")
+      print("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, no head writes a type the judgment derives, and no catch-all stands over a sum\n")
       0
     } else {
-      print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(lifted)} head(s) lifted of the types the judgment derives, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
+      print("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(lifted)} head(s) lifted of the types the judgment derives, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
       if n + released + lifted + rostered > 0 { 0 } else { 1 }
     }
   } ~> wasi_filesystem ~> mentl_default ~> infer_context
@@ -787,7 +795,7 @@ fn apply_lift(acc, h) = match teach_lifts(h) {
   lifts => match lifted_module_text(h, lifts) {
     Some((module, text)) => {
       module_write(module, text)
-      print_string("tighten: {body_decl_name(graph_node_body(h))} ({module}:{int_to_str(decl_start_line(h))})  {show_teaching(TeachLift(lifts))}\n")
+      print("tighten: {body_decl_name(graph_node_body(h))} ({module}:{int_to_str(decl_start_line(h))})  {show_teaching(TeachLift(lifts))}\n")
       acc + 1
     },
     None => acc,
@@ -827,7 +835,7 @@ fn roster_module(sites, acc, mh) = match filter({ (pat, _) => graph_module_of(pa
     fmt_print_refused(verdict)
     fmt_write(verdict)
     if fmt_is_render(verdict) {
-      print_string("tighten: {m.file} — {int_to_str(len(mine))} catch-all arm(s) written as the roster each stood for\n")
+      print("tighten: {m.file} — {int_to_str(len(mine))} catch-all arm(s) written as the roster each stood for\n")
       acc + len(mine)
     } else {
       acc
@@ -950,11 +958,11 @@ fn tighten_fold(items: [(String, Int, String, EffRow, EffRow)], i, cur_path, cur
           let residue = clause_residue(declared)
           let wrote =
             if byte_len(residue) == 0 { "(no clause — the row is projected)" } else { "with {residue}" }
-          print_string("tighten: {name} ({path}:{int_to_str(line1)})  with {show_effrow(declared)}  →  {wrote}\n")
+          print("tighten: {name} ({path}:{int_to_str(line1)})  with {show_effrow(declared)}  →  {wrote}\n")
           tighten_fold(items, i + 1, path, t2, applied + 1)
         },
         None => {
-          eprint_string("mentl tighten: {name} at {path}:{int_to_str(line1)} — no single-line with-clause; skipped\n")
+          said("mentl tighten: {name} at {path}:{int_to_str(line1)} — no single-line with-clause; skipped\n")
           tighten_fold(items, i + 1, path, text0, applied)
         },
       }
@@ -1019,17 +1027,17 @@ fn apply_own_release(applied, release) = match release {
   (name, span, dmod) => match span {
     Span(sl, _, _, _) => match driver_module_path(dmod) {
       None => {
-        eprint_string("mentl tighten: `{dmod}` resolves to no file — `own {name}` skipped\n")
+        said("mentl tighten: `{dmod}` resolves to no file — `own {name}` skipped\n")
         applied
       },
       Some(path) => match release_own_marker(fs_read_file(path), sl, name) {
         Some(t2) => {
           fs_write_file(path, t2)
-          print_string("tighten: `own {name}` ({path}:{int_to_str(sl)})  →  `{name}` — no path consumes it\n")
+          print("tighten: `own {name}` ({path}:{int_to_str(sl)})  →  `{name}` — no path consumes it\n")
           applied + 1
         },
         None => {
-          eprint_string("mentl tighten: `own {name}` at {path}:{int_to_str(sl)} — not on the head's first line; skipped\n")
+          said("mentl tighten: `own {name}` at {path}:{int_to_str(sl)} — not on the head's first line; skipped\n")
           applied
         },
       },
@@ -1108,7 +1116,7 @@ fn doc_run(target_opt) = {
   {
     driver_link(entry_module)
     doc_render(entry_module, module_cells())
-  } ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> infer_context
+  } ~> wasi_filesystem ~> mentl_default ~> infer_context
   0
 }
 
@@ -1116,7 +1124,7 @@ fn doc_run(target_opt) = {
 // answers, on stdout.
 fn map_run(name) = match read_path_map(name) ~> wasi_filesystem {
   (text, code) => {
-    print_string(text)
+    print(text)
     code
   },
 }
@@ -1208,7 +1216,7 @@ fn asm_run(source) = match source {
   Some(path) => if fs_exists(path) {
     asm_write(fs_read_file(path))
   } else {
-    eprint_string("mentl asm: no file at {path}\n")
+    said("mentl asm: no file at {path}\n")
     2
   },
   None => asm_write(read_stdin()),
@@ -1221,7 +1229,7 @@ fn asm_write(wat) = match assemble(wat) {
   },
   AsmRefused(msg, at) => match asm_line_col(wat, at) {
     (line, col) => {
-      eprint_string("mentl asm: {msg} at {line}:{col}\n")
+      said("mentl asm: {msg} at {line}:{col}\n")
       1
     },
   },
@@ -1253,7 +1261,7 @@ fn compile_stdin_run() = {
 // the page compiles. The compiler reached directly with `run` can only
 // emit, and says so — it never fabricates a program's exit.
 fn run_run(target) = {
-  eprint_string("mentl run: the host runs the module — the mentl command compiles {target}, assembles the module and executes it; the compiler reached directly can only emit (mentl compile {target})\n")
+  said("mentl run: the host runs the module — the mentl command compiles {target}, assembles the module and executes it; the compiler reached directly can only emit (mentl compile {target})\n")
   2
 }
 
@@ -1262,7 +1270,7 @@ fn run_run(target) = {
 // reached directly with `land` can judge the tree but never land it, and
 // says so.
 fn land_run() = {
-  eprint_string("mentl land: the host runs the landing pass — the mentl command sequences the gates, each a process; the compiler reached directly judges (mentl check, mentl verify) and never lands\n")
+  said("mentl land: the host runs the landing pass — the mentl command sequences the gates, each a process; the compiler reached directly judges (mentl check, mentl verify) and never lands\n")
   2
 }
 
@@ -1309,7 +1317,7 @@ fn check_run(target_opt) = {
 // silence predicate at the terminal). Spans render back to file:line against
 // the text the module's node carries — the text its judgment read.
 fn at_run(target, line, col) =
-  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> infer_context
+  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context
 
 // accept_run — the second graph operation at the address surface (C4).
 // `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
@@ -1322,7 +1330,7 @@ fn at_run(target, line, col) =
 // with the Why walking to the proposal it came from. A tie or a filled
 // position draws nothing, says why on stderr, and exits 1.
 fn accept_run(target, line, col) =
-  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> infer_context
+  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context
 
 // The rename verb: decided by the rename module (`rename_at`), and its files
 // written only when the renamed program keeps every edge and judges clean.
@@ -1332,11 +1340,11 @@ fn rename_run(target, line, col, name) =
 fn rename_settle(v) = match v {
   Renamed(n, files) => {
     each(rename_file_written, files)
-    print_string("rename: {int_to_str(n)} name(s) written in {int_to_str(len(files))} file(s); the program draws every edge it drew\n")
+    print("rename: {int_to_str(n)} name(s) written in {int_to_str(len(files))} file(s); the program draws every edge it drew\n")
     0
   },
   RenameRefused(_, why) => {
-    print_string("rename: nothing written — {why}\n")
+    print("rename: nothing written — {why}\n")
     1
   },
 }
@@ -1344,7 +1352,7 @@ fn rename_settle(v) = match v {
 fn rename_file_written(f) = match f {
   (path, src, text) => {
     fmt_write(FmtRenders(path, src, text))
-    print_string("rename: wrote {path}\n")
+    print("rename: wrote {path}\n")
   },
 }
 
@@ -1364,7 +1372,7 @@ fn accept_project(found, target: String, line, col) = if accept_draw(found, targ
 // shared by the CLI verb and the resident session, which differ only in what
 // re-judges the write. Answers the exit code the verb's verdict is.
 fn accept_draw(found, target: String, line, col) = if line <= 0 {
-  eprint_string("mentl accept: an accept names one position — {target}:<line>:<col>\n")
+  said("mentl accept: an accept names one position — {target}:<line>:<col>\n")
   1
 } else {
   match address_node(found, target, line, col) {
@@ -1418,11 +1426,7 @@ fn session_read(verb) = match verb {
     Some(SpaceAt(target, l, c, needle)) => session_whole(session_banked(() => space_project(session_module(target), target, l, c, needle))),
     None => session_miss(),
   },
-  VQuery(target, q) => if target == "main" {
-    "{render_query_result(ask(parse_query_string(target, q)))}\n"
-  } else {
-    session_miss()
-  },
+  VQuery(target, q) => if target == "main" { query_text(q, target) } else { session_miss() },
   VAudit(target) => if target == "main" { audit_project(link_entry_decls()) } else { session_miss() },
   // A bare `teach` means "teach HERE" — the resident entry is here.
   VTeach(target) => match target {
@@ -1530,11 +1534,11 @@ fn test_run(target_opt) = {
       Some(_) => battery_run(entry_module),
       None => test_check_run(path_to_module(entry_module)),
     }
-  } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler
+  } ~> wasi_filesystem ~> diagnostics_handler
 }
 
 fn test_check_run(entry_module) =
-  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  pipeline_check(entry_module) ~> assert_reporter ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
@@ -1850,14 +1854,14 @@ fn battery_rename_step(stem, path: String, line, col, name: String, want: String
     RenameRefused(r, _) => "refuses {refusal_word(r)}",
   }
   if str_eq(got, want) {
-    print_string("PASS {stem}: rename {want}\n")
+    print("PASS {stem}: rename {want}\n")
     0
   } else {
     let why = match v {
       Renamed(_, _) => "",
       RenameRefused(_, reason) => " — {reason}",
     }
-    print_string("FAIL(rename) {stem}: wanted {want}, got {got}{why}\n")
+    print("FAIL(rename) {stem}: wanted {want}, got {got}{why}\n")
     1
   }
 }
@@ -1878,10 +1882,10 @@ fn battery_declared_step(stem, path: String, line, col, dline, dcol) = {
   } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   let want = "{int_to_str(dline)}:{int_to_str(dcol)}"
   if str_eq(got, want) {
-    print_string("PASS {stem}: declared at {want}\n")
+    print("PASS {stem}: declared at {want}\n")
     0
   } else {
-    print_string("FAIL(declared) {stem}: wanted {want}, got {got}\n")
+    print("FAIL(declared) {stem}: wanted {want}, got {got}\n")
     1
   }
 }
@@ -1898,10 +1902,10 @@ fn battery_refs_step(stem, path: String, name: String, want: String) = {
     Some(fixture) => name_decls(name) |> flat_map(decl_ref_handles) |> filter({ h => graph_module_of(h) == fixture }) |> map(ref_role) |> refs_role_counts,
   } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   if str_eq(got, want) {
-    print_string("PASS {stem}: refs of {name} {want}\n")
+    print("PASS {stem}: refs of {name} {want}\n")
     0
   } else {
-    print_string("FAIL(refs) {stem}: wanted {want}, got {got}\n")
+    print("FAIL(refs) {stem}: wanted {want}, got {got}\n")
     1
   }
 }
@@ -1913,21 +1917,21 @@ fn battery_fmt_step(stem, path: String, src: String) = {
   let verdict = fmt_render_file(path, src)
   match verdict {
     FmtCanonical(_, _) => {
-      print_string("PASS {stem}: canonical\n")
+      print("PASS {stem}: canonical\n")
       0
     },
     FmtRenders(_, _, rendered) => match first_changed_line(src, rendered) {
       (n, was, now) => {
-        print_string("FAIL(fmt) {stem}:{int_to_str(n)} renders `{now}` for `{was}`\n")
+        print("FAIL(fmt) {stem}:{int_to_str(n)} renders `{now}` for `{was}`\n")
         1
       },
     },
     FmtRefused(_, lines) => {
-      print_string("FAIL(fmt) {stem}: {join("; ", lines)}\n")
+      print("FAIL(fmt) {stem}: {join("; ", lines)}\n")
       1
     },
     FmtUnparsed(_, n) => {
-      print_string("FAIL(fmt) {stem}: its parse recovered from {int_to_str(n)} problem(s)\n")
+      print("FAIL(fmt) {stem}: its parse recovered from {int_to_str(n)} problem(s)\n")
       1
     },
   }
@@ -1953,16 +1957,16 @@ fn battery_propose_step(stem, path: String, line, col, want) = battery_view(
   col,
   {
     None => {
-      print_string("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+      print("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
       1
     },
     Some((_, view)) => match view {
       CursorView(_, propose, _, _, _, _, _, _) => match propose {
         Proposal(p) => if verdict_meets(want, p.verdict) {
-          print_string("PASS {stem}: propose {show_want(want)}\n")
+          print("PASS {stem}: propose {show_want(want)}\n")
           0
         } else {
-          print_string("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(p.verdict)}\n")
+          print("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(p.verdict)}\n")
           1
         },
       },
@@ -1982,19 +1986,19 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
   0,
   {
     None => {
-      print_string("FAIL(teach) {stem}: no node at {path}:{int_to_str(line)}\n")
+      print("FAIL(teach) {stem}: no node at {path}:{int_to_str(line)}\n")
       1
     },
     Some((decl_name, view)) => if decl_name == "" {
-      print_string("FAIL(teach) {stem}: no declaration at {path}:{int_to_str(line)}\n")
+      print("FAIL(teach) {stem}: no declaration at {path}:{int_to_str(line)}\n")
       1
     } else {
       match view {
         CursorView(_, _, _, _, _, _, teach, _) => if teach_meets(want, teach) {
-          print_string("PASS {stem}: teach {show_teach_want(want)}\n")
+          print("PASS {stem}: teach {show_teach_want(want)}\n")
           0
         } else {
-          print_string("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
+          print("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
           1
         },
       }
@@ -2010,17 +2014,17 @@ fn battery_at_step(stem, path: String, line, col, want: String) = battery_view(
   col,
   {
     None => {
-      print_string("FAIL(at) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+      print("FAIL(at) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
       1
     },
     Some((_, view)) => match view {
       CursorView(_, _, topology, _, _, _, _, _) => {
         let got = shape_want_of(topology)
         if str_eq(got, want) {
-          print_string("PASS {stem}: at {int_to_str(line)}:{int_to_str(col)} {want}\n")
+          print("PASS {stem}: at {int_to_str(line)}:{int_to_str(col)} {want}\n")
           0
         } else {
-          print_string("FAIL(at) {stem}: wanted {want}, got {got}\n")
+          print("FAIL(at) {stem}: wanted {want}, got {got}\n")
           1
         }
       },
@@ -2040,13 +2044,13 @@ fn battery_why_step(stem, path: String, line, col, want: String) = {
     AddressField(_) | AddressRefused => [],
   } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   if any(str_contains(??, want), said) {
-    print_string("PASS {stem}: why at {int_to_str(line)}:{int_to_str(col)} {want}\n")
+    print("PASS {stem}: why at {int_to_str(line)}:{int_to_str(col)} {want}\n")
     0
   } else if len(said) == 0 {
-    print_string("FAIL(why) {stem}: no Why at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+    print("FAIL(why) {stem}: no Why at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
     1
   } else {
-    print_string("FAIL(why) {stem}: wanted {want}, got {join("; ", said)}\n")
+    print("FAIL(why) {stem}: wanted {want}, got {join("; ", said)}\n")
     1
   }
 }
@@ -2060,7 +2064,7 @@ fn battery_waits_step(stem, path: String, line, col, want: String) = battery_vie
   col,
   {
     None => {
-      print_string("FAIL(waits) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+      print("FAIL(waits) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
       1
     },
     Some((_, view)) => match view {
@@ -2068,10 +2072,10 @@ fn battery_waits_step(stem, path: String, line, col, want: String) = battery_vie
         let names = facet_waits(row) |> flat_map(wait_values) |> map(value_text) |> unique
         let got = if len(names) == 0 { "none" } else { join(" ", names) }
         if str_eq(got, want) {
-          print_string("PASS {stem}: waits at {int_to_str(line)}:{int_to_str(col)} {want}\n")
+          print("PASS {stem}: waits at {int_to_str(line)}:{int_to_str(col)} {want}\n")
           0
         } else {
-          print_string("FAIL(waits) {stem}: wanted {want}, got {got}\n")
+          print("FAIL(waits) {stem}: wanted {want}, got {got}\n")
           1
         }
       },
@@ -2128,10 +2132,10 @@ fn battery_reach_step(stem, path: String, want: String) = {
     reach_report(module_cells()) |> filter(ur_row_is_dead) |> map({ (_, n, _, _) => n }) |> join(" ", ??)
   } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   if str_eq(dead, want) {
-    print_string("PASS {stem}: unreachable {want}\n")
+    print("PASS {stem}: unreachable {want}\n")
     0
   } else {
-    print_string("FAIL(dead) {stem}: wanted {want}, got {dead}\n")
+    print("FAIL(dead) {stem}: wanted {want}, got {dead}\n")
     1
   }
 }
@@ -2278,11 +2282,11 @@ fn battery_loop(micros: [String], i, fails) = if i >= len(micros) {
 fn battery_run_verdict(stem, wat: String, want, said, compiled) = match compiled {
   (left, nerr, _) => match left {
     ArtifactRefused => {
-      print_string("FAILC {stem}\n")
+      print("FAILC {stem}\n")
       1
     },
     ArtifactWritten(_) => {
-      print_string("RUN {stem} {wat} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
+      print("RUN {stem} {wat} {int_to_str(want)} {int_to_str(nerr)} {said}\n")
       0
     },
   },
@@ -2298,7 +2302,7 @@ fn battery_step(path: String) = {
   let wat = battery_wat_path(module)
   match battery_expect(src) {
     None => {
-      print_string("NOEXPECT {stem}\n")
+      print("NOEXPECT {stem}\n")
       1
     },
     Some(contract) => match contract {
@@ -2322,14 +2326,14 @@ fn battery_step(path: String) = {
       ExpectMemory(pages, max) => match battery_compile(module, wat) {
         (left, _, _) => match left {
           ArtifactRefused => {
-            print_string("FAILC {stem}\n")
+            print("FAILC {stem}\n")
             1
           },
           ArtifactWritten(start) => if start.pages == pages && start.max_pages == max {
-            print_string("PASS {stem}: memory {int_to_str(pages)} {int_to_str(max)}\n")
+            print("PASS {stem}: memory {int_to_str(pages)} {int_to_str(max)}\n")
             0
           } else {
-            print_string("FAIL(memory) {stem}: wanted {int_to_str(pages)} {int_to_str(max)}, and the module declares {int_to_str(start.pages)} {int_to_str(start.max_pages)}\n")
+            print("FAIL(memory) {stem}: wanted {int_to_str(pages)} {int_to_str(max)}, and the module declares {int_to_str(start.pages)} {int_to_str(start.max_pages)}\n")
             1
           },
         },
@@ -2338,12 +2342,12 @@ fn battery_step(path: String) = {
         // The contract is the gate's verdict: the artifact withheld, and the
         // named class among what the judgment reported.
         (left, nerr, classes) => if left == ArtifactRefused && any((c) => c == cls, classes) {
-          print_string("REFUSE {stem} {cls}\n")
+          print("REFUSE {stem} {cls}\n")
           0
         } else {
           // The verdict names what the judgment DID bank, so a contract that
           // misses says which class stood where the wanted one was expected.
-          print_string("FAILR {stem} wanted {cls} (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
+          print("FAILR {stem} wanted {cls} (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
           1
         },
       },
@@ -2352,10 +2356,10 @@ fn battery_step(path: String) = {
       // does.
       ExpectCheckRefuse(cls) => match battery_check(module) {
         (nerr, classes, _) => if nerr > 0 && any((c) => c == cls, classes) {
-          print_string("CHECK {stem} {cls}\n")
+          print("CHECK {stem} {cls}\n")
           0
         } else {
-          print_string("FAILK {stem} wanted {cls} at check (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
+          print("FAILK {stem} wanted {cls} at check (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
           1
         },
       },
@@ -2372,14 +2376,14 @@ fn battery_step(path: String) = {
 // the graph, and only their line crosses out of it.
 fn battery_written_back_step(stem: String, module: String, want: String) = match query_judged(module, { _ => back_counts(written_back()) }) {
   Some(got) => if got == want {
-    print_string("PASS {stem}: written-back {want}\n")
+    print("PASS {stem}: written-back {want}\n")
     0
   } else {
-    print_string("FAIL(back) {stem}: wanted {want}, and the proposer answers {got}\n")
+    print("FAIL(back) {stem}: wanted {want}, and the proposer answers {got}\n")
     1
   },
   None => {
-    print_string("FAIL(back) {stem}: the fixture never joined the weave\n")
+    print("FAIL(back) {stem}: the fixture never joined the weave\n")
     1
   },
 }
@@ -2389,10 +2393,10 @@ fn battery_written_back_step(stem: String, module: String, want: String) = match
 // open.
 fn battery_check_clean_step(stem: String, module: String) = match battery_check(module) {
   (nerr, classes, pending) => if len(classes) == 0 && len(pending) == 0 {
-    print_string("CHECK {stem} clean\n")
+    print("CHECK {stem} clean\n")
     0
   } else {
-    print_string("FAILK {stem} wanted clean at check (errors={int_to_str(nerr)}; pending={int_to_str(len(pending))}; banked: {join(", ", classes)})\n")
+    print("FAILK {stem} wanted clean at check (errors={int_to_str(nerr)}; pending={int_to_str(len(pending))}; banked: {join(", ", classes)})\n")
     1
   },
 }
@@ -2402,10 +2406,10 @@ fn battery_check_clean_step(stem: String, module: String) = match battery_check(
 // refused for a reason beside the one it tests says which.
 fn battery_check_accepted_step(stem: String, module: String) = match battery_check(module) {
   (nerr, classes, _) => if nerr == 0 {
-    print_string("CHECK {stem} accepted\n")
+    print("CHECK {stem} accepted\n")
     0
   } else {
-    print_string("FAILK {stem} wanted accepted at check, and the check reported {int_to_str(nerr)} error(s) (banked: {join(", ", classes)})\n")
+    print("FAILK {stem} wanted accepted at check, and the check reported {int_to_str(nerr)} error(s) (banked: {join(", ", classes)})\n")
     1
   },
 }
@@ -2415,10 +2419,10 @@ fn battery_check_accepted_step(stem: String, module: String) = match battery_che
 // A miss lists where each open claim starts.
 fn battery_check_pending_step(stem: String, module: String, line, col) = match battery_check(module) {
   (nerr, classes, pending) => if nerr == 0 && any(claim_starts_at(line, col, ??), pending) {
-    print_string("CHECK {stem} pending {int_to_str(line)}:{int_to_str(col)}\n")
+    print("CHECK {stem} pending {int_to_str(line)}:{int_to_str(col)}\n")
     0
   } else {
-    print_string("FAILK {stem} wanted a pending claim at {int_to_str(line)}:{int_to_str(col)} and no error at check (errors={int_to_str(nerr)}; pending at: {join(", ", map(claim_start, pending))}; banked: {join(", ", classes)})\n")
+    print("FAILK {stem} wanted a pending claim at {int_to_str(line)}:{int_to_str(col)} and no error at check (errors={int_to_str(nerr)}; pending at: {join(", ", map(claim_start, pending))}; banked: {join(", ", classes)})\n")
     1
   },
 }
@@ -2459,7 +2463,7 @@ handler assert_reporter with passed = 0, failed = 0 {
   check(cond, msg) => if cond {
     resume() with passed = passed + 1
   } else {
-    eprint_string("  FAIL: {msg}\n")
+    said("  FAIL: {msg}\n")
     resume() with failed = failed + 1
   },
   get_results() => resume((passed, failed)),
@@ -2470,7 +2474,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+  audit(target) ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
   0
 }
 
@@ -2483,7 +2487,7 @@ fn audit_run(target) = {
 fn query_run(target, question) = match driver_dir_path(dir_base(target)) {
   Some(dir) => query_dir(dir, question),
   None => query(target, question),
-} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
+} ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_version())
 
 // Every program in the directory judged on its own fresh chain, each inside
 // an arena so the walk's peak is one judgment's live set, and asked the
@@ -2493,17 +2497,17 @@ fn query_dir(dir: String, question) = {
   let programs = list_to_flat(mn_files(dir, Level))
   let answers = map(query_program(question, ??), programs)
   if any(answer_is_not_sites, answers) {
-    eprint_string("mentl query: a directory answers the site facets — refs of NAME, census SHAPE, text NEEDLE, prose NEEDLE, decls\n")
+    said("mentl query: a directory answers the site facets — refs of NAME, census SHAPE, text NEEDLE, prose NEEDLE, decls\n")
     1
   } else {
     let found = flat_map(answer_sites, answers)
     let unread = len(filter(answer_is_unread, answers))
     if unread > 0 {
-      eprint_string("mentl query: {int_to_str(unread)} program(s) in {dir} never joined the weave\n")
+      said("mentl query: {int_to_str(unread)} program(s) in {dir} never joined the weave\n")
     } else {
       ()
     }
-    println("→ {int_to_str(len(found))} {fold("site(s)", answer_label, answers)} across {int_to_str(len(programs))} program(s){render_noted_sites(found)}")
+    print("→ {int_to_str(len(found))} {fold("site(s)", answer_label, answers)} across {int_to_str(len(programs))} program(s){render_noted_sites(found)}\n")
     0
   }
 }
@@ -2589,7 +2593,7 @@ fn verify_run(target_opt) = {
   // 0 on the entry link against 58 across the modules).
   match driver_link_scoped(entry_module, Census) {
     None => {
-      eprint_string("mentl verify: no source to judge — {entry_module} did not load\n")
+      said("mentl verify: no source to judge — {entry_module} did not load\n")
       1
     },
     // AND THE LINK MUST HAVE JUDGED CLEAN, which is the same vacuity one
@@ -2602,13 +2606,13 @@ fn verify_run(target_opt) = {
     // the board reads the judgment's own error count and declines to measure
     // rather than measuring less.
     Some(_) => if diag_errors() > 0 {
-      eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused link measures a program nobody has\n")
+      said("mentl verify: {entry_module} did not judge clean — a board over a refused link measures a program nobody has\n")
       1
     } else {
       verify_board(entry_module)
     },
   }
-} ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> infer_context
+} ~> wasi_filesystem ~> mentl_default ~> infer_context
 
 // THE PROJECT LINE beside the bounds: every narration the judgment made over
 // every module of the link, counted once whether or not a register rendered
@@ -2618,28 +2622,28 @@ fn verify_run(target_opt) = {
 fn verify_board(entry_module: String) = {
   let board = board_read() ~> query_context
   let narrated = diag_narrations()
-  print_string("verify: the medium's verdict on {entry_module}\n")
+  print("verify: the medium's verdict on {entry_module}\n")
   each(print_board_line, board)
   let listed = ((self_compile_bounds()) >< (self_compile_listing)) |> join("", ??)
-  print_string(listed)
+  print(listed)
   let narration_breach = if narrated > 0 {
-    print_string("  ✗ {int_to_str(narrated)} narration(s) over every module of the link — ROSE past 0 (they print above, each at its module)\n")
+    print("  ✗ {int_to_str(narrated)} narration(s) over every module of the link — ROSE past 0 (they print above, each at its module)\n")
     1
   } else {
-    print_string("  · 0 narration(s) over every module of the link — within 0\n")
+    print("  · 0 narration(s) over every module of the link — within 0\n")
     0
   }
   let breached = len(filter(board_breached, board)) + narration_breach
   if breached > 0 {
-    print_string("verify: {int_to_str(breached)} bound(s) breached — a count the medium keeps about itself rose.\n")
+    print("verify: {int_to_str(breached)} bound(s) breached — a count the medium keeps about itself rose.\n")
     1
   } else {
-    print_string("verify: {int_to_str(len(board))} bound(s) hold.\n")
+    print("verify: {int_to_str(len(board))} bound(s) hold.\n")
     0
   }
 }
 
-fn print_board_line(entry) = print_string(board_line(entry))
+fn print_board_line(entry) = print(board_line(entry))
 
 // ─── with_run — the universal escape hatch (env_lookup resolution)
 //
@@ -2658,8 +2662,8 @@ fn with_run(handler_name, target_opt) = {
   }
   pipeline_check(entry_module)
   match env_lookup(handler_name) {
-    None => eprint_string("mentl --with: no handler named {handler_name} in the checked env\n"),
-    Some(_) => eprint_string("mentl --with {handler_name}: found, but the command line cannot install a handler yet\n"),
+    None => said("mentl --with: no handler named {handler_name} in the checked env\n"),
+    Some(_) => said("mentl --with {handler_name}: found, but the command line cannot install a handler yet\n"),
   }
   // The verb is named but its install path is unbuilt — the CLI refusal
   // law: a named verb that cannot do its work exits nonzero.
@@ -2680,7 +2684,7 @@ fn teach_run(target_opt) = {
   // chain was the eighth found missing the analysis handlers, by design
   // pass not by trap; query_default's env_lookup / env_snapshot resolve
   // into the bracket's env).
-  teach(entry_module) ~> stdout_console ~> query_context ~> wasi_filesystem ~> infer_context
+  teach(entry_module) ~> query_context ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -2696,7 +2700,7 @@ fn teach_run(target_opt) = {
 fn repl_run() = {
   // The line-eval runs infer; the core installs as the one bracket (the
   // driverless-zero-state class the bounds trap unmasked lives in its law).
-  repl_eval_line(read_stdin_line()) ~> stdout_console ~> query_context ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
+  repl_eval_line(read_stdin_line()) ~> query_context ~> wasi_filesystem ~> infer_context ~> progress_stderr(false)
   0
 }
 
@@ -2748,9 +2752,9 @@ fn scaffold_project(name: String) = {
   let dest = "{name}.mn"
   if fs_exists(dest) {
     // `mentl new` never overwrites a file, and says what to do instead.
-    eprint_string("mentl new {name}: {dest} is already here, and mentl new never overwrites a file.\n")
-    eprint_string("  read it:      mentl edit {name}\n")
-    eprint_string("  or name another:  mentl new {name}2\n")
+    said("mentl new {name}: {dest} is already here, and mentl new never overwrites a file.\n")
+    said("  read it:      mentl edit {name}\n")
+    said("  or name another:  mentl new {name}2\n")
     1
   } else {
     fs_write_file(dest, new_seed(name))
@@ -2769,9 +2773,9 @@ fn new_seed(name: String) =
 
 // ─── help + error surface ─────────────────────────────────────────
 fn print_error_and_help(msg) = {
-  eprint_string("mentl: ")
-  eprint_string(msg)
-  eprint_string("\n\n")
+  said("mentl: ")
+  said(msg)
+  said("\n\n")
   print_help()
   // A malformed invocation exits 2 (the usage-error convention the gate
   // scripts already speak) — main's value is the process exit code.
@@ -2798,7 +2802,7 @@ fn catalog_line(spec) = match spec {
 // that wide is itself.
 fn pad_right(s, w) = s ++ join("", repeat(w - byte_len(s), " "))
 
-fn print_help() = eprint_string(verb_catalog())
+fn print_help() = said(verb_catalog())
 
 // ─── the welcome — bare `mentl` in a terminal, `mentl help` ────────
 //
@@ -2809,10 +2813,10 @@ fn print_help() = eprint_string(verb_catalog())
 // asked for is never an error (the ERROR surface, print_error_and_help,
 // stays on stderr).
 fn welcome_run() = {
-  print_string("mentl — the medium between intent and execution\n")
-  print_string("write what you mean; the medium carries what it can prove\n\n")
+  print("mentl — the medium between intent and execution\n")
+  print("write what you mean; the medium carries what it can prove\n\n")
   project_directory()
-  print_string(verb_catalog())
+  print(verb_catalog())
   0
 } ~> wasi_filesystem
 
@@ -2824,16 +2828,16 @@ fn welcome_run() = {
 fn project_directory() = {
   let sources = filter((n) => ends_with(n, ".mn"), unwrap_or(fs_list_dir("."), []))
   if len(sources) > 0 {
-    print_string("in this directory:\n")
+    print("in this directory:\n")
     each(
       (n) => {
         let stem = str_slice(n, 0, byte_len(n) - 3)
-        print_string("  {n}  →  mentl run {stem} · mentl edit {stem} · mentl check {stem}\n")
+        print("  {n}  →  mentl run {stem} · mentl edit {stem} · mentl check {stem}\n")
       },
       sources
     )
-    print_string("\n")
+    print("\n")
   } else {
-    print_string("nothing to read here yet — begin:\n  mentl new hello && mentl run hello\n\n")
+    print("nothing to read here yet — begin:\n  mentl new hello && mentl run hello\n\n")
   }
 }

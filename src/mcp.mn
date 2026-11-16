@@ -628,7 +628,7 @@ fn session_current(manifest) = if driver_manifest() == manifest {
   // of them (measured in the browser, 2026-10-06). A claim needs no clear: a
   // claim at a replaced node is never read.
   match driver_session_cone("main", diag_forget) {
-    (n, m) => eprint_string("session: tree moved — re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s); the graph is current\n"),
+    (n, m) => said("session: tree moved — re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s); the graph is current\n"),
   }
   driver_manifest()
 }
@@ -657,7 +657,7 @@ fn mcp_loop(manifest, at_read, current) = {
       // derivation effects never reach the bare root.
       let m2 = current(manifest)
       let out = mcp_handle(strip_cr(line), at_read)
-      if byte_len(out) > 0 { print_string(out) }
+      if byte_len(out) > 0 { print(out) }
       Some(m2)
     }
   } ~> arena
@@ -699,11 +699,11 @@ fn mcp_loop(manifest, at_read, current) = {
 // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
 // cost nothing on the path that reports no project.
 fn session_run(answer) = if driver_module_path("main") == None {
-  eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+  said("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
   1
 } else {
   driver_link("main")
-  eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+  said("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
   session_line_loop(driver_manifest(), answer, session_current)
   0
 } ~>
@@ -718,7 +718,7 @@ query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_regis
 // tree's fresh generation — what the session learned, and nothing it only
 // computed on the way to the answer.
 fn session_cost(before) =
-  eprint_string("session: the answer cost {int_to_str(addr_diff(heap_mark(), before))} bytes of image\n")
+  said("session: the answer cost {int_to_str(addr_diff(heap_mark(), before))} bytes of image\n")
 
 // One stdin line = one answer, for a host that owns the process's input.
 // THE READ IS THE FRAME: the answer is written whole before the session
@@ -735,7 +735,7 @@ fn session_line_loop(manifest, answer, current) = {
     } else {
       match answer(line, current(manifest)) {
         (text, held) => {
-          print_string(text)
+          print(text)
           Some(held)
         },
       }
@@ -779,7 +779,7 @@ fn session_miss() = "MENTL-SESSION-MISS\n"
 // prelude-seed precedent): outside a project, the gate serves propose
 // alone and query answers honestly.
 fn mcp_run(at_read) = {
-  eprint_string("mentl mcp: the gate on stdio — nothing executes unproven\n")
+  said("mentl mcp: the gate on stdio — nothing executes unproven\n")
   // ONE bracket, BOTH paths: the no-project session's tool arms carry
   // the same static rows (audit's Tighten, query's ask) even though their
   // guards answer "no project graph resident" at runtime — a bare mcp_loop
@@ -794,7 +794,7 @@ fn mcp_run(at_read) = {
     fs_mkdir(".build/mcp")
     if driver_module_path("main") != None {
       driver_link("main")
-      eprint_string("session: graph resident — {int_to_str(len(link_modules()))} modules; queries answer live\n")
+      said("session: graph resident — {int_to_str(len(link_modules()))} modules; queries answer live\n")
       // The banked manifest is the tree identity this derivation answered;
       // session_current compares against it per message.
       mcp_loop(driver_manifest(), at_read, session_current)

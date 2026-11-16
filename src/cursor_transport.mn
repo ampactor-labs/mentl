@@ -75,11 +75,11 @@ handler terminal_transport with state = transport_state_init(Caret(0, Inferred("
   surface_handshake() => {
     // Verb-neutral: terminal_transport serves teach, query, AND edit —
     // a handshake naming one verb lies on the other routes.
-    print_string("Mentl — eight tentacles ready.\n")
+    print("Mentl — eight tentacles ready.\n")
     resume()
   },
   surface_render(cursor, view) => {
-    print_string(render_cursor_block(cursor, view))
+    print(render_cursor_block(cursor, view))
     resume() with state = state_with_render(state, cursor)
   },
   surface_action() => resume(parse_action(read_stdin_line())),
@@ -229,7 +229,7 @@ fn accept_fill(handle, survivor, proof) with !Mutate = {
       graph_accept_note(module, accepted_extent(span, text), text, proof)
       write_module(module, splice_span(fs_read_file(path), span, text))
     },
-    None => eprint_string("mentl accept: `{module}` resolves to no file — nothing written\n"),
+    None => said("mentl accept: `{module}` resolves to no file — nothing written\n"),
   }
 }
 
@@ -243,15 +243,15 @@ fn accept_teaching(handle, teach) = match teach {
   TeachAdd(s) => accept_annotation(handle, s),
   TeachLift(lifts) => written(lifted_module_text(handle, lifts)),
   TeachAsk(_) => {
-    eprint_string("mentl accept: {show_teaching(teach)}\n")
+    said("mentl accept: {show_teaching(teach)}\n")
     false
   },
   TeachNeed(_, _, _) => {
-    eprint_string("mentl accept: nothing to write — {show_teaching(teach)}\n")
+    said("mentl accept: nothing to write — {show_teaching(teach)}\n")
     false
   },
   TeachNone => {
-    eprint_string("mentl accept: no proposal at this position\n")
+    said("mentl accept: no proposal at this position\n")
     false
   },
 }
@@ -279,7 +279,7 @@ fn accept_annotation(handle, s) = match s {
     )),
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
     | NRow(_) | NParam(_) => {
-      eprint_string("mentl edit: the suggestion's position is not a declaration — nothing written\n")
+      said("mentl edit: the suggestion's position is not a declaration — nothing written\n")
       false
     },
   },
@@ -300,7 +300,7 @@ fn lifted_module_text(handle, lifts) = match graph_node_body(handle) {
   ),
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => {
-    eprint_string("mentl edit: the position is not a declaration — nothing written\n")
+    said("mentl edit: the position is not a declaration — nothing written\n")
     None
   },
 }
@@ -312,13 +312,13 @@ fn head_module_text(handle, name: String, body, head: String, stated) = {
   let module = module_name_of_handle(graph_module_of(handle))
   match driver_module_path(module) {
     None => {
-      eprint_string("mentl edit: `{module}` resolves to no file — nothing written\n")
+      said("mentl edit: `{module}` resolves to no file — nothing written\n")
       None
     },
     Some(path) => match splice_decl_head(fs_read_file(path), graph_span_of(handle), graph_span_of(body), head, stated) {
       Some(edited) => Some((module, edited)),
       None => {
-        eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
+        said("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
         None
       },
     },
@@ -400,11 +400,11 @@ fn accept_at(handle, view) = match view {
         accept_fill(handle, survivor, reason)
         true
       } else {
-        eprint_string("mentl accept: the position is filled — a proposal is accepted at a hole\n")
+        said("mentl accept: the position is filled — a proposal is accepted at a hole\n")
         false
       },
       VAsk(divergence, survivors) => {
-        eprint_string("mentl accept: {int_to_str(len(survivors))} proven survivors — a tie is a question, never a guess: {show_divergence(divergence)}\n")
+        said("mentl accept: {int_to_str(len(survivors))} proven survivors — a tie is a question, never a guess: {show_divergence(divergence)}\n")
         false
       },
       VNone => accept_teaching(handle, teach),
@@ -509,7 +509,7 @@ effect PatchWrite {
 // because the path a missing module would get is a guess.
 fn module_write(module: String, text: String) = match driver_module_path(module) {
   Some(path) => fs_write_file(path, text),
-  None => eprint_string("mentl: `{module}` resolves to no file — nothing written\n"),
+  None => said("mentl: `{module}` resolves to no file — nothing written\n"),
 }
 
 handler patch_to_file with target_module = "" {

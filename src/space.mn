@@ -75,7 +75,7 @@ type Viewed = {
 // of the module indexes.
 fn viewed(found, target: String) = match found {
   None => {
-    eprint_string("mentl: {target} did not load — nothing to project\n")
+    said("mentl: {target} did not load — nothing to project\n")
     None
   },
   Some(mh) => {
@@ -1477,15 +1477,15 @@ fn address_locate(found, target: String, line, col) = match viewed(found, target
       if line == 0 {
         AddressField(m)
       } else if line < 0 {
-        eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
+        said("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
         AddressRefused
       } else if line > nlines {
-        eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
+        said("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
         AddressRefused
       } else {
         match address_resolve(v.spans, line, col) {
           None => {
-            eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
+            said("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
             AddressRefused
           },
           Some(pick) => match pick {
