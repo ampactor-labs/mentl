@@ -266,6 +266,11 @@ fn push_tok(buf, count, t) = {
 // is read ahead (`declaration_follows`).
 type LexEnd = AtTextEnd | AtSpliceEnd | AtStatementEnd | AtCode
 
+// Where a lex or a string scan stops, and what it built: the position it
+// stopped at, which is never negative, the line and the column there, and
+// the tokens with their count.
+type LexAt = (ValidOffset, Int, Int, [Token], Int)
+
 // mk_tok() — see src/types.mn (canonical Token constructor; Tok ADT
 // is declared there).
 //
@@ -277,7 +282,7 @@ type LexEnd = AtTextEnd | AtSpliceEnd | AtStatementEnd | AtCode
 // `scan_string` emits `TStringPart`/`TStringSplice` directly, threading
 // `buf`/`count`. There is no single-quote form (dissolved: a splice-free
 // `"abc"` and `'abc'` produced an identical byte-sequence graph).
-fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count, stop, depth) = if pos >= n {
+fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count, stop, depth) -> LexAt = if pos >= n {
   match push_tok(buf, count, mk_tok(TEof, line, col, line, col)) {
     (b1, c1) => (pos, line, col, b1, c1),
   }
@@ -557,7 +562,7 @@ else if b == 33 {
 // string literal's node covered one column: a caret anywhere inside
 // `"hello world"` reached the declaration around it (measured on boot
 // 8b071ba3).
-fn scan_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) =
+fn scan_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) -> LexAt =
   scan_string_chunk(source, n, pos, pos, line, col, sline, scol, buf, count)
 
 // chunk_start carries the start-byte of the current literal chunk;
@@ -574,7 +579,7 @@ fn scan_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, s
 // before completion. Future peer: Hβ.runtime.zero-copy-string-view
 // represents TStringPart payload as (offset, length) into source,
 // eliminating the slice-alloc entirely — O(1) per chunk.
-fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) = if pos >= n {
+fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) -> LexAt = if pos >= n {
   let part = str_unescape(str_slice(source, chunk_start, pos))
   match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col)) {
     (b1, c1) => (pos, line, col, b1, c1),
@@ -633,7 +638,7 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
 // brace of the splice still open (`AtSpliceEnd`). Then resume
 // `scan_string` with an empty chunk. A brace the splice opens is counted
 // by `lex_from`'s depth, so a nested splice closes where it should.
-fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, AtSpliceEnd, 0) {
+fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) -> LexAt = match lex_from(source, n, pos, line, col, buf, count, AtSpliceEnd, 0) {
   (new_pos, new_line, new_col, b1, c1) => scan_string(source, n, new_pos, new_line, new_col, new_line, new_col, b1, c1),
 }
 
@@ -650,7 +655,7 @@ fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, 
 // is where the byte it stands on sits in the source, so a splice on a
 // de-indented line lexes at its true column (it used to restart at 1 after
 // every stripped indent).
-fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) = {
+fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) -> LexAt = {
   let body_start = past_newline(source, n, pos)
   let body_line = if body_start > pos { line + 1 } else { line }
   let body_col = if body_start > pos { 1 } else { col }
@@ -699,7 +704,7 @@ fn scan_triple_end(ref source, n: ValidOffset, pos: ValidOffset) = if pos >= n -
 // triple_common_indent — the minimum leading-whitespace byte count over
 // all non-blank lines of the body `[pos, end)`. Threads the running
 // minimum `acc`; a blank line (immediate newline) contributes no constraint.
-fn triple_common_indent(ref source, n: ValidOffset, pos: ValidOffset, end, acc) = if pos >= end {
+fn triple_common_indent(ref source, n: ValidOffset, pos: ValidOffset, end: ValidOffset, acc) = if pos >= end {
   acc
 } else {
   let ws = triple_line_indent(source, end, pos, 0)
@@ -736,7 +741,7 @@ fn triple_skip_indent(ref source, n: ValidOffset, pos: ValidOffset, strip, count
 // newline (to skip the next line's common indent as a position gap). The
 // backslash escape (`\X`, `\{`/`\}`, `\xHH`) is resolved by str_unescape
 // at flush, exactly as in the single-line form.
-fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, sline, scol, strip, own buf, count) = if pos + 2 < n && byte_at(source, pos) == 34 && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
+fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, sline, scol, strip, own buf, count) -> LexAt = if pos < n - 2 && byte_at(source, pos) == 34 && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
   // closing """
   let part = str_unescape(str_slice(source, chunk_start, pos))
   match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col + 3)) {
@@ -779,7 +784,7 @@ fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
 
 // scan_triple_after_splice — lex the splice expression to its closing `}`
 // (`AtSpliceEnd`), then resume the triple-quoted chunk scan past it.
-fn scan_triple_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, strip, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, AtSpliceEnd, 0) {
+fn scan_triple_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, strip, own buf, count) -> LexAt = match lex_from(source, n, pos, line, col, buf, count, AtSpliceEnd, 0) {
   (new_pos, new_line, new_col, b1, c1) => scan_triple_chunk(source, n, new_pos, new_pos, new_line, new_col, new_line, new_col, strip, b1, c1),
 }
 
@@ -812,7 +817,10 @@ type NumBase = BBin | BOct | BHex
 // because a float's mantissa/exponent walk is a different algorithm and
 // parse_float still owns it. NumNoDigits is the prefix that promised
 // digits and met none.
-type NumScan = NumInt(Int, Int, Int) | NumFloat(Int, Int) | NumNoDigits(Int, Int, NumBase)
+type NumScan
+  = NumInt(ValidOffset, Int, Int)
+  | NumFloat(ValidOffset, Int)
+  | NumNoDigits(ValidOffset, Int, NumBase)
 
 fn base_radix(b) with Pure = match b {
   BBin => 2,
@@ -891,7 +899,7 @@ fn scan_prefixed(source, n: ValidOffset, pos: ValidOffset, col, base) = match sc
 
 // The one accumulator: base_digit answers IS-a-digit and WHICH-digit
 // together, so the extent and the value come from the same read.
-fn scan_base_digits(source, n: ValidOffset, pos: ValidOffset, col, base, acc, digits) = if pos >= n {
+fn scan_base_digits(source, n: ValidOffset, pos: ValidOffset, col, base, acc, digits) -> (ValidOffset, Int, Int, Int) = if pos >= n {
   (pos, col, acc, digits)
 } else {
   let b = byte_at(source, pos)
@@ -927,7 +935,7 @@ fn scan_decimal(ref source, n: ValidOffset, pos: ValidOffset, col, acc, is_float
 
 // Advance position over identifier characters. Returns `(pos, col)`.
 // The caller slices `source` to obtain the identifier text.
-fn scan_ident(ref source, n: ValidOffset, pos: ValidOffset, col) = if pos >= n {
+fn scan_ident(ref source, n: ValidOffset, pos: ValidOffset, col) -> (ValidOffset, Int) = if pos >= n {
   (pos, col)
 } else if is_alnum(byte_at(source, pos)) {
   scan_ident(source, n, pos + 1, col + 1)

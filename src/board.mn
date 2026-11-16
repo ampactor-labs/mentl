@@ -259,7 +259,11 @@ fn board_bounds() = [
   // (2026-11-13): the graph holds the only record of a claim, so a kept
   // fork's claims arrive with the version it merges, and the index walk
   // that performed each of them again below the fork left with its read.
-  Bound({ceiling: 90, question: QVerifyDebt}),
+  // 90 -> 79 (2026-11-15): the lexer states each position where it is made,
+  // as the declared return of the scanners that answer it and on the
+  // constructors of a number's scan, so eleven of the twelve calls that
+  // handed a position nothing proved at least 0 now hand a proven one.
+  Bound({ceiling: 79, question: QVerifyDebt}),
   // THE CLAIMS LEFT OPEN AT EXPLICIT CALLS OF A PARTIAL PRIMITIVE (`mentl
   // query src/main.mn "census call-claims"`): a read's or a cut's bounds,
   // owed where `list_index(xs, i)` or `slice(xs, a, b)` is called, as `xs[i]`
