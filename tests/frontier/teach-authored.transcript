@@ -1,0 +1,21 @@
+$ mentl teach tests/frontier/mn-teach-authored.mn
+! infer: T_OverDeclared Warning: 'helper' names Memory + Alloc in its clause, but its body performs only Pure. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-teach-authored:14:1-14:36
+  helper: → tighten: declares Memory + Alloc, the body proves Pure (`mentl tighten` applies it)
+  add: → add `with Pure` — unlocks pure (it performs no effect at all); `main` stands on it
+  nothing to unlock in step, main
+$ mentl tests/frontier/mn-teach-authored.mn:16
+! infer: T_OverDeclared Warning: 'helper' names Memory + Alloc in its clause, but its body performs only Pure. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-teach-authored:14:1-14:36
+  Query: fn add(a, b) = a + b : (own a: a, own b: a) -> a
+  Effects: Pure when called
+  Ownership: own
+  Teach: add `with Pure` — unlocks pure (it performs no effect at all); `main` stands on it
+  Why: ownership-resolved params of 'add', at tests/frontier/mn-teach-authored:16
+  Uses: 1 of add
+    at tests/frontier/mn-teach-authored:18:40-18:43
+$ mentl tests/frontier/mn-teach-authored.mn:18:40
+! infer: T_OverDeclared Warning: 'helper' names Memory + Alloc in its clause, but its body performs only Pure. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-teach-authored:14:1-14:36
+  Query: add : (own a: Int, own b: Int) -> Int
+  Effects: Pure when called
+  Ownership: own
+  Why: add flows in here, at tests/frontier/mn-teach-authored:18
+       declared add, at tests/frontier/mn-teach-authored:16

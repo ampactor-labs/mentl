@@ -1,0 +1,46 @@
+$ mentl tests/frontier/propose-fan-demo/two.mn:0
+  Field: 2 hole(s), 0 pending proof(s), 0 tightening(s), 0 gradient position(s) in tests/frontier/propose-fan-demo/two
+
+  ── tests/frontier/propose-fan-demo/two:8:30
+  Query: ?? : Bit
+  Propose: 2 proven survivors — a tie:
+    0  — inferred from the type's integer inhabitants
+    1  — inferred from the type's integer inhabitants
+    the survivors differ in VALUE — 0 or 1 — and the type admits 0 through 1: which one does this position mean?
+    · refused choose — inferred from the hole's refinement is not satisfied
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending conjunction 0 <= self && self <= 1 at tests/frontier/propose-fan-demo/two:8:14-8:17
+  Why: returned from pick, at tests/frontier/propose-fan-demo/two:8
+       body
+       its type: declared pick, at tests/frontier/propose-fan-demo/two:8
+
+  ── tests/frontier/propose-fan-demo/two:10:37
+  Query: ?? : Positive
+  Propose: 1  — inferred from the type's integer inhabitants
+    · refused pick — inferred from the hole's refinement is not satisfied
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending comparison 0 < self at tests/frontier/propose-fan-demo/two:10:16-10:24
+  Why: returned from choose, at tests/frontier/propose-fan-demo/two:10
+       body
+       its type: declared choose, at tests/frontier/propose-fan-demo/two:10
+$ mentl tests/frontier/propose-fan-demo/bit.mn:8:30
+  Query: ?? : Bit
+  Propose: 2 proven survivors — a tie:
+    0  — inferred from the type's integer inhabitants
+    1  — inferred from the type's integer inhabitants
+    the survivors differ in VALUE — 0 or 1 — and the type admits 0 through 1: which one does this position mean?
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending conjunction 0 <= self && self <= 1 at tests/frontier/propose-fan-demo/bit:8:14-8:17
+  Why: returned from pick, at tests/frontier/propose-fan-demo/bit:8
+       body
+       its type: declared pick, at tests/frontier/propose-fan-demo/bit:8
+$ mentl tests/frontier/propose-demo/hole.mn:9:37
+  Query: ?? : Positive
+  Propose: 1  — inferred from the type's integer inhabitants
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending comparison 0 < self at tests/frontier/propose-demo/hole:9:16-9:24
+  Why: returned from choose, at tests/frontier/propose-demo/hole:9
+       body
+       its type: declared choose, at tests/frontier/propose-demo/hole:9
+$ mentl check tests/frontier/propose-fan-demo/scope-own.mn
+! parser: E_RedundantBraces Warning: redundant braces around a non-block body at tests/frontier/propose-fan-demo/scope-own:5:15-5:25

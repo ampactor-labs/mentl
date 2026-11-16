@@ -1,0 +1,8 @@
+$ mentl tests/frontier/address-module-demo/addr.mn:4
+  Lede: The entry's own line 4 — a narrower decl at the same line number.
+  Query: fn entry_at_four(n) with Pure = n + 1 : (own n: Int) -> Int
+  Effects: Pure when called
+  Ownership: own
+  Why: ownership-resolved params of 'entry_at_four', at tests/frontier/address-module-demo/addr:4
+  Uses: 1 of entry_at_four
+    at tests/frontier/address-module-demo/addr:6:13-6:26

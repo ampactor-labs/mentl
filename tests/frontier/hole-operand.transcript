@@ -1,0 +1,2 @@
+$ mentl check tests/proposals/arg-slot-operand.mn
+! verify: this program has a hole (??) at 7:20; `mentl tests/proposals/arg-slot-operand.mn:7:20` shows the proposals the compiler proved, and `mentl accept tests/proposals/arg-slot-operand.mn:7:20` takes one at tests/proposals/arg-slot-operand:7:20-7:22

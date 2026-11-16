@@ -1,0 +1,17 @@
+$ mentl tests/frontier/obligation-module-demo/main.mn:3
+  Query: fn total() = 5 : () -> Int
+  Effects: Pure when called
+  Why: ownership-resolved params of 'total', at tests/frontier/obligation-module-demo/main:3
+  Uses: 1 of total
+    at tests/frontier/obligation-module-demo/main:5:13-5:18
+$ mentl tests/frontier/obligation-module-demo/helper.mn:3
+  Lede: The division below leaves its claim open on line 3 of THIS module.
+  Query: fn ratio(t, n) = t / n : (own t: a, own n: a) -> a with Trap
+  Effects: Trap when called
+  Ownership: own
+  Verify: pending partiality n != 0 && t / n fits (never INT_MIN / -1) at tests/frontier/obligation-module-demo/helper:3:18-3:23
+  Teach: `n` must make n != 0 && t / n fits (never INT_MIN / -1) hold (line 3), and no refinement in reach states it — declare one and annotate `n`
+  Why: ownership-resolved params of 'ratio', at tests/frontier/obligation-module-demo/helper:3
+       Trap enters `ratio`
+       the operator /, at tests/frontier/obligation-module-demo/helper:3:18
+  Uses: 0 of ratio

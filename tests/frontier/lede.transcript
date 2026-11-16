@@ -1,0 +1,47 @@
+$ mentl tests/frontier/lede-demo/lede.mn:2
+  Lede: The outer prose — a decl comment renders as the address's lede line.
+  Query: fn compute(x) = { : (own x: Int) -> Int
+  Effects: Pure when called
+  Ownership: own
+  Why: ownership-resolved params of 'compute', at tests/frontier/lede-demo/lede:2
+  Uses: 1 of compute
+    at tests/frontier/lede-demo/lede:8:13-8:20
+$ mentl tests/frontier/lede-demo/lede.mn:4
+  Lede: The interior step — attaches to the statement that follows.
+  Query: let doubled = x * 2 : Int
+  Effects: Pure
+  Why: let statement carries its value, at tests/frontier/lede-demo/lede:4
+       its type: int literal, at tests/frontier/lede-demo/lede:4
+$ mentl tests/frontier/lede-demo/lede.mn:5
+  Lede: the trailing beat — attaches backward to its own line
+  Query: doubled + 1 : Int
+  Effects: Pure
+  Why: the operator +, at tests/frontier/lede-demo/lede:5
+       result
+       operand
+       its type: int literal, at tests/frontier/lede-demo/lede:4
+$ mentl tests/frontier/lede-demo/lede.mn:12
+  Lede: the anonymous step — a lambda is a node like any other, and its line is its own
+  Query: (x) => x * 3 : (x: Int) -> Int with Pure
+  Effects: Alloc, and Pure when called
+  Why: lambda, at tests/frontier/lede-demo/lede:12
+$ mentl doc tests/frontier/lede-demo/lede.mn
+  compute(own x: Int) -> Int
+      The outer prose — a decl comment renders as the address's lede line.
+  main() -> Int
+  scaled(ref v: Int) -> Int with Alloc
+  apply(ref f: (a) -> b with e, ref v: a) -> b with e
+$ mentl doc examples/hello/five.mn
+  double(own n: Int) -> Int
+  add(ref x: a) -> a with Mutate
+    with !Alloc (declared)
+      The feedback, <~, adds each number to the total before it.
+      `!Alloc` is checked on every build: a version
+      of this stage that allocates does not build.
+  bar(own n: Int) -> String with Alloc + Memory + MemoryWrite + Address + Diverge + Trap
+  say(own n: a, own b: b) with Alloc + Memory + MemoryWrite + Address + Console
+  row(ref x: Int) with Mutate + Alloc + Memory + MemoryWrite + Address + Console + Diverge + Trap
+      The share, <|, sends each total to two stages, and
+      the pipe, |>, hands both answers to `say`.
+  main() -> Int with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + Mutate + WASI
+      The install, ~>, sends what `print` writes to the screen.

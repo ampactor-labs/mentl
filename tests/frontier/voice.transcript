@@ -1,0 +1,8 @@
+$ mentl tests/frontier/voice-demo/voice.mn:9
+  Query: let wet = echo(mix, x) : Float
+  Effects: Pure
+  Why: let statement carries its value, at tests/frontier/voice-demo/voice:9
+       its type: float literal, at tests/frontier/voice-demo/voice:7
+$ mentl tests/frontier/voice-demo/voice.mn:9999
+! mentl: tests/frontier/voice-demo/voice has 12 lines; 9999 is past the end
+[exit 1]

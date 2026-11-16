@@ -1,0 +1,25 @@
+$ mentl check tests/frontier/mn-check-forward-order.mn
+! infer: E_TypeMismatch error: (Int, String) vs [Byte] — list element: call to 'eat' → inferred from unification at tests/frontier/mn-check-forward-order:10:15-10:25
+[exit 1]
+$ mentl check tests/frontier/mn-effect-enters.mn
+! effects: E_EffectMismatch error: quiet is declared `with !WASI`, which does not allow WASI, and quiet uses WASI: quiet calls `helper` at tests/frontier/mn-effect-enters:20:26 → helper calls `log_it` at tests/frontier/mn-effect-enters:16:3 → log_it calls `print_string` at tests/frontier/mn-effect-enters:13:18 → print_string calls `fd_write_bytes` at io:208:3 → fd_write_bytes calls `fd_write` at io:186:3 → `fd_write` is an operation of WASI, declared at io:45:1 at tests/frontier/mn-effect-enters:20:1-20:35
+[exit 1]
+$ mentl query tests/frontier/mn-effect-enters.mn why quiet WASI
+! effects: E_EffectMismatch error: quiet is declared `with !WASI`, which does not allow WASI, and quiet uses WASI: quiet calls `helper` at tests/frontier/mn-effect-enters:20:26 → helper calls `log_it` at tests/frontier/mn-effect-enters:16:3 → log_it calls `print_string` at tests/frontier/mn-effect-enters:13:18 → print_string calls `fd_write_bytes` at io:208:3 → fd_write_bytes calls `fd_write` at io:186:3 → `fd_write` is an operation of WASI, declared at io:45:1 at tests/frontier/mn-effect-enters:20:1-20:35
+  quiet uses WASI: quiet calls `helper` at tests/frontier/mn-effect-enters:20:26 → helper calls `log_it` at tests/frontier/mn-effect-enters:16:3 → log_it calls `print_string` at tests/frontier/mn-effect-enters:13:18 → print_string calls `fd_write_bytes` at io:208:3 → fd_write_bytes calls `fd_write` at io:186:3 → `fd_write` is an operation of WASI, declared at io:45:1
+$ mentl check tests/frontier/mn-effect-enters-absorbed.mn
+! effects: E_EffectMismatch error: quiet is declared `with !Log`, which does not allow Log, and quiet uses Log: quiet installs `relog` at tests/frontier/mn-effect-enters-absorbed:30:24 → relog calls `log` at tests/frontier/mn-effect-enters-absorbed:16:5 → `log` is an operation of Log, declared at tests/frontier/mn-effect-enters-absorbed:10:1 at tests/frontier/mn-effect-enters-absorbed:30:1-30:39
+[exit 1]
+$ mentl query tests/frontier/mn-effect-enters-absorbed.mn why quiet Log
+! effects: E_EffectMismatch error: quiet is declared `with !Log`, which does not allow Log, and quiet uses Log: quiet installs `relog` at tests/frontier/mn-effect-enters-absorbed:30:24 → relog calls `log` at tests/frontier/mn-effect-enters-absorbed:16:5 → `log` is an operation of Log, declared at tests/frontier/mn-effect-enters-absorbed:10:1 at tests/frontier/mn-effect-enters-absorbed:30:1-30:39
+  quiet uses Log: quiet installs `relog` at tests/frontier/mn-effect-enters-absorbed:30:24 → relog calls `log` at tests/frontier/mn-effect-enters-absorbed:16:5 → `log` is an operation of Log, declared at tests/frontier/mn-effect-enters-absorbed:10:1
+$ mentl query tests/frontier/mn-why-answering-arm.mn why quiet WASI
+! effects: E_EffectMismatch error: quiet is declared `with !WASI`, which does not allow WASI, and quiet uses WASI: while quiet runs, `print` is performed at tests/frontier/mn-why-answering-arm:9:25, and `stdout_console`'s arm at io:154:3 answers it: stdout_console calls `print_string` at io:155:5 → print_string calls `fd_write_bytes` at io:208:3 → fd_write_bytes calls `fd_write` at io:186:3 → `fd_write` is an operation of WASI, declared at io:45:1 at tests/frontier/mn-why-answering-arm:11:13-11:38
+  quiet uses WASI: while quiet runs, `print` is performed at tests/frontier/mn-why-answering-arm:9:25, and `stdout_console`'s arm at io:154:3 answers it: stdout_console calls `print_string` at io:155:5 → print_string calls `fd_write_bytes` at io:208:3 → fd_write_bytes calls `fd_write` at io:186:3 → `fd_write` is an operation of WASI, declared at io:45:1
+$ mentl query examples/hello/door.mn why try_door WASI
+  try_door never uses WASI: nothing in try_door, and nothing it calls, performs an operation of WASI
+$ mentl check tests/frontier/mn-mutate-enters.mn
+! effects: E_EffectMismatch error: relayed is declared `with !Mutate`, which does not allow Mutate, and relayed uses Mutate: relayed calls `relay` at tests/frontier/mn-mutate-enters:12:30 → relay calls `fill` at tests/frontier/mn-mutate-enters:8:15 → fill calls `list_set` at tests/frontier/mn-mutate-enters:6:19 → at lists:187:5, `store_i32`, a store into memory older than the frame it runs in at tests/frontier/mn-mutate-enters:12:1-12:38
+! effects: E_EffectMismatch error: handed is declared `with !Mutate`, which does not allow Mutate, and handed uses Mutate: handed calls `apply` at tests/frontier/mn-mutate-enters:14:29 → apply calls `fill` at tests/frontier/mn-mutate-enters:14:35 → fill calls `list_set` at tests/frontier/mn-mutate-enters:6:19 → at lists:187:5, `store_i32`, a store into memory older than the frame it runs in at tests/frontier/mn-mutate-enters:14:1-14:50
+! verify: 2 place(s) can stop this program with a trap, 2 of them inside the library through the program's calls; `mentl query tests/frontier/mn-mutate-enters traps` lists each with its claim
+[exit 1]

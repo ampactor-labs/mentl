@@ -1,0 +1,33 @@
+$ mentl check tests/frontier/mn-own-unconsumed.mn
+! ownership: T_OwnUnconsumed Warning: 'buf' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade at tests/frontier/mn-own-unconsumed:10:1-10:23
+$ mentl audit tests/frontier/mn-audit-iteration-shape.mn
+  Nothing in this module uses 10 of the effects the program declares.
+  walk_costume uses Diverge
+    never uses Alloc, Trap, so it is allocation-free (it never allocates memory; that it always finishes is not proven) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  stage_clean uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  main uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+$ mentl audit tests/frontier/mn-anonymity-tier.mn
+  Nothing in this module uses 11 of the effects the program declares.
+  inc performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  wraps uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+    could name its function values: 1 only wrap a call to a named function, which can be passed by its name
+  ticks uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+    could name its function values: 1 have effects, and a named function would say what each one does
+  pure_vocab uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  main performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+$ mentl check tests/frontier/mn-poly-teach.mn
+! graph: E_OccursCheck error: infinite type: a occurs in [a] at tests/frontier/mn-poly-teach:9:39-9:54
+! infer: T_PolyRecursionSignature Warning: the infinite type runs through 'bad''s own parameter or return — if 'bad' calls itself at a different type (polymorphic recursion), a FULL signature on 'bad' (every parameter and the return annotated) buys the poly self-call at tests/frontier/mn-poly-teach:9:39-9:54
+[exit 1]
+$ mentl check tests/frontier/mn-row-contradiction.mn
+! effects: E_DeclaredRowContradiction error: the clause asserts `E` AND `!E` — one row cannot both permit and forbid a name; drop one side at tests/frontier/mn-row-contradiction:0:0-0:0
+! infer: T_OverDeclared Warning: 'contradicts' names E in its clause, but its body performs only Pure. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-row-contradiction:11:1-11:33
+! effects: E_DeclaredRowContradiction error: the clause asserts `E` AND `!E` — one row cannot both permit and forbid a name; drop one side at tests/frontier/mn-row-contradiction:0:0-0:0
+! infer: T_RowInventory Warning: 'quiet_contradicts' names E in its clause, which the compiler already infers from its body (E). A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-row-contradiction:12:1-12:42
+[exit 1]
+$ mentl check tests/frontier/mn-instance-refinement-clause.mn
+! effects: E_DeclaredRowContradiction error: the clause asserts `Flow` AND `!Flow` — one row cannot both permit and forbid a name; drop one side at tests/frontier/mn-instance-refinement-clause:0:0-0:0
+[exit 1]

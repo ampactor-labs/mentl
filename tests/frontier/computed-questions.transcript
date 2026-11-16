@@ -1,0 +1,108 @@
+$ mentl tests/frontier/mn-hole-is-a-term-cell.mn:24:38
+  Query: ?? : Option(Int)
+  Propose: 3 proven survivors — a tie:
+    None  — lookup None → declared as None
+    Some(??)  — lookup Some → declared as Some
+    none_of()  — inferred from an in-scope call none_of() — row Pure admitted by Pure
+    the survivors differ in SHAPE — what structure does this position hold?
+  Effects: whatever its position permits — a hole states no row
+  Why: returned from opt, at tests/frontier/mn-hole-is-a-term-cell:24
+       body
+       its type: declared opt, at tests/frontier/mn-hole-is-a-term-cell:24
+$ mentl tests/frontier/mn-row-tie.mn:32:33
+! infer: T_RowInventory Warning: 'logged' names Log in its clause, which the compiler already infers from its body (Log). A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-row-tie:27:1-30:2
+! infer: T_OverDeclared Warning: 'choose' names Log in its clause, but its body performs only Pure. A clause states decisions (a negation, an instance pin, a claim or Pure), so a bare name decides nothing; `mentl tighten` removes it at tests/frontier/mn-row-tie:32:1-32:35
+  Query: ?? : Seven
+  Propose: 3 proven survivors — a tie:
+    silent()  — inferred from an in-scope call silent() — row Pure admitted by Log
+    logged()  — inferred from an in-scope call logged() — row Log admitted by Log
+    7  — inferred from the type's integer inhabitants
+    these differ in what they may DO — Pure against Log: which capability does this position carry?
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending comparison self == 7 at tests/frontier/mn-row-tie:32:16-32:21
+  Why: returned from choose, at tests/frontier/mn-row-tie:32
+       body
+       its type: declared choose, at tests/frontier/mn-row-tie:32
+$ mentl tests/frontier/mn-capability-tie.mn:17:38
+  Query: ?? : Seven
+  Propose: 3 proven survivors — a tie:
+    pure_seven()  — inferred from an in-scope call pure_seven() — row Pure admitted by !Network
+    calm_seven()  — inferred from an in-scope call calm_seven() — row Pure admitted by !Network
+    7  — inferred from the type's integer inhabitants
+    every survivor denotes the same value — the question is which name carries the intent
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending comparison self == 7 at tests/frontier/mn-capability-tie:17:16-17:21
+  Why: returned from choose, at tests/frontier/mn-capability-tie:17
+       body
+       its type: declared choose, at tests/frontier/mn-capability-tie:17
+$ mentl tests/frontier/mn-hole-row-absorbed.mn:16:21
+  Query: ?? : Int
+  Propose: 4 proven survivors — a tie:
+    these differ in what they may DO — E against Pure: which capability does this position carry?
+  Topology: the body the ~> governs at tests/frontier/mn-hole-row-absorbed:16:20
+  Effects: whatever its position permits — a hole states no row
+  Why: returned from main, at tests/frontier/mn-hole-row-absorbed:16
+       body
+       its type: declared main, at tests/frontier/mn-hole-row-absorbed:16
+$ mentl tests/frontier/mn-pipe-stage-hole.mn:14:25
+  Query: ?? : (Int) -> Int with e
+  Propose: 2 proven survivors — a tie:
+    double  — inferred from the in-scope function double — row Pure admitted by Pure
+    inc  — inferred from the in-scope function inc — row Pure admitted by Pure
+    these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means
+  Topology: stage 1 of 1 of the |> at tests/frontier/mn-pipe-stage-hole:14:20
+  Effects: whatever its position permits — a hole states no row
+  Why: the call to ??, at tests/frontier/mn-pipe-stage-hole:14
+       unification
+       its type: the call to ??, at tests/frontier/mn-pipe-stage-hole:14
+       expected
+$ mentl tests/frontier/mn-pipe-stage-fill.mn:9:25
+  Query: ?? : (Int) -> Int with e
+  Propose: double  — inferred from the in-scope function double — row Pure admitted by Pure
+  Topology: stage 1 of 1 of the |> at tests/frontier/mn-pipe-stage-fill:9:20
+  Effects: whatever its position permits — a hole states no row
+  Why: the call to ??, at tests/frontier/mn-pipe-stage-fill:9
+       unification
+       its type: the call to ??, at tests/frontier/mn-pipe-stage-fill:9
+       expected
+$ mentl tests/frontier/stage-ring-demo/stage.mn:12:25
+  Query: ?? : (Int) -> Int with e
+  Propose: triple  — inferred from the in-scope function triple — row Pure admitted by Pure
+  Topology: stage 1 of 1 of the |> at tests/frontier/stage-ring-demo/stage:12:20
+  Effects: whatever its position permits — a hole states no row
+  Why: the call to ??, at tests/frontier/stage-ring-demo/stage:12
+       unification
+       its type: the call to ??, at tests/frontier/stage-ring-demo/stage:12
+       expected
+$ mentl tests/frontier/mn-shape-tie.mn:20:31
+  Query: ?? : Int
+  Propose: 5 proven survivors — a tie:
+    the survivors differ in SHAPE — what structure does this position hold?
+  Effects: whatever its position permits — a hole states no row
+  Why: returned from total, at tests/frontier/mn-shape-tie:20
+       body
+       its type: declared total, at tests/frontier/mn-shape-tie:20
+$ mentl tests/frontier/mn-type-tie.mn:17:11
+! infer: W_CommentRefUnresolved Warning: comment on `one` references `x`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks at tests/frontier/mn-type-tie:1:1-1:27
+  Query: ?? : _ — still free: annotate the enclosing function's param or result and the fan arrives with the type
+  Propose: 2 proven survivors — a tie:
+    one()  — inferred from an in-scope call one() — row Pure admitted by Pure
+    word()  — inferred from an in-scope call word() — row Pure admitted by Pure
+    these differ in TYPE — Int against String: which type does this position hold? (the cell that moves: placeholder at 17:11-17:13)
+  Effects: whatever its position permits — a hole states no row
+  Why: authored here
+$ mentl tests/frontier/mn-cell-tie.mn:18:11
+! infer: W_CommentRefUnresolved Warning: comment on `one` references `y`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks at tests/frontier/mn-cell-tie:1:1-1:27
+! infer: W_CommentRefUnresolved Warning: comment on `one` references `x`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks at tests/frontier/mn-cell-tie:1:1-1:27
+  Query: ?? : _ — still free: annotate the enclosing function's param or result and the fan arrives with the type
+  Propose: 2 proven survivors — a tie:
+    one()  — inferred from an in-scope call one() — row Pure admitted by Pure
+    half()  — inferred from an in-scope call half() — row Pure admitted by Pure
+    these differ in TYPE — Int against Float: which type does this position hold? (the cell that moves: return of pick → inferred from return of 'pick')
+    · refused x — inferred from the hole's refinement is not satisfied
+  Effects: whatever its position permits — a hole states no row
+  Why: the operator +, at tests/frontier/mn-cell-tie:19
+       left
+       right
+       its type: returned from pick
+       return of 'pick'

@@ -1,0 +1,5 @@
+$ mentl check tests/frontier/missing-import/entry.mn
+! infer: E_MissingImport error: `helper` resolves only because the whole link carries it: it is declared in `a`, which `b` never imports — on its own, `b` would not compile. Add `import a` to `b` at b:6:16-6:22
+! infer: W_CommentRefUnresolved Warning: comment on `use_it` references `helper`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks at b:1:1-1:76
+! infer: W_CommentRefUnresolved Warning: comment on `use_it` references `a`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks at b:1:1-1:76
+[exit 1]

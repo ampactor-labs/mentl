@@ -1,0 +1,18 @@
+$ mentl check tests/frontier/mn-usage-grade.mn
+$ mentl query tests/frontier/mn-usage-grade.mn type finish
+  → (own xs: a, ref c: Bool) -> a
+    Reason: at 9:1-9:43: declared as finish
+$ mentl query tests/frontier/mn-usage-grade.mn type stmt_use
+  → (own xs: a) -> a
+    Reason: at 17:1-20:2: declared as stmt_use
+$ mentl query tests/frontier/mn-usage-grade.mn variants Option
+  → None/0
+    Some/1
+$ mentl query tests/frontier/mn-usage-grade.mn modules
+  → 6 module(s) in the link
+    lists
+    memory
+    prelude
+    strings
+    tests/frontier/mn-usage-grade
+    threading

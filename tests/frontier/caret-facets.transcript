@@ -1,0 +1,102 @@
+$ mentl tests/frontier/caret-facets/walk.mn:15:16
+  Query: x : Int
+  Topology: branch 1 of 2 of the >< at tests/frontier/caret-facets/walk:15:15, inside the source of the |> at tests/frontier/caret-facets/walk:15:14
+  Effects: Pure
+  Why: x flows in here, at tests/frontier/caret-facets/walk:15
+       parameter 1 of both, at tests/frontier/caret-facets/walk:15
+       its type: int literal, at tests/frontier/caret-facets/walk:15
+$ mentl tests/frontier/caret-facets/walk.mn:15:24
+  Query: (x + 1) >< (x + 2) : (Int, Int)
+  Topology: the >< runs 2 branches, each owning its input, in sequence, since no schedule is installed over it, inside the source of the |> at tests/frontier/caret-facets/walk:15:14
+  Effects: Alloc
+  Why: the product of the >< branches' results, each branch owning its input, at tests/frontier/caret-facets/walk:15
+$ mentl tests/frontier/caret-facets/walk.mn:17:27
+  Query: inv : (own n: Positive) -> Int
+  Topology: stage 2 of 2 of the |> at tests/frontier/caret-facets/walk:17:15
+  Effects: Pure when called
+  Ownership: own
+  Why: inv flows in here, at tests/frontier/caret-facets/walk:17
+       declared inv, at tests/frontier/caret-facets/walk:11
+$ mentl tests/frontier/caret-facets/walk.mn:19:15
+  Query: tick : () -> Int with Tick
+  Handler: Tick is served by `~> ticker` at tests/frontier/caret-facets/walk:19:14
+  Topology: the perform of `tick` is answered by the ~> `ticker` at line 19, inside the body the ~> governs at tests/frontier/caret-facets/walk:19:14
+  Effects: Tick when called
+  Why: tick flows in here, at tests/frontier/caret-facets/walk:19
+       declared tick
+$ mentl tests/frontier/caret-facets/walk.mn:13:26
+  Query: prev : a
+  Topology: the recurrence the <~ feeds back at tests/frontier/caret-facets/walk:13:14
+  Effects: Pure
+  Why: prev flows in here, at tests/frontier/caret-facets/walk:13
+       parameter 1 of lambda, at tests/frontier/caret-facets/walk:13
+       its type: returned from ramp
+       return of 'ramp'
+$ mentl tests/frontier/caret-facets/walk.mn:21:18
+  Query: 100 / (k - 1) : Int
+  Effects: Trap
+  Verify: pending partiality k - 1 != 0 && 100 / (k - 1) fits (never INT_MIN / -1) at tests/frontier/caret-facets/walk:21:14-21:27
+  Why: the operator /, at tests/frontier/caret-facets/walk:21
+       result
+       operand
+       its type: int literal, at tests/frontier/caret-facets/walk:21
+$ mentl tests/frontier/caret-facets/walk.mn:23:12
+  Query: tick : () -> Int with Tick
+  Handler: no install in this function answers tick; a caller's handler does
+  Topology: the perform of `tick` reaches no install in its function; a caller's handler answers it
+  Effects: Tick when called
+  Why: tick flows in here, at tests/frontier/caret-facets/walk:23
+       declared tick
+$ mentl tests/frontier/caret-facets/walk.mn:25:31
+  Query: tick : () -> Int with Tick
+  Handler: no install in this function answers tick; a caller's handler does
+  Topology: the perform of `tick` reaches no install in its function; a caller's handler answers it, inside the body the ~> governs at tests/frontier/caret-facets/walk:25:14
+  Effects: Tick when called
+  Why: tick flows in here, at tests/frontier/caret-facets/walk:25
+       declared tick
+$ mentl tests/frontier/caret-facets/walk.mn:29:20
+  Query: "hello world" : String
+  Effects: Pure
+  Why: string literal, at tests/frontier/caret-facets/walk:29
+$ mentl tests/frontier/caret-facets/walk.mn:13:14
+  Query: ((prev) => prev + x) <~ delay(1) : a
+  Topology: the <~ feeds back the output 1 tick ago; its line is owned by `ramp` and allocated once
+  Effects: Mutate
+  Why: through <~, at tests/frontier/caret-facets/walk:13
+       recurrence result
+       its type: returned from ramp
+       return of 'ramp'
+$ mentl tests/frontier/caret-facets/walk.mn:32:3
+  Query: let f = () => tick() : () -> Int with Tick
+  Effects: Alloc, and Tick when called
+  Why: let statement carries its value, at tests/frontier/caret-facets/walk:32
+       its type: lambda, at tests/frontier/caret-facets/walk:32
+$ mentl tests/frontier/caret-facets/walk.mn:13:32
+  Query: x : a
+  Topology: the recurrence the <~ feeds back at tests/frontier/caret-facets/walk:13:14
+  Effects: Pure
+  Why: x flows in here, at tests/frontier/caret-facets/walk:13
+       parameter 1 of ramp, at tests/frontier/caret-facets/walk:13
+       its type: returned from ramp
+       return of 'ramp'
+$ mentl tests/frontier/caret-facets/walk.mn:15:38
+  Query: { (a, b) => a + b } : ((Int, Int)) -> Int with Pure
+  Topology: stage 1 of 1 of the |> at tests/frontier/caret-facets/walk:15:14
+  Effects: Pure when called
+  Why: lambda, at tests/frontier/caret-facets/walk:15
+$ mentl tests/frontier/caret-facets/walk.mn:36:17
+  Query: both(3) : Int
+  Effects: Alloc
+  Why: the call to both, at tests/frontier/caret-facets/walk:36
+       result
+       its type: returned from fn, at tests/frontier/caret-facets/walk:36
+       the call to both
+       unification
+$ mentl where tests/frontier/caret-facets/walk.mn inv
+  → inv(own n: Positive) -> Int  at tests/frontier/caret-facets/walk:11
+    n : Positive @ i32 (inferred)
+    -> Int @ i32 (inferred)
+$ mentl where tests/frontier/caret-facets/walk.mn shadowed
+  → shadowed(xs: a) -> Int  at tests/frontier/caret-facets/walk:38
+    xs : a @ per instantiation
+    -> Int @ i32 (inferred)

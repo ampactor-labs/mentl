@@ -1,0 +1,142 @@
+$ mentl query tests/frontier/mn-census-verbs.mn census |> in tests/frontier/mn-census-verbs
+  → 3 |> site(s)
+    at tests/frontier/mn-census-verbs:11:13-11:21
+    at tests/frontier/mn-census-verbs:13:17-13:25
+    at tests/frontier/mn-census-verbs:13:31-13:39
+$ mentl query tests/frontier/mn-census-verbs.mn census <| in tests/frontier/mn-census-verbs
+  → 1 <| site(s)
+    at tests/frontier/mn-census-verbs:12:13-12:30
+$ mentl query tests/frontier/mn-census-verbs.mn census >< in tests/frontier/mn-census-verbs
+  → 1 >< site(s)
+    at tests/frontier/mn-census-verbs:13:16-13:40
+$ mentl query tests/frontier/mn-census-verbs.mn census ~> in tests/frontier/mn-census-verbs
+  → 2 ~> site(s)
+    at tests/frontier/mn-census-verbs:14:13-14:29
+    at tests/frontier/mn-census-verbs:26:21-26:57
+$ mentl query tests/frontier/mn-census-verbs.mn census anonymous in tests/frontier/mn-census-verbs
+  → 5 anonymous fn(s)
+    at tests/frontier/mn-census-verbs:15:18-15:30
+    at tests/frontier/mn-census-verbs:16:13-16:31
+    at tests/frontier/mn-census-verbs:25:23-25:36
+    at tests/frontier/mn-census-verbs:26:25-26:42
+    at tests/frontier/mn-census-verbs:37:25-37:37
+$ mentl query tests/frontier/mn-census-verbs.mn census <~ in tests/frontier/mn-census-verbs
+  → 1 <~ site(s)
+    at tests/frontier/mn-census-verbs:16:12-16:44
+$ mentl query tests/frontier/mn-census-verbs.mn census eta in tests/frontier/mn-census-verbs
+  → 1 eta-wrapper(s)
+    at tests/frontier/mn-census-verbs:25:23-25:36
+$ mentl query tests/frontier/mn-census-verbs.mn census effectful-lambda in tests/frontier/mn-census-verbs
+  → 1 effectful lambda(s)
+    at tests/frontier/mn-census-verbs:26:25-26:42
+$ mentl query tests/frontier/mn-census-verbs.mn census iteration in tests/frontier/mn-census-verbs
+  → 1 iteration-costume fn(s)
+    at tests/frontier/mn-census-verbs:27:1-27:74
+$ mentl query tests/frontier/mn-census-verbs.mn census wildcard-zero in tests/frontier/mn-census-verbs
+  → 1 wildcard-zero arm(s)
+    at tests/frontier/mn-census-verbs:28:17-28:43
+$ mentl query tests/frontier/mn-census-verbs.mn census failure-mask in tests/frontier/mn-census-verbs
+  → 1 failure-mask site(s)
+    at tests/frontier/mn-census-verbs:29:17-29:26
+$ mentl query tests/frontier/mn-census-verbs.mn census print-in-report in tests/frontier/mn-census-verbs
+  → 1 print-in-report site(s)
+    at tests/frontier/mn-census-verbs:32:26-32:44
+$ mentl query tests/frontier/mn-census-verbs.mn census wildcard-fabricates in tests/frontier/mn-census-verbs
+  → 1 wildcard-fabricates arm(s)
+    at tests/frontier/mn-census-verbs:33:17-33:52
+$ mentl query tests/frontier/mn-census-verbs.mn census underscore-retain in tests/frontier/mn-census-verbs
+  → 1 underscore-retain let(s)
+    at tests/frontier/mn-census-verbs:34:19-34:37
+$ mentl query tests/frontier/mn-census-verbs.mn census flag-as-int in tests/frontier/mn-census-verbs
+  → 1 flag-as-int compare(s)
+    at tests/frontier/mn-census-verbs:35:20-35:29
+$ mentl query tests/frontier/mn-census-verbs.mn census parallel-arrays in tests/frontier/mn-census-verbs
+  → 2 parallel-arrays site(s)
+    at tests/frontier/mn-census-verbs:36:20-36:56
+    at tests/frontier/mn-census-verbs:38:1-38:49
+$ mentl query tests/frontier/mn-census-verbs.mn census vtable-record in tests/frontier/mn-census-verbs
+  → 1 vtable-record literal(s)
+    at tests/frontier/mn-census-verbs:37:17-37:46
+$ mentl query tests/frontier/mn-census-verbs.mn census env-frame in tests/frontier/mn-census-verbs
+  → 1 env-frame site(s)
+    at tests/frontier/mn-census-verbs:39:1-39:21
+$ mentl query tests/frontier/mn-census-verbs.mn census default-param in tests/frontier/mn-census-verbs
+  → 1 default-valued parameter(s)
+    at tests/frontier/mn-census-verbs:40:1-40:29
+$ mentl query tests/frontier/mn-census-verbs.mn census record-pattern in tests/frontier/mn-census-verbs
+  → 1 record pattern(s)
+    at tests/frontier/mn-census-verbs:41:17-41:43
+$ mentl query tests/frontier/mn-census-verbs.mn census declared-row-hof in tests/frontier/mn-census-verbs
+  → 1 fn(s) with a declared row that call a parameter
+    at tests/frontier/mn-census-verbs:42:1-42:31
+$ mentl audit tests/frontier/mn-census-verbs.mn
+  Nothing in this module uses 10 of the effects the program declares.
+  inc performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  fwd performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  dup uses Alloc
+    never uses Trap, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  par uses Alloc
+    never uses Trap, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  tee uses Alloc
+    never uses Trap, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  lam uses Alloc
+    never uses Trap, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  fb uses Mutate
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  pick uses e
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  main performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  eta_site uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+    could name its function values: 1 only wrap a call to a named function, which can be passed by its name
+  rowed_site uses Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+    could name its function values: 1 have effects, and a named function would say what each one does
+  walk_site uses Diverge
+    never uses Alloc, Trap, so it is allocation-free (it never allocates memory; that it always finishes is not proven) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  wz_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 wildcard-zero arm(s); `mentl query <file> census` lists each
+  fm_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 failure-mask site(s); `mentl query <file> census` lists each
+  println performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  report performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  pir_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 print-in-report site(s); `mentl query <file> census` lists each
+  wf_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 wildcard-fabricates arm(s); `mentl query <file> census` lists each
+  ur_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 underscore-retain let(s); `mentl query <file> census` lists each
+  fi_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 flag-as-int compare(s); `mentl query <file> census` lists each
+  pa_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 parallel-arrays site(s); `mentl query <file> census` lists each
+  vt_site uses Alloc
+    never uses Trap, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 vtable-record literal(s); `mentl query <file> census` lists each
+  pp_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 parallel-arrays site(s); `mentl query <file> census` lists each
+  push_frame performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    shapes the census counts here: 1 env-frame site(s); `mentl query <file> census` lists each
+  dp_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  rp_site performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+  drh_site uses e
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+$ mentl query no-such-source-anywhere.mn census anonymous
+! driver: E_MissingModule error: module source not found: no-such-source-anywhere (searched no-such-source-anywhere.mn, src/no-such-source-anywhere.mn, lib/no-such-source-anywhere.mn, /mentl-home/src/no-such-source-anywhere.mn, /mentl-home/lib/no-such-source-anywhere.mn) at <link>:0:0-0:0
+! mentl query: no source to project — no-such-source-anywhere never joined the weave
+[exit 1]

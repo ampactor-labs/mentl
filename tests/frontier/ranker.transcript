@@ -1,0 +1,14 @@
+$ mentl tests/frontier/mn-ranker-local-intent.mn:14:24
+  Query: ?? : Positive
+  Propose: 3 proven survivors — a tie:
+    width()  — inferred from an in-scope call width() — row Pure admitted by Pure
+    kerning()  — inferred from an in-scope call kerning() — row Pure admitted by Pure
+    1  — inferred from the type's integer inhabitants
+    the survivors differ in VALUE — 40 or 2 or 1 — and the type admits 1 and up: which one does this position mean?
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending comparison 0 < self at tests/frontier/mn-ranker-local-intent:14:24-14:26
+  Why: let annotation pins the value, at tests/frontier/mn-ranker-local-intent:14
+$ mentl tests/frontier/mn-splice-line-carry.mn:13:31
+  Query: 40 : Int
+  Effects: Pure
+  Why: int literal, at tests/frontier/mn-splice-line-carry:13

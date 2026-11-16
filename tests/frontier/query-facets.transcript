@@ -1,0 +1,44 @@
+$ mentl query tests/frontier/mn-decls-facet.mn decls in tests/frontier/mn-decls-facet
+  → 3 declared name(s)
+    inc  at tests/frontier/mn-decls-facet:8:1-8:18
+    twice  at tests/frontier/mn-decls-facet:10:1-10:26
+    main  at tests/frontier/mn-decls-facet:12:1-12:22
+$ mentl query tests/frontier/mn-refs-by-edge.mn refs of width
+  → 2 reference(s)
+    at tests/frontier/mn-refs-by-edge:8:21-8:26  call
+    at tests/frontier/mn-refs-by-edge:8:15-8:20  call
+$ mentl query tests/frontier/imports-by-edge/main.mn imports
+  → 6 import edge(s); 2 bring nothing the importing module references
+    used  prelude -> import memory
+      used  prelude -> import lists
+      used  prelude -> import strings
+      DEAD  prelude -> import threading
+      used  tests/frontier/imports-by-edge/main -> import consts
+      DEAD  tests/frontier/imports-by-edge/main -> import unused
+$ mentl query examples/hello/five.mn imports
+  → 6 import edge(s); 1 bring nothing the importing module references
+    used  prelude -> import memory
+      used  prelude -> import lists
+      used  prelude -> import strings
+      DEAD  prelude -> import threading
+      used  io -> import strings
+      used  examples/hello/five -> import io
+$ mentl query tests/frontier/mn-reading-facets.mn text facet-literal-marker
+  → 1 string literal(s) containing `facet-literal-marker`
+    at tests/frontier/mn-reading-facets:21:16-21:38
+$ mentl query tests/frontier/mn-reading-facets.mn prose facet-prose-marker
+  → 1 comment(s) containing `facet-prose-marker`
+    at tests/frontier/mn-reading-facets:5:1-5:77  comment holding facet-prose-marker, the writes facet finds the two values
+$ mentl query tests/frontier/mn-reading-facets.mn writes of sum
+  → counter.sum: 2 write(s), 0 in-place store(s)
+      0  at tests/frontier/mn-reading-facets:13
+      sum + n  at tests/frontier/mn-reading-facets:14
+$ mentl query tests/frontier/mn-reading-facets.mn reads of width
+  → 1 read(s) of the field `width`
+    at tests/frontier/mn-reading-facets:25:14-25:21
+$ mentl query tests/frontier/mn-debt-facet.mn verification in tests/frontier/mn-debt-facet
+  → 1 verification obligations pending, besides the claims open at explicit calls of a partial primitive, which `census call-claims` lists
+    -1.0 <= self && self <= 1.0 at tests/frontier/mn-debt-facet:8:17-8:48
+$ mentl query tests/frontier/mn-reading-facets.mn variants Count
+  → total/0
+    add/1
