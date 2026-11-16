@@ -1171,9 +1171,10 @@ accepts each program and `mentl run` shows the break.
 - The page cannot play a lesson (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
   calls. The landing pass, the march and the batteries' host loop are shell
-  scripts under tools/ (§11.9). 123 places in the frontier gate pipe a
-  compiler's answer into `grep -q`, which can read a present answer as
-  absent at random (§11.B, "Three checks that failed at random").
+  scripts under tools/ (§11.9). 144 lines of the frontier gate pipe a
+  compiler's answer into `grep -q` (counted 2026-11-15), which can read a
+  present answer as absent at random (§11.B, "Three checks that failed at
+  random"); P3 moves them into transcripts.
 
 **Comments and documents.**
 
@@ -1390,7 +1391,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1436,9 +1437,10 @@ leave, and the landing deletes them.
    by its value inside the path's proof, which F8 brings.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
-   legs move into fixtures with their 123 pipes into `grep -q`. Then P4,
-   P7 and P5, the newest engine, which T4 needs for exception handling and
-   M5 for multiple memories.
+   legs move into fixtures with their 144 lines that pipe into `grep -q`.
+   Its first part is Box 3 (P3a): a verb says its answer through the
+   writers its caller installs. Then P4, P7 and P5, the newest engine,
+   which T4 needs for exception handling and M5 for multiple memories.
 3. Leaves that read only carried facts. F1: a claim names the node where
    it is stated, so no reader compares spans (§11.10). F2: a column that
    holds a fact at few handles costs memory in proportion to those
@@ -1486,7 +1488,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
+3 is P3a, the first part of P3.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1509,7 +1512,33 @@ minute, and no expectation kept by hand.
   batches, each batch proven by running the old leg and the new contract
   on one compiler, until the script is empty (§11.9). The legs run in one
   serial loop, which took 361 seconds on Morgan's machine on 2026-11-12,
-  more than any battery but the micros.
+  more than any battery but the micros, and 337 seconds in the landing
+  pass of 2026-11-15. On that day the gate held 370 legs, and 144 of its
+  lines piped captured text into `grep -q`.
+
+  The contract is a transcript: a file `<name>.transcript` beside the
+  fixtures, holding each command as a person types it at the repository's
+  root (`$ mentl tests/frontier/caret-facets/walk.mn:15:16`), each
+  followed by what it printed. The quote cannot stand in the fixture's
+  own comments, because every comment is graph content: `mentl doc`, the
+  caret's lede and `check`'s backtick gate would read the quote as part
+  of the program it describes. `mentl test` runs each command inside
+  itself, through `verb_answer`, under a handler that keeps what the verb
+  printed, and compares. `mentl test --write` writes each answer under its
+  command, so no expectation is kept by hand. A document's quoted command
+  (P4) has the same form, so P4 replays it with the same reader.
+
+  P3 lands in parts. Box 3 (P3a) lets a caller keep a verb's text. P3b
+  builds the transcript, its replay and its writer, and moves the first
+  batch: the legs that read a verb's text on one fixture and need nothing
+  else. P3b's box decides how a transcript tells stdout from stderr and
+  shows an exit code other than 0. Each later batch brings what its legs
+  need: a filesystem handler, installed once at `main`, that keeps a
+  transcript's writes in memory, for `fmt`, `tighten`, `accept` and
+  `rename`, and for a project folder; stdin, for an `edit` session;
+  `// expect:` fixtures, for the legs that compile and run a program; and
+  a form for the legs that compare against an outside program, a warm
+  image or an LSP exchange.
 - P4. A document's quoted output is re-run by a command that fails when
   the pin prints something else and rewrites the quote on request (§11.5).
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
@@ -1790,7 +1819,7 @@ wall time when the march is the compiler's own verb and the compiler
 counts its own work (§11.9). Until then a wall refusal is read against the
 march run alone before any code changes.
 
-The third is settled, and its cause is open in 123 more places. On
+The third is settled, and its cause is open in 144 more lines. On
 2026-11-13 the frontier leg for the decls facet
 (tests/frontier/mn-decls-facet.mn) marked Box 4's landing pass red, while
 the pin and the candidate wrote the same 19,583-byte answer. The leg piped
@@ -1799,12 +1828,12 @@ writes the answer in several chunks, so a later chunk can meet a closed
 pipe, and under `set -o pipefail` the writer's SIGPIPE made the condition
 read false: 88 of 2,000 runs on that one answer. The leg now reads the
 answer from a file, as the gate's relocation legs already did, and read
-false in none of 2,000 runs. The frontier gate holds 123 more places that
-pipe a captured answer into `grep -q`. Any of them whose answer is written
+false in none of 2,000 runs. On 2026-11-15 the frontier gate held 144
+lines that pipe a captured answer into `grep -q`. Any of them whose answer is written
 in more than one chunk can read false the same way, and a negated one,
 `! printf … | grep -q`, can read true, which passes a leg that should fail.
 They leave when the gate's legs are read by the medium instead of the
-shell (§11.9).
+shell, as transcripts (P3, §11.9).
 
 1. **Box 1 · Every battery runs each `// expect` fixture both ways.**
    Written 2026-11-10; it is T3, in stage 6 of the order, because its
@@ -1993,6 +2022,113 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · P3a · A verb says its answer through the two writers its
+   caller installs.** Written 2026-11-15. It is groundwork for P3's
+   transcripts, the box after it (P3b, below). It was measured with pin
+   acd7790de7bd judging the edited source, and with a probe compiler
+   built from that source.
+
+   What a person sees. Nothing a verb prints changes. Sixteen commands
+   print the same bytes on stdout and on stderr, and answer the same exit
+   code, on the probe as on the pin: the caret at a position and past a
+   file's end, `check` of a clean file, a refused file and a missing file,
+   `query` of one file and of a directory, `where`, `why`, `audit`,
+   `teach`, `doc`, `map`, `fmt --check`, an unknown verb, and `test
+   tests/syntax`. The one exception is the battery's `heap:` lines, which
+   read 8 bytes lower on the probe, because the console's install record
+   now sits once at `main`. What changes is that a caller can run a verb
+   and keep its text, which the transcript battery needs: `mentl test`
+   runs a verb inside itself and compares what it printed.
+
+   Fails today, on pin acd7790de7bd. One verb cannot run another and keep
+   its text, for three reasons.
+   - Twelve verb runners install `stdout_console` inside themselves, so a
+     handler for `print` installed around them never hears what they
+     print: `space_run`, `march_run`, `doc_run`, `at_run`, `accept_run`,
+     `test_run`, `test_check_run`, `audit_run`, `query_run`,
+     `verify_run`, `teach_run` and `repl_run`.
+   - The wheel's source writes to a descriptor directly 144 times: 92
+     calls of `print_string` and 2 of `println` to stdout, and 50 calls of
+     `eprint_string` to stderr (the references in src/ that `mentl query
+     src/main.mn "refs of print_string"`, `"refs of println"` and `"refs
+     of eprint_string"` list).
+   - `fail_said`, the failure policy `main` installs, ends the process
+     with `proc_exit(1)`, so a verb that fails inside another verb ends
+     both.
+
+   The form.
+   - `main(argv) = verb_answer(argv) ~> stdout_console ~>
+     progress_stderr(fd_is_tty(2))`. `verb_answer(argv)` is today's body
+     of `main` with its installs, `~> diagnostics_handler ~> intern_table
+     ~> fail_said`. The process installs its two writers once, and a
+     caller that wants a verb's text installs its own writers around
+     `verb_answer`.
+   - `fail_said` says the failure and answers 1, the verb's exit code, in
+     place of `proc_exit(1)`.
+   - The twelve inner installs of `stdout_console` leave.
+   - In src/main.mn, src/pipeline.mn, src/mcp.mn, src/space.mn and
+     src/cursor_transport.mn, each `print_string(text)` becomes
+     `print(text)`, and each `eprint_string(text)` becomes `said(text)`:
+     90 calls and 46 calls. `stdout_console` and `progress_stderr` write
+     the text unchanged, so the bytes are the same. `analyze_fns`'s stage
+     `|> print_string` becomes `|> print`, and `query_dir`'s
+     `println(line)` becomes `print("{line}\n")`.
+   - `query_render` ends in `|> println`, and `session_read` builds the
+     same line a second time (`"{render_query_result(…)}\n"`). Both
+     become one function, `query_text(question, m)`, which the cold verb
+     prints and the session answers.
+   - The comments that say `fail_said` exits the process are rewritten to
+     say it answers exit 1.
+
+   Every fact it reads, and what carries it. The box reads no fact of the
+   graph. It reads two rules of the language's handlers.
+   - An operation lands at the nearest install of a handler for it:
+     `mentl query src/main.mn "provider of print"` names `stdout_console`
+     and mcp's `console_bank`, and `"provider of said"` names
+     `progress_stderr`.
+   - An arm that answers without resuming ends the extent it is installed
+     over, with its answer: tests/micros/mn-effect-identity.mn exits 81 on
+     the pin, and a scratch program that fails 500 calls deep, under a
+     handler with state, exits 1 under an arm `fail(_) => 1`.
+
+   Edge cases and what it leaves alone.
+   - The module a verb emits is not text the verb says: `asm_write`'s
+     bytes and the WAT sink `wat_stdout` keep writing to stdout directly.
+   - `progress_stderr` is the stderr writer, so its four writes stay.
+   - The five verbs that read stdin and hold the terminal for their whole
+     run (edit, serve, repl, mcp and session) keep their own
+     `progress_stderr(false)`, so no progress line is drawn over their
+     screen or their protocol. Their text converts like every other
+     verb's.
+   - lib/ is untouched. `lsp_frame`, `persist`, `test` and io's `println`
+     serve programs as well as the wheel, and a program's row must not
+     gain `Console`.
+   - The compile route (compile, resume, compile from stdin and the
+     march's emit) keeps `fail_exit` and `refuse_to_emit`'s
+     `proc_exit(1)`. These routes can swap in a warm image, nothing has
+     measured what an install outside the swap means after it, and the
+     transcript battery never replays them, because their answer is a
+     module.
+   - The 39 inner installs of `wasi_filesystem` stay. The P3 batch whose
+     legs write files or stand in a project folder moves them, together
+     with the filesystem handler that batch needs.
+
+   What pays for its code. Code leaves: `census in main` counts 330 `~>`
+   sites where the pin counts 341, and the session's copy of the query
+   line goes. With the edits, `mentl verify` holds all 37 bounds, and the
+   values the memory walk cannot place fall from 32,043 to 32,038 (4 in
+   main and 1 in pipeline). No other count moves. The census of mcp,
+   space and cursor_transport is unchanged, and main's and pipeline's
+   change only in those two lines.
+
+   Proves it. On the candidate, `mentl query src/main.mn "refs of
+   print_string"` and `"refs of eprint_string"` list in src/ only
+   `asm_write`, the WAT sink and `progress_stderr`'s four writes. The
+   sixteen commands above print the same bytes and exit codes on the
+   candidate and on the pin, the heap lines aside. `mentl land` passes,
+   and the board's limit on values the walk cannot place is lowered to
+   the count.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
