@@ -1401,7 +1401,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1501,7 +1501,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
+3 is P3c.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2044,6 +2045,95 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · P3c · The frontier gate's legs that read a verb's text are
+   transcripts.** Written 2026-11-15 and measured on pin 1818fc1554e0.
+   The box changes no compiler source, so the pin writes and judges its
+   transcripts.
+
+   What a person sees. Seventeen transcripts in tests/frontier hold the
+   commands that 56 legs of tools/frontier-gate.sh ran, and what each
+   printed. `mentl test tests/frontier` judges them beside the folder's
+   219 programs (236 of 236 on the pin), and the 56 legs leave the script.
+   The gate falls from 4,259 lines to 3,393, its lines that pipe captured
+   text into `grep -q` from 144 to 38, and its legs from 370 to 315
+   (314 pass and the one expected red). Run alone on the pin, the gate
+   took 244 s before and 204 s after.
+
+   Fails today, on pin 1818fc1554e0. The 56 legs read what a verb printed
+   through patterns written by hand, and 106 of the script's lines that
+   do so pipe the text into `grep -q`, which can read a present answer as
+   absent at random ("Three checks that failed at random", above). A
+   pattern checks the lines it names and nothing else the verb printed.
+
+   The form. Each transcript stands in tests/frontier and names the legs
+   it holds:
+   - usage-grade: `check`, `type finish`, `type stmt_use`, `variants
+     Option` and `modules` of mn-usage-grade.mn (usage grade, the variants
+     facet over a type, the modules facet);
+   - census-verbs: the 21 census shapes of mn-census-verbs.mn, its
+     `audit`, and a query of a file that does not exist (structural census,
+     audit drift tier, unreadable-entry refusal);
+   - teach-authored, hole-operand, voice (two legs), lede (the comment lede
+     and `doc` of lede.mn and of examples/hello/five.mn), address-module,
+     obligation-module, ranker (two ranker legs and splice line carry),
+     missing-import;
+   - caret-facets: 14 addresses of caret-facets/walk.mn and two `where`
+     reads (caret extents, why, where answers where, topology, handler,
+     effects and verify);
+   - propose: the field at two.mn:0, bit.mn:8:30, hole.mn:9:37 and `check
+     scope-own.mn` (field, fan, propose, the value question, and both
+     render-register legs);
+   - computed-questions: ten holes (term cell, the row, name, shape, type
+     and cell questions, the absorbed row, and the three stage holes);
+   - effect-enters: the forward-order check, the two effect chains and
+     their `why`, the answering arm, door's `why`, and the Mutate chain;
+   - audit-shapes: own-unconsumed, the two audit shapes, poly teach, row
+     contradiction and the instance refinement clause;
+   - where-badges: the 16 `where` and `check` reads of the where-badge leg;
+   - query-facets: decls, refs by edge, imports (two), the four reading
+     facets, the debt facet and the variants facet over an effect.
+
+   Where a transcript's command differs from its leg's, and why.
+   - Every command runs from the repository's root, so a module is spelled
+     as its path from there (`tests/frontier/caret-facets/walk:15:15`),
+     where several legs ran from the fixture's folder (`walk:15:15`).
+   - The 21 census shapes, `decls` and the debt facet's `verification` ask
+     `… in <the fixture's module>`. Unscoped, `census |>` lists 16 library
+     sites beside the fixture's 3, and `decls` 560 lines, so every library
+     edit would move the transcript, while each leg checked only the
+     fixture's own sites.
+   - A transcript holds a library coordinate exactly (`io:154:3`), where
+     the leg matched `io:[0-9:]*`, so an edit above that line in the
+     library is written again by `mentl test --write`, and the diff shows
+     it.
+   - The where-badge leg's `why FILE gain` stays in the gate, as its own
+     pass beside the expected red that reads the same answer
+     (why-coordinates): a transcript would hold the answer that red says
+     is wrong.
+
+   Every fact it reads, and what carries it. A replayed answer is what the
+   command line prints (P3b; on the pin `mentl test` replays through
+   `verb_answer`). The old legs pass on the pin (369 pass, 0 red, 1
+   expected red, the gate run alone). Each leg's checks were read on its
+   transcript's answer, written by the same pin, and every one holds.
+
+   Left alone, for the batches after it. The two `teach -` legs, the
+   `audit -` legs and instance arg typing feed a program on stdin; the
+   gradient field and accept, the user link, teach accept and the two
+   accepts run in a folder or write files; one renderer reads the wheel's
+   own source and the prelude, so it waits for a fixture of its own;
+   information flow reads each mn-flow fixture's second line as its
+   expectation, which the transcript would make text that nothing reads;
+   the proposal, teach and teach-refusal batteries already run in the
+   landing pass; and every leg that compiles and runs a program.
+
+   What pays for it. No compiler code: tools/frontier-gate.sh loses 866
+   lines.
+
+   Proves it. `mentl test tests/frontier` on the pin: 236 of 236.
+   `bash tools/frontier-gate.sh`: 314 pass, 0 red, 1 expected red.
+   `mentl land` passes.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
