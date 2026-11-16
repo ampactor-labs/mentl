@@ -1388,7 +1388,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1492,7 +1492,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box 3
+is T1a.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2000,6 +2001,68 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · T1a · The lexer states its positions where they are made.**
+   Written 2026-11-15, measured with pin f23b73575a76 judging the edited
+   source; the change is to the lexer's source alone, so the pin's
+   judgment is the candidate's.
+
+   What a person sees. `mentl check src/lexer.mn` prints one open claim
+   `0 <= self` where the pin prints twelve, and `mentl verify` counts 79
+   open obligations in the compiler where it counts 90.
+
+   Fails today, on pin f23b73575a76: twelve lines `verify: pending
+   comparison 0 <= self at lexer:…`, one at each call that hands a
+   position taken out of a scanner's answer to a parameter declared
+   `ValidOffset`. Seven of those callees read the source with no check on
+   the strength of that parameter (PLAN's T1 entry).
+
+   The form, all in src/lexer.mn.
+   - `type LexAt = (ValidOffset, Int, Int, [Token], Int)`: where a lex or a
+     string scan stops, and what it built. It is the declared return of
+     the seven functions that answer it: `lex_from`, `scan_string`,
+     `scan_string_chunk`, `scan_string_after_splice`, `scan_triple_string`,
+     `scan_triple_chunk` and `scan_triple_after_splice`.
+   - `scan_ident -> (ValidOffset, Int)` and `scan_base_digits ->
+     (ValidOffset, Int, Int, Int)`.
+   - `type NumScan = NumInt(ValidOffset, Int, Int) | NumFloat(ValidOffset,
+     Int) | NumNoDigits(ValidOffset, Int, NumBase)`: the position a
+     number's scan stops at is claimed where each constructor is applied.
+   - `triple_common_indent(…, end: ValidOffset, …)`, since its callers
+     hand it `scan_triple_end`'s answer, which is proven a `ValidOffset`.
+   - `scan_triple_chunk`'s test `pos + 2 < n` is written `pos < n - 2`,
+     as F4 wrote the lexer's other tests: the sum can wrap, so the path's
+     proof does not admit the first form.
+
+   Every fact it reads, and what carries it.
+   - A declared return's claim on a part of the answer, decided at each
+     branch of the answer: F7, `mentl check
+     tests/micros/mn-part-of-join-proven.mn` prints no claim on the pin.
+   - An alias of a tuple holding a refined alias: F6, `mentl check
+     tests/micros/mn-alias-tuple-keeps-refinement.mn`.
+   - A constructor field's refinement, claimed where the constructor is
+     applied and assumed where a pattern takes it apart: the judgment
+     (`value_parts`, `PartFact`'s declared contract), as
+     `Option(Positive)` is read today.
+   - A test that cannot wrap, admitted by the path's proof: F4,
+     `tests/micros/mn-sum-that-wraps-stays-open.mn`.
+
+   Edge cases. Each new declared return raises a claim of its own, and
+   every one is proven: with the edits, the pin prints no claim at any
+   return. The twelfth position claim, `triple_common_indent`'s recursive
+   call with `next = if line_end < end { line_end + 1 } else { end }`,
+   stays open: its first branch needs `line_end`'s own lower bound inside
+   the path's proof, which F8 brings. Its callee reads nothing on the
+   strength of that position alone, since its reads are checked where
+   their upper bound is open.
+
+   What pays for its code. `mentl verify` with the edits: 37 bounds hold,
+   open obligations fall from 90 to 79, and no count that grows with code
+   moves.
+
+   Proves it. `mentl check src/lexer.mn` and `mentl verify` as above, on
+   the candidate the landing pass builds, and the board's limit on open
+   obligations lowered to the count.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
