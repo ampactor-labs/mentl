@@ -37,10 +37,11 @@ effect Filesystem {
   // Whether the directory stands once asked for: a cache a host cannot hold
   // is skipped, and a write that needed the directory fails naming its path.
   fs_mkdir(String) -> Bool
-  // create+truncate for writing, returning the fd (WASI oflags CREAT|TRUNC,
-  // write rights), for a writer that streams through the fd.
-  fs_create(String) -> Int
-  fs_close(Int)
+  // The file at the path, created or emptied, for a writer that streams its
+  // bytes: each write lands all of them at the end, or fails naming the path.
+  fs_create(String) -> FileStream
+  fs_stream(FileStream, String)
+  fs_close(FileStream)
   fs_unlink(String) -> Bool
   fs_rename(String, String) -> Bool
   // A directory's entry names, None where the path is not an openable
@@ -89,23 +90,14 @@ handler wasi_filesystem {
       bytes
     },
   }),
-  fs_write_file(path, bytes) => // Open write+create+truncate (oflags 0x9, rights 0x40), write, close: the
-  // file at the path becomes these bytes, or the op fails naming the path —
-  // one that does not open, or a write that lands short of the bytes.
+  fs_write_file(path, bytes) => // Open, write, close: the file at the path becomes these bytes, or the op
+  // fails naming the path — one that does not open, or a write that lands
+  // short of the bytes.
   {
-    match fs_at(path) {
-      (dfd, pp, plen) => {
-        let fd_cell = alloc(4)
-        let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
-        if open_errno != 0 { fail(fs_failed("write", path, open_errno)) }
-        let fd = load_i32(fd_cell)
-        let landed = fd_write_bytes(fd, str_payload(bytes), byte_len(bytes))
-        fd_close(fd)
-        if landed != byte_len(bytes) {
-          fail("cannot write `{path}`: {int_to_str(landed)} of {int_to_str(byte_len(bytes))} bytes landed")
-        }
-      },
-    }
+    let fd = host_opened(path, "write")
+    let landed = fd_write_bytes(fd, str_payload(bytes), byte_len(bytes))
+    fd_close(fd)
+    all_landed(path, landed, byte_len(bytes))
     resume()
   },
   fs_mkdir(path) => // Idempotent: an existing directory (WASI EEXIST, 20) is the directory asked
@@ -116,20 +108,20 @@ handler wasi_filesystem {
       errno == 0 || errno == 20
     },
   }),
-  fs_create(path) => // The streaming half of fs_write_file (the same flags), for a writer that
-  // emits through the fd across a long extent instead of banking one buffer;
-  // a path that does not open fails, naming it.
-  resume(match fs_at(path) {
-    (dfd, pp, plen) => {
-      let fd_cell = alloc(4)
-      let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
-      if open_errno != 0 { fail(fs_failed("create", path, open_errno)) }
-      load_i32(fd_cell)
-    },
-  }),
-  fs_close(fd) => // errno absorbed: closing a closed fd (EBADF) closes nothing.
+  fs_create(path) => resume(HostStream(host_opened(path, "create"), path)),
+  fs_stream(stream, bytes) => {
+    match stream {
+      HostStream(fd, path) => all_landed(path, fd_write_bytes(fd, str_payload(bytes), byte_len(bytes)), byte_len(bytes)),
+      KeptStream(path) => fail("cannot write `{path}`: its text is kept in memory, where the host holds no file"),
+    }
+    resume()
+  },
+  fs_close(stream) => // errno absorbed: closing a closed fd (EBADF) closes nothing.
   {
-    fd_close(fd)
+    match stream {
+      HostStream(fd, _) => host_closed(fd),
+      KeptStream(_) => (),
+    }
     resume()
   },
   fs_unlink(path) => resume(match fs_at(path) {
@@ -185,28 +177,47 @@ handler wasi_filesystem {
 // The filesystem with what is written kept in memory: a path a write was kept
 // at reads as it was written, and every other path reads through the
 // filesystem installed outside this one, so the host is never written. A
-// directory stands once asked for. A removal, a rename and an image answer
-// false, since none reaches the host; a stream through a descriptor fails
-// naming its path, since no descriptor stands for a kept file. The rename
-// verb judges the program it would write with the renamed files written
-// here, and a transcript replays each command over what the commands before
-// it wrote.
+// hidden path is read only from what was kept here (`hidden_path`): it holds
+// what the medium keeps for itself, which differs with the machine, so a
+// command over kept files answers the same on every machine. A stream keeps
+// its file's text, which each write extends; a stream the host opened outside
+// this filesystem is the host's to write. A directory stands once asked for.
+// A removal, a rename and an image answer false, since none reaches the host.
+// The rename verb judges the program it would write with the renamed files
+// written here, and a transcript replays each command over what the commands
+// before it wrote.
 handler files_kept {
-  fs_exists(path) => resume(kept_text(path) != None || fs_exists(path)),
+  fs_exists(path) => resume(kept_text(path) != None || !hidden_path(path) && fs_exists(path)),
   fs_read_file(path) => resume(match kept_text(path) {
     Some(text) => text,
-    None => fs_read_file(path),
+    None => if hidden_path(path) { fail(fs_failed("read", path, 44)) } else { fs_read_file(path) },
   }),
   fs_write_file(path, text) => {
     keep_file(path, text)
     resume()
   },
   fs_mkdir(_) => resume(true),
-  fs_create(path) => fail("cannot stream to `{path}`: only written text is kept in memory"),
-  fs_close(_) => resume(),
+  fs_create(path) => {
+    keep_file(path, "")
+    resume(KeptStream(path))
+  },
+  fs_stream(stream, bytes) => {
+    match stream {
+      KeptStream(path) => keep_file(path, unwrap_or(kept_text(path), "") ++ bytes),
+      HostStream(_, _) => fs_stream(stream, bytes),
+    }
+    resume()
+  },
+  fs_close(stream) => {
+    match stream {
+      KeptStream(_) => (),
+      HostStream(_, _) => fs_close(stream),
+    }
+    resume()
+  },
   fs_unlink(_) => resume(false),
   fs_rename(_, _) => resume(false),
-  fs_list_dir(path) => resume(kept_files() |> flat_map(kept_name_in(path, ??)) |> listing_with(fs_list_dir(path), ??)),
+  fs_list_dir(path) => resume(kept_files() |> flat_map(kept_name_in(path, ??)) |> listing_with(host_listing(path), ??)),
   fs_write_image(_, _, _, _, _) => resume(false),
 }
 
@@ -431,3 +442,45 @@ fn fd_read_into(fd, dst, off, size) = if off >= size {
   let n = read_chunk(fd, addr_at(dst, off), size - off)
   if n == 0 { off } else { fd_read_into(fd, dst, off + n, size) }
 }
+
+// A file opened for streaming, as the filesystem that opened it holds it: the
+// host's descriptor beside the file's path, or the path of a file whose text
+// is kept in memory. Every write to it is an op of the capability, so a
+// filesystem that keeps files keeps a streamed one too, and a write that fails
+// names the path the handle carries.
+type FileStream = HostStream(Int, String) | KeptStream(String)
+
+// The file at the path opened for writing, created or emptied (oflags
+// CREAT|TRUNC, 0x9, with the write right, 0x40): its descriptor, or the op
+// fails naming the path and the host's reason.
+fn host_opened(path: String, op: String) = match fs_at(path) {
+  (dfd, pp, plen) => {
+    let fd_cell = alloc(4)
+    let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
+    if open_errno != 0 { fail(fs_failed(op, path, open_errno)) }
+    load_i32(fd_cell)
+  },
+}
+
+// A write that landed short of its bytes fails, naming the path.
+fn all_landed(path: String, landed, size) = if landed != size {
+  fail("cannot write `{path}`: {int_to_str(landed)} of {int_to_str(size)} bytes landed")
+}
+
+fn host_closed(fd) = {
+  fd_close(fd)
+  ()
+}
+
+// A hidden path: one with a part whose name starts with a dot, such as
+// `.build/fmt.stamps`, where the medium keeps what it derives for itself,
+// whose text differs with the build and the machine that wrote it. `.` and
+// `..` are the self and parent links, not names. The project's walk never
+// visits one, a transcript never shows one, and `files_kept` never reads one
+// from the host.
+fn hidden_path(path: String) = any(hidden_name, split("/", path))
+
+fn hidden_name(part: String) = starts_with(part, ".") && part != "." && part != ".."
+
+// The host's entries of a directory, and none for a hidden one.
+fn host_listing(path: String) = if hidden_path(path) { None } else { fs_list_dir(path) }

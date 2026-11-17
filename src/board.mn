@@ -291,8 +291,11 @@ fn board_bounds() = [
   // off the start. 649 -> 648 (2026-11-15): the walk that refused a second
   // declaration of a type name read the statements by index, and became a
   // walk over them when aliases came to register in the order their names
-  // depend on.
-  Bound({ceiling: 648, question: QCensus(CsCallClaim)}),
+  // depend on. 648 -> 645 (2026-11-17): the editor built a reply's
+  // references, diagnostics and locations by walking each list with an index
+  // and reversing what it gathered; each walk became a map, and its read by
+  // index left with it.
+  Bound({ceiling: 645, question: QCensus(CsCallClaim)}),
   // THE PLACES THAT CAN TRAP WITH NO CLAIM CHECKED THERE (`mentl query
   // src/main.mn "census silent-trap"`): a place in the program's own modules
   // whose `Trap` reaches main's row while no claim stands at it, most of them
@@ -500,7 +503,18 @@ fn board_bounds() = [
   // module 2 with the walk's reader of an op's discipline, and the main
   // module lost 5, the rename contract's 16 leaving and the replay's kept
   // files bringing 11.
-  Bound({ceiling: 32006, question: QCensus(CsUnplaced)}),
+  // 32,006 -> 31,998 (2026-11-17): code left and came, and the walk places
+  // nothing it could not place before. A module is written through the
+  // filesystem capability, as a stream whose handle carries its path: the fs
+  // module gained 19 with the stream's arms and the reads that keep a hidden
+  // path off the host, and the pipeline and main modules 3 each where a
+  // stream is held, an op's answer the walk cannot place, less one in main
+  // where the transcript asks whether a path is hidden. The rename module
+  // lost one, since every arm of the filesystem that keeps files now
+  // resumes and its install answers with its body's value. The editor's three
+  // walks that built a reply's lists by index became maps, and the lsp module
+  // lost 31.
+  Bound({ceiling: 31998, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -600,8 +614,10 @@ fn board_bounds() = [
   // debt became maps, when each declaration and each document came to read
   // its own claims at its own nodes. 372 -> 371 (2026-11-15): the walk that
   // refuses a second declaration of a type name threaded an index through
-  // its own call, and became a walk over the statements.
-  Bound({ceiling: 371, question: QCensus(CsIterationCostume)}),
+  // its own call, and became a walk over the statements. 371 -> 368
+  // (2026-11-17): the editor's three walks that built a reply's references,
+  // diagnostics and locations by index became maps.
+  Bound({ceiling: 368, question: QCensus(CsIterationCostume)}),
   // The match arms that list three or more constructors with only `_` for
   // their arguments (`mentl query src/main.mn "census wildcard-roster"`).
   // Each such arm names the cases of a sum it does not take apart, so a

@@ -268,10 +268,10 @@ fn march_run() = match march_entry() {
     let new_path = ".build/march/m2.new"
     fs_mkdir(".build")
     fs_mkdir(".build/march")
-    let fd = fs_create(new_path)
-    match march_emit(entry, fd) {
+    let stream = fs_create(new_path)
+    match march_emit(entry, stream) {
       (names, errors) => {
-        fs_close(fd)
+        fs_close(stream)
         print("march: link {join(" ", names)}\n")
         if errors > 0 {
           fs_unlink(new_path)
@@ -301,11 +301,11 @@ fn march_run() = match march_entry() {
 // read INSIDE the install that holds the graph (the count and the counter
 // are one handler — pipeline_check's own law), and only those values cross
 // out of it.
-fn march_emit(entry, fd) = {
+fn march_emit(entry, stream) = {
   driver_link_scoped(entry, Census)
   compile_remainder()
   (link_modules() |> map({ mh => module_of(mh).path }), diag_errors())
-} ~> wat_to_file(fd) ~> compile_context
+} ~> wat_to_file(stream) ~> compile_context
 
 // The wheel's entry: the repo's own main, or the installed shim's mount when
 // the verb runs outside the repo. The repo's is named as the CLI names it
@@ -2435,12 +2435,12 @@ fn answer_lines(exit, pieces, unread: String, written) =
 fn unread_lines(unread: String) =
   if byte_len(unread) == 0 { [] } else { ["[unread]"] ++ ended_lines(unread) }
 
-// A file the command wrote, as its answer shows it. A path with a dot-named
-// part holds what the medium keeps for itself, such as `.build/fmt.stamps`,
+// A file the command wrote, as its answer shows it. A hidden path holds what
+// the medium keeps for itself (`hidden_path`), such as `.build/fmt.stamps`,
 // whose text differs with the build that wrote it, so it is kept and not
-// shown, as the project's walk never visits one (`mn_walk`).
+// shown.
 fn written_lines(file) = match file {
-  (path, text) => if any(starts_with(??, "."), split("/", path)) {
+  (path, text) => if hidden_path(path) {
     []
   } else {
     ["[wrote {path}]"] ++ (text |> ended_lines |> map(written_line)) ++ unended_mark(text)

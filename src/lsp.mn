@@ -282,24 +282,13 @@ fn handle_references(params) with !Mutate = {
   let uri = lsp_extract_uri(params)
   match name_at_span(position_to_span(lsp_extract_position(params))) {
     None => LspReferencesResp([]),
-    Some(name) => LspReferencesResp(spans_to_locations(map({ (_m, sp, _note) => sp }, refs_of_name(name)), uri)),
+    Some(name) => LspReferencesResp(refs_of_name(name) |> map({ (_m, sp, _note) => sp }) |> map(span_to_location(uri, ??))),
   }
 }
 
 // span_to_location — project a Mentl Span to an LSP Location at the doc URI.
 fn span_to_location(uri, span) = match span {
   Span(sl, sc, el, ec) => Location(uri, sl, sc, el, ec),
-}
-
-// spans_to_locations — project each reference Span to a Location (buffer-rev
-// accumulate; the projection is order-stable over the use-edge set).
-fn spans_to_locations(spans, uri) = map_spans_to_locations(spans, uri, 0, len(spans), [])
-
-fn map_spans_to_locations(spans, uri, i, n, acc_rev) = if i >= n {
-  reverse(acc_rev)
-} else {
-  let loc = span_to_location(uri, list_index(spans, i))
-  map_spans_to_locations(spans, uri, i + 1, n, [loc] ++ acc_rev)
 }
 
 // One owed claim as an LSP diagnostic at the span it is said at: severity 1,
@@ -370,10 +359,10 @@ fn response_to_json(body) = match body {
   LspNullResp => JNull,
   LspHoverResp(None) => JNull,
   LspHoverResp(Some(content)) => hover_content_to_json(content),
-  LspDiagnosticResp(diags) => JObj([("kind", JStr("full")), ("items", JArr(map_diagnostics_to_json(diags, 0, len(diags), [])))]),
+  LspDiagnosticResp(diags) => JObj([("kind", JStr("full")), ("items", JArr(diags |> map(diagnostic_to_json)))]),
   LspDefinitionResp(None) => JNull,
   LspDefinitionResp(Some(loc)) => location_to_json(loc),
-  LspReferencesResp(locs) => JArr(map_locations_to_json(locs, 0, len(locs), [])),
+  LspReferencesResp(locs) => JArr(locs |> map(location_to_json)),
   LspInitializeResp(result) => result,
 }
 
@@ -381,28 +370,13 @@ fn hover_content_to_json(content) = match content {
   HoverContent(md) => JObj([("contents", JObj([("kind", JStr("markdown")), ("value", JStr(md))]))]),
 }
 
-fn map_diagnostics_to_json(diags, i, n, acc_rev) = if i >= n {
-  reverse(acc_rev)
-} else {
-  let d = list_index(diags, i)
-  match d {
-    LspDiagnostic(sl, sc, el, ec, severity, code, msg) => {
-      let json = JObj([
-        ("range", range_to_json(sl, sc, el, ec)),
-        ("severity", JInt(severity)),
-        ("code", JStr(code)),
-        ("message", JStr(msg))
-      ])
-      map_diagnostics_to_json(diags, i + 1, n, [json] ++ acc_rev)
-    },
-  }
-}
-
-fn map_locations_to_json(locs, i, n, acc_rev) = if i >= n {
-  reverse(acc_rev)
-} else {
-  let loc = list_index(locs, i)
-  map_locations_to_json(locs, i + 1, n, [location_to_json(loc)] ++ acc_rev)
+fn diagnostic_to_json(d) = match d {
+  LspDiagnostic(sl, sc, el, ec, severity, code, msg) => JObj([
+    ("range", range_to_json(sl, sc, el, ec)),
+    ("severity", JInt(severity)),
+    ("code", JStr(code)),
+    ("message", JStr(msg))
+  ]),
 }
 
 fn location_to_json(loc) = match loc {

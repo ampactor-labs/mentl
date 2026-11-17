@@ -273,8 +273,13 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   `[changed PATH]` and then the file's new text, each line after `> `,
   laid in the transcript's memory when the command's next read reaches it,
   so a `session` or an `mcp` server over a named project (`mentl session
-  tests/frontier/mn-session-project.mn`) runs in a transcript too, except
-  an mcp proposal that proves, whose module a transcript cannot keep yet.
+  tests/frontier/mn-session-project.mn`) runs in a transcript too, and so
+  does an mcp proposal that proves, whose module is written through the
+  `Filesystem` capability and kept in memory. A hidden path, one with a
+  part whose name starts with a dot, such as `.build/mcp/last.wat`, holds
+  what the medium keeps for itself: a transcript keeps what its commands
+  write there without showing it, and never reads one from the
+  repository's directory, so it answers the same on every machine.
   A verb that emits a module is refused, and so is `serve`, whose frames go
   to stdout past the transcript's writers, so a program run and an LSP
   exchange are still checked by a leg of `tools/frontier-gate.sh`. A leg and a

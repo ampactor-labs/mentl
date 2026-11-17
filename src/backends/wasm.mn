@@ -51,18 +51,15 @@ handler wat_stdout {
   },
 }
 
-// wat_to_file — the write-through sink aimed at an fd (the one `fs_create`
-// opens for streaming). Region-immune by construction: each arm hands the
-// segment's bytes to the HOST before resuming, so the emit phase's
-// per-fn region resets can never touch the product — the property
-// wat_stdout always had, with the destination a config edge instead of
-// fd 1. This is the ONLY sound whole-compile sink shape beside stdout:
-// the collecting sink below banks heap pointers, and a whole-compile
-// install of it reads region-reset records at collect (the in-process
-// battery measured exactly that after the emit-arena landed).
-handler wat_to_file(fd) {
+// wat_to_file — the write-through sink aimed at a stream `fs_create` opened.
+// Each arm writes the segment through the Filesystem capability before
+// resuming, so the module's text is never held whole, and a filesystem that
+// keeps files in memory keeps the module too. The bytes leave the emit phase's
+// per-fn regions as each is written, the property wat_stdout always had, with
+// the destination a config edge instead of fd 1.
+handler wat_to_file(stream) {
   wat_emit(s) => {
-    fd_write_bytes(fd, str_payload(s), byte_len(s))
+    fs_stream(stream, s)
     resume()
   },
 }

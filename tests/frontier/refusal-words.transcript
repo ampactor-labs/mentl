@@ -25,6 +25,6 @@ $ mentl check tests/frontier/mn-hof-row-gate-noisy.mn
 [exit 1]
 $ mentl check tests/frontier/mn-persist-branch-external.mn
 ! effects: E_EffectMismatch error: persist_branch is declared `with !WASI + !Filesystem`, and the function passed to it here uses WASI, which that clause does not allow at tests/frontier/mn-persist-branch-external:14:11-17:5
-! effects: E_EffectUnhandled error: nothing handles Fail. main uses Fail: main installs `wasi_filesystem` at tests/frontier/mn-persist-branch-external:13:13 → wasi_filesystem calls `fail` at fs:83:28 → `fail` is an operation of Fail, declared at prelude:49:1. Nothing would answer Fail's operations when the program runs, so the program is not built. Install one around the code that uses it: ~> fail_exit. at tests/frontier/mn-persist-branch-external:13:1-19:40
+! effects: E_EffectUnhandled error: nothing handles Fail. main uses Fail: main installs `wasi_filesystem` at tests/frontier/mn-persist-branch-external:13:13 → wasi_filesystem calls `fail` at fs:84:28 → `fail` is an operation of Fail, declared at prelude:49:1. Nothing would answer Fail's operations when the program runs, so the program is not built. Install one around the code that uses it: ~> fail_exit. at tests/frontier/mn-persist-branch-external:13:1-19:40
 ! verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query tests/frontier/mn-persist-branch-external traps` lists each with its claim
 [exit 1]

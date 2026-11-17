@@ -264,15 +264,16 @@ type Artifact = ArtifactRefused | ArtifactWritten(m)
 
 // The gate carried to a file, for the routes that write one rather than
 // stream to stdout: the module is streamed to `path` through wat_to_file, so
-// its text is never held whole.
+// its text is never held whole, and each segment is written through the
+// Filesystem capability.
 fn gated_write(lowered, path) = match gated_plan(lowered) {
   Withheld(_, _) => ArtifactRefused,
   Planned(plan) => {
-    let fd = fs_create(path)
+    let stream = fs_create(path)
     {
       emit_planned(plan)
-    } ~> wat_to_file(fd)
-    fs_close(fd)
+    } ~> wat_to_file(stream)
+    fs_close(stream)
     ArtifactWritten(plan.start)
   },
 }
@@ -289,7 +290,9 @@ fn gated_write(lowered, path) = match gated_plan(lowered) {
 // its module by a node only this judgment's graph holds. The lines a verdict prints (`heard_lines`) and the classes a
 // contract compares (`report_classes`) are projections of that record, so a
 // caller renders only what it reads, and the battery and the MCP gate are
-// two readers of one law.
+// two readers of one law. Every file the gate reads and writes goes through
+// the Filesystem capability, so a filesystem that keeps files in memory
+// answers all of them.
 fn gated_compile(module: String, wat_path, audience) = {
   driver_link_scoped(module, audience)
   let left =

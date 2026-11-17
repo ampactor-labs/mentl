@@ -48,3 +48,51 @@ $ mentl mcp tests/frontier/mn-session-project.mn
   {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"Nothing in this module uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)\n  It also never uses 14 other effect(s) that the program declares.\nwidth performs no effect (Pure)\ntriple performs no effect (Pure)\nmain performs no effect (Pure)\n"}],"isError":false}}
 < {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"at","arguments":{"line":6,"col":4}}}
   {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"Query: fn main() = triple(14) : () -> Int\nEffects: Pure when called\nWhy: ownership-resolved params of 'main', at tests/frontier/mn-session-project:6\nUses: 0 of main\n"}],"isError":false}}
+$ mentl mcp tests/frontier/mn-mcp-double.mn
+! mentl mcp: the gate on stdio — nothing executes unproven
+! session: graph resident — 6 modules; queries answer live
+< {"jsonrpc":"2.0","method":"notifications/initialized"}
+< {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"propose","arguments":{"source":"// expect: REFUSE E_EffectMismatch\neffect E { op() -> Int }\nfn bad() with !E = op()\nfn main() = bad()"}}}
+! effects: E_EffectMismatch error: bad is declared `with !E`, which does not allow E, and bad uses E: bad calls `op` at .build/mcp/proposal:3:20 → `op` is an operation of E, declared at .build/mcp/proposal:2:1 at .build/mcp/proposal:3:1-3:24
+! effects: E_EffectUnhandled error: nothing handles E either: it reaches the top of the program through `bad`, whose error above names the path. Declare a handler for E and install it with `~>` around the code that uses it. at .build/mcp/proposal:4:1-4:18
+  {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"REFUSED — 2 error(s), so nothing was built\neffects: E_EffectMismatch error: bad is declared `with !E`, which does not allow E, and bad uses E: bad calls `op` at .build/mcp/proposal:3:20 → `op` is an operation of E, declared at .build/mcp/proposal:2:1 at .build/mcp/proposal:3:1-3:24\neffects: E_EffectUnhandled error: nothing handles E either: it reaches the top of the program through `bad`, whose error above names the path. Declare a handler for E and install it with `~>` around the code that uses it. at .build/mcp/proposal:4:1-4:18\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"propose","arguments":{"source":"// ABSENCE via ABSORPTION\neffect E { op() -> Int }\nhandler absorb {\n  op() => resume(1),\n}\nfn good() with !E = ({ op() } ~> absorb)\nfn main() = good()"}}}
+  {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"PROVEN — every claim in the program is proven, nothing in it can stop with a trap, and it was built to .build/mcp/last.wat\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"propose","arguments":{}}}
+  {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"propose needs arguments.source — a string of Mentl source\n"}],"isError":true}}
+< {"jsonrpc":"2.0","id":6,"method":"nonsense/method"}
+  {"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"method not found: nonsense/method"}}
+< {"jsonrpc":"2.0","id":7,"method":"ping"}
+  {"jsonrpc":"2.0","id":7,"result":{}}
+$ mentl mcp tests/frontier/mn-mcp-double.mn
+! mentl mcp: the gate on stdio — nothing executes unproven
+! session: graph resident — 6 modules; queries answer live
+< {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"propose","arguments":{"source":"fn half(total, parts) = total / parts\n\nfn main() = half(10, len([1, 2]))\n"}}}
+! verify: pending partiality parts != 0 && total / parts fits (never INT_MIN / -1) at .build/mcp/proposal:1:25-1:38
+! verify: V_Pending VerificationPending: 1 verification obligations pending at .build/mcp/proposal:1:25-1:38
+  {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"PENDING — 1 claim(s) the verifier could not decide and 1 place(s) that can stop the program with a trap; the program was built to .build/mcp/last.wat, and each is printed below at its line.\nverify: pending partiality parts != 0 && total / parts fits (never INT_MIN / -1) at .build/mcp/proposal:1:25-1:38\ntraps:\n  .build/mcp/proposal:1:25-1:38: its claim is pending\nverify: V_Pending VerificationPending: 1 verification obligations pending at .build/mcp/proposal:1:25-1:38\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"propose","arguments":{"source":"fn double(x) = x * 2\n\nfn main() = double(21)\n"}}}
+  {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"PROVEN — every claim in the program is proven, nothing in it can stop with a trap, and it was built to .build/mcp/last.wat\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"propose","arguments":{"source":"effect E { op() -> Int }\nfn bad() with !E = op()\nfn main() = bad()\n"}}}
+! effects: E_EffectMismatch error: bad is declared `with !E`, which does not allow E, and bad uses E: bad calls `op` at .build/mcp/proposal:2:20 → `op` is an operation of E, declared at .build/mcp/proposal:1:1 at .build/mcp/proposal:2:1-2:24
+! effects: E_EffectUnhandled error: nothing handles E either: it reaches the top of the program through `bad`, whose error above names the path. Declare a handler for E and install it with `~>` around the code that uses it. at .build/mcp/proposal:3:1-3:18
+  {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"REFUSED — 2 error(s), so nothing was built. .build/mcp/last.wat is the previous proven build, not this program.\neffects: E_EffectMismatch error: bad is declared `with !E`, which does not allow E, and bad uses E: bad calls `op` at .build/mcp/proposal:2:20 → `op` is an operation of E, declared at .build/mcp/proposal:1:1 at .build/mcp/proposal:2:1-2:24\neffects: E_EffectUnhandled error: nothing handles E either: it reaches the top of the program through `bad`, whose error above names the path. Declare a handler for E and install it with `~>` around the code that uses it. at .build/mcp/proposal:3:1-3:18\n"}],"isError":false}}
+$ mentl mcp tests/frontier/mn-mcp-double.mn
+! mentl mcp: the gate on stdio — nothing executes unproven
+! session: graph resident — 6 modules; queries answer live
+< {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"question":"type double"}}}
+  {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"→ (own x: Int) -> Int\n  Reason: at 2:1-2:21: declared as double\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"question":"type main"}}}
+  {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"→ () -> Int\n  Reason: at 4:1-4:33: declared as main\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"at","arguments":{"line":2,"col":4}}}
+  {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"Lede: expect: 42\nQuery: fn double(x) = x * 2 : (own x: Int) -> Int\nEffects: Pure when called\nOwnership: own\nTeach: add `with Pure` — unlocks pure (it performs no effect at all); `main` stands on it\nWhy: ownership-resolved params of 'double', at tests/frontier/mn-mcp-double:2\nUses: 1 of double\n  at tests/frontier/mn-mcp-double:4:23-4:29\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"audit","arguments":{}}}
+  {"jsonrpc":"2.0","id":6,"result":{"content":[{"type":"text","text":"Nothing in this module uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)\n  It also never uses 14 other effect(s) that the program declares.\ndouble performs no effect (Pure)\nmain performs no effect (Pure)\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"teach","arguments":{}}}
+  {"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"double: → add `with Pure` — unlocks pure (it performs no effect at all); `main` stands on it\nnothing to unlock in main\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"propose","arguments":{"source":"fn main() = 42"}}}
+  {"jsonrpc":"2.0","id":8,"result":{"content":[{"type":"text","text":"PROVEN — every claim in the program is proven, nothing in it can stop with a trap, and it was built to .build/mcp/last.wat\n"}],"isError":false}}
+< {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "propose", "arguments": {"source": "import io\n\nimport strings\n\nfn main() = {\n  print_string(str_concat_all([\"proven with the library\", \"\\n\"]))\n  0\n}\n"}}}
+  {"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"PENDING — 0 claim(s) the verifier could not decide and 1 place(s) that can stop the program with a trap; the program was built to .build/mcp/last.wat, and each is printed below at its line.\ntraps:\n  .build/mcp/proposal:6:16-6:65: no claim is checked here; inside the library, str_concat_all uses Trap: str_concat_all calls `sum_byte_lens` at strings:171:15 → sum_byte_lens calls `list_index` at strings:178:71 → list_index calls `trap` at lists:234:37 → `trap` is an operation of Trap, declared at memory:235:1\n"}],"isError":false}}
+< {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"propose","arguments":{"source":"import io\n\nfn main() = {\n  print_string(\"caf\u00e9\\n\")\n  0\n}\n"}}}
+  {"jsonrpc":"2.0","id":10,"result":{"content":[{"type":"text","text":"PROVEN — every claim in the program is proven, nothing in it can stop with a trap, and it was built to .build/mcp/last.wat\n"}],"isError":false}}

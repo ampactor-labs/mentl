@@ -26,7 +26,7 @@ effect Out {
 
 handler to_fd(fd) {
   put(s) => {
-    fd_write_bytes(fd, str_payload(s), byte_len(s))
+    fs_stream(fd, s)
     resume()
   },
 }
