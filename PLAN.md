@@ -1413,7 +1413,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1523,7 +1523,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
+3 is P3g.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2104,6 +2105,179 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · P3g · A module is written through the `Filesystem`
+   capability, so a transcript keeps the module an mcp proposal proves,
+   and a transcript never reads the medium's hidden files from the host.**
+   Written 2026-11-17 and measured on probe compilers built from pin
+   5c6e47d47ec2's source.
+
+   What a person sees.
+   - `mentl test tests/frontier` replays an mcp server that refuses, builds
+     and proves proposals. tests/frontier/mcp.transcript gains three
+     sessions over a new fixture, tests/frontier/mn-mcp-double.mn. The
+     first answers a refusal whose two errors name the proposal's own
+     lines, a proven build, a call with no source, an unknown method and a
+     ping. The second answers a build with a claim the verifier could not
+     decide, printed at its line, then a proven build, then a refusal that
+     names the earlier build. The third answers the resident session's
+     query, address, audit and teach, beside two proven proposals and one
+     whose library call can trap. Each module a proposal writes is kept in
+     the transcript's memory, and the repository is never written.
+   - A transcript never reads a hidden path, one with a part whose name
+     starts with a dot, such as `.build/mcp/last.wat`, from the
+     repository's directory. Such a path holds what the medium derives for
+     itself, which differs from machine to machine, so a transcript now
+     answers the same on every machine.
+   - `mentl why src/mcp.mn mcp_judge WASI` answers "mcp_judge never uses
+     WASI: nothing in mcp_judge, and nothing it calls, performs an
+     operation of WASI", and so do `gated_compile`, `battery_compile` and
+     `wat_to_file`. Every file the gate writes, the module included, goes
+     through the Filesystem capability.
+   - A program that hands a stream `fs_create` opened to a raw host write
+     does not build, since `fs_create` answers a `FileStream` and no WASI
+     call takes one. tests/frontier/mn-install-config-capture.mn wrote its
+     stream through `fd_write_bytes` and is refused with `E_TypeMismatch
+     error: FileStream vs Int — call to 'to_fd'`; its handler writes
+     through `fs_stream` instead.
+   - Six legs leave tools/frontier-gate.sh, which falls from 258 legs to
+     252, from 2,614 lines to 2,508, and from 19 lines that pipe into
+     `grep -q` to 16.
+
+   Fails today, on pin 5c6e47d47ec2.
+   - A transcript whose command `mentl mcp
+     tests/frontier/mn-session-project.mn` is given a proposal of `fn
+     main() = 42` ends the server: "cannot stream to
+     `.build/mcp/last.wat`: only written text is kept in memory", exit 1.
+   - The same command given a refused program answers "REFUSED — 2
+     error(s), so nothing was built. .build/mcp/last.wat is the previous
+     proven build, not this program." on Morgan's machine, where an mcp
+     server run at the repository's root left a 50,953-byte
+     `.build/mcp/last.wat` on 2026-11-16. In a fresh clone the same command
+     answers without the second sentence, so the transcript's contract
+     depends on the machine.
+   - `mentl why src/pipeline.mn gated_compile WASI` answers that
+     `gated_compile` uses WASI: it "calls `gated_write` in a pipe at
+     pipeline:296:5 → gated_write installs `wat_to_file` at pipeline:272:5
+     → wat_to_file calls `fd_write_bytes` at backends/wasm:65:5 →
+     fd_write_bytes calls `fd_write` at io:186:3".
+
+   What it reads, each fact a use edge of the graph that a command on the
+   pin shows.
+   - Every module a gated compile or the march writes streams through
+     `wat_to_file`, installed in two places: `mentl query src/main.mn
+     "refs of wat_to_file"` (main:308, pipeline:274).
+   - Each of those streams is opened by `fs_create` and closed by
+     `fs_close` in the same two places (`"refs of fs_create"`, main:271
+     and pipeline:271; `"refs of fs_close"`, main:274 and pipeline:275).
+     Asked of every directory of programs under tests/ and examples/, and
+     of native/ (`mentl query <directory> "refs of fs_create"`), it finds
+     two programs more: tests/frontier/mn-install-config-capture.mn and
+     tests/micros/mn-fs-failure-answered.mn.
+   - The filesystem that keeps files is installed by the transcript's
+     `answer_kept` and by the rename verb's `judged_again` (`"refs of
+     files_kept"`, main:2382 and rename:337).
+   - A transcript's answer already hides a written file whose path has a
+     dot-named part (`written_lines`, `mentl where src/main.mn
+     written_lines`).
+   - The server's verdict names an earlier build when `fs_exists` finds
+     its artifact (`mcp_earlier_build`, mcp:128).
+
+   The form.
+   - lib/fs.mn. `type FileStream = HostStream(Int, String) |
+     KeptStream(String)`, at the file's end: the host's descriptor beside
+     the file's path, or the path of a file kept in memory. `Filesystem`
+     gains `fs_stream(FileStream, String)`, and `fs_create` answers a
+     `FileStream`, which `fs_close` takes. In `wasi_filesystem`,
+     `fs_create` answers `HostStream(host_opened(path, "create"), path)`,
+     `fs_stream` writes the bytes at the descriptor and fails naming the
+     path when they land short (`all_landed`), and fails naming a kept
+     stream's path; `fs_close` closes a host descriptor; `fs_write_file`
+     opens through `host_opened` too. In `files_kept`, `fs_create` keeps an
+     empty file and answers `KeptStream(path)`; `fs_stream` extends the
+     kept text with `++`, a concatenation node, so a stream costs what it
+     writes; a host stream is passed to the filesystem outside; and
+     `fs_close` of a kept stream does nothing. A hidden path (`hidden_path`,
+     `hidden_name`) is read only from what was kept: `fs_exists` answers
+     whether it was kept, `fs_read_file` fails as the host does for a
+     missing file, and `fs_list_dir` lists the kept names alone
+     (`host_listing`). The helpers stand at the file's end, below every
+     line a fixture cites.
+   - src/backends/wasm.mn: `wat_to_file(stream)` performs
+     `fs_stream(stream, s)`, where it called `fd_write_bytes`.
+   - src/pipeline.mn `gated_write` and src/main.mn `march_run` and
+     `march_emit` hold the stream where they held a descriptor, and
+     `written_lines` asks `hidden_path`.
+   - src/lsp.mn, which pays for the rest. `handle_references` maps the
+     reference sites through `span_to_location(uri, ??)`, and
+     `response_to_json` maps the diagnostics through `diagnostic_to_json`
+     and the locations through `location_to_json`. The three index walks
+     that built each list backwards and reversed it leave:
+     `spans_to_locations` with `map_spans_to_locations`,
+     `map_diagnostics_to_json` and `map_locations_to_json`.
+   - tests/frontier: mn-mcp-double.mn (`// expect: 42`, the old leg's
+     project), the three sessions in mcp.transcript, and
+     mn-install-config-capture.mn's handler writing through `fs_stream`.
+     refusal-words.transcript is written again, since the line it cites
+     for the host filesystem's first `fail` moves from fs:83 to fs:84.
+     tests/micros/mn-fs-failure-answered.mn answers 1 for a created stream
+     where it answered the descriptor, so its sum stays 2.
+   - tools/frontier-gate.sh: the six legs leave, with
+     tests/frontier/mcp-session.jsonl and mcp-resident-session.jsonl,
+     which only they read.
+   - CLAUDE.md: the transcript paragraph says a proven proposal runs in a
+     transcript and that a hidden path is never read from the host.
+
+   Edge cases, each run on the candidate.
+   - The module a transcript keeps is the module the host writes. For the
+     proposal the first session proves, a throwaway compiler that showed
+     hidden files kept 50,953 bytes, identical to the file `mentl mcp`
+     wrote in a scratch directory for the same proposal.
+   - A refusal before any build in a transcript names no earlier build,
+     whatever the host's `.build/mcp/last.wat` holds, and a refusal after
+     a build in the same transcript names it. A transcript's memory spans
+     its commands, so a later command sees an earlier one's module.
+   - `.` and `..` are the self and parent links, not hidden names, so
+     `./x.mn` still reads through to the host.
+   - The three sessions mcp.transcript held before answer as they did.
+
+   What pays for its code on the board, measured on the candidate. Values
+   the walk cannot place fall from 32,006 to 31,998. lib/fs.mn goes 54 ->
+   73 for the stream arms and the hidden-path reads. src/pipeline.mn goes
+   522 -> 525 and src/main.mn 713 -> 715, since the stream is an op's
+   answer, a record the walk cannot place, at each of its three uses in
+   `gated_write` and `march_run`, less one in `written_lines`.
+   src/rename.mn goes 188 -> 187: every arm of `files_kept` now resumes,
+   so `judged_again` answers with its body's value, which the walk places.
+   src/lsp.mn pays, 135 -> 104, where the three index walks leave. Claims
+   left open at a partial primitive's call fall from 648 to 645 (the
+   walks' `list_index` calls), and functions that walk a list by index
+   from 371 to 368; those two limits and the first are lowered. Places
+   that can trap with no claim stay 3,097, and effectful lambdas 122. The
+   census by module: match sites lib/fs.mn 19 -> 22 and matches that take
+   one product apart 15 -> 14; src/lsp.mn's index walks 4 -> 1 and its
+   `|>` sites 3 -> 7; no module gains an index walk or a roster.
+
+   Left alone.
+   - `files_kept` answers `fs_write_image` false, so a transcript cannot
+     keep a persisted image; the batch of `// expect:` fixtures takes it.
+   - The proposal's module and its artifact stay beside the server, in its
+     directory's `.build/mcp`, as the tool's description says.
+   - The gate cannot state `with !WASI`. A negation holds through the
+     handlers a caller installs, and `main`'s host filesystem answers the
+     gate's file ops through WASI: the candidate refused it with
+     `E_EffectMismatch`, naming `wasi_filesystem`'s arm at fs:65 and
+     `progress_stderr`'s at pipeline:930. What `mentl why` says is
+     narrower and true: nothing the gate runs or calls performs WASI.
+   - The march's emit still uses WASI, through its refusal's `proc_exit`.
+   - After a build whose claim the verifier could not decide, a refusal
+     calls the artifact "the previous proven build", though the build it
+     holds was pending. T1 makes a pending program refuse, after which
+     every artifact at that path is proven.
+
+   Proves it. tests/frontier passes 248 of 248 on the candidate; the
+   frontier gate passes the six legs on the same candidate before they
+   leave (257 pass, 0 red, 1 expected red); `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
