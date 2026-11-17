@@ -212,16 +212,20 @@ handler files_kept {
 
 // The files `files_kept` holds, for as long as the install that answers
 // these stands: each path's last text, and what was written since
-// `written_taken` last answered, in the order of each path's last write.
+// `written_taken` last answered, in the order of each path's last write. A
+// file that changed outside the command reading it is kept, and is not that
+// command's write.
 effect KeptFiles {
   kept_files() -> [(String, String)]
   keep_file(String, String)
+  file_changed(String, String)
   written_taken() -> [(String, String)]
 }
 
 handler memory_files with kept = [], written = [] {
   kept_files() => resume(kept),
   keep_file(path, text) => resume() with kept = file_kept(kept, path, text), written = file_kept(written, path, text),
+  file_changed(path, text) => resume() with kept = file_kept(kept, path, text),
   written_taken() => resume(written) with written = [],
 }
 

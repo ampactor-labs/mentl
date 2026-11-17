@@ -145,17 +145,11 @@ fn mcp_error(id, code, msg) = json_serialize(JObj([
 // The initialize result echoes the client's protocolVersion (the server's
 // behavior does not vary by version at this surface); capabilities name
 // the one thing served: tools.
-fn mcp_initialize_result(params) = {
-  let pv = match json_obj_get(params, "protocolVersion") {
-    Some(JStr(s)) => s,
-    None | Some(_) => "2025-06-18",
-  }
-  JObj([
-    ("protocolVersion", JStr(pv)),
-    ("capabilities", JObj([("tools", JObj([]))])),
-    ("serverInfo", JObj([("name", JStr("mentl")), ("version", JStr("first-light"))]))
-  ])
-}
+fn mcp_initialize_result(params) = JObj([
+  ("protocolVersion", JStr(json_text_at(params, "protocolVersion", "2025-06-18"))),
+  ("capabilities", JObj([("tools", JObj([]))])),
+  ("serverInfo", JObj([("name", JStr("mentl")), ("version", JStr("first-light"))]))
+])
 
 fn mcp_tools_result() = JObj([
   (
@@ -280,48 +274,39 @@ fn mcp_tools_result() = JObj([
 // (isError is reserved for a malformed call); the head line + the
 // diagnostic lines are the content.
 fn mcp_tool_call(id, params, at_read) = {
-  let name = match json_obj_get(params, "name") {
-    Some(JStr(s)) => s,
-    // The protocol-null sentinel: no real tool name is empty, and the match
-    // below refuses "" with -32602.
-    None | Some(_) => "",
-  }
+  // The protocol-null sentinel: no real tool name is empty, and the match
+  // below refuses "" with -32602.
+  let name = json_text_at(params, "name", "")
   // The session's reads answer over the link the graph holds; a server
   // started outside a project judged none.
   let absent = len(link_modules()) == 0
   match name {
-    "propose" => {
-      let srco = match json_obj_get(params, "arguments") {
-        Some(args) => json_obj_get(args, "source"),
-        None => None,
-      }
-      match srco {
-        Some(JStr(source)) => {
-          let text = mcp_judge(source, ".build/mcp/last.wat") |> mcp_verdict_text(??, ".build/mcp/last.wat")
-          mcp_response(
-            id,
-            JObj([
-              ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
-              ("isError", JBool(false))
-            ])
-          )
-        },
-        None | Some(_) => mcp_response(
+    "propose" => match mcp_argument(params, "source") {
+      Some(JStr(source)) => {
+        let text = mcp_judge(source, ".build/mcp/last.wat") |> mcp_verdict_text(??, ".build/mcp/last.wat")
+        mcp_response(
           id,
           JObj([
-            (
-              "content",
-              JArr([
-                JObj([
-                  ("type", JStr("text")),
-                  ("text", JStr("propose needs arguments.source — a string of Mentl source\n"))
-                ])
-              ])
-            ),
-            ("isError", JBool(true))
+            ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
+            ("isError", JBool(false))
           ])
-        ),
-      }
+        )
+      },
+      None | Some(_) => mcp_response(
+        id,
+        JObj([
+          (
+            "content",
+            JArr([
+              JObj([
+                ("type", JStr("text")),
+                ("text", JStr("propose needs arguments.source — a string of Mentl source\n"))
+              ])
+            ])
+          ),
+          ("isError", JBool(true))
+        ])
+      ),
     },
     "at" => if absent {
       mcp_response(
@@ -343,18 +328,11 @@ fn mcp_tool_call(id, params, at_read) = {
         ])
       )
     } else {
-      let lineo = match json_obj_get(params, "arguments") {
-        Some(args) => json_obj_get(args, "line"),
-        None => None,
-      }
-      match lineo {
+      match mcp_argument(params, "line") {
         Some(JInt(line)) => {
-          let col = match json_obj_get(params, "arguments") {
-            Some(args) => match json_obj_get(args, "col") {
-              Some(JInt(c)) => c,
-              None | Some(_) => 1,
-            },
-            None => 1,
+          let col = match mcp_argument(params, "col") {
+            Some(JInt(c)) => c,
+            None | Some(_) => 1,
           }
           // The SAME address core the CLI serves, under the collecting
           // console — the transport is the install (at_read is the
@@ -497,11 +475,7 @@ fn mcp_tool_call(id, params, at_read) = {
         ])
       )
     } else {
-      let qo = match json_obj_get(params, "arguments") {
-        Some(args) => json_obj_get(args, "question"),
-        None => None,
-      }
-      match qo {
+      match mcp_argument(params, "question") {
         Some(JStr(question)) => {
           // The read of the LIVE graph — the session's instances answer;
           // no derivation, no restore, no swap (the resident form the
@@ -531,12 +505,9 @@ fn mcp_tool_call(id, params, at_read) = {
     },
     // The documents need no project: the map answers in any session.
     "map" => {
-      let section = match json_obj_get(params, "arguments") {
-        Some(args) => match json_obj_get(args, "section") {
-          Some(JStr(s)) => Some(s),
-          None | Some(_) => None,
-        },
-        None => None,
+      let section = match mcp_argument(params, "section") {
+        Some(JStr(s)) => Some(s),
+        None | Some(_) => None,
       }
       match read_path_map(section) {
         (text, code) => mcp_response(
@@ -556,6 +527,12 @@ fn mcp_tool_call(id, params, at_read) = {
   }
 }
 
+// A tool's argument by its name, read from the call's `arguments`.
+fn mcp_argument(params, key: String) = match json_obj_get(params, "arguments") {
+  Some(args) => json_obj_get(args, key),
+  None => None,
+}
+
 fn mcp_params_of(req) = match json_obj_get(req, "params") {
   Some(p) => p,
   None => JObj([]),
@@ -571,17 +548,11 @@ fn mcp_request(id, method, params, at_read) = match method {
 
 // A message without an id is a notification (initialized, cancelled, …):
 // consumed, never answered — the empty response line is the no-response.
-fn mcp_dispatch(req, at_read) = {
-  let method = match json_obj_get(req, "method") {
-    Some(JStr(s)) => s,
-    // The protocol-null sentinel: no real method is empty, and `mcp_request`
-    // refuses "" with -32601.
-    None | Some(_) => "",
-  }
-  match json_obj_get(req, "id") {
-    None => "",
-    Some(id) => mcp_request(id, method, mcp_params_of(req), at_read),
-  }
+// The protocol-null sentinel: no real method is empty, and `mcp_request`
+// refuses "" with -32601.
+fn mcp_dispatch(req, at_read) = match json_obj_get(req, "id") {
+  None => "",
+  Some(id) => mcp_request(id, json_text_at(req, "method", ""), mcp_params_of(req), at_read),
 }
 
 fn mcp_handle(line, at_read) = match json_parse(line) {
@@ -624,7 +595,7 @@ fn session_current(manifest) = if driver_manifest() == manifest {
   // libraries' reports, and the Lens over the next four-line lesson held 519
   // of them (measured in the browser, 2026-10-06). A claim needs no clear: a
   // claim at a replaced node is never read.
-  match driver_session_cone("main", diag_forget) {
+  match driver_session_cone(diag_forget) {
     (n, m) => said("session: tree moved — re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s); the graph is current\n"),
   }
   driver_manifest()
@@ -685,24 +656,20 @@ fn mcp_loop(manifest, at_read, current) = {
 // is a pair of FIFOs the shim would own
 // (`Hβ.cli.resident-session-over-fifos`), never a socket in the wheel.
 //
-// THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
-// over — "The artifact directory is made INSIDE the bracket, because that
-// is..." — learned there and not here. `fs_exists` is a Filesystem op and
-// dispatch_invocation installs env / graph / mutate / diagnostics and no
-// Filesystem, so this guard ran in a world that cannot answer it. It
-// worked only while a stateless singleton could be direct-called with no
-// record at all; the uniform world bracket ended that, and the guard
-// trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
-// Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
-// cost nothing on the path that reports no project.
-fn session_run(answer) = if driver_module_path("main") == None {
-  said("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-  1
-} else {
-  driver_link("main")
-  said("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
-  session_line_loop(driver_manifest(), answer, session_current)
-  0
+// The session serves the project the person named, or this directory's
+// `main`. A name that resolves to no file is refused, since the session holds
+// a project's living graph.
+fn session_run(answer, target) = {
+  let entry = unwrap_or(target, "main")
+  if driver_module_path(entry) == None {
+    said("mentl session: `{entry}` resolves to no file here — name the project's main file, mentl session <path>, or run the session in the project's directory\n")
+    1
+  } else {
+    driver_link(entry)
+    said("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+    session_line_loop(driver_manifest(), answer, session_current)
+    0
+  }
 } ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
 
 // What an answer cost the image, on the session's log. Each answer is an
@@ -768,29 +735,33 @@ fn session_miss() = "MENTL-SESSION-MISS\n"
 // A propose still judges in its OWN nested infer_context — fresh
 // innermost instances shadow the session's (the world law), and its
 // mints die with the request region while the session's spine lives
-// below every mark. The derivation is resolution-conditional (the
-// prelude-seed precedent): outside a project, the gate serves propose
-// alone and query answers honestly.
-fn mcp_run(at_read) = {
+// below every mark. The server serves the project the person named, or
+// this directory's `main`. With no name and no `main` here, the gate serves
+// propose alone and the reads say no project is resident; a name that
+// resolves to no file is refused.
+fn mcp_run(at_read, target) = {
   said("mentl mcp: the gate on stdio — nothing executes unproven\n")
-  // ONE bracket, BOTH paths: the no-project session's tool arms carry
+  let entry = unwrap_or(target, "main")
+  // ONE bracket, every path: the no-project session's tool arms carry
   // the same static rows (audit's Tighten, query's ask) even though their
   // guards answer "no project graph resident" at runtime — a bare mcp_loop
   // leaked those rows to main and the executable gate refused, since a
   // stateful handler has no default that grounds it. The conditional lives
   // inside the bracket; the installs cost nothing on the empty path.
   {
-    fs_mkdir(".build")
-    fs_mkdir(".build/mcp")
-    if driver_module_path("main") != None {
-      driver_link("main")
+    if driver_module_path(entry) != None {
+      driver_link(entry)
       said("session: graph resident — {int_to_str(len(link_modules()))} modules; queries answer live\n")
       // The banked manifest is the tree identity this derivation answered;
       // session_current compares against it per message.
       mcp_loop(driver_manifest(), at_read, session_current)
-    } else {
+      0
+    } else if target == None {
       mcp_loop([], at_read, { m => m })
+      0
+    } else {
+      said("mentl mcp: `{entry}` resolves to no file here — name the project's main file, mentl mcp <path>, or run the server in the project's directory\n")
+      1
     }
   } ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
-  0
 }

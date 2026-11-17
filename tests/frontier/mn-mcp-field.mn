@@ -1,0 +1,9 @@
+// propose 6:7: ask value w or n or 0 or 1 or -1
+fn width(x) = x * 2
+
+fn banner(n) = {
+  let w = width(n)
+  w + ??
+}
+
+fn main() with !Alloc = banner(21)

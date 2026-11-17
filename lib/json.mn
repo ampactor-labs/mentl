@@ -612,3 +612,10 @@ fn json_int_or_default(v, default) with Pure = match v {
   JArr(_) => default,
   JObj(_) => default,
 }
+
+// The text an object holds at a key, or `default` where the key holds no
+// string.
+fn json_text_at(v, key: String, default: String) = match json_obj_get(v, key) {
+  Some(JStr(s)) => s,
+  None | Some(_) => default,
+}

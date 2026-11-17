@@ -195,10 +195,7 @@ fn dispatch_notification(kind, params) = match kind {
 // empty when missing.
 fn lsp_extract_uri(params) = match json_obj_get(params, "textDocument") {
   None => "",
-  Some(td) => match json_obj_get(td, "uri") {
-    None => "",
-    Some(u) => json_str_or_default(u, ""),
-  },
+  Some(td) => json_text_at(td, "uri", ""),
 }
 
 // lsp_extract_position — pull `params.position.{line, character}`.

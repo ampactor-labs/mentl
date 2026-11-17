@@ -167,8 +167,8 @@ fn dispatch_invocation(verb) = match verb {
   VRepl => repl_run(),
   VMarch => march_run(),
   VVerify(target) => verify_run(target),
-  VMcp => mcp_run(session_at_read),
-  VSession => session_run(session_answer),
+  VMcp(target) => mcp_run(session_at_read, target),
+  VSession(target) => session_run(session_answer, target),
   VNew(name) => new_project(name),
   VWith(hname, target) => with_run(hname, target),
   VWelcome => welcome_run(),
@@ -1385,7 +1385,7 @@ fn session_answer(line, manifest) = match parse_cli_args(session_argv(line)) {
     VEdit(_) | VDoc(_) | VMap(_) | VServe | VSpace(_) | VTighten(_) | VFmt(_, _) | VCompile(_)
     | VAsm(_) | VResume(_) | VCompileStdin | VRun(_, _) | VLand | VCheck(_) | VAt(_, _, _)
     | VRename(_, _, _, _) | VTest(_, _) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch
-    | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
+    | VVerify(_) | VMcp(_) | VSession(_) | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
   },
 }
 
@@ -1398,17 +1398,17 @@ fn session_read(verb) = match verb {
     Some(SpaceAt(target, l, c, needle)) => session_whole(session_banked(() => space_project(session_module(target), target, l, c, needle))),
     None => session_miss(),
   },
-  VQuery(target, q) => if target == "main" { query_text(q, target) } else { session_miss() },
-  VAudit(target) => if target == "main" { audit_project(link_entry_decls()) } else { session_miss() },
+  VQuery(target, q) => if session_entry(target) { query_text(q, target) } else { session_miss() },
+  VAudit(target) => if session_entry(target) { audit_project(link_entry_decls()) } else { session_miss() },
   // A bare `teach` means "teach HERE" — the resident entry is here.
   VTeach(target) => match target {
-    Some(m) => if m == "main" { teach_project(link_entry_decls()) } else { session_miss() },
+    Some(m) => if session_entry(m) { teach_project(link_entry_decls()) } else { session_miss() },
     None => teach_project(link_entry_decls()),
   },
   // The cold-only verbs answer MISS, so they take the cold path.
   VEdit(_) | VDoc(_) | VMap(_) | VServe | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_)
   | VResume(_) | VCompileStdin | VRun(_, _) | VLand | VCheck(_) | VAccept(_, _, _)
-  | VRename(_, _, _, _) | VTest(_, _) | VRepl | VMarch | VVerify(_) | VMcp | VSession | VNew(_)
+  | VRename(_, _, _, _) | VTest(_, _) | VRepl | VMarch | VVerify(_) | VMcp(_) | VSession(_) | VNew(_)
   | VWith(_, _) | VWelcome => session_miss(),
 }
 
@@ -1435,6 +1435,10 @@ fn session_module(target: String) = match driver_module_path(target) {
   None => None,
 }
 
+// Whether a target names the module the session serves, the one its link
+// names as the entry.
+fn session_entry(target: String) = session_module(target) == link_entry()
+
 // AN ANSWER IS RESIDENT ONLY WHEN IT IS WHOLE. A verb that refuses says why
 // on stderr and gives its verdict as the exit code, and the session's wire
 // carries neither: the socket's stderr is the SERVER's terminal and a wire
@@ -1457,15 +1461,21 @@ fn session_banked(project) = {
 } ~> console_bank ~> patch_written ~> cursor_default ~> synth_default ~> mentl_default
 
 // The address projection, banked — the one bracket the session's reads, its
-// accept's projection and the mcp gate's at tool all answer through.
-fn session_address(target: String, l, c) =
-  session_banked(() => address_project(session_module(target), target, l, c))
+// accept's projection and the mcp gate's at tool all answer through, at the
+// module a name resolves to.
+fn session_address(target: String, l, c) = session_address_at(session_module(target), target, l, c)
 
-// session_at_read — the mcp gate's at tool, the same banked core: passed
-// INTO mcp_run as a value (a stored fn carrying its row — the
-// transport-as-value the effect-poly ctor landing made a capability).
-fn session_at_read(line, col) = match session_address("main", line, col) {
-  (_, lines) => lines,
+fn session_address_at(found, target: String, l, c) =
+  session_banked(() => address_project(found, target, l, c))
+
+// session_at_read — the mcp gate's at tool, at the module the person named,
+// read off the link; no lines where none was named. Passed INTO mcp_run as a
+// value (a stored fn carrying its row).
+fn session_at_read(line, col) = match link_entry() {
+  Some(mh) => match session_address_at(Some(mh), module_of(mh).path, line, col) {
+    (_, lines) => lines,
+  },
+  None => [],
 }
 
 // ─── test_run — Test effect handler chain
@@ -2143,16 +2153,19 @@ fn battery_pending(entry) = match entry {
 // line of input it read follows `< `, each where the command printed, said
 // or read it; an empty line is empty on stdout, `!` on stderr and `<` on
 // input, and a last line that ended without a newline is followed by `[no
-// newline]`. Then the input it never read follows a line `[unread]`, each
-// line after `< `; each file it wrote is a line `[wrote PATH]` followed by
-// the text's lines, each after `> `; and an exit other than 0 is the
-// answer's last line, `[exit N]`. A command's input is its answer's `<`
-// lines, each one line with its newline. What a command writes is kept in
-// the transcript's memory, so the commands after it read it and the
-// repository is never written. The lines before the first command say what
-// the transcript shows and are kept as written. A command's words are
-// separated by single spaces, and a quote is an ordinary character, since
-// every verb that reads a phrase joins its words.
+// newline]`. A file that changed between two of the command's reads is a
+// line `[changed PATH]` where the command's read met the change, followed by
+// the file's new text, each line after `> `. Then the input it never read
+// follows a line `[unread]`, each change and each line as the transcript
+// gave it; each file it wrote is a line `[wrote PATH]` followed by the text's
+// lines, each after `> `; and an exit other than 0 is the answer's last
+// line, `[exit N]`. A command's input is its answer's `<` lines and its
+// changes, each line with its newline. What a command writes, and each
+// change, is kept in the transcript's memory, so the commands after it read
+// it and the repository is never written. The lines before the first command
+// say what the transcript shows and are kept as written. A command's words
+// are separated by single spaces, and a quote is an ordinary character,
+// since every verb that reads a phrase joins its words.
 type Transcript = Transcript([String], [TranscriptCommand])
 
 // One command: the words after `$ mentl `, and the answer's lines.
@@ -2161,24 +2174,29 @@ type TranscriptCommand = TranscriptCommand(String, [String])
 // A command run with its text kept, or why a transcript cannot run it.
 type Replay = Answered([String]) | Unreplayable(String)
 
-// The three streams a replayed verb meets: what it prints on stdout, what it
-// says on stderr, and what it reads from its input.
-type Stream = Printed | SaidBeside | Taken
+// The streams of what a replayed verb meets: what it prints on stdout, what
+// it says on stderr, what it reads from its input, and the files that change
+// between two of its reads, each a `[changed PATH]` block as the transcript
+// shows it.
+type Stream = Printed | SaidBeside | Taken | Laid
 
 // What a verb printed, said or read while a transcript ran it, in order.
 type SaidPiece = SaidPiece(Stream, String)
 
 effect TranscriptBank {
   pieces_taken() -> [SaidPiece]
-  // the input the command has not read
+  // what the command has not read, as the transcript shows it
   input_unread() -> String
 }
 
 // The host a replayed verb runs under: each piece it prints, says or reads
 // kept in order, the progress of a step dropped, as a pipe's reader of
-// stderr drops it, and its input answered from `input`, the lines its
-// transcript gives it, of which `rest` is still unread.
-handler transcript_bank(input: String) with pieces = [], rest = input {
+// stderr drops it, and its input answered from what its transcript gives it,
+// the `<` lines and `[changed PATH]` blocks as the transcript shows them.
+// `left` is the rest of the line being read, and `ahead` the text after it.
+// A read that starts a line lays the blocks standing before it in the
+// transcript's memory, then answers from that line.
+handler transcript_bank(given: String) with pieces = [], left = "", ahead = given {
   print(text) => resume() with pieces = push(pieces, SaidPiece(Printed, text)),
   said(text) => resume() with pieces = push(pieces, SaidPiece(SaidBeside, text)),
   linked(_) => resume(),
@@ -2187,13 +2205,93 @@ handler transcript_bank(input: String) with pieces = [], rest = input {
   phase(_) => resume(),
   step_ended() => resume(),
   stdin_read(buf, size) => {
-    let taken = input_taken(rest, size)
+    let blocks = blocks_due(left, ahead)
+    blocks_laid(blocks)
+    let now = input_now(left, ahead)
+    let taken = input_taken(now, size)
     mem_copy(buf, str_payload(taken), byte_len(taken))
-    resume(byte_len(taken)) with pieces = taken_kept(pieces, taken), rest = input_after(rest, size)
+    resume(byte_len(taken)) with pieces = taken_kept(laid_kept(pieces, blocks), taken), left = input_after(now, size), ahead = ahead_past(left, ahead)
   },
   pieces_taken() => resume(pieces),
-  input_unread() => resume(rest),
+  input_unread() => resume(unread_given(left, ahead)),
 }
+
+// Where the next line of input starts in the text still ahead: the first
+// line that opens with `<`, after the blocks before it, or the text's end.
+fn input_line_at(ahead: String) =
+  if starts_with(ahead, "<") { 0 } else { after_newline_at(index_of(ahead, "\n<"), byte_len(ahead)) }
+
+// Just past a newline found at `at`, or `end` where none was found.
+fn after_newline_at(at: Int, end: Int) = if at < 0 { end } else { at + 1 }
+
+// The bytes of `text` from `from` up to `to`, or none where the two do not
+// stand in order inside it.
+fn text_between(text: String, from: Int, to: Int) = if 0 <= from && from <= to && to <= byte_len(text) {
+  str_slice(text, from, to)
+} else {
+  str_slice(text, 0, 0)
+}
+
+// The blocks that stand before the next line of input, as the transcript
+// shows them, and the text from that line on.
+fn blocks_ahead(ahead: String) = text_between(ahead, 0, input_line_at(ahead))
+
+fn from_input(ahead: String) = text_between(ahead, input_line_at(ahead), byte_len(ahead))
+
+// A text's first line through its newline, and the text after that line.
+fn first_line(text: String) =
+  text_between(text, 0, after_newline_at(index_of(text, "\n"), byte_len(text)))
+
+fn after_first_line(text: String) =
+  text_between(text, after_newline_at(index_of(text, "\n"), byte_len(text)), byte_len(text))
+
+// The input a line gives, after its mark: `< x` gives `x` and `<` alone an
+// empty line, each with the line's newline.
+fn line_input(line: String) =
+  text_between(line, if starts_with(line, "< ") { 2 } else { 1 }, byte_len(line))
+
+// The next line of input that the text still ahead holds, unread.
+fn input_ahead(ahead: String) = line_input(first_line(from_input(ahead)))
+
+// The blocks a read lays: those before the next line of input when the read
+// starts that line, and none while a line is being read.
+fn blocks_due(left: String, ahead: String) =
+  if byte_len(left) == 0 { blocks_ahead(ahead) } else { text_between(ahead, 0, 0) }
+
+// The input a read takes from: the rest of the line being read, or else the
+// next line of input the text ahead holds.
+fn input_now(left: String, ahead: String) =
+  if byte_len(left) == 0 { input_ahead(ahead) } else { left }
+
+// The text ahead once a read has started the next line, the text after that
+// line, or the same text while a line is being read.
+fn ahead_past(left: String, ahead: String) =
+  if byte_len(left) == 0 { after_first_line(from_input(ahead)) } else { ahead }
+
+// What the command has not read, as the transcript shows it: the rest of the
+// line being read, written as a line of input, then the text ahead.
+fn unread_given(left: String, ahead: String) = if byte_len(left) == 0 {
+  ahead
+} else {
+  "{taken_line(text_between(left, 0, byte_len(left) - 1))}\n{ahead}"
+}
+
+// Each file the blocks change, laid in the transcript's memory, where the
+// command's next read of it finds the new text.
+fn blocks_laid(blocks: String) = match split("\n[changed ", "\n{blocks}") {
+  [_, ...changed] => changed |> each(block_laid),
+  [] => (),
+}
+
+// A block after its `[changed `: the path up to the `]` that ends its first
+// line, then the file's new text.
+fn block_laid(block: String) = file_changed(
+  text_between(block, 0, byte_len(first_line(block)) - 2),
+  changed_text(lines(after_first_line(block)))
+)
+
+fn laid_kept(pieces, blocks: String) =
+  if byte_len(blocks) == 0 { pieces } else { push(pieces, SaidPiece(Laid, blocks)) }
 
 // The input's next bytes, at most `size` of them. Each answer is a part of
 // `rest`, so a reader of its memory finds it there.
@@ -2219,13 +2317,27 @@ fn input_after(rest: String, size: Int) = if size <= 0 {
 fn taken_kept(pieces, taken: String) =
   if byte_len(taken) == 0 { pieces } else { push(pieces, SaidPiece(Taken, taken)) }
 
-// What a command reads: its answer's `<` lines, in order, each one line
-// with its newline.
-fn command_input(answer) = answer |> flat_map(input_of_line) |> str_concat_all
+// What a command is given: its answer's `<` lines and the `[changed PATH]`
+// blocks between them, each line with its newline, as the transcript shows
+// them, read from the answer's lines before the files the command wrote.
+fn command_given(answer) = given_before_written("\n{unlines(answer)}")
 
-fn input_of_line(line: String) = if line == "<" {
+fn given_before_written(text: String) =
+  text_between(text, 0, after_newline_at(index_of(text, "\n[wrote "), byte_len(text))) |> lines |> flat_map(given_line) |> str_concat_all
+
+fn given_line(line: String) = if line == "<" || starts_with(line, "< ") || starts_with(line, "[changed ") || line == ">" || starts_with(line, "> ") {
+  ["{line}\n"]
+} else {
+  []
+}
+
+// The file text a block's lines give: each `>` line's text with its newline,
+// and `>` alone an empty line.
+fn changed_text(block_lines) = block_lines |> flat_map(changed_line) |> str_concat_all
+
+fn changed_line(line: String) = if line == ">" {
   ["\n"]
-} else if starts_with(line, "< ") && 2 <= byte_len(line) {
+} else if starts_with(line, "> ") && 2 <= byte_len(line) {
   ["{str_slice(line, 2, byte_len(line))}\n"]
 } else {
   []
@@ -2250,12 +2362,12 @@ fn transcript_command(piece: String) = match lines(piece) {
 }
 
 // The command line's own route, `verb_answer`, under the transcript's host,
-// with the input the transcript gives the command.
-fn replayed(words: String, input: String) = {
+// with what the transcript gives the command.
+fn replayed(words: String, given) = {
   let parsed = words |> split(" ") |> program_argv |> parse_cli_args
   match transcript_refusal(parsed) {
     Some(why) => Unreplayable(why),
-    None => Answered(answer_kept(parsed, input)),
+    None => Answered(answer_kept(parsed, given)),
   }
 }
 
@@ -2266,10 +2378,10 @@ fn program_argv(words) = ["mentl"] ++ words
 // wrote laid over the repository's (`files_kept`, holding them in the
 // `memory_files` the transcript installs once), and a failure said with exit
 // 1, so the next command runs.
-fn answer_kept(parsed, input: String) = {
+fn answer_kept(parsed, given) = {
   let exit = verb_answer(parsed) ~> files_kept ~> wasi_filesystem ~> fail_said
   answer_lines(exit, pieces_taken(), input_unread(), written_taken())
-} ~> transcript_bank(input)
+} ~> transcript_bank(given)
 
 // A transcript runs every verb whose answer is text and files. Each verb
 // that emits a module, writes past the writers a transcript keeps, or runs
@@ -2297,8 +2409,8 @@ fn verb_refusal(verb) = match verb {
   VNew(_) => None,
   VEdit(_) => None,
   VRepl => None,
-  VMcp => None,
-  VSession => None,
+  VMcp(_) => None,
+  VSession(_) => None,
   VCompile(_) => Some("compile's answer is a module, not text"),
   VAsm(_) => Some("asm's answer is a module's bytes, not text"),
   VResume(_) => Some("resume's answer is a module, not text"),
@@ -2313,17 +2425,15 @@ fn verb_refusal(verb) = match verb {
 
 // The answer's lines: the pieces in order, where the pieces on one stream
 // that follow each other join, so how a verb split its writes and reads
-// never shows; then the input it never read; then the files it wrote; then
-// its exit.
+// never shows; then what it never read; then the files it wrote; then its
+// exit.
 fn answer_lines(exit, pieces, unread: String, written) =
   (pieces |> fold([], said_joined) |> flat_map(run_lines)) ++ unread_lines(unread) ++ flat_map(written_lines, written) ++ exit_lines(exit)
 
-// The input a command never read, after a line that says so.
-fn unread_lines(unread: String) = if byte_len(unread) == 0 {
-  []
-} else {
-  ["[unread]"] ++ (unread |> ended_lines |> map(taken_line)) ++ unended_mark(unread)
-}
+// What a command never read, after a line that says so, as the transcript
+// gave it.
+fn unread_lines(unread: String) =
+  if byte_len(unread) == 0 { [] } else { ["[unread]"] ++ ended_lines(unread) }
 
 // A file the command wrote, as its answer shows it. A path with a dot-named
 // part holds what the medium keeps for itself, such as `.build/fmt.stamps`,
@@ -2357,11 +2467,13 @@ fn run_lines(run) = match run {
   SaidPiece(stream, text) => (text |> ended_lines |> map(stream_line(stream, ??))) ++ unended_mark(text),
 }
 
-// A line as the transcript shows it on its stream.
+// A line as the transcript shows it on its stream; a block's lines are kept
+// as the transcript gave them.
 fn stream_line(stream, line: String) = match stream {
   Printed => printed_line(line),
   SaidBeside => beside_line(line),
   Taken => taken_line(line),
+  Laid => line,
 }
 
 // A run's lines, each with its newline taken off.
@@ -2407,7 +2519,7 @@ fn transcript_step(path: String) = {
 }
 
 fn command_miss(command) = match command {
-  TranscriptCommand(words, want) => match replayed(words, command_input(want)) {
+  TranscriptCommand(words, want) => match replayed(words, command_given(want)) {
     Unreplayable(why) => ["`mentl {words}` does not run in a transcript: {why}"],
     Answered(got) => if got == want {
       []
@@ -2451,7 +2563,7 @@ fn transcript_written(path: String) = {
 }
 
 fn command_replay(command) = match command {
-  TranscriptCommand(words, want) => replayed(words, command_input(want)),
+  TranscriptCommand(words, want) => replayed(words, command_given(want)),
 }
 
 fn replay_refusal(replay) = match replay {

@@ -354,7 +354,11 @@ fn board_bounds() = [
   // its verdict. One place came in the pipeline module: the stem of a
   // fixture's path is cut at a slash found by a function that moved into
   // the library's fs module, so its call counts where the program calls it.
-  Bound({ceiling: 3105, question: QCensus(CsSilentTrap)}),
+  // 3,105 -> 3,097 (2026-11-17), and the places left with the code they
+  // stood in. The mcp server's tools looked up the call's arguments object
+  // again for each argument they read, ten calls of json_obj_get in five
+  // tools; one helper in the mcp module reads every argument with two.
+  Bound({ceiling: 3097, question: QCensus(CsSilentTrap)}),
   // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
   // §4⑨): an install whose body applies a function nothing names (a field
   // of a parameter, a value out of sight), writes memory nothing names, or

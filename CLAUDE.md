@@ -268,10 +268,16 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   after it read it, so `fmt`, `tighten`, `accept`, `rename` and `new` run
   in a transcript and the repository is never written. A command's input
   is its answer's lines after `< `, each one line, shown where the command
-  read it, so `edit` and a `-` target run in a transcript too. A verb that
-  emits a module is refused, and so is `serve`, whose frames go to stdout
-  past the transcript's writers, so a program run and an LSP exchange are
-  still checked by a leg of `tools/frontier-gate.sh`. A leg and a
+  read it, so `edit` and a `-` target run in a transcript too. A file that
+  changes between two of a command's reads is a block among those lines,
+  `[changed PATH]` and then the file's new text, each line after `> `,
+  laid in the transcript's memory when the command's next read reaches it,
+  so a `session` or an `mcp` server over a named project (`mentl session
+  tests/frontier/mn-session-project.mn`) runs in a transcript too, except
+  an mcp proposal that proves, whose module a transcript cannot keep yet.
+  A verb that emits a module is refused, and so is `serve`, whose frames go
+  to stdout past the transcript's writers, so a program run and an LSP
+  exchange are still checked by a leg of `tools/frontier-gate.sh`. A leg and a
   transcript refer to fixture line numbers, so a line added near the top
   of a fixture shifts them. Add history at the end.
 - `mentl fmt --check` on a fixture that uses syntax the boot cannot parse

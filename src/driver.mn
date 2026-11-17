@@ -1216,9 +1216,15 @@ fn stmts_at_line(line, e) =
 // judged into it directly. Discovery runs as the cold route runs it —
 // silenced, its reports the link's — and a module the program no longer links
 // is handed to `forget` whole, so nothing the program left keeps a report or
-// a claim. Answers how many statements the edit judged, and in how many
-// modules.
-fn driver_session_cone(ref entry_module, forget) = {
+// a claim. The program is the one the link holds, walked again from the
+// module it names as its entry; a link that names none judges nothing.
+// Answers how many statements the edit judged, and in how many modules.
+fn driver_session_cone(forget) = match link_entry() {
+  Some(mh) => entry_cone(module_of(mh).path, forget),
+  None => (0, 0),
+}
+
+fn entry_cone(ref entry_module, forget) = {
   diag_scope(ScopeNone)
   let resolved = driver_resolve(entry_module, module_roots())
   match graph_link() {

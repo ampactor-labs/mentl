@@ -1,0 +1,8 @@
+// propose 8:47: ask value 7 or 0 or 1 or -1
+type Pos = Int where 0 < self
+
+fn scaled(x) -> Pos = x * 3
+
+fn noisy() with Alloc = 7
+
+fn main() with !Alloc = scaled(2) + noisy() + ??

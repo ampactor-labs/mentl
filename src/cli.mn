@@ -66,9 +66,9 @@ type EntryVerb
   // the medium judges its own generation
   | VMarch
   | VVerify(Option(String))
-  // the gate on MCP stdio — agents propose, nothing executes unproven
-  | VMcp
-  | VSession
+  // the gate on MCP stdio over the project the path names, or this directory's
+  | VMcp(Option(String))
+  | VSession(Option(String))
   // project name — required
   | VNew(String)
   // handler name, optional target
@@ -294,9 +294,9 @@ fn verb_specs() = [
   ),
   VerbSpec(
     "session",
-    "",
-    bare_verb(VSession, ??),
-    "the resident graph — read verbs answer live; run it in a project"
+    "[path]",
+    opt_target(VSession, ??),
+    "the resident graph of the project the path names, or of this directory's — read verbs answer live"
   ),
   VerbSpec("serve", "", bare_verb(VServe, ??), "the transport server"),
   VerbSpec(
@@ -338,9 +338,9 @@ fn verb_specs() = [
   ),
   VerbSpec(
     "mcp",
-    "",
-    bare_verb(VMcp, ??),
-    "the proof gate and the session's reads over MCP stdio, for an editor or tool"
+    "[path]",
+    opt_target(VMcp, ??),
+    "the proof gate and the session's reads over MCP stdio, for an editor or tool, over the project the path names or this directory's"
   ),
   VerbSpec(
     "--with",

@@ -1,0 +1,4 @@
+// expect: 42
+fn width(n) = n + 2
+
+fn main() = width(40)

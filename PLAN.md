@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `f370f81f024b`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `5c6e47d47ec2`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -68,8 +68,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   its commands write in memory, so `fmt`, `tighten`, `accept`, `rename`
   and `new` run in one. P3e followed the same day: a program reads its
   input through the `Stdin` effect, and a transcript gives a command its
-  input, so `mentl edit` runs in one. The rest of P3 waits on what its
-  legs need (§11.B, P3); P4, P7 and P5 follow.
+  input, so `mentl edit` runs in one. P3f followed on 2026-11-17: `mentl
+  session` and `mentl mcp` serve the project a person names, and a
+  transcript changes a file between two of a command's reads, so a
+  session that follows an edit runs in one. The rest of P3 waits on what
+  its legs need (§11.B, P3), P3g first; P4, P7 and P5 follow.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1187,10 +1190,10 @@ accepts each program and `mentl run` shows the break.
 - The page cannot play a lesson (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
   calls. The landing pass, the march and the batteries' host loop are shell
-  scripts under tools/ (§11.9). 24 lines of the frontier gate pipe a
+  scripts under tools/ (§11.9). 19 lines of the frontier gate pipe a
   compiler's answer into `grep -q` (144 before P3c moved 56 legs into
-  transcripts, 2026-11-15, 38 before P3d moved 20 more, and 36 before
-  P3e moved 31 more, 2026-11-16),
+  transcripts, 2026-11-15, 38 before P3d moved 20 more, 36 before P3e
+  moved 31 more, 2026-11-16, and 24 before P3f moved 6 more, 2026-11-17),
   which can read a present answer as absent at
   random (§11.B, "Three checks that failed at random"); P3's later
   batches move them.
@@ -1410,7 +1413,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1466,7 +1469,10 @@ leave, and the landing deletes them.
    at `main`, and a transcript keeps what its commands write in memory.
    P3e landed the same day (pin f370f81f024b): a program reads its input
    through the `Stdin` effect, and a transcript gives a command its input,
-   so `mentl edit` runs in one.
+   so `mentl edit` runs in one. P3f landed on 2026-11-17 (pin
+   5c6e47d47ec2): `mentl session` and `mentl mcp` serve the project a
+   person names, and a transcript changes a file between two of a
+   command's reads.
    P3's later batches are cut into boxes as their groundwork comes. Then P4, P7
    and P5, the newest engine, which T4 needs for exception handling and M5
    for multiple memories.
@@ -1517,8 +1523,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
-3 is P3f.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1589,15 +1594,29 @@ minute, and no expectation kept by hand.
   runners that installed their own stderr writer say what they say
   through their caller's, and the edit session names its position as
   `module:line:col`. 31 legs left the gate, which fell to 264 legs, 2,789
-  lines and 24 lines that pipe into `grep -q`. Each later batch brings
-  what its legs need: a session over a named project, with a file that
-  changes between two reads, for the `session` and `mcp` legs, which link
-  `main` from the working directory, the compiler itself at the
-  repository's root; `// expect:` fixtures, for the legs that compile
-  and run a program, among them the program an accepted fill writes; and
-  a form for the legs that compare against an outside program, a warm
-  image or an LSP exchange, whose frames `serve` writes past the
-  transcript's writers.
+  lines and 24 lines that pipe into `grep -q`. P3f, built 2026-11-17, gave
+  `session` and `mcp` the path of the project they serve, where both
+  linked whatever `main` names where they run, the compiler itself at the
+  repository's root: their reads, the mcp `at` tool and the living check
+  follow the entry the link holds, and a name that resolves to no file is
+  refused. A transcript says a file that changes between two of a
+  command's reads as a block among the `<` lines, `[changed PATH]` and the
+  file's new text after `> `, which `mentl test` lays in the transcript's
+  memory when the command's next read reaches it. The given stays the
+  transcript's own text, read by slices, since a form that parsed it into
+  records left 77 values the memory walk cannot place. Inside a
+  transcript, the session's cost line counts what the transcript keeps of
+  an answer, so it reads more than at a terminal. Six legs left the gate
+  for tests/frontier/session.transcript and mcp.transcript; it fell to 258
+  legs, 2,614 lines and 19 lines that pipe into `grep -q`. Each later
+  batch brings what its legs need: a module written through the
+  `Filesystem` capability, which a transcript keeps in memory, for the six
+  legs whose mcp session proposes a program (P3g), since a proven
+  proposal streams its module through `wat_to_file`'s raw WASI write;
+  `// expect:` fixtures, for the legs that compile and run a program,
+  among them the program an accepted fill writes; and a form for the legs
+  that compare against an outside program, a warm image or an LSP
+  exchange, whose frames `serve` writes past the transcript's writers.
 - P4. A document's quoted output is re-run by a command that fails when
   the pin prints something else and rewrites the quote on request (§11.5).
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
@@ -1889,8 +1908,8 @@ read false: 88 of 2,000 runs on that one answer. The leg now reads the
 answer from a file, as the gate's relocation legs already did, and read
 false in none of 2,000 runs. On 2026-11-15 the frontier gate held 144
 lines that pipe a captured answer into `grep -q`, 38 after P3c the same
-day, 36 after P3d on 2026-11-16, and 24 after P3e the same day. Any of
-them whose answer is written
+day, 36 after P3d on 2026-11-16, 24 after P3e the same day, and 19 after
+P3f on 2026-11-17. Any of them whose answer is written
 in more than one chunk can read false the same way, and a negated one,
 `! printf … | grep -q`, can read true, which passes a leg that should fail.
 They leave when the gate's legs are read by the medium instead of the
@@ -2085,140 +2104,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · P3f · `mentl session` and `mentl mcp` serve the project a
-   person names, and a transcript changes a file between two of a
-   command's reads.** Written 2026-11-17 and measured on probe compilers
-   built from pin f370f81f024b's source.
-
-   What a person sees.
-   - `mentl session tests/frontier/mn-session-project.mn` serves the named
-     program from wherever it runs, and `mentl mcp <path>` does the same
-     for an editor or a tool: the audit is that program's, an edit to its
-     file is judged again, and an accept writes it. A name that resolves
-     to no file is refused, exit 1, with a line that says so. With no
-     name, both serve the directory's `main`, as they do today.
-   - A transcript can say that a file changed between two of a command's
-     reads: a line `[changed PATH]`, then the file's new text, each line
-     after `> `, standing among the command's `<` lines where the change
-     happens. `mentl test` lays the new text in the transcript's memory
-     when the command's next read reaches it, and the answer shows the
-     block where it was laid. A block the command never reached is shown
-     under `[unread]` and never laid.
-   - Six legs of tools/frontier-gate.sh become two transcripts.
-     tests/frontier/session.transcript holds the session's audit beside
-     the cold verb's, an address past the end, an edit judged again with
-     the cold query beside it, and an accept that writes `1`.
-     tests/frontier/mcp.transcript holds the field around a hole, the
-     problems field before and after an edit removes a tightening, and a
-     server that follows an edit. The gate falls from 264 legs to 258,
-     from 2,789 lines to 2,614, and from 24 lines that pipe into
-     `grep -q` to 19.
-
-   Fails today, on pin f370f81f024b.
-   - `printf 'audit\ttests/frontier/mn-capability-tie.mn\n' | mentl
-     session tests/frontier/mn-capability-tie.mn` answers
-     `MENTL-SESSION-MISS` after 11.98 s and 215,160 KB. The verb takes no
-     path, so it links the program `main` names at the repository's root,
-     the compiler itself.
-   - `mentl mcp tests/frontier/mn-capability-tie.mn`, asked for its
-     audit, says "graph resident — 46 modules" and audits src/main.mn,
-     after 17.16 s and 463,736 KB.
-   - A transcript has no form for a file that changes while its command
-     runs, so the gate's three legs for it feed the process through a
-     named pipe, rewrite the file from the shell between two messages, and
-     poll the output file every 0.2 s.
-
-   The form.
-   - src/cli.mn: `VSession(Option(String))` and `VMcp(Option(String))`,
-     parsed by `opt_target` as `check` and `teach` are, with usage
-     `[path]`. `dispatch_invocation` hands the target on, and
-     `session_answer`, `session_read` and `verb_refusal` take the new
-     shapes.
-   - src/mcp.mn: `session_run(answer, target)` and `mcp_run(at_read,
-     target)` link the target's module, or `main` where none was named. A
-     name that resolves to no file is refused; `mcp` with no name and no
-     `main` still serves propose alone. `mcp_run`'s two directory makes at
-     its start leave, since `mcp_judge` makes the directory before each
-     proposal is written.
-   - src/driver.mn: `driver_session_cone(forget)` walks the program again
-     from the entry the link holds (`entry_cone`), where it was handed the
-     name "main"; a link that names no entry judges nothing.
-   - src/main.mn, the session's reads. `VQuery`, `VAudit` and `VTeach`,
-     which answered only for the target "main", answer for a target that
-     resolves to the link's entry (`session_entry`). The mcp `at` tool
-     (`session_at_read`) addresses the link's entry through
-     `session_address_at(found, target, l, c)`, which `session_address`
-     now calls with the module its target resolves to.
-   - src/main.mn, the transcript. `command_given(answer)` is the answer's
-     `<` lines and `[changed PATH]` blocks, as the transcript shows them,
-     read before its first `[wrote ` line. `transcript_bank(given:
-     String) with pieces = [], left = "", ahead = given` keeps in `left`
-     the rest of the line being read, a slice, and in `ahead` the text
-     after it. A read that starts a line lays the blocks standing before
-     it (`blocks_due`, `blocks_laid`, `block_laid`), keeps them as a piece
-     on a new stream, `Laid`, whose lines show as they were given, and
-     answers from the line's input (`input_now`). Every read answers a
-     slice, so a session that reads one byte at a time costs what it
-     reads. `input_unread()` answers the unread rest as the transcript
-     shows it (`unread_given`). The line helpers are `text_between`, one
-     guarded slice, then `input_line_at`, `after_newline_at`,
-     `first_line`, `after_first_line`, `line_input`, `from_input`,
-     `blocks_ahead`, `input_ahead`, `ahead_past` and `changed_text`.
-     `command_input` and `input_of_line` leave.
-   - lib/fs.mn: `KeptFiles` gains `file_changed(path, text)`, which
-     `memory_files` keeps without counting it among the command's writes.
-   - The given stays the transcript's own text. A first form parsed it
-     into a record of parts and rendered the parts back to lines; the
-     memory walk could place none of the values it took apart, and it
-     measured 77 values over the limit. Kept as text, the answer shows a
-     block exactly as given, and every value the bank reads is a slice the
-     walk places.
-
-   Edge cases, each run on a scratch transcript on the candidate.
-   - A command that never reads its input shows its blocks and `<` lines
-     under `[unread]`, and the next command reads the file as it was.
-   - Two blocks with no line of input between them are laid at one read,
-     in order, and a block can change any file, not only the project's.
-   - A block after the last line of input is laid at the read that meets
-     the input's end, before that read answers 0.
-   - A read of 0 bytes at a line's start lays the line's blocks once; the
-     next read finds the line already begun.
-   - A block's path is spelled as the command reads the file, from the
-     repository's root, since a kept file is found by its exact path.
-
-   What pays for its code on the board, measured on the candidate.
-   Values the walk cannot place stay at 32,006: src/main.mn 699 -> 713,
-   src/driver.mn 485 -> 488 for the entry read off the link, src/cli.mn
-   86 -> 88 for two more `opt_target` verbs, lib/fs.mn 53 -> 54 for
-   `file_changed`'s arm, and lib/json.mn 147 -> 150 for `json_text_at`,
-   paid by src/mcp.mn 91 -> 71 and src/lsp.mn 138 -> 135. What pays is
-   code that leaves: `mcp_tool_call` reads every argument through
-   `mcp_argument(params, key)`, where it spelled the same lookup out five
-   times, and `json_text_at(v, key, default)` reads the protocol version,
-   the tool's name, the method and the LSP's document uri, where each
-   spelled out the same match. Places that can trap with no claim fall
-   from 3,105 to 3,097, all eight in src/mcp.mn, where ten calls of
-   `json_obj_get` for a tool's arguments are two, so that limit is
-   lowered. Open claims at a partial primitive's call stay 648, and no
-   module gains an iteration costume or a roster: match sites go
-   src/main.mn 159 -> 161, src/driver.mn 94 -> 95, lib/json.mn 24 -> 25,
-   src/mcp.mn 25 -> 18 and src/lsp.mn 26 -> 25.
-
-   Left alone. The six legs whose mcp session proposes a program
-   (mcp-session's four, mcp-verdicts, mcp-resident). A proven proposal
-   streams its module through `wat_to_file`'s raw WASI write, which a
-   transcript cannot keep (`files_kept` refuses `fs_create`), and where a
-   named project's proposals are built goes with them: P3g. The session's
-   cost line stays as it is. Inside a transcript an answer's cost counts
-   what the transcript keeps of the answer, so the first audit reads 2,408
-   bytes where a terminal reads 8, the same on every replay and inside
-   the battery.
-
-   Proves it. tests/frontier passes 247 of 247 on the candidate, the two
-   transcripts among them; the frontier gate passes the six legs on the
-   same candidate before they leave (263 pass, 0 red, 1 expected red);
-   `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

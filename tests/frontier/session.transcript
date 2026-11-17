@@ -1,0 +1,70 @@
+$ mentl session tests/frontier/mn-session-project.mn
+! mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read
+< audit	tests/frontier/mn-session-project.mn
+  Nothing in this module uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    It also never uses 14 other effect(s) that the program declares.
+  width performs no effect (Pure)
+  main performs no effect (Pure)
+! session: the answer cost 2408 bytes of image
+< tests/frontier/mn-session-project.mn:999:1
+! mentl: tests/frontier/mn-session-project has 5 lines; 999 is past the end
+  MENTL-SESSION-MISS
+! session: the answer cost 2352 bytes of image
+$ mentl audit tests/frontier/mn-session-project.mn
+  Nothing in this module uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    It also never uses 14 other effect(s) that the program declares.
+  width performs no effect (Pure)
+  main performs no effect (Pure)
+$ mentl session tests/frontier/mn-session-project.mn
+! mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read
+< query	tests/frontier/mn-session-project.mn	reports
+  → 0 report(s)
+! session: the answer cost 2576 bytes of image
+[changed tests/frontier/mn-session-project.mn]
+> // expect: 42
+> fn width(n) = n + 2
+>
+> fn triple(x) = x * 3
+>
+> fn main() = triple(true) + width(40)
+< query	tests/frontier/mn-session-project.mn	reports
+! infer: E_TypeMismatch error: Bool vs Int — call to 'triple' → inferred from unification at tests/frontier/mn-session-project:6:13-6:25
+! session: tree moved — re-judged 2 declaration(s) in 1 module(s); the graph is current
+  → 1 report(s)
+  infer: E_TypeMismatch error: Bool vs Int — call to 'triple' → inferred from unification at tests/frontier/mn-session-project:6:13-6:25
+! session: the answer cost 19800 bytes of image
+$ mentl query tests/frontier/mn-session-project.mn reports
+! infer: E_TypeMismatch error: Bool vs Int — call to 'triple' → inferred from unification at tests/frontier/mn-session-project:6:13-6:25
+  → 1 report(s)
+  infer: E_TypeMismatch error: Bool vs Int — call to 'triple' → inferred from unification at tests/frontier/mn-session-project:6:13-6:25
+$ mentl session tests/frontier/mn-session-hole.mn
+! mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read
+< tests/frontier/mn-session-hole.mn:4:27
+  Query: ?? : Positive
+  Propose: 1  — inferred from the type's integer inhabitants
+  Effects: whatever its position permits — a hole states no row
+  Verify: pending comparison 0 < self at tests/frontier/mn-session-hole:4:16-4:24
+  Why: returned from choose, at tests/frontier/mn-session-hole:4
+       body
+       its type: declared choose, at tests/frontier/mn-session-hole:4
+! session: the answer cost 3512 bytes of image
+< accept	tests/frontier/mn-session-hole.mn:4:27
+! session: tree moved — re-judged 2 declaration(s) in 1 module(s); the graph is current
+  Query: 1 : Int
+  Effects: Pure
+  Why: accepted `1` — proposed: inferred from the type's integer inhabitants, at tests/frontier/mn-session-hole:4
+       int literal
+! session: the answer cost 16152 bytes of image
+< tests/frontier/mn-session-hole.mn:4:27
+  Query: 1 : Int
+  Effects: Pure
+  Why: accepted `1` — proposed: inferred from the type's integer inhabitants, at tests/frontier/mn-session-hole:4
+       int literal
+! session: the answer cost 2096 bytes of image
+[wrote tests/frontier/mn-session-hole.mn]
+> // propose 4:27: fill 1
+> type Positive = Int where 0 < self
+>
+> fn choose() -> Positive = 1
+>
+> fn main() = choose()
