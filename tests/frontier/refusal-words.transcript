@@ -1,0 +1,30 @@
+$ mentl check tests/frontier/mn-effect-instance-argty.mn
+! infer: E_TypeMismatch error: String vs Int — inferred from a parameterized effect's instance argument at tests/frontier/mn-effect-instance-argty:5:1-5:49
+[exit 1]
+$ mentl check tests/frontier/mn-threaded-branch-state-store.mn
+! verify: pending partiality 0 <= 0 && 0 < len(buf) at tests/frontier/mn-threaded-branch-state-store:14:22-14:40
+! verify: pending partiality 0 <= 0 && 0 < len(buf) at tests/frontier/mn-threaded-branch-state-store:15:12-15:30
+! verify: V_Pending VerificationPending: 2 verification obligations pending at tests/frontier/mn-threaded-branch-state-store:14:22-14:40
+! verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query tests/frontier/mn-threaded-branch-state-store traps` lists each with its claim
+! lower: E_ThreadedBranchEffect error: effect Tally is performed inside a threaded branch and the handler it reaches at the fanout's frame, `tally`, WRITES its state from an arm (an in-place store into `buf` at 14:22-14:44) — one record, two instances — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for Tally at the fanout's own frame, or install the handler inside the branch at tests/frontier/mn-threaded-branch-state-store:19:25-19:40
+! lower: E_ThreadedBranchEffect error: effect Tally is performed inside a threaded branch and the handler it reaches at the fanout's frame, `tally`, WRITES its state from an arm (an in-place store into `buf` at 14:22-14:44) — one record, two instances — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for Tally at the fanout's own frame, or install the handler inside the branch at tests/frontier/mn-threaded-branch-state-store:19:42-19:57
+[exit 1]
+$ mentl check tests/frontier/mn-threaded-branch-captured-store.mn
+! verify: pending partiality 0 <= 0 && 0 < len(buf) at tests/frontier/mn-threaded-branch-captured-store:7:20-7:38
+! verify: pending partiality 0 <= 0 && 0 < len(buf) at tests/frontier/mn-threaded-branch-captured-store:8:3-8:21
+! verify: V_Pending VerificationPending: 2 verification obligations pending at tests/frontier/mn-threaded-branch-captured-store:7:20-7:38
+! verify: 4 place(s) can stop this program with a trap, 4 of them inside the library through the program's calls; `mentl query tests/frontier/mn-threaded-branch-captured-store traps` lists each with its claim
+! lower: E_ThreadedBranchEffect error: effect Mutate is performed inside a threaded branch and the branch stores into memory older than itself at 13:15-13:24 — one buffer, written from every instance — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for Mutate at the fanout's own frame, or install the handler inside the branch at tests/frontier/mn-threaded-branch-captured-store:13:15-13:24
+! lower: E_ThreadedBranchEffect error: effect Mutate is performed inside a threaded branch and the branch stores into memory older than itself at 13:26-13:35 — one buffer, written from every instance — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for Mutate at the fanout's own frame, or install the handler inside the branch at tests/frontier/mn-threaded-branch-captured-store:13:26-13:35
+[exit 1]
+$ mentl check tests/frontier/mn-effect-escaped-install.mn
+! effects: E_EffectUnhandled error: nothing handles Ping. main uses Ping: at tests/frontier/mn-effect-escaped-install:45:3, the function value `escaped`. Nothing would answer Ping's operations when the program runs, so the program is not built. Install one around the code that uses it: ~> ponger. at tests/frontier/mn-effect-escaped-install:43:1-46:2
+[exit 1]
+$ mentl check tests/frontier/mn-hof-row-gate-noisy.mn
+! effects: E_EffectMismatch error: f is declared `with !WASI`, and the function passed to it here uses WASI, which that clause does not allow at tests/frontier/mn-hof-row-gate-noisy:20:13-20:32
+[exit 1]
+$ mentl check tests/frontier/mn-persist-branch-external.mn
+! effects: E_EffectMismatch error: persist_branch is declared `with !WASI + !Filesystem`, and the function passed to it here uses WASI, which that clause does not allow at tests/frontier/mn-persist-branch-external:14:11-17:5
+! effects: E_EffectUnhandled error: nothing handles Fail. main uses Fail: main installs `wasi_filesystem` at tests/frontier/mn-persist-branch-external:13:13 → wasi_filesystem calls `fail` at fs:83:28 → `fail` is an operation of Fail, declared at prelude:49:1. Nothing would answer Fail's operations when the program runs, so the program is not built. Install one around the code that uses it: ~> fail_exit. at tests/frontier/mn-persist-branch-external:13:1-19:40
+! verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query tests/frontier/mn-persist-branch-external traps` lists each with its claim
+[exit 1]

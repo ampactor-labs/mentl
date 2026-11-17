@@ -31,3 +31,94 @@ $ mentl check tests/frontier/mn-row-contradiction.mn
 $ mentl check tests/frontier/mn-instance-refinement-clause.mn
 ! effects: E_DeclaredRowContradiction error: the clause asserts `Flow` AND `!Flow` — one row cannot both permit and forbid a name; drop one side at tests/frontier/mn-instance-refinement-clause:0:0-0:0
 [exit 1]
+$ mentl audit tests/frontier/mn-audit-severance-honest.mn
+  Nothing in this module uses 11 of the effects the program declares.
+  allocates uses Trap + Alloc + MemoryWrite + Address + Memory
+  quiet performs no effect (Pure)
+    never uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    mentioned in comments: allocates
+  main uses Trap + Alloc + MemoryWrite + Address + Memory
+$ mentl audit examples/grid/station.mn
+  Nothing in this module uses Trap, Network, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven) and sandboxed (it never reaches the network)
+    It also never uses 13 other effect(s) that the program declares.
+  clamp_spin performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+    mentioned in comments: droop
+  clamp_pulse performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  clamp_soc performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  spin_soc_m performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  pulse_soc_m performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  magnitude performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  droop performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  reflex performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  facility_w performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  settle performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  decide uses Mutate + Station
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+    mentioned in comments: the comment at line 1
+  mode_word performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  tenths uses Alloc + Memory + MemoryWrite + Address
+  off_words uses Alloc + Memory + MemoryWrite + Address
+  reason_text uses Alloc + Memory + MemoryWrite + Address
+    mentioned in comments: Reason, decide
+  at uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+  find_key uses Alloc + Memory + MemoryWrite + Address + Diverge
+  find_from uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  matches_at uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  is_digit performs no effect (Pure)
+    never uses Alloc, so it is real-time safe (it never allocates memory)
+  skip_spaces uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  milli_at uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+  whole_end uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  digits_value uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  frac_value uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  number_end uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+    could be a fold, each or iterate stage: it calls itself with an index one higher, which is a loop written as recursion
+  exponent_scale uses Memory + Address + Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+  shrink uses Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+  grow uses Diverge
+    never uses Alloc, so it is allocation-free (it never allocates memory; that it always finishes is not proven)
+  field uses Alloc + Memory + MemoryWrite + Address + Diverge
+  field_or uses Alloc + Memory + MemoryWrite + Address + Diverge
+  stamp uses Alloc + Memory + MemoryWrite + Address + Diverge
+  reading uses Alloc + MemoryWrite + Stdin + Memory + Address + Diverge + Mutate + Station
+  step uses Memory + Arena + Mutate + Alloc + MemoryWrite + Stdin + Address + Diverge + Station
+  main uses Alloc + Mutate + Memory + Arena + MemoryWrite + Address + Diverge + WASI
+    mentioned in comments: the comment at line 1
+$ mentl audit tests/frontier/mn-audit-pipe-shape.mn
+  Nothing in this module uses Alloc, Trap, so it is real-time safe (it never allocates memory) and trap-free (nothing it reaches can stop with an error; that it always finishes is not proven)
+    It also never uses 14 other effect(s) that the program declares.
+  chained performs no effect (Pure)
+    could be one |> pipe: a 2-step chain of lets that each hand one value on
+  forked performs no effect (Pure)
+    mentioned in comments: chained
+  single performs no effect (Pure)
+    mentioned in comments: chained
+  main performs no effect (Pure)

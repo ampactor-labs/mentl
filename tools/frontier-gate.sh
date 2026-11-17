@@ -1365,151 +1365,18 @@ run_data_validator() {
   [ "$ok" = 1 ] && pass "$label cross-validation (${#expected[@]} facts agree with the oracle)"
 }
 
-# A hole-bearing fixture's input form is PRODUCTIVE, never executable
-# (SYNTAX §«Partial application»): the compile verb must REFUSE it honestly —
-# E_UnresolvedHole, nonzero exit, ZERO WAT bytes. The edit workflow then
-# fills the hole and the patched source compiles clean.
-compile_hole_fixture() {
-  local compiler="$1" label="$2" source="$3" dir="$4"
-  local wat="$dir/$label.input.wat" err="$dir/$label.input.err" rc
-
-  wt_run "$compiler" < "$source" > "$wat" 2> "$err"
-  rc=$?
-  if [ "$rc" -ne 0 ] && [ ! -s "$wat" ] && grep -q 'E_UnresolvedHole' "$err"; then
-    pass "$label input refuses honestly (E_UnresolvedHole, nonzero, no WAT)"
-  else
-    fail "$label input did not refuse (exit=$rc wat=$(wc -c < "$wat")B; see $err)"
-  fi
+# The program an accepted fill writes runs: the edit session's accept
+# writes `1` into a copy of the positive fixture, and the copy runs to 1.
+# What the session shows and writes is tests/frontier/edit.transcript;
+# running a program is the host's.
+run_accepted_fill() {
+  local compiler="$1" dir="$2" copy="$2/positive-hole.mn"
+  cp "$ROOT/tests/frontier/mn-constrained-hole-workflow.mn" "$copy"
+  printf 'y\n' | "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" "$compiler" \
+    edit "../${dir#$ROOT/}/positive-hole" > "$dir/positive-hole.edit.out" 2> "$dir/positive-hole.edit.err"
+  run_program "$compiler" positive-hole-post-edit "$copy" 1 no "$dir"
 }
 
-edit_fixture() {
-  local compiler="$1" dir="$2" stem="$3" fixture="$4"
-  EDIT_SCRATCH="$dir/$stem.mn"
-  EDIT_TARGET="../${dir#$ROOT/}/$stem"
-  EDIT_OUT="$dir/$stem.edit.out"
-  EDIT_ERR="$dir/$stem.edit.err"
-
-  cp "$fixture" "$EDIT_SCRATCH"
-
-  # `edit` is a continuing session. Ten seconds is enough for its first
-  # projection and one accepted action; timeout is not itself a failure if the
-  # projection and patch both landed. The invocation reads all Wasmtime flags
-  # from wt-env.sh, the same source as wt_run.
-  printf 'y\n' | timeout 10 "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" \
-    "$compiler" edit "$EDIT_TARGET" > "$EDIT_OUT" 2> "$EDIT_ERR"
-  EDIT_RC=$?
-}
-
-assert_edit_window() {
-  local label="$1"
-  if [ "$EDIT_RC" -eq 0 ] || [ "$EDIT_RC" -eq 124 ]; then
-    pass "$label edit session reached projection window (exit=$EDIT_RC)"
-  else
-    fail "$label edit session trapped (exit=$EDIT_RC; see $EDIT_ERR)"
-  fi
-}
-
-check_and_execute() {
-  local compiler="$1" dir="$2" label="$3" expected="$4" patched="$5"
-  local check_out="$dir/$label.check.out" check_err="$dir/$label.check.err"
-  local normalized="$dir/$label.check.normalized" rc
-
-  wt_run --dir "$ROOT" "$compiler" check "$EDIT_TARGET" > "$check_out" 2> "$check_err"
-  rc=$?
-  normalize_errors "$check_err" > "$normalized"
-  if [ "$patched" -eq 1 ] && [ "$rc" -eq 0 ] && [ ! -s "$normalized" ]; then
-    pass "$label patched check (zero reported proof debt)"
-  else
-    fail "$label patched check (patch missing, exit=$rc, or proof debt remains; see $check_err)"
-  fi
-
-  run_program "$compiler" "$label-post-edit" "$EDIT_SCRATCH" "$expected" no "$dir"
-}
-
-run_positive_workflow() {
-  local compiler="$1" dir="$2" patched=0
-  local fixture="$ROOT/tests/frontier/mn-constrained-hole-workflow.mn"
-
-  compile_hole_fixture "$compiler" positive-hole "$fixture" "$dir"
-  edit_fixture "$compiler" "$dir" positive-hole "$fixture"
-  assert_edit_window positive-hole
-
-  if grep -Fq '1 candidate(s)' "$EDIT_OUT"; then
-    pass "positive-hole candidate filter (exactly one survivor)"
-  else
-    fail "positive-hole candidate filter (missing exact one-survivor projection)"
-  fi
-
-  if grep -Fq "the type's integer inhabitants" "$EDIT_OUT"; then
-    pass "positive-hole survivor Reason surfaced"
-  else
-    fail "positive-hole survivor Reason not surfaced"
-  fi
-
-  if ! grep -Fq '??' "$EDIT_SCRATCH" && \
-      grep -Eq 'with Pure = 1([[:space:]]|$)' "$EDIT_SCRATCH"; then
-    pass "positive-hole patch applied (?? replaced by 1)"
-    patched=1
-  else
-    fail "positive-hole patch not applied to scratch source"
-  fi
-
-  check_and_execute "$compiler" "$dir" positive-hole 1 "$patched"
-}
-
-has_rejection_reason() {
-  local name="$1"
-  grep -Eiq \
-    "(${name}.*(Network|forbidden|effect|row|reject)|(Network|forbidden|effect|row|reject).*${name})" \
-    "$EDIT_OUT" "$EDIT_ERR"
-}
-
-run_capability_workflow() {
-  local compiler="$1" dir="$2" patched=0 rejected
-  local fixture="$ROOT/tests/frontier/mn-capability-hole-workflow.mn"
-
-  compile_hole_fixture "$compiler" capability-hole "$fixture" "$dir"
-  edit_fixture "$compiler" "$dir" capability-hole "$fixture"
-  assert_edit_window capability-hole
-
-  # TWO survivors since the domain read landed (2026-09-18), and the second is
-  # the medium being right: `Seven = Int where self == 7` admits exactly one
-  # value, so `7` is a proven fill and withholding it would be the medium
-  # hiding what it knows. The fixture's own premise sentence — "integer seeds
-  # omit 7" — described the floor's blindness, not a law. What this leg is FOR
-  # survives untouched: the !Network row admits `pure_seven()` alone of the
-  # four candidates, and the three refusals keep their Reasons, asserted below.
-  # A literal and a named call are a REAL choice (the name carries intent the
-  # magic number loses), so the tie is correct and `rank_of` already orders the
-  # named callee first without suppressing the literal.
-  if grep -Fq '2 candidate(s)' "$EDIT_OUT" && grep -Fq 'pure_seven' "$EDIT_OUT"; then
-    pass "capability-hole filter kept pure_seven() beside the type's one literal inhabitant"
-  else
-    fail "capability-hole filter did not expose the pure survivor beside the literal"
-  fi
-
-  for rejected in direct_network transitive_network higher_order_network; do
-    if has_rejection_reason "$rejected"; then
-      pass "capability-hole retained $rejected rejection Reason"
-    else
-      fail "capability-hole lost $rejected rejection Reason"
-    fi
-  done
-
-  # A tie never patches — the accept path fills only a lone survivor, so the
-  # authored `??` must survive here exactly as it does in the tie fixture. The
-  # accept path's own coverage is run_positive_workflow's, where `Positive`
-  # leaves one survivor and the patch lands.
-  if grep -Eq 'with !Network = \?\?([[:space:]]|$)' "$EDIT_SCRATCH"; then
-    pass "capability-hole refused to guess between the name and the literal"
-  else
-    fail "capability-hole patched a tie instead of asking"
-  fi
-}
-
-# Two proven survivors is the teaching TIE-BREAK (PLAN §5): the medium
-# surfaces both with their admission Reasons and refuses to guess — the
-# authored ?? survives the accepted edit action untouched.
 # lsp_frame — one Content-Length-framed JSON-RPC message (LSP wire format, per
 # lib/lsp_frame.mn). The length is the BYTE count of the body.
 lsp_frame() {
@@ -1573,35 +1440,6 @@ run_lsp_hover() {
     fail "$label lsp serve REGRESSED to the json float trap (Hβ.emit.float-evidence-ft returned; see $serr)"
   else
     fail "$label lsp serve answered no hover contents (exit=$src; see $sout, $serr)"
-  fi
-}
-
-run_capability_tie_workflow() {
-  local compiler="$1" dir="$2"
-  local fixture="$ROOT/tests/frontier/mn-capability-tie.mn"
-
-  compile_hole_fixture "$compiler" capability-tie "$fixture" "$dir"
-  edit_fixture "$compiler" "$dir" capability-tie "$fixture"
-  assert_edit_window capability-tie
-
-  # THREE survivors since the domain read landed (2026-09-18): the two named
-  # candidates the !Network row admits, plus `7`, which `Seven`'s own
-  # refinement names as the type's one inhabitant. Each of the three is a
-  # distinct intent — two names that happen to denote the same constant are
-  # NOT one meaning (`default_retries()` and `max_batch()` both being 7 is a
-  # coincidence of values), and a bare literal is a third choice that keeps no
-  # name at all. So the medium asks, which is what this leg exists to assert.
-  if grep -Fq '3 candidate(s)' "$EDIT_OUT" && \
-      grep -Fq 'pure_seven' "$EDIT_OUT" && grep -Fq 'calm_seven' "$EDIT_OUT"; then
-    pass "capability-tie projection surfaced every proven survivor"
-  else
-    fail "capability-tie projection missing the three-survivor tie"
-  fi
-
-  if grep -Eq 'with !Network = \?\?([[:space:]]|$)' "$EDIT_SCRATCH"; then
-    pass "capability-tie refused to guess (authored ?? survives the accept)"
-  else
-    fail "capability-tie guessed between proven survivors (?? was replaced)"
   fi
 }
 
@@ -1817,20 +1655,8 @@ for i in "${!compilers[@]}"; do
     run_refusal_linked "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" E_TypeMismatch "$dir" arena
   done
-  # The refusal's words and the run's stdout — what a fixture contract cannot
-  # name yet — read off a compile and a run of the leg's own.
-  wt_entry "$ROOT/tests/frontier/mn-threaded-branch-state-store.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/threaded-branch-state-store.compile.err"
-  if grep -q 'an in-place store into `buf`' "$dir/threaded-branch-state-store.compile.err"; then
-    pass "threaded-branch-state-store names the in-place store"
-  else
-    fail "threaded-branch-state-store refusal does not name the in-place store (see $dir/threaded-branch-state-store.compile.err)"
-  fi
-  wt_entry "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/threaded-branch-captured-store.compile.err"
-  if grep -q 'stores into memory older than itself at' "$dir/threaded-branch-captured-store.compile.err"; then
-    pass "threaded-branch-captured-store names the store"
-  else
-    fail "threaded-branch-captured-store refusal does not name the store (see $dir/threaded-branch-captured-store.compile.err)"
-  fi
+  # The run's stdout, which a fixture contract cannot name yet, read off a
+  # run of the leg's own.
   wt_entry "$ROOT/tests/frontier/mn-spawn-module-init-once.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/spawn-module-init-once.wat" 2> /dev/null \
     && wt_asm "$dir/spawn-module-init-once.wat" "$dir/spawn-module-init-once.wasm" 2> /dev/null \
     && wt_run "$dir/spawn-module-init-once.wasm" > "$dir/spawn-module-init-once.run.out" 2> /dev/null
@@ -1917,73 +1743,7 @@ for i in "${!compilers[@]}"; do
   # base.
   run_unnarrated "$compiler" dead-base-unnarrated \
     "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 E_FieldOffsetUnprovable "$dir"
-  # The root-row governance gate's three tiers, each pinned: an
-  # EVIDENCE-floor demand refuses even with an install elsewhere (a
-  # dead-chain perform walks garbage evidence, no belt — the one strict
-  # sharpening); a STATEFUL singleton clears on an install (the
-  # SingletonUninstalled guard the loud belt — the preinstall micro
-  # holds that tier at 134); a STATELESS singleton grounds by the
-  # value-sound licence (the arm ignores state), pinned by the
-  # escaped-install tripwire below (exit 7 — the modal install-identity
-  # frontier owns the eventual split, like residual-absence beside it).
-  # RE-BANKED 2026-09-11 from 7 to 134, ON PURPOSE. The 7 pinned the
-  # value-sound licence for stateless arms — a chainless direct call that
-  # answered correctly because the arm ignores its record. The uniform world
-  # bracket ended that licence, and the two are incompatible by construction:
-  # the bracket's CONTENT is the install's world, so an arm reached after its
-  # install's extent closed has no world to run under. The fixture's own text
-  # reserved this split for band A's install identity; making the walk uniform
-  # answered it as a side effect, so it is answered deliberately here. 134 was
-  # the walk's loud refusal — nothing executes unproven. THE COMPILE-TIME
-  # REFUSAL LANDED 2026-09-27 and it was never band A's: the executable root
-  # gate reads the row alone now (the "installed somewhere" credit is deleted),
-  # and the escaped thunk's `ping()` is in main's row with no enclosing
-  # install — E_EffectUnhandled names Ping, no WAT, nonzero exit. The runtime
-  # walk's 134 stays as the belt beneath it, never reached from this program.
-  wt_entry "$ROOT/tests/frontier/mn-effect-escaped-install.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/effect-escaped-install.wat" 2> "$dir/effect-escaped-install.err"
-  esc_rc=$?
-  if [ "$esc_rc" != "0" ] && [ ! -s "$dir/effect-escaped-install.wat" ] && grep -q 'E_EffectUnhandled.*Ping' "$dir/effect-escaped-install.err"; then
-    pass "effect-escaped-install refuses at COMPILE (E_EffectUnhandled names Ping, no WAT)"
-  else
-    fail "effect-escaped-install (rc=$esc_rc wat=$(wc -c < "$dir/effect-escaped-install.wat"); see $dir/effect-escaped-install.err)"
-  fi
   run_lsp_hover "$compiler" "$dir" lsp
-
-  # ── the annotation verifier PROVES (never reads boundness) ──────────
-  # Seen RED on the pre-fix boot: an allocating main (++ carries its
-  # callee's row) was offered "!Alloc ... proven zero allocation" — the
-  # tentative-apply's post-bind NBound read was the whole check, and a
-  # bind always sticks. The fix returns row_subsumes(body_row, narrowing)
-  # from the apply — the fn-finalize gate's own engine. Since T2
-  # (2026-10-13) a lock is taught only where a clause stands on it, so the
-  # fixture's g declares `!Trap` over a call to the allocating f: f's line
-  # carries `!Trap` (stood on, proven) and never `!Alloc` (unprovable, and
-  # nothing stands on it).
-  wt_entry "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
-  # Judge f's OWN line: teach projects every fn in the linked blob.
-  if grep '^f:' "$dir/teach-alloc.out" | grep -q '!Alloc'; then
-    fail "teach-alloc-honest (an allocating body was offered !Alloc as proven)"
-  elif grep '^f:' "$dir/teach-alloc.out" | grep -q '!Trap'; then
-    pass "teach-alloc-honest (no !Alloc proposal on an allocating body; the !Trap its caller stands on is taught)"
-  else
-    fail "teach-alloc-honest (the stood-on lock died; got: $(grep '^f:' "$dir/teach-alloc.out" | head -1))"
-  fi
-  # A LOCK IS TAUGHT ONLY WHERE SOMETHING STANDS ON IT (T2, 2026-10-13).
-  # `fn main() = 42` has no callers, so no clause rests on its purity and
-  # nothing is taught. RED on boot c939f5b8, where this line read
-  # `main: → add \`with Pure\` — locks Pure`: the strongest clause a body
-  # proved was offered whether or not anything depended on it, 367 of 427
-  # declarations across six wheel modules on 2026-10-06. The locks that ARE
-  # stood on are the teach battery's lock-* fixtures (tests/teach).
-  wt_entry "$ROOT/tests/frontier/mn-teach-pure-control.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
-  if ! grep -q '^main:' "$dir/teach-pure.out" && grep -q 'nothing to unlock in .*\bmain\b' "$dir/teach-pure.out"; then
-    pass "teach-claimless-none (a declaration no clause stands on is taught no lock)"
-  else
-    fail "teach-claimless-none (got: $(grep '^main:' "$dir/teach-pure.out" | head -1))"
-  fi
-
-  ho_file="$ROOT/tests/proposals/arg-slot-operand.mn"
-  compile_hole_fixture "$compiler" hole-operand "$ho_file" "$dir"
 
   # Hβ.emit.under-application-suspension's crucible: a bare
   # under-application (one field absent, no ?? marker) is the partial it
@@ -2031,48 +1791,12 @@ for i in "${!compilers[@]}"; do
   # missing line is the mute-gate class this file's canary legs exist to
   # refuse.
 
-  # Severance honesty (audit): a function whose row carries Alloc is never
-  # called real-time safe, a pure one still is, and one that may never return
-  # (`at` in the grid controller carries Diverge) is only allocation-free.
-  wt_entry "$ROOT/tests/frontier/mn-audit-severance-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" audit examples/grid/station.mn > "$dir/audit-station.out" 2>/dev/null
-  if grep -A1 '^allocates ' "$dir/audit-sev.out" | grep -q 'real-time safe'; then
-    fail "audit-severance-honest (an allocating row was offered Alloc severance)"
-  elif ! grep -A1 '^at uses .*Diverge' "$dir/audit-station.out" | grep -q 'allocation-free (it never allocates memory; that it always finishes is not proven)'; then
-    fail "audit-severance-honest (a function that may never return was called real-time safe; see $dir/audit-station.out)"
-  elif grep -A1 '^quiet ' "$dir/audit-sev.out" | grep -q 'real-time safe'; then
-    pass "audit-severance-honest (Alloc never offered on an allocating row; the pure control keeps it)"
-  else
-    fail "audit-severance-honest (the pure control lost its true severance offer)"
-  fi
-
-  # TRAP (2026-10-06): the deliberate trap is in the row. extract_chase traps
-  # at depth > 1000 by its own comment, and its row must say so; the audit's
-  # !Trap offer states what !Trap proves and never "Total". RED on boot
-  # 4228ff71: `extract_chase(handle, depth) with Memory + GraphRead`, and the
-  # audit offered "Total (proven never to trap)" over it.
+  # The deliberate trap is in the row: extract_chase traps at depth > 1000
+  # by its own comment, and its row must say so.
   trap_where=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/src/main.mn" extract_chase 2>/dev/null | head -1)
   trap_row_ok=0
   printf '%s' "$trap_where" | grep -qE '^→ extract_chase\(.*\).* with .*\bTrap\b' && trap_row_ok=1
   judge trap-in-the-row "$trap_row_ok" "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
-  trap_label_ok=1
-  grep -q 'Total (proven' "$dir/audit-sev.out" && trap_label_ok=0
-  judge trap-free-label "$trap_label_ok" "trap-free label (no \"Total\" offer on the audit while termination is unrowed)"
-
-  # The verb-shape tier (audit): a 2-step single-use let-chain invites the
-  # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
-  # law's own exception) stay silent — both faces asserted.
-  wt_entry "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
-  if grep -A4 '^chained ' "$dir/audit-pipe.out" | grep -q 'a 2-step chain of lets'; then
-    if grep -A4 '^forked ' "$dir/audit-pipe.out" | grep -q 'could be one |> pipe' \
-       || grep -A4 '^single ' "$dir/audit-pipe.out" | grep -q 'could be one |> pipe'; then
-      fail "audit-pipe-shape (a <|-shaped or single-step let earned a false pipe invite)"
-    else
-      pass "audit-pipe-shape (the 2-step chain invites |>; the controls stay silent)"
-    fi
-  else
-    fail "audit-pipe-shape (the let-chain's |> invite is missing)"
-  fi
 
   # ── tighten and fmt write files; a program run keeps what they mean ──
   # What `mentl tighten` and `mentl fmt` write, and the checks around each,
@@ -2124,42 +1848,6 @@ for i in "${!compilers[@]}"; do
     fail "fmt destructuring let run (exit=$lets_run)"
   fi
 
-  # ── THE GRADIENT READS ADDRESSES (D3) ─────────────────────────────
-  # The field of ONE module in the ONE order the session's argmax reads:
-  # score descending, then source position. A helper's decls sit inside the
-  # entry's line range, and on boot 9387fea1 the field listed them under
-  # main's coordinates (5 positions, `twice` at main:4 and `total` at main:6),
-  # tie-broken by handle. The session's head is that field's head, and its
-  # accept is a clause the formatter writes into the decl's own file: on the
-  # same boot the session focused the PRELUDE's `unwrap_or` (61:1) and
-  # accepting it wrote `  with Pure` above main.mn's first line. Since T2
-  # (2026-10-13) a lock is a position only where a clause stands on it: main
-  # and quiet declare `!Fail`, so `add` (two clauses stand on it) ranks above
-  # `build` (one), and main and quiet, authoring clauses, are no positions —
-  # on boot c939f5b8 the field held three locks nothing stood on.
-  gdemo="$ROOT/tests/frontier/gradient-module-demo"
-  gfout=$(wt_run --dir "$gdemo::." --dir "$ROOT::/mentl-home" "$compiler" main.mn:0 2>"$dir/gradient-field.err")
-  gorder=$(printf '%s\n' "$gfout" | grep -oE '^── main:[0-9]+:[0-9]+' | tr '\n' ' ')
-  if printf '%s' "$gfout" | grep -q '2 gradient position(s) in main' \
-     && [ "$gorder" = "── main:5:1 ── main:3:1 " ] \
-     && printf '%s' "$gfout" | grep -q 'stand on it' \
-     && ! printf '%s' "$gfout" | grep -qE "'(twice|total)'"; then
-    pass "gradient field: the module's own positions, ranked by what stands on them then source order"
-  else
-    fail "gradient field (order: $gorder; see $dir/gradient-field.err)"
-  fi
-  gadir="$dir/gradient-accept"
-  rm -rf "$gadir"; mkdir -p "$gadir" && cp "$gdemo"/*.mn "$gadir/"
-  gaout=$(printf 'y\n' | timeout 60 "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$gadir::." --dir "$ROOT::/mentl-home" "$compiler" edit main 2>"$dir/gradient-accept.err")
-  if printf '%s' "$gaout" | grep -q "params of 'add'" \
-     && grep -qx 'fn add(a, b) with !Fail = a + b' "$gadir/main.mn" \
-     && [ "$(grep -c 'with' "$gadir/main.mn")" = "3" ] \
-     && cmp -s "$gdemo/helper.mn" "$gadir/helper.mn" \
-     && wt_run --dir "$gadir::." --dir "$ROOT::/mentl-home" "$compiler" check main > /dev/null 2>&1; then
-    pass "gradient accept: the session's head is the field's head, and the clause lands in its declaration"
-  else
-    fail "gradient accept (main.mn now: $(tr '\n' '|' < "$gadir/main.mn" | head -c 200); see $dir/gradient-accept.err)"
-  fi
   # ONE RENDERER FOR THE DEVELOPER'S EYE (render lane, 2026-10-06). `doc`
   # and `where` render every type through the formatter's projection with
   # free variables named by the render context: no forensic handle (`@e`),
@@ -2573,45 +2261,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "living session (moved=$(grep -c 'session: tree moved' "$liv_dir/err.log"); see $liv_dir/out.jsonl)"
   fi
-  # Instance-arg TYPING against the registered signature (the TTuple
-  # scheme register_effect_ops publishes): a scalar-literal arg whose
-  # ground type disagrees reports the mismatch and the head parses clean
-  # (no P_ beside it). The other faces are their fixtures' contracts.
-  wt_entry "$ROOT/tests/frontier/mn-effect-instance-argty.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-argty.err"
-  if grep -q 'E_TypeMismatch' "$dir/inst-argty.err" && ! grep -q 'P_' "$dir/inst-argty.err"; then
-    pass "instance arg typing (wrong scalar type reports; the head parses clean)"
-  else
-    fail "instance argty (see $dir/inst-argty.err)"
-  fi
-  # ── the fn-type row is a GATE at the argument edge ─────────────────
-  # unify_row's Closed~EtAll meet is SUBSUMPTION — pass-no-bind, the
-  # negation row judging — where the old equality arm falsely refused
-  # every closed-row argument. Seen RED on the prior boot: the quiet
-  # thunk reported a second mismatch (hof 2, clean 1); here the quiet
-  # face admits and runs while the noisy edge alone reports.
-  # Two faces, two compiles since 2026-09-25: E_EffectMismatch is ARMED, so
-  # the noisy edge is a REFUSAL (no WAT, nonzero exit) and can no longer
-  # ride beside the quiet face's run. The old single-fixture form banked
-  # "exit 42 with exactly one mismatch" — a real `!WASI` leak the unarmed
-  # era let run (§9.11).
-  wt_entry "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
-  hofn_rc=$?
-  if [ "$hofn_rc" != "0" ] && [ ! -s "$dir/hof-gate-noisy.wat" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err")" = "1" ]; then
-    pass "hof row gate, noisy face (REFUSED: exactly one mismatch at the printing edge, no WAT)"
-  else
-    fail "hof row gate, noisy face (rc=$hofn_rc wat=$(wc -c < "$dir/hof-gate-noisy.wat") mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err"); see $dir/hof-gate-noisy.err)"
-  fi
-  # ── the persist_branch resume barrier ──────────────────────────────
-  # The op's param row severs image-external effects (a crashed branch
-  # RE-RUNS its thunk — §4④): the replay-exact branch is admitted by
-  # subsumption and the whole checkpoint+run+join loop runs; a printing
-  # branch reports the mismatch naming the severed row at its own edge.
-  wt_entry "$ROOT/tests/frontier/mn-persist-branch-external.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/pb-ext.err"
-  if grep -q 'E_EffectMismatch' "$dir/pb-ext.err" && grep -q '!WASI' "$dir/pb-ext.err"; then
-    pass "persist branch barrier reports the replaying external (severed row named)"
-  else
-    fail "persist branch external (see $dir/pb-ext.err)"
-  fi
   # ── the persist VALUE barrier (owns across replay) ─────────────────
   # A frame-declared authored `own` free in a persist_branch thunk is
   # re-consumed per resumed run — T_OwnAcrossReplay names it at the call
@@ -2627,9 +2276,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "persist value barrier (rc=$pbo_rc fired=$pbo_n; see $dir/pb-own.err)"
   fi
-  run_positive_workflow "$compiler" "$dir"
-  run_capability_workflow "$compiler" "$dir"
-  run_capability_tie_workflow "$compiler" "$dir"
+  run_accepted_fill "$compiler" "$dir"
 
   # ─── The decl-name address face (bound beats ghost) ────────────────
   # A column inside a decl's NAME must project the decl, never a

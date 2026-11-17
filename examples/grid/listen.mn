@@ -97,4 +97,4 @@ fn step(smooth, learn, n: Int, x2: Float, x1: Float) = {
 fn main() = {
   step(smoother(80.0), learner(0.005), 1, 0.0, 0.0)
   0
-}
+} ~> wasi_stdin

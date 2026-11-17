@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `6546ad532797`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `f370f81f024b`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -66,8 +66,10 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   on one fixture into 17 transcripts. P3d followed on 2026-11-16: the
   filesystem is installed once, at `main`, and a transcript keeps what
   its commands write in memory, so `fmt`, `tighten`, `accept`, `rename`
-  and `new` run in one. The rest of P3 waits on what its legs need
-  (§11.B, P3); P4, P7 and P5 follow.
+  and `new` run in one. P3e followed the same day: a program reads its
+  input through the `Stdin` effect, and a transcript gives a command its
+  input, so `mentl edit` runs in one. The rest of P3 waits on what its
+  legs need (§11.B, P3); P4, P7 and P5 follow.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1185,9 +1187,10 @@ accepts each program and `mentl run` shows the break.
 - The page cannot play a lesson (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
   calls. The landing pass, the march and the batteries' host loop are shell
-  scripts under tools/ (§11.9). 36 lines of the frontier gate pipe a
+  scripts under tools/ (§11.9). 24 lines of the frontier gate pipe a
   compiler's answer into `grep -q` (144 before P3c moved 56 legs into
-  transcripts, 2026-11-15, and 38 before P3d moved 20 more, 2026-11-16),
+  transcripts, 2026-11-15, 38 before P3d moved 20 more, and 36 before
+  P3e moved 31 more, 2026-11-16),
   which can read a present answer as absent at
   random (§11.B, "Three checks that failed at random"); P3's later
   batches move them.
@@ -1407,7 +1410,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1461,6 +1464,9 @@ leave, and the landing deletes them.
    legs that read a verb's text on one fixture are 17 transcripts. P3d
    landed on 2026-11-16 (pin 6546ad532797): the filesystem is installed once,
    at `main`, and a transcript keeps what its commands write in memory.
+   P3e landed the same day (pin f370f81f024b): a program reads its input
+   through the `Stdin` effect, and a transcript gives a command its input,
+   so `mentl edit` runs in one.
    P3's later batches are cut into boxes as their groundwork comes. Then P4, P7
    and P5, the newest engine, which T4 needs for exception handling and M5
    for multiple memories.
@@ -1511,8 +1517,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
-3 is P3e.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1573,10 +1578,25 @@ minute, and no expectation kept by hand.
   battery's rename contract became the transcripts of its 11 fixtures. The
   gate fell to 295 legs, 3,142 lines and 36 lines that pipe into `grep
   -q`. A project folder needs nothing more: its imports resolve from the
-  repository's root. Each later batch brings what its legs need: stdin,
-  for an `edit` session; `// expect:` fixtures, for the legs that compile
-  and run a program; and a form for the legs that compare against an
-  outside program, a warm image or an LSP exchange.
+  repository's root. P3e, built the same day, made the process's input
+  the `Stdin` effect (lib/io.mn), which `main` installs as `wasi_stdin`
+  as it installs `stdout_console` for output, since a handler of `WASI`
+  is never consulted (§11.12). A transcript gives a command its input as
+  lines after `< `, and the answer shows each line where the command read
+  it, so the edit session, its person's `y` and the file its accept
+  writes are a contract (tests/frontier/edit.transcript). The five verb
+  runners that installed their own stderr writer say what they say
+  through their caller's, and the edit session names its position as
+  `module:line:col`. 31 legs left the gate, which fell to 264 legs, 2,789
+  lines and 24 lines that pipe into `grep -q`. Each later batch brings
+  what its legs need: a session over a named project, with a file that
+  changes between two reads, for the `session` and `mcp` legs, which link
+  `main` from the working directory, the compiler itself at the
+  repository's root; `// expect:` fixtures, for the legs that compile
+  and run a program, among them the program an accepted fill writes; and
+  a form for the legs that compare against an outside program, a warm
+  image or an LSP exchange, whose frames `serve` writes past the
+  transcript's writers.
 - P4. A document's quoted output is re-run by a command that fails when
   the pin prints something else and rewrites the quote on request (§11.5).
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
@@ -1868,7 +1888,8 @@ read false: 88 of 2,000 runs on that one answer. The leg now reads the
 answer from a file, as the gate's relocation legs already did, and read
 false in none of 2,000 runs. On 2026-11-15 the frontier gate held 144
 lines that pipe a captured answer into `grep -q`, 38 after P3c the same
-day, and 36 after P3d on 2026-11-16. Any of them whose answer is written
+day, 36 after P3d on 2026-11-16, and 24 after P3e the same day. Any of
+them whose answer is written
 in more than one chunk can read false the same way, and a negated one,
 `! printf … | grep -q`, can read true, which passes a leg that should fail.
 They leave when the gate's legs are read by the medium instead of the
@@ -2063,213 +2084,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · P3e · A program reads its input through the `Stdin` effect,
-   and a transcript gives a command its input.** Written 2026-11-16 and
-   measured on probe compilers built from pin 6546ad532797's source.
-
-   What a person sees.
-   - `mentl test` replays a command that reads its input. The transcript
-     gives the command its input as lines after `< `, and the answer shows
-     each line at the point the command read it, so `mentl edit` runs in a
-     transcript. tests/frontier/edit.transcript holds four sessions: the
-     render, the person's `y` after it, and the file the accept writes.
-   - The edit session names where it stands as the developer does, `Mentl
-     @ tests/frontier/mn-capability-tie:17:38`, where it printed the
-     cursor's handle, `Mentl @ handle=7928`, a number that moves with any
-     edit to the library.
-   - A program says where its input comes from with one install, as it
-     says where its printing goes. The grid controller reads its readings
-     through `Stdin`, and its `main` ends `~> station ~> wasi_stdin`, so a
-     test can give it recorded readings by installing another handler.
-     `mentl audit examples/grid/station.mn` shows `reading` and `step`
-     using `Stdin`, and only `main` reaching `WASI`.
-   - What `edit`, `serve`, `repl`, `session` and `mcp` say goes through
-     the writer their caller installs. At a terminal the edit session now
-     shows the compile's steps while it links, and the row is cleared
-     before its first render.
-   - 31 legs leave tools/frontier-gate.sh: 27 become commands of four
-     transcripts, and four repeated a contract a fixture holds. The gate
-     falls from 3,142 lines to 2,789, from 295 legs to 264, and from 36
-     lines that pipe into `grep -q` to 24.
-
-   Fails today, on pin 6546ad532797.
-   - A transcript holding `$ mentl edit tests/frontier/mn-capability-tie`
-     fails: "`mentl edit tests/frontier/mn-capability-tie` does not run in
-     a transcript: edit reads its person's answers on stdin".
-   - `printf 'y\n' | mentl edit tests/frontier/mn-capability-tie` prints
-     `Mentl @ handle=7928`.
-   - `mentl query src/main.mn "refs of progress_stderr"` answers 6: `main`
-     and the five runners of edit, serve, repl, session and mcp, each of
-     which installs its own stderr writer, so what it says bypasses the
-     writer its caller installs.
-   - 31 legs feed a person's answer or a program on stdin (`printf 'y\n' |
-     … edit`, `wt_entry FILE | … teach -`) and read the answer through
-     patterns.
-
-   Why an effect of its own. The process boundary is already an effect,
-   `WASI`, and a handler of it is accepted by `mentl check`, but its arms
-   never run: every WASI operation lowers to the host's import. A scratch
-   program whose handler answers each write to fd 1 by dropping it passes
-   the check and prints what it wrote (2026-11-16). So a transcript cannot
-   answer `fd_read` itself, and §11.12 records the defect beside its
-   `Alloc` twin. Output already has an effect of its own, `Console`, which
-   `main` installs once, and the input gets one beside it.
-
-   The form.
-   - lib/io.mn: `effect Stdin { stdin_read(Addr, Int) -> Int }`, WASI's own
-     read in shape: up to the size asked, put at the address the reader
-     allocated, answering how many, 0 at the end. The bytes land in the
-     reader's memory, so the controller, which reads each line inside the
-     arena of one reading, allocates nothing outside it. `handler
-     wasi_stdin` answers with one `read_chunk(0, buf, size)`. `read_stdin`
-     and `read_one_byte`, and through it `read_stdin_line`, call
-     `stdin_read` where they called `read_chunk(0, …)`, as does
-     lib/lsp_frame.mn's body read. `fd_read_all(fd)` folds into
-     `read_stdin`, its one caller. The stdin section keeps its 39 lines,
-     and the effect and its handler stand at the file's end, so no library
-     line a fixture or a transcript cites moves.
-   - src/main.mn: `main` installs `wasi_stdin` beside `wasi_filesystem`.
-   - examples/grid/station.mn, station-leak.mn and listen.mn install
-     `wasi_stdin` at `main`; the controller's comment keeps its two lines,
-     so no line of either moves, and README's quote of the twin's refusal
-     changes only where `main` ends (`station-leak:452:1-455:27`, where it
-     said `455:13`).
-   - The transcript. `type Stream = Printed | SaidBeside | Taken` and
-     `type SaidPiece = SaidPiece(Stream, String)` replace the two-variant
-     piece, so a join compares streams (`stream == next`) where the pair
-     match listed every mismatch. `handler transcript_bank(input: String)
-     with pieces = [], rest = input` answers `stdin_read` from `rest`:
-     `input_taken(rest, size)` is the next bytes, copied to the reader's
-     buffer and kept as a `Taken` piece when not empty (`taken_kept`), and
-     `input_after(rest, size)` is the rest. Each of the two answers a part
-     of `rest` in every branch, `str_slice(rest, 0, 0)` where nothing is
-     taken, so the store claim places the answer. `input_unread()` joins
-     `pieces_taken()` in `TranscriptBank`. `command_input(answer)` is the
-     answer's `<` lines, each with its newline (`input_of_line`).
-     `replayed(words, input)` and `answer_kept(parsed, input)` take it;
-     `command_miss` and `command_replay` pass `command_input(want)`.
-     `answer_lines(exit, pieces, unread, written)` shows the input never
-     read after `[unread]` (`unread_lines`), then the files, then the exit.
-     `stream_line` and `taken_line` write a `Taken` line after `< `, and
-     `<` alone for an empty one.
-   - `verb_refusal`: `edit`, `repl`, `mcp`, `session` and the `-` targets
-     of `audit` and `teach` run; `stdin_refusal` leaves. `serve` stays
-     refused: lib/lsp_frame.mn writes its frames to fd 1 itself
-     (`write_lsp_frame` through `print_string`), past the writers a
-     transcript keeps. A bare `mentl` stays refused: its answer is a module.
-   - The runners of `edit`, `serve` and `repl` (src/main.mn) and of
-     `session` and `mcp` (src/mcp.mn) drop their own
-     `progress_stderr(false)`, so what each says reaches the writer its
-     caller installed, which is `main`'s or a transcript's.
-     `progress_stderr` already clears its live row before a line is written
-     and at each step's end, so at a terminal the edit session shows the
-     steps and then a clean render (read under `script`, which gives the
-     session a terminal).
-   - src/cursor_transport.mn: `show_cursor_at(cursor)` writes the
-     position as `module:line:col`, from the handle's module and span,
-     where `show_handle_label` wrote `handle=N`.
-
-   The legs and the transcripts. Each command runs from the repository's
-   root, and each leg's checks were read on its transcript's answer.
-   - tests/frontier/edit.transcript (new): the positive hole's session,
-     its write and the check after it that prints nothing (five legs: the
-     session's window, the one-survivor filter, its Reason, the patch, the
-     patched check); the capability hole's session (six: the window, the
-     survivors, the three rejections with their reasons, and no write); the
-     tie's session (three: the window, the three survivors, and no write);
-     the gradient field at `main.mn:0` and its session, which writes `with
-     !Fail` into `add` and leaves `helper.mn` alone (two).
-   - tests/frontier/refusal-words.transcript (new): `mentl check` of the
-     six fixtures whose refusal's words six legs read off a compile fed on
-     stdin: instance argument typing, the two threaded-branch stores, the
-     escaped install, the noisy row gate and the persist barrier.
-   - tests/frontier/teach-authored.transcript gains the two `teach` legs
-     (a lock is taught only where a clause stands on it), and
-     tests/frontier/audit-shapes.transcript the severance, trap-free label
-     and pipe-shape legs, with the controller's audit, whose `at` line the
-     severance leg read.
-   - The four compiles that asserted a hole's program is refused
-     (`compile_hole_fixture`, on the three workflow fixtures and the
-     hole-operand one) leave without a transcript:
-     tests/micros/mn-refuse-hole.mn holds that contract
-     (`// expect: refuse E_UnresolvedHole`), and a check reports a hole as
-     an open position and exits 0, which each transcript shows.
-   - One leg stays: the program the positive accept writes runs to 1
-     (`run_accepted_fill`), since running a program is the host's. It
-     moves with the batch that brings `// expect:` fixtures for programs a
-     verb wrote.
-
-   Left alone. `session` and `mcp` run in a transcript now, and their 12
-   legs stay: each links `main` from the working directory, which at the
-   repository's root is the compiler's own src/main.mn (46 modules,
-   measured with `mentl session < /dev/null`), and three of them change a
-   file between two messages. A session over a named project, and a file
-   that changes between two reads, are the next batch's groundwork. The
-   LSP leg stays with `serve`. A transcript's input lines each end with a
-   newline, so input that ends inside a line, as an LSP frame's body does,
-   waits for the LSP batch.
-
-   Found on the way, recorded in §11 without fixing. At a tie the edit
-   session's `y` says "mentl accept: no proposal at this position" (§11.5),
-   where `mentl accept` at the same address says the tie is a question:
-   the session's `apply_suggestion` and the address form's `accept_at`
-   decide one accept twice. A handler of `WASI` is accepted and never runs
-   (§11.12).
-
-   Every fact it reads, and what carries it.
-   - The command's input: the transcript's own text, read at the text
-     boundary where its author typed it (`transcript_read`, P3b).
-   - What a command writes, kept and shown: `files_kept` over
-     `memory_files` (P3d); `mentl test tests/frontier/accept.transcript`
-     on the pin shows it carried.
-   - The cursor's position: the handle's span and its module, edges the
-     judgment drew at the node (`graph_span_of`, `graph_module_of`), the
-     reads the field already prints by; `mentl
-     tests/frontier/gradient-module-demo/main.mn:0` on the pin prints `──
-     tests/frontier/gradient-module-demo/main:5:1`.
-   - A helper's answer placed by its store claim (the face, §4⑧):
-     `returns_of` (src/infer.mn) writes `ReturnsPartOf` for a function
-     whose every answer is a part of a parameter, and the census reads it
-     (`claimed_roots`, src/verify.mn).
-   No fact is read through a walk over a whole store.
-
-   What pays for it on the board, measured on the candidate with `mentl
-   verify`: the values the walk cannot place stay at 32,006, and every
-   other bound holds where it stands (3,105 places that can trap with no
-   claim, 648 claims open at a partial primitive's call, 78 open
-   obligations, 1,346 rosters). By module, from `census unplaced in
-   MODULE` with the pin on the committed source beside the candidate:
-   src/main.mn 702 to 699, where the join no longer builds a pair and takes
-   it apart (seven parts fewer), the bank's two new arms add three values
-   (the `stdin_read` arm's block and its `resume`, and `input_unread`'s
-   `resume`, as every `resume` in an arm does), `command_input`'s two
-   stages add two, and `repl`'s line answer is read through one install
-   fewer (one fewer); lib/io.mn 6 to 7, for `wasi_stdin`'s arm;
-   src/cursor_transport.mn 181 to 183, for the position's two reads, its
-   span and its module's name. The two input helpers add none, since each
-   answers a part of `rest`. A first form, which kept the runners' stderr
-   writer as a handler of its own and let the helpers answer `""`, raised
-   the count by 13 to 32,019: six for that handler's arms and six for the
-   helpers' answers, which `returns_of` reads as older memory where a
-   result may be a literal or a parameter. The census of the five
-   operators adds no index walk and no roster: `match` sites rise by one
-   in src/main.mn (158 to 159) and in src/cursor_transport.mn (35 to 36),
-   and the iteration costumes stay (13, 3, 0 and 4 in main, io, the cursor
-   and lsp_frame).
-
-   Compensations that leave: `stdin_refusal` and its two arms; the five
-   `progress_stderr(false)` installs; the gate's `compile_hole_fixture`,
-   `edit_fixture`, `assert_edit_window`, `check_and_execute`,
-   `has_rejection_reason` and the three workflow functions; the cursor's
-   handle number.
-
-   Proves it. `wt_battery <candidate> tests/frontier`: 241 of 241, the
-   two new transcripts among them. `bash tools/frontier-gate.sh
-   --compiler fresh`: 263 pass, 0 red, 1 expected red, in 220 s. The
-   controller compiled by the candidate answers the same 100,000
-   decisions as the pin's build of the committed source, in the same
-   memory (a peak of 18,668 KB, against 18,876 KB). `mentl land` passes.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
@@ -2751,7 +2565,11 @@ reports two names written for three changed lines. `mentl rename` and
 they write, a second report naming a verb nobody ran
 (tests/micros/mn-rename-fn.transcript, 2026-11-16, on pin 1818fc1554e0 as
 on the candidate). `mentl edit` prints a
-placeholder where its Why belongs. The gate's server names its version
+placeholder where its Why belongs. At a tie, the edit session's accept
+says "mentl accept: no proposal at this position"
+(tests/frontier/edit.transcript), where `mentl accept` at the same
+address says the tie is a question: the session's `apply_suggestion` and
+the address form's `accept_at` decide one accept twice (2026-11-16). The gate's server names its version
 "first-light". A session answers `where` and `query` and misses on
 `why`. The prelude imports `threading` and uses nothing from it, which
 `query imports` marks DEAD.
@@ -3215,7 +3033,11 @@ engine an early end cannot be an engine exception. Red today: a handler of
 so `!Trap` is accepted and the run stops. And a handler of `Alloc` is
 always lowered as an arena, its arms never run, so a program cannot write
 an allocator of its own; the one fact about who answers an operation
-covers that too.
+covers that too. So does a handler of `WASI`, which `mentl check`
+accepts and the lowering never consults, since every WASI operation is
+the host's import: a scratch program whose handler drops each write to
+fd 1 passes the check and prints what it wrote (2026-11-16). The
+process's input is the `Stdin` effect for that reason (lib/io.mn).
 
 ### §11.13 · The roster leaves the page, and the index walks become stages
 

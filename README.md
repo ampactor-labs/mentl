@@ -80,12 +80,12 @@ decide never uses Network: nothing in decide, and nothing it calls, performs an 
 ```
 $ mentl check examples/grid/station-leak.mn
 effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI + !Trap`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:221:5 → price_m calls `fetch` at examples/grid/station-leak:113:14 → `fetch` is an operation of Network, declared at net:11:1 at examples/grid/station-leak:153:1-258:2
-effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:452:1-455:13
+effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:452:1-455:27
 ```
 
 Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI preview 1, the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.2 component target, and a real network").
 
-On the controller itself, `mentl check` prints nothing. `main` declares `!Trap`, so the same check covers the whole program on every build, from reading a line to printing its decision, through every function `main` calls and every arm of the handler it installs. A version in which any of them could fail a check does not build:
+On the controller itself, `mentl check` prints nothing. `main` declares `!Trap`, so the same check covers the whole program on every build, from reading a line to printing its decision, through every function `main` calls and every arm of the handlers it installs: `station`, and `wasi_stdin`, which reads each line from the program's input. A version in which any of them could fail a check does not build:
 
 ```
 $ mentl check examples/grid/station.mn

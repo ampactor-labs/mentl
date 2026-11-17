@@ -91,7 +91,7 @@ handler terminal_transport with state = transport_state_init(Caret(0, Inferred("
 // the WASI boundary in one print_string. Any text-mode surface
 // (terminal, CI log, doc snapshot) reads the same projection.
 fn render_cursor_block(cursor, view) with !Mutate = match view {
-  CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_handle_label(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_verb_path(topology, show_span) ++ "\nRow      │ " ++ show_row_facet(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_teaching(teach) ++ "\nWhy      │ " ++ join(" — its type: ", map(show_reason, why)) ++ "\n",
+  CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_cursor_at(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_verb_path(topology, show_span) ++ "\nRow      │ " ++ show_row_facet(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_teaching(teach) ++ "\nWhy      │ " ++ join(" — its type: ", map(show_reason, why)) ++ "\n",
 }
 
 // ─── LSP / web / vim transports — peer frame-adapters ───────────────
@@ -422,8 +422,13 @@ fn accept_at(handle, view) = match view {
 fn render_candidate_source(node) with !Mutate = render_body_tokens(node, graph_node_body(node))
 
 // ─── Format / parse helpers per transport ──────────────────────────
-fn show_handle_label(cursor) = match cursor {
-  Cursor(handle, _, _) => "handle={int_to_str(handle)}",
+//
+// Where the cursor stands, as the developer names a position: the module
+// it was born in, and the line and column its span starts at.
+fn show_cursor_at(cursor) = match cursor {
+  Cursor(handle, _, _) => match graph_span_of(handle) {
+    Span(line, col, _, _) => "{module_name_of_handle(graph_module_of(handle))}:{int_to_str(line)}:{int_to_str(col)}",
+  },
 }
 
 fn show_node_kind(kind) with Pure = match kind {

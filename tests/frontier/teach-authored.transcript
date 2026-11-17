@@ -19,3 +19,8 @@ $ mentl tests/frontier/mn-teach-authored.mn:18:40
   Ownership: own
   Why: add flows in here, at tests/frontier/mn-teach-authored:18
        declared add, at tests/frontier/mn-teach-authored:16
+$ mentl teach tests/frontier/mn-teach-alloc-honest.mn
+  f: → add `with !Trap` — unlocks trap-free (nothing it reaches can stop with an error; that it always finishes is not proven); `g` stands on it
+  nothing to unlock in g, main
+$ mentl teach tests/frontier/mn-teach-pure-control.mn
+  nothing to unlock in main

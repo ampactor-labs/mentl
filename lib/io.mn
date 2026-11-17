@@ -240,15 +240,18 @@ fn eprint_string(s) = {
 
 // Stdin
 //
-// fd_read_all — slurp an fd to EOF into a heap-allocated flat string.
-// Reads into a raw doubling byte buffer, then materializes one flat
-// [count][tag][bytes] byte record (bytes_buf). It serves stdin
-// (read_stdin), whose size nothing states — the stream does not care where
-// the fd came from.
-fn fd_read_all(fd) = {
+// Every read below asks the Stdin effect for the input's bytes, so the
+// handler a program's caller installs says where they come from: the
+// effect and the process's own handler, `wasi_stdin`, end this file.
+//
+// read_stdin — all of the input, to its end, in one flat string: read
+// into a raw doubling byte buffer, then materialized as one flat
+// [count][tag][bytes] byte record (bytes_buf). The compiler's input path,
+// whose size nothing states.
+fn read_stdin() = {
   let initial_cap = 65536
   let buf = alloc(initial_cap)
-  match fd_read_loop(fd, buf, 0, initial_cap) {
+  match stdin_read_loop(buf, 0, initial_cap) {
     (final_buf, total) => {
       let str = bytes_buf(total)
       mem_copy(addr_at(str, 8), final_buf, total)
@@ -257,7 +260,7 @@ fn fd_read_all(fd) = {
   }
 }
 
-fn fd_read_loop(fd, buf, offset, capacity) = {
+fn stdin_read_loop(buf, offset, capacity) = {
   let chunk_size = 65536
   match if offset + chunk_size > capacity {
     let new_cap = capacity * 2
@@ -268,24 +271,21 @@ fn fd_read_loop(fd, buf, offset, capacity) = {
     (buf, capacity)
   } {
     (cur_buf, cur_cap) => {
-      let nread = read_chunk(fd, addr_at(cur_buf, offset), chunk_size)
-      if nread == 0 { (cur_buf, offset) } else { fd_read_loop(fd, cur_buf, offset + nread, cur_cap) }
+      let nread = stdin_read(addr_at(cur_buf, offset), chunk_size)
+      if nread == 0 { (cur_buf, offset) } else { stdin_read_loop(cur_buf, offset + nread, cur_cap) }
     },
   }
 }
 
-// read_stdin — slurp all of stdin (fd 0). The compiler's input path.
-fn read_stdin() = fd_read_all(0)
-
 // read_one_byte — read exactly 1 byte from stdin. Returns the byte
 // value (0..255) or -1 on EOF. Substrate primitive for boundary-
 // scanning reads (line endings, LSP \r\n headers) where the consumer
-// can't know the boundary until it sees the byte. Honest: per-byte
-// syscalls are slow for bulk data but correct for interactive prompts
-// and ~50-byte header sections; bulk paths use read_chunk directly.
+// can't know the boundary until it sees the byte. Per-byte reads are
+// slow for bulk data but correct for interactive prompts and ~50-byte
+// header sections; a bulk reader asks `stdin_read` for many bytes.
 fn read_one_byte() = {
   let cell = alloc(1)
-  let nread = read_chunk(0, cell, 1)
+  let nread = stdin_read(cell, 1)
   if nread == 0 { -1 } else { load_i8(cell) }
 }
 
@@ -336,4 +336,21 @@ fn read_line_loop(buf, offset, capacity) = match if offset + 1 > capacity {
 fn fd_is_tty(fd) = {
   let stat = alloc(24)
   fd_fdstat_get(fd, stat) == 0 && load_i8(stat) == 2
+}
+
+// The Stdin effect, the input's boundary. A reader asks for the input's next
+// bytes, and the handler its caller installs says where they come from:
+// `wasi_stdin` reads fd 0 through the host, and a transcript's replay answers
+// from the lines the transcript gives its command, so a command that reads
+// its input runs there as it does at a terminal. The bytes go into memory
+// the reader allocated, so a read inside an arena leaves nothing outside it.
+effect Stdin {
+  // (buf, size): up to size of the input's next bytes, put at buf; answers
+  // how many, and 0 once the input has ended
+  stdin_read(Addr, Int) -> Int
+}
+
+// The process's own input: one fd_read of fd 0.
+handler wasi_stdin {
+  stdin_read(buf, size) => resume(read_chunk(0, buf, size)),
 }

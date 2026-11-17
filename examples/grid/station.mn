@@ -474,8 +474,8 @@ fn step() = if reading() ~> arena { step() }
 
 // Nothing in the program can stop it with an error, from reading a line to
 // printing the decision: `main` declares `!Trap`, and the compiler checks it
-// through every function `main` calls and every arm of `station`.
+// through every function `main` calls and every handler arm it installs.
 fn main() with !Trap = {
   step()
   0
-} ~> station
+} ~> station ~> wasi_stdin

@@ -703,7 +703,7 @@ fn session_run(answer) = if driver_module_path("main") == None {
   said("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
   session_line_loop(driver_manifest(), answer, session_current)
   0
-} ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context ~> progress_stderr(false)
+} ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -791,6 +791,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], at_read, { m => m })
     }
-  } ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context ~> progress_stderr(false)
+  } ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
   0
 }

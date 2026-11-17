@@ -11,9 +11,9 @@
 //   \r\n
 //   <N bytes of JSON body>
 //
-// Substrate composes on read_chunk (lib/io.mn) for byte-at-a-
-// time stdin reading. Honest scope: LSP messages are typically <16 KB;
-// per-byte reads are O(N) but not a perf bottleneck for editor traffic.
+// It reads the input through the Stdin effect (lib/io.mn), a byte at a
+// time for the headers. LSP messages are typically under 16 KB, so
+// per-byte reads are O(N) but not a bottleneck for editor traffic.
 // Buffered framing (BatchedFrame peer sub-handle) lands when high-
 // throughput surfaces (web playground push-streams) need it.
 import io
@@ -162,7 +162,7 @@ fn read_body_loop(buf, written, total) = if written >= total {
   written
 } else {
   let chunk_size = total - written
-  let nread = read_chunk(0, addr_at(buf, 8 + written), chunk_size)
+  let nread = stdin_read(addr_at(buf, 8 + written), chunk_size)
   if nread == 0 { written } else { read_body_loop(buf, written + nread, total) }
 }
 
