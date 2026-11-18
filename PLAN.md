@@ -78,8 +78,11 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   frontier gate compiled and ran for its exit is judged by a battery from
   its own first line, and builds as written. P3i followed the same day:
   what the gate read off a command's answer on a committed program is a
-  transcript, and no leg is declared failing in advance. The rest of P3
-  waits on what its legs need (§11.B, P3); P4, P7 and P5 follow.
+  transcript, and no leg is declared failing in advance. P3j followed on
+  2026-11-18: a battery runs over only the files its saved verdict is
+  keyed by, so a change to an example one of its transcripts reads is
+  judged again. The rest of P3 waits on what its legs need (§11.B, P3);
+  P4, P7 and P5 follow.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1217,6 +1220,13 @@ accepts each program and `mentl run` shows the break.
   which can read a present answer as absent at
   random (§11.B, "Three checks that failed at random"); P3's later
   batches move them.
+- Every gate but the batteries keys its saved verdict by a list of its
+  inputs kept by hand in its script (tools/frontier-gate.sh,
+  tools/proof-exactness-gate.sh, tools/effect-identity-gate.sh,
+  tools/verify.sh), so a leg that reads a file its list does not name
+  passes on a verdict saved before that file changed, and nothing checks
+  a list against what its legs read. A battery runs over a copy of
+  exactly what its key names (§11.9).
 - Two of the frontier gate's four oracle checks, cfc-rec's and stats',
   print PASS when they skip because the host lacks numpy, as Morgan's
   machine does, so there they check nothing (`bash
@@ -1437,7 +1447,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1503,7 +1513,9 @@ leave, and the landing deletes them.
    gate compiled and ran for its exit is judged by a battery from its own
    first line, and builds as written. P3i landed the same day: what the
    gate read off a command's answer on a committed program is a
-   transcript, and no leg is declared failing in advance.
+   transcript, and no leg is declared failing in advance. P3j landed on
+   2026-11-18: a battery runs over only the files its saved verdict is
+   keyed by.
    P3's later batches are cut into boxes as their groundwork comes. Then P4, P7
    and P5, the newest engine, which T4 needs for exception handling and M5
    for multiple memories.
@@ -1554,8 +1566,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
-3 is P3j.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1673,7 +1684,15 @@ minute, and no expectation kept by hand.
   the machinery that declared it left the gate, the march, the commit
   hook and the obey gate, so no leg is declared failing in advance. The
   gate fell to 71 verdicts, 1,216 lines and 10 lines that pipe into `grep
-  -q`, and starts 59 fewer compiler processes. Each later batch brings
+  -q`, and starts 59 fewer compiler processes. P3j, built 2026-11-18,
+  runs each battery over a copy of its directory, `lib/` and `examples/`
+  and nothing else, and keys its saved verdict by those three. Seven of
+  the frontier battery's 25 transcripts read files its key did not name,
+  so a comment changed in examples/hello/five.mn was answered green from
+  the saved verdict while `mentl test` refused the lede transcript. The
+  commands on other batteries' programs moved into those batteries, and
+  the frontier gate's key names src/ and tools/install.sh, which its legs
+  read. Each later batch brings
   what its legs need: a bound the board measures or a query facet, for
   the legs that read facts about the compiler itself (the prelude's node
   count, the arena census only a compile prints, `extract_chase`'s row,
@@ -2177,157 +2196,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · P3j · A battery runs over only the files its saved verdict is
-   keyed by.** Written 2026-11-18 and measured on the pinned boot,
-   c866711ba72e, with the form built in the working tree. It changes no
-   compiler source, so the boot stays the pin.
-   It comes before P3's next batch because it corrects work already
-   landed: P3c to P3i moved legs into transcripts whose saved verdicts do
-   not cover every file they read.
-
-   What a person sees.
-   - `mentl land`, and every gate that judges a battery through
-     `wt_battery` (tools/wt-env.sh), judges a battery again whenever a file
-     its members read changes. Each battery runs in a directory of its own
-     under `.build/roots/` that holds a copy of the battery's directory,
-     `lib/` and `examples/` and nothing else, and the verdict it saves is
-     keyed by those three and the compiler's bytes. A member that reads
-     any other file fails where the battery runs, saying what it could not
-     read, so it cannot pass on a verdict saved before that file changed.
-   - The commands on another battery's programs move into that battery:
-     the four on tests/teach programs in tests/frontier/accept.transcript
-     become tests/teach/accept.transcript; tests/frontier/hole-operand.transcript,
-     one command on a tests/proposals program, becomes
-     tests/proposals/hole-operand.transcript; and the two on tests/micros
-     programs in tests/frontier/where-badges.transcript become
-     tests/micros/install-answer.transcript.
-   - The frontier gate's own saved verdict (tools/frontier-gate.sh) is
-     keyed by `src/` and tools/install.sh as well, since three of its legs
-     read src/main.mn and three install tools/install.sh and run the
-     command it writes.
-
-   Fails today, on pin c866711ba72e.
-   - A battery's saved verdict is keyed by the compiler, the battery's
-     directory and `lib/` (`wt_battery`). Run in a directory that holds
-     only those two, each of the 17 batteries answers `mentl test` with the
-     same bytes as in the repository, except tests/frontier, where 7 of its
-     25 transcripts fail: lede, query-facets, audit-shapes and
-     effect-enters read programs under `examples/`, and accept,
-     hole-operand and where-badges read programs in tests/teach,
-     tests/proposals and tests/micros. With `examples/` beside them, those
-     three still fail.
-   - So a change to one of those files goes unseen. In a scratch worktree
-     of the pin, `wt_battery boot/mentl.wasm tests/frontier` answered green
-     and saved it. One comment in examples/hello/five.mn then changed, to
-     "The feedback, <~, adds each number to the running total.", and the
-     same call answered "249/249 fixture contracts hold (memo — these
-     compiler bytes already judged these fixtures)", while `mentl test
-     tests/frontier` exited 1 with "FAIL(transcript) lede.transcript:
-     `mentl doc examples/hello/five.mn`, line 4 of its answer: the
-     transcript says `      The feedback, <~, adds each number to the
-     total before it.`, and it printed `      The feedback, <~, adds each
-     number to the running total.`".
-   - The frontier gate's key names `tests lib ide examples`, the script and
-     the baseline. Its trap-row and one-renderer legs read src/main.mn
-     through `where`, its shim-path leg checks src/main.mn, and its
-     env-protocol, user-link and shim-path legs run tools/install.sh; none
-     of those files is in the key.
-   - Where a contract fails, the helper's report also says "the verb itself
-     failed — rerun it without 2>/dev/null and read the trap.", since it
-     prints that line for every exit but 0, and `mentl test` exits with the
-     number of contracts it judged broken (1 for the lede transcript above,
-     7 for the seven transcripts in the first measurement).
-
-   What it reads, each fact carried by a foundation the order built, with
-   a command on the pin that shows it.
-   - Every file a command reads goes through the Filesystem capability,
-     which `main` installs once (P3d), and a relative path resolves against
-     the directory the host opened as `.` (lib/fs.mn, `fs_at`): `mentl test
-     tests/frontier`, run with a directory that holds only tests/frontier
-     and lib/ opened as `.`, refuses each command that reads elsewhere with
-     E_MissingModule and the paths it searched (the first measurement
-     above).
-   - A battery writes each module it compiles under `.build/battery/` in
-     that directory, and the host assembles and runs it there with the same
-     directory opened as `.` (`battery_wat_path` in src/main.mn,
-     `wt_battery_run_one`): the RUN lines of `mentl test tests/frontier`
-     name `.build/battery/tests_frontier_<stem>.wat`.
-   - What a command prints is a transcript's contract, written by `mentl
-     test --write` (P3b).
-
-   The form.
-   - tools/wt-env.sh, `wt_battery`: the compiler's path is made absolute;
-     the key is `wt_memo_key_run "$compiler" "$dir" lib examples`; on a
-     miss the root `.build/roots/<the directory, each / written as _>` is
-     made afresh, holding copies of the directory, `lib/` and `examples/` at
-     their own paths, and `mentl test` and `wt_battery_host` both run with
-     the root as their working directory. Its header comment says so in
-     place of lines it holds now, so the file gains no line. Its report
-     says the verb itself failed only where the verb's exit is more than
-     the contracts it found broken, since `mentl test` exits with the
-     number of contracts it judged broken: with the form, the frontier
-     battery's report of the one broken lede contract also said "the verb
-     itself failed — rerun it without 2>/dev/null and read the trap."
-   - tools/march.sh, `transplant_memos`: the two keys it computes for a
-     battery name `"$dir" lib examples`.
-   - tools/frontier-gate.sh: `frontier_key` names `src` and
-     `tools/install.sh` beside the inputs it names now.
-   - The moved commands are the same command lines; their new transcripts'
-     answers are written by `mentl test --write`, and the old transcripts
-     lose those commands and their answers. hole-operand.transcript moves
-     whole.
-   - CLAUDE.md, "Testing with the candidate": each battery runs over a copy
-     of its directory, `lib/` and `examples/`, so a transcript's commands
-     read only those, and a command on another battery's program belongs in
-     that battery's transcript.
-
-   Edge cases.
-   - The arena's battery and the nine crucible batteries are directories
-     inside tests/frontier. Each runs in a root that holds its own
-     directory, and tests/frontier's root holds tests/frontier whole, its
-     subdirectories with it, as its key always did.
-   - native/ stands outside tests/, and its root holds native/.
-   - A data program reads its file at the path its program names, such as
-     tests/frontier/cfc-rec/recording.txt, which the root holds, since the
-     file stands in the battery's own directory.
-   - The persist fixtures write their images under the private /tmp each
-     run is given, as now.
-   - One battery is never judged twice at once: the landing pass judges
-     each battery once in a pass, and the candidate's pass and the
-     read-back come one after the other.
-
-   What it refuses. A member that reads a file outside its battery's
-   directory, `lib/` and `examples/` fails in its battery, saying what it
-   could not read: a transcript's command that reads elsewhere is refused
-   with E_MissingModule and the paths it searched. Nothing that passes
-   today is refused, once the seven commands have moved.
-
-   What it leaves alone. The medium: no compiler source changes. The keys
-   of the other gates, proof-exactness, effect identity and the legs of
-   tools/verify.sh, which this box does not measure. The frontier gate
-   still runs in the repository, keyed by a list of its inputs kept by hand
-   in its script, because its legs are shell; they leave in P3's later
-   batches.
-
-   What pays for it. Nothing in the wheel changes, and tools/ gains no
-   line.
-
-   Proves it, each measured with the form on the boot.
-   - In the scratch worktree with the form, the battery answered "248/248
-     fixture contracts hold" and saved it; after the same comment change
-     in examples/hello/five.mn, `wt_battery boot/mentl.wasm
-     tests/frontier` judged the battery again and answered "✗ battery
-     tests/frontier: exit=1, 1 broken contract(s), 248/248 fixtures
-     judged" and the lede transcript's FAIL line.
-   - Each of the 17 batteries passes through `wt_battery` in its root,
-     its runs included: tests/micros 853 of 853 (283 s), tests/frontier
-     248 of 248 (130 s), the arena 33 of 33, the nine crucibles 14 of 14,
-     tests/syntax 21 of 21, tests/proposals 37 of 37, tests/teach 25 of
-     25, tests/crown 205 of 205 and native 5 of 5. The moved commands'
-     answers, written by `mentl test --write` in their new transcripts,
-     are the text the old transcripts held.
-   - `mentl land` is green.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

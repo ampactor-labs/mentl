@@ -55,12 +55,6 @@ $ mentl where tests/frontier/mn-where-badges.mn handled
     x : Int @ i32 (inferred)
     -> Int @ i32 (inferred)
     ~> ticker absorbs Tick, answers Int at 13:28-13:46
-$ mentl where tests/micros/mn-refine-install-answer.mn zero
-! verify: E_RefinementRejected error: refinement predicate proven false at compile time: <expr> != 0 && 100 / <expr> fits (never INT_MIN / -1) at tests/micros/mn-refine-install-answer:16:21-16:59
-  → handler zero absorbs Ask, answers Int  at tests/micros/mn-refine-install-answer:12
-$ mentl check tests/micros/mn-arm-answer-is-the-install.mn
-! infer: E_TypeMismatch error: Int vs [Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h at tests/micros/mn-arm-answer-is-the-install:18:13-18:30
-[exit 1]
 $ mentl where tests/frontier/mn-where-shadowed-local.mn heads
   → heads(ref xs: [a]) -> Int with Memory  at tests/frontier/mn-where-shadowed-local:11
     xs : [a] @ i32 (inferred)

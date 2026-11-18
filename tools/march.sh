@@ -534,9 +534,9 @@ transplant_memos() {  # transplant_memos <old-boot> — after the CLEAN copy of 
   fi
   for dir in tests/micros tests/lens/negation; do
     leg="battery-${dir//\//_}"
-    okey=$(WT_ASM="$old" wt_memo_key_run "$OUT/m2.wasm" "$dir" lib)
+    okey=$(WT_ASM="$old" wt_memo_key_run "$OUT/m2.wasm" "$dir" lib examples)
     verdict=$(wt_memo_hit "$leg" "$okey") || continue
-    nkey=$(wt_memo_key_run "$OUT/m2.wasm" "$dir" lib)
+    nkey=$(wt_memo_key_run "$OUT/m2.wasm" "$dir" lib examples)
     wt_memo_put "$leg" "$nkey" "$verdict"
     echo "· asm parity holds: the $dir verdict the candidate earned ($verdict) is the new boot's"
   done

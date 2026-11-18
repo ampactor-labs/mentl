@@ -18,49 +18,6 @@ $ mentl accept tests/frontier/propose-demo/hole.mn:9:37
 $ mentl accept tests/frontier/propose-fan-demo/bit.mn:8:30
 ! mentl accept: 2 proven survivors — a tie is a question, never a guess: the survivors differ in VALUE — 0 or 1 — and the type admits 0 through 1: which one does this position mean?
 [exit 1]
-$ mentl accept tests/teach/precondition-weakest.mn:12:1
-  Query: fn inv(n: NonZero) = 100 / n : (own n: NonZero) -> Int
-  Effects: Pure when called
-  Ownership: own
-  Why: ownership-resolved params of 'inv', at tests/teach/precondition-weakest:12
-  Uses: 2 of inv
-    at tests/teach/precondition-weakest:14:22-14:25
-    at tests/teach/precondition-weakest:14:13-14:16
-[wrote tests/teach/precondition-weakest.mn]
-> // teach 12: add n: NonZero
-> // D4: the gradient proposes the refinement that makes the division total,
-> // and the weakest one in reach. Both aliases exclude zero, so both
-> // discharge the division's claim; Positive also refuses the call with -3,
-> // which never traps, so it asks more than the body needs. On boot 6f62b7c4
-> // the Teach facet here answered `with !Alloc`, and the division that can
-> // trap went unnamed.
-> type NonZero = Int where !(self == 0)
->
-> type Positive = Int where 0 < self
->
-> fn inv(n: NonZero) = 100 / n
->
-> fn main() = inv(5) + inv(0 - 3)
-$ mentl check tests/teach/precondition-weakest.mn
-$ mentl accept tests/teach/precondition-over-a-plain-type.mn:8:1
-  Query: fn inv(n: NonZero) = 100 / n : (own n: NonZero) -> Int
-  Effects: Pure when called
-  Ownership: own
-  Why: ownership-resolved params of 'inv', at tests/teach/precondition-over-a-plain-type:8
-  Uses: 1 of inv
-    at tests/teach/precondition-over-a-plain-type:10:13-10:16
-[wrote tests/teach/precondition-over-a-plain-type.mn]
-> // teach 8: add n: NonZero
-> // A parameter written with a plain type states no precondition, and the
-> // refinement that makes the division total is written over it: NonZero's
-> // base is Int, so the type the developer wrote survives in the alias. On
-> // the gradient's first build the open claim went unnamed (`with !Memory`).
-> type NonZero = Int where !(self == 0)
->
-> fn inv(n: NonZero) = 100 / n
->
-> fn main() = inv(5)
-$ mentl check tests/teach/precondition-over-a-plain-type.mn
 $ mentl accept examples/pulse/course/07-bounds.mn:48:1
 ! mentl accept: `notes: Rate` or `notes: Positive` — either way the division cannot fail, which unlocks trap-free (nothing it reaches can stop with an error; that it always finishes is not proven); they mean different things, so which is meant?
 [exit 1]

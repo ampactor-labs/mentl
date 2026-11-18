@@ -254,7 +254,11 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   syntax, proposals, teach and frontier, the arena's programs
   (tests/frontier/arena) and the nine crucible directories beside them,
   each a battery of its own; `batteries` in tools/state.sh lists all of them, and
-  `mentl land` judges each on the candidate and on the new boot. A program
+  `mentl land` judges each on the candidate and on the new boot. A battery
+  runs over a copy of its directory, `lib/` and `examples/` and nothing
+  else, and its saved verdict is keyed by those, so a fixture or a
+  transcript reads only them: a command on another battery's program
+  belongs in that battery's transcript. A program
   imports what it uses and builds as written. `mentl test` checks a directory and
   prints each fixture's RUN line, and the host runs it. `tests/crown` is a
   battery too: a leak-* crucible's first line names the class that must

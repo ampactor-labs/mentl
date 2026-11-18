@@ -225,24 +225,24 @@ wt_battery_host() {
 # verdict and holds the two halves of the contract a crashed verb cannot
 # print: the exit is 0 AND every fixture the directory holds was judged
 # (`mentl test` once died at fixture 118 of 149 and a gate that counted
-# FAIL lines said green). Dissolves with this file at `mentl verify`.
-#
-# A battery's verdict is a function of the compiler BYTES, not of which name
-# the compiler goes by, so its memo key hashes the artifact and never the
-# words "boot" or "m2". After a clean repin the new boot IS the m2 the
-# contract battery already judged, and the post-repin run answers from that
-# (the gate memo at the end of this file).
+# FAIL lines said green). The battery runs in a root holding copies of its
+# directory, lib/ and examples/ and nothing else, and its saved verdict is
+# keyed by those three and the compiler's bytes, never its name: a member
+# that reads any other file fails here, and after a repin the new boot reads
+# back the verdict its m2 earned (the gate memo at the end of this file).
 wt_battery() {
-  local compiler="$1" dir="$2" label="${3:-$2}" out rc want seen bad key leg
+  local compiler dir="$2" label="${3:-$2}" out rc want seen bad key leg root=".build/roots/${2//\//_}"
+  compiler=$(realpath "$1")
   want=$(ls "$dir"/*.mn "$dir"/*.transcript 2>/dev/null | wc -l)
   leg="battery-${dir//\//_}"
-  key=$(wt_memo_key_run "$compiler" "$dir" lib)
+  key=$(wt_memo_key_run "$compiler" "$dir" lib examples)
   if wt_memo_hit "$leg" "$key" >/dev/null; then
     echo "✓ battery $label: $want/$want fixture contracts hold (memo — these compiler bytes already judged these fixtures)"
     return 0
   fi
-  out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
-  out=$(printf '%s\n' "$out" | wt_battery_host)
+  rm -rf "$root" && mkdir -p "$root/$(dirname "$dir")" && cp -r "$dir" "$root/$dir" && cp -r lib examples "$root/"
+  out=$(cd "$root" && wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
+  out=$(printf '%s\n' "$out" | (cd "$root" && wt_battery_host))
   seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|CHECK|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   bad=$(printf '%s\n' "$out" | grep -cE '^(FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   if [ "$rc" -eq 0 ] && [ "$bad" -eq 0 ] && [ "$seen" -eq "$want" ]; then
@@ -252,7 +252,7 @@ wt_battery() {
   fi
   echo "✗ battery $label: exit=$rc, $bad broken contract(s), $seen/$want fixtures judged"
   printf '%s\n' "$out" | grep -E '^(FAIL[A-Za-z()]*|NOEXPECT) ' | head -12
-  [ "$rc" -ne 0 ] && echo "  the verb itself failed — rerun it without 2>/dev/null and read the trap."
+  [ "$rc" -gt "$bad" ] && echo "  the verb itself failed — rerun it without 2>/dev/null and read the trap."
   [ "$seen" -lt "$want" ] && echo "  it stopped early: everything after the last judged fixture went unchecked."
   return 1
 }

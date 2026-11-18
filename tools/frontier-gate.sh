@@ -69,14 +69,14 @@ case "$selection" in
     ;;
 esac
 
-# THE MEMO (Hβ.tools.gate-stamp-is-uniform): this gate's verdict is a function
-# of the compiler bytes it runs and the files it reads — tests/, lib/ (every
-# fixture links the prelude), ide/, examples/ (the flagship program the
-# pulse-render leg renders), this script and the ceilings the baseline
-# holds. When a green run already judged exactly those, the verdict is
-# read back instead of re-derived; a byte-identical repin used to pay this
-# whole gate a second time. FORCE_GATES=1 re-runs it.
-frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide examples tools/frontier-gate.sh tools/verify-baseline.txt)
+# The memo: this gate's verdict is a function of the compiler bytes it runs
+# and the files its legs read — tests/, lib/, ide/, examples/, src/ (the
+# legs that ask `where` and `check` of src/main.mn), tools/install.sh (the
+# command the shim legs install), this script and the baseline's ceilings.
+# When a green run already judged exactly those, the verdict is read back
+# instead of derived again, so a repin to the same bytes does not pay this
+# whole gate twice. FORCE_GATES=1 runs it again.
+frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide examples src tools/install.sh tools/frontier-gate.sh tools/verify-baseline.txt)
 if frontier_memo=$(wt_memo_hit frontier "$frontier_key"); then
   printf '%s\n' "$frontier_memo"
   echo "  (memo: these compilers already ran every leg against these inputs green — FORCE_GATES=1 re-runs)"
