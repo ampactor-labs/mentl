@@ -1,0 +1,175 @@
+$ mentl doc lib/prelude.mn
+  type Bool  at prelude:27
+    False
+    True
+      The algebraic bedrock every program speaks.
+      
+      Nullary-sentinel ADT.  False=tag 0, True=tag 1 — matches WAT's
+      i32 truthiness convention so `(if cond ...)` works directly.
+      Both compile to (i32.const N); zero allocation.  The substrate
+      has ONE story for tagged values; Bool is its canonical instance.
+  type Option  at prelude:32
+    None
+    Some(a)
+      The vocabulary's own carrier type — ONE home (the wheel's types.mn
+      points here; a rung linking the prelude gets the constructors the
+      stage fns speak in).
+  type Result  at prelude:34
+    Ok(a)
+    Err(e)
+  effect Fail  at prelude:49
+    fail(String) -> !
+      Failure IS an effect — the kernel's answer to bottom.  `fail` never
+      resumes: its result is the never type, quantified per perform, so each
+      consumer meets a variable of its own and the effect carries no
+      parameter; the installed handler decides the policy (io.mn fail_exit
+      prints + exits; a test handler collects instead).  Fail is distinct from
+      the control-cut Abort effect: their declarations must never share
+      identity.
+  unwrap(ref opt: Option(a)) -> a with Fail
+  unwrap_or(ref opt: Option(a), own default: a) -> a
+  is_some(ref opt: Option(a)) -> Bool
+  is_none(ref opt: Option(a)) -> Bool
+  map_option(ref f: (a) -> b with e, ref opt: Option(a)) -> Option(b) with Alloc + e
+  and_then(ref f: (a) -> Option(b) with e, ref opt: Option(a)) -> Option(b) with e
+  ok(ref res: Result(a, b)) -> Option(a) with Alloc
+  err_val(ref res: Result(a, b)) -> Option(b) with Alloc
+  is_ok(ref res: Result(a, b)) -> Bool
+  map_result(ref f: (a) -> b with e, ref res: Result(a, c)) -> Result(b, c) with Alloc + e
+  effect Iterate  at prelude:104
+    yield(element)
+    result() -> r
+      One effect.  Every collection operation is a handler on it.
+  iterate_from(ref xs: [a], own i: Int, ref n: Int) with Trap + Memory + Address + Diverge + Iterate(a, b)
+      Flattened once, so each `xs[i]` is O(1): a list built by push or `++` is a
+      snoc or concat tree, where an index read is O(i), and `list_to_flat` leaves
+      a flat list as it is. The walk is a tail call, so the stack stays bounded
+      at any length.
+  iterate(own xs: [a]) with Address + Memory + Alloc + MemoryWrite + Diverge + Trap + Iterate(a, b)
+  map_collector(f: (a) -> b with e) -> Handler(Iterate(a, [b]), c)
+      One handler per `~>` install: the transform and the collection fused into
+      one state record, its buffer grown in place and sliced at `result`, so a
+      collection costs O(N) in all.
+  filter_collector(pred: (a) -> Bool with e) -> Handler(Iterate(a, [a]), b)
+  take_collector(n: Int) -> Handler(Iterate(a, [a]), b)
+  drop_collector(n: Int) -> Handler(Iterate(a, [a]), b)
+  collector : Handler(Iterate(a, [a]), b)
+      General collector — for direct user use when materializing arbitrary
+      yields without transform.  `{ source_emitting_yields() } ~> collector`.
+  map(ref f: (a) -> b with e, own xs: [a]) -> [b] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+      List-producing operations — single fused handler per op.
+  filter(ref p: (a) -> Bool with e, own xs: [a]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  take(ref n: Int, own xs: [a]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  drop(ref n: Int, own xs: [a]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  fold_handler(f: (a, b) -> a with e, init: a) -> Handler(Iterate(b, a), c)
+  each_handler(f: (a) -> () with e) -> Handler(Iterate(a, ()), b)
+      Exhaustive over `Iterate` like its siblings: `each` collects nothing, so
+      its `result` is unit (a half-handler answering `yield` alone is refused,
+      E_HandlerInexhaustive — an install subtracts the WHOLE effect from the
+      row). The arm resumes with the stage's answer, which `yield`'s declared
+      result makes unit: the constraint `each` promises, read off the op.
+  any_handler(pred: (a) -> Bool with e) -> Handler(Iterate(a, Bool), b)
+  all_handler(pred: (a) -> Bool with e) -> Handler(Iterate(a, Bool), b)
+  find_handler(pred: (a) -> Bool with e) -> Handler(Iterate(a, Option(a)), b)
+  find_map_handler(f: (a) -> Option(b) with e) -> Handler(Iterate(a, Option(b)), c)
+  count_handler(pred: (a) -> Bool with e) -> Handler(Iterate(a, Int), b)
+  fold(ref init: a, ref f: (a, b) -> a with e, own xs: [b]) -> a with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  each(ref f: (a) -> () with e, own xs: [a]) with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+      The stage of an iteration for effect answers `()`: the arm resumes with the
+      stage's answer and `yield` answers unit, so a stage answering anything else
+      is refused — a value the program would silently lose (SYNTAX, the Stage
+      Law).
+  any(ref pred: (a) -> Bool with e, own xs: [a]) -> Bool with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  all(ref pred: (a) -> Bool with e, own xs: [a]) -> Bool with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  find(ref pred: (a) -> Bool with e, own xs: [a]) -> Option(a) with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  find_map(ref f: (a) -> Option(b) with e, own xs: [a]) -> Option(b) with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+      The first answer `f` gives: `f` of the first element it maps to `Some`.
+  count(ref pred: (a) -> Bool with e, own xs: [a]) -> Int with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  head(ref xs: [a]) -> a with Trap + Memory + Address + Diverge
+  rest(ref xs: [a]) -> [a] with Memory + Trap + Address + Alloc + MemoryWrite
+  reverse(own xs: [a]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  flatten(own xss: [[a]]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  flat_map(ref f: (a) -> [b] with e, own xs: [a]) -> [b] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  sum(own xs: [Int]) -> Int with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  product(own xs: [Int]) -> Int with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  concat(own xss: [[a]]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  reduce(ref xs: [a], ref f: (a, a) -> a with e) -> a with Trap + Memory + Address + Diverge + Alloc + MemoryWrite + e
+  zip_with_fill(ref f: (a, b) -> c with e, ref xs: [a], ref ys: [b], own buf: [c], ref i: Int, ref n: Int) -> [c] with Trap + Memory + Address + Diverge + MemoryWrite + Mutate + e
+      One exact-size flat buffer and one tail-recursive fill: O(min(n)) work and
+      O(1) stack at any length.
+  zip_with(ref f: (a, b) -> c with e, own xs: [a], own ys: [b]) -> [c] with Memory + Address + Alloc + MemoryWrite + Diverge + Trap + e
+  zip(own xs: [a], own ys: [b]) -> [(a, b)] with Alloc + Memory + Address + MemoryWrite + Diverge + Trap
+  enumerate(own xs: [a]) -> [(Int, a)] with Memory + Trap + Alloc + MemoryWrite + Address + Diverge
+  unique(own xs: [a]) -> [a] with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+  partition(ref pred: (a) -> Bool with e, ref xs: [a]) -> ([a], [a]) with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  range_inclusive(own start: Int, own end: Int) -> [Int] with Trap + Alloc + MemoryWrite + Address + Memory + Diverge
+  intersperse(own sep: a, own xs: [a]) -> [a] with Address + Memory + Alloc + MemoryWrite
+  scanl(ref xs: [a], own init: b, ref f: (b, a) -> b with e) -> [b] with Address + Memory + Alloc + MemoryWrite + e
+  repeat(own n: Int, own x: a) -> [a] with Alloc + Memory + MemoryWrite + Address + Diverge
+  chunk(ref n: Int, ref xs: [a]) -> [[a]] with Memory + Alloc + Address + MemoryWrite + Diverge + Trap
+  sum_by(ref f: (a) -> Int with e, own xs: [a]) -> Int with Alloc + Address + Memory + MemoryWrite + Diverge + Trap + e
+  max_by(ref f: (a) -> b with e, ref xs: [a]) -> a with Alloc + Trap + Memory + Address + Diverge + MemoryWrite + e
+  min_by(ref f: (a) -> b with e, ref xs: [a]) -> a with Alloc + Trap + Memory + Address + Diverge + MemoryWrite + e
+  compose(ref f: (a) -> b with e, ref g: (b) -> c with e1) -> ((a) -> c with e + e1) with Alloc
+      compose is the pipe as a value: f first, then g, so
+      `x |> compose(f, g)` is `x |> f |> g`. id is its identity element:
+      compose(f, id) and compose(id, f) both behave as f.
+  id(own x: a) -> a
+    with Pure (declared)
+  not(ref x: Bool) -> Bool
+    with Pure (declared)
+  build_pipeline(own steps: [(a) -> a with e]) -> ((a) -> a) with Alloc + Address + Memory + MemoryWrite + Diverge + Trap
+      A pipeline from a list of functions, composed left to right:
+      `x |> build_pipeline([f, g, h])` is `x |> f |> g |> h`.
+  nth(ref xs: [a], ref n: Int, own default: a) -> a with Memory + Address + Diverge
+  min(own a: a, own b: a) -> a with e
+    with Pure (declared)
+  max(own a: a, own b: a) -> a with e
+    with Pure (declared)
+  clamp(own x: a, own lo: a, own hi: a) -> a with (e - Mutate) + (e1 - Mutate)
+    with Pure (declared)
+  abs(own x: Float) -> Float
+    with Pure (declared)
+      Float-typed by its own literals; an integer magnitude reads
+      `if n < 0 { 0 - n } else { n }` at its own width.
+  merge(ref xs: [a], ref ys: [a]) -> [a] with Memory + Trap + Alloc + MemoryWrite + Address + Diverge
+      Two sorted lists as one, stably: a loop over a read position in each that
+      writes the lesser head into one flat buffer, the left on a tie.
+  merge_into(own out: [a], ref xs: [a], own i: Int, ref ys: [a], own j: Int, ref k: Int) -> [a] with Memory + Address + Diverge + Trap + MemoryWrite + Mutate + e
+  sort(own xs: [a]) -> [a] with Address + Memory + Alloc + MemoryWrite + Diverge + Trap
+      A merge sort over one flat list: each half is a slice of it read in
+      constant time, and each merge writes a flat buffer the next level reads
+      the same way, so the sort costs n log n and recurses only log n deep.
+  sort_flat(own xs: [a]) -> [a] with Memory + Trap + Address + Alloc + MemoryWrite + Diverge
+  join_loop(ref xs: [String], own sep: String, own i: Int, own acc: String) -> String with Memory + Alloc + MemoryWrite + Address + Trap + Diverge
+      The pins are the representation: with the element type free, `acc ++ sep
+      ++ xs[i]` has no sequence to concatenate. The order is the Stage Law's —
+      the separator first, the flowing datum last — so `names |> join(", ")`
+      fills `xs`.
+  join(own sep: String, ref xs: [String]) -> String with Memory + Address + Diverge + Alloc + MemoryWrite + Trap
+  words(own s: String) -> [String] with Memory + Alloc + Trap + MemoryWrite + Address + Diverge
+  unwords(ref ws: [String]) -> String with Memory + Address + Diverge + Alloc + MemoryWrite + Trap
+  lines(own s: String) -> [String] with Memory + Alloc + Trap + MemoryWrite + Address + Diverge
+  unlines(ref ls: [String]) -> String with Memory + Address + Diverge + Alloc + MemoryWrite + Trap
+  starts_with(ref s: String, ref prefix: String) -> Bool with Memory + Address + Alloc + MemoryWrite + Trap + Diverge
+      A string is read here through its byte-level view, `str_slice`, and
+      compared byte by byte, `str_eq`.
+  ends_with(ref s: String, ref suffix: String) -> Bool with Memory + Trap + Address + Alloc + MemoryWrite + Diverge
+  contains(ref s: String, ref sub: String) -> Bool with Memory + Alloc + Address + MemoryWrite + Diverge
+  index_of(ref s: String, ref sub: String) -> Int with Memory + Alloc + Address + MemoryWrite + Diverge
+  replace(own s: String, ref old: String, own new: String) -> String with Memory + Alloc + Address + MemoryWrite + Diverge + Trap
+  trim(ref s: String) -> String with Memory + Trap + Address + Diverge + Alloc + MemoryWrite
+  parse_int(ref s: String) -> Int with Memory + Alloc + Address + Diverge + Trap
+  type FeedbackSpec  at prelude:481
+    Delay(Int)
+    Accumulate(a)
+    FilterSpec(Int, [Float])
+      Per SYNTAX.md §`<~`: the feedback verb's RHS is a FeedbackSpec value.
+      `signal <~ delay(3)` closes a 3-sample cycle; `state <~ accumulate(s0)`
+      threads a running value; `filter <~ filter_spec(n, coeffs)` feeds N
+      prior outputs through coefficient taps.  The spec names WHAT flows
+      back; the installed iterative handler (Sample/Tick/Clock) decides
+      WHEN the cycle advances.
+  delay(ref n: Int) -> FeedbackSpec(a) with Alloc
+  accumulate(ref init: a) -> FeedbackSpec(a) with Alloc
+  filter_spec(ref n: Int, ref coeffs: [Float]) -> FeedbackSpec(a) with Alloc

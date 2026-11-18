@@ -1,0 +1,7 @@
+// expect: refuse E_EffectMismatch
+// A function that stops the program on purpose says so in its row: `chase`
+// calls `trap` once it has followed a thousand links, so a `main` that says
+// it never traps is refused, and the refusal names the call.
+fn chase(depth) = if depth > 1000 { trap() } else { chase(depth + 1) }
+
+fn main() with !Trap = chase(0)

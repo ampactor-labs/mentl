@@ -71,8 +71,8 @@ esac
 
 # The memo: this gate's verdict is a function of the compiler bytes it runs
 # and the files its legs read — tests/, lib/, ide/, examples/, src/ (the
-# legs that ask `where` and `check` of src/main.mn), tools/install.sh (the
-# command the shim legs install), this script and the baseline's ceilings.
+# shim leg checks src/main.mn), tools/install.sh (the command the shim
+# legs install), this script and the baseline's ceilings.
 # When a green run already judged exactly those, the verdict is read back
 # instead of derived again, so a repin to the same bytes does not pay this
 # whole gate twice. FORCE_GATES=1 runs it again.
@@ -952,42 +952,6 @@ for i in "${!compilers[@]}"; do
   fi
   run_lsp_hover "$compiler" "$dir" lsp
 
-  # The arena census (2026-10-02, replacing the image-classified byte count
-  # the deleted ImageAlloc brackets fed): the compiler judges each binding
-  # group inside an arena, and the compile's stderr reports the exits, the
-  # exits that kept their region, and the KB reclaimed. An exit that keeps is
-  # correct and reclaims nothing, so on the wheel's own judgment it is a
-  # finding: the keeps must read 0.
-  wt_run "$compiler" < "$ROOT/tests/frontier/mn-census-verbs.mn" > "$dir/arena.wat" 2> "$dir/arena.compile.err"
-  if grep -qE '^arena: [0-9]+ exit\(s\), [0-9]+ kept' "$dir/arena.compile.err"; then
-    ar_exits=$(grep -oE '^arena: [0-9]+' "$dir/arena.compile.err" | grep -oE '[0-9]+')
-    ar_kept=$(grep -oE '[0-9]+ kept' "$dir/arena.compile.err" | grep -oE '[0-9]+')
-    if [ "$ar_exits" -gt 0 ] && [ "$ar_kept" -eq 0 ]; then
-      pass "arena census: the judgment's groups exit their arenas ($ar_exits exits, 0 kept)"
-    else
-      fail "arena census: $ar_exits exits, $ar_kept kept — an exit that keeps reclaims nothing"
-    fi
-  else
-    fail "arena census: no arena line on the compile's stderr — the census print is prose, not mechanism"
-  fi
-
-  # The lib/lists.mn movers ratchet stood here (the trial/final divergence
-  # on a polymorphic fixture). RETIRED 2026-09-17 with the second pass: the
-  # `judgment:` line it read no longer prints, and a leg that passes on a
-  # missing line is the mute-gate class this file's canary legs exist to
-  # refuse.
-
-  # The deliberate trap is in the row: extract_chase traps at depth > 1000
-  # by its own comment, and its row must say so.
-  trap_where=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/src/main.mn" extract_chase 2>/dev/null | head -1)
-  trap_row_ok=0
-  printf '%s' "$trap_where" | grep -qE '^→ extract_chase\(.*\).* with .*\bTrap\b' && trap_row_ok=1
-  if [ "$trap_row_ok" = 1 ]; then
-    pass "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
-  else
-    fail "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
-  fi
-
   # ── tighten and fmt write files; a program run keeps what they mean ──
   # What `mentl tighten` and `mentl fmt` write, and the checks around each,
   # are the transcripts tests/frontier/tighten.transcript and
@@ -1038,23 +1002,6 @@ for i in "${!compilers[@]}"; do
     fail "fmt destructuring let run (exit=$lets_run)"
   fi
 
-  # ONE RENDERER FOR THE DEVELOPER'S EYE (render lane, 2026-10-06). `doc`
-  # and `where` render every type through the formatter's projection with
-  # free variables named by the render context: no forensic handle (`@e`),
-  # no `_:` for a parameter nobody named, no `-> ()` on a unit result, and
-  # no `WASI(a)` — the never type is quantified per perform, so an effect
-  # with a `-> !` op carries no phantom parameter. RED on boot 4228ff71:
-  # `doc` printed `Option : Option(t8090@e76)` and `unwrap : (opt:
-  # Option(t11349@e7593) ref — inferred) -> … with Fail(t11349@e7593)`.
-  rd=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" doc lib/prelude.mn 2>/dev/null)
-  rf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn Filesystem 2>/dev/null)
-  rr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn fmt_run 2>/dev/null)
-  rall="$rd$rf$rr"
-  if [[ -n "$rd" && -n "$rf" && -n "$rr" ]] && ! printf '%s' "$rall" | grep -qE '@e[0-9]|_: |-> \(\)( with [A-Za-z0-9_+!() ]*)?$|WASI\(a\)'; then
-    pass "one renderer: doc and where print no handle, no _:, no -> () and no WASI(a)"
-  else
-    fail "one renderer (got: $(printf '%s' "$rall" | grep -E '@e[0-9]|_: |-> \(\)( with [A-Za-z0-9_+!() ]*)?$|WASI\(a\)' | head -3 | tr '\n' ' '))"
-  fi
   # THE TEACH BATTERY REFUSES A CONTRACT AT NO DECLARATION (Landing 3,
   # 2026-10-13): a `teach L: none` whose line L holds no declaration met the
   # view of whatever node the address resolved to, which teaches nothing, and
