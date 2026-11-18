@@ -1,3 +1,4 @@
+// expect: 42
 // grad.mn — the gradient of a two-parameter waveshaper in ONE reverse sweep,
 // against the central differences of the same function.
 //
@@ -14,6 +15,7 @@
 // EXIT 42 iff every one of the 36 partials (18 points × two fields) agrees
 // with its difference to 1e-6 relative; otherwise 10 plus the number that
 // missed.
+import ml/grad
 
 fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.000001 * (1.0 + abs(b))
 

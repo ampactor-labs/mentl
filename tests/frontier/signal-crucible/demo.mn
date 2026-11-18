@@ -1,3 +1,4 @@
+// expect: 42
 // demo.mn — lib/dsp/signal.mn's STFT + bandpass + comodulogram, end to end on a
 // REAL on-disk recording.
 //
@@ -35,10 +36,17 @@
 // perturbation that flips it is a coupling SHIFT. A modulation-index measure and a
 // sharp resonator bank for true removal-RED + low-frequency resolution are the
 // named peers Hβ.dsp.tort-modulation-index and Hβ.dsp.resonator-filter-bank.)
+import dsp/cfc
+
+import dsp/signal
+
+import fs
+
+import io
 
 fn main() = {
   let sr = 512
-  let signal = read_recording("/tmp/mentl-signal-recording.txt")
+  let signal = read_recording("tests/frontier/signal-crucible/recording.txt")
   let low_freqs = [4, 6, 8, 10]
   let high_freqs = [30, 40, 50, 60]
 

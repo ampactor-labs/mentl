@@ -1,3 +1,4 @@
+// expect: 42
 // text-demo.mn — String = [byte] processing on a REAL on-disk text corpus.
 //
 // The second big representation after native [Float]: a String IS a stride-1
@@ -10,6 +11,9 @@
 // byte, and list_set/list_index into an Int histogram — end to end on real text.
 // A corrupt byte read would move a count or the argmax letter; both must agree
 // with python EXACTLY.
+import fs
+
+import io
 
 // Count occurrences of one byte value across the whole text.
 fn count_byte_loop(text, target: Int, i: Int, n: Int, acc: Int) ={
@@ -46,7 +50,7 @@ fn top_letter_loop(hist, b: Int, best_b: Int, best_c: Int) ={
 fn top_letter(hist) =top_letter_loop(hist, 97, 0, 0 - 1)
 
 fn main() = {
-  let text = fs_read_file("/tmp/mentl-text-corpus.txt")
+  let text = fs_read_file("tests/frontier/text/corpus.txt")
   let nbytes = byte_len(text)
   let ce = count_byte(text, 101)      // 'e'
   let ct = count_byte(text, 116)      // 't'

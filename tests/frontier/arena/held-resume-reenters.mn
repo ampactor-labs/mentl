@@ -1,3 +1,4 @@
+// expect: 42
 // A held resume whose op is performed inside an arena and answered by a
 // handler outside it. The perform unwinds through the arena's exit, so the
 // exit suspends the arena rather than end it: the continuation and the
@@ -6,6 +7,8 @@
 // fresh arena of its own, which reclaims what the remainder built.
 // Expected (0 + 300 - 293) + len(xs) = 7 + 10 = 17, one suspension, and one
 // exit — the resumption's.
+import arena
+
 effect Note {
   note(xs: [Int]) -> Int
 }

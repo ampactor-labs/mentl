@@ -1,3 +1,4 @@
+// expect: 42
 // A module that spawns gives each instance its own run of the line (one
 // atomic add per chunk, a private bump inside). An arena opened in a
 // spawned branch runs its body, counts its exit and answers the right sum.
@@ -7,6 +8,8 @@
 // takes a chunk between two of this one's, the region is no longer one
 // span and the exit keeps it, so the branches assert nothing about what
 // was kept (PLAN §7, memory). Expected exit: 42.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b

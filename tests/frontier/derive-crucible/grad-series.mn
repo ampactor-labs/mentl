@@ -1,3 +1,4 @@
+// expect: 42
 // grad-series.mn — a product seed over scene 1's distortion, whose reach runs
 // through tanh, exp and sin in lib/math.mn, against the central differences
 // of the same function.
@@ -13,6 +14,9 @@
 //
 // EXIT 42 iff every one of the 12 partials agrees with its difference to
 // 1e-6 relative; otherwise 10 plus the number that missed.
+import dsp/spectral
+
+import ml/grad
 
 fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.000001 * (1.0 + abs(b))
 

@@ -1,3 +1,4 @@
+// expect: 40
 // An image persisted inside an open arena, resumed by a fresh process.
 //
 // Leg A (no argv): inside an arena, build a list the arena allocates, park a
@@ -10,6 +11,14 @@
 // slot is typed by `read_seed`, whose read of a one-element literal is
 // proven, so the thunk's reads are guarded to be proven too and the two
 // rows agree; a list that came back short would answer 0, not 42.
+import arena
+
+import fs
+
+import io
+
+import persist
+
 let seed = [0]
 
 fn read_seed() = list_index(seed, 0)

@@ -1,0 +1,12 @@
+$ mentl check tests/frontier/mn-absorb-keeps-trap.mn
+! verify: pending partiality n != 0 && 1 / n fits (never INT_MIN / -1) at tests/frontier/mn-absorb-keeps-trap:6:16-6:21
+! verify: V_Pending VerificationPending: 1 verification obligations pending at tests/frontier/mn-absorb-keeps-trap:6:16-6:21
+! verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query tests/frontier/mn-absorb-keeps-trap traps` lists each with its claim
+$ mentl check tests/frontier/mn-dead-base-unnarrated.mn
+$ mentl check tests/frontier/mn-own-across-replay.mn
+! parser: E_RedundantBraces Warning: redundant braces around a non-block body at tests/frontier/mn-own-across-replay:23:13-25:2
+! ownership: T_OwnAcrossReplay Warning: 'buf' is an open own captured across a replay boundary — a resumed run consumes it again; finish it before the persist, or move its whole lifetime inside the thunk at tests/frontier/mn-own-across-replay:14:11-14:41
+! ownership: T_OwnUnconsumed Warning: 'buf' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade at tests/frontier/mn-own-across-replay:13:1-16:2
+! verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query tests/frontier/mn-own-across-replay traps` lists each with its claim
+$ mentl check tests/frontier/mn-pcompose-value-branches.mn
+$ mentl check tests/frontier/mn-pipe-into-len.mn

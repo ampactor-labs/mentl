@@ -251,7 +251,11 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   the class of error that should refuse it. `mentl query src/main.mn
   "variants Expect"` lists every form a first line can take.
 - Every test directory runs through `wt_battery <compiler> <dir>`: micros,
-  syntax, proposals, teach and frontier. `mentl test` checks a directory and
+  syntax, proposals, teach and frontier, the arena's programs
+  (tests/frontier/arena) and the nine crucible directories beside them,
+  each a battery of its own; `batteries` in tools/state.sh lists all of them, and
+  `mentl land` judges each on the candidate and on the new boot. A program
+  imports what it uses and builds as written. `mentl test` checks a directory and
   prints each fixture's RUN line, and the host runs it. `tests/crown` is a
   battery too: a leak-* crucible's first line names the class that must
   refuse it (`// check: refuse E_EffectMismatch`), and its sound twin's says
@@ -281,8 +285,10 @@ wt_battery "$PWD/.build/probe/m2.wasm" tests/micros   # compiled, run and judged
   write there without showing it, and never reads one from the
   repository's directory, so it answers the same on every machine.
   A verb that emits a module is refused, and so is `serve`, whose frames go
-  to stdout past the transcript's writers, so a program run and an LSP
-  exchange are still checked by a leg of `tools/frontier-gate.sh`. A leg and a
+  to stdout past the transcript's writers. A program's run is its battery's
+  contract, by its first line; a run whose contract is what it prints, a
+  program a verb writes, and an LSP exchange are still checked by a leg of
+  `tools/frontier-gate.sh`. A leg and a
   transcript refer to fixture line numbers, so a line added near the top
   of a fixture shifts them. Add history at the end.
 - `mentl fmt --check` on a fixture that uses syntax the boot cannot parse

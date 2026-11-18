@@ -5,9 +5,9 @@
 // first, so the list parser mints the rest as a cover-grammar node
 // (RestExpr) that expr_to_pat consumes; `mentl fmt` writes a sole-parameter
 // literal as its arm list, so the canonical page holds the pattern as an
-// arm, and both spellings are one graph. The frontier leg gates both
-// halves: zero diagnostics at check, and the program runs to 7 — the rest
-// binding is the list runtime's slice, reached like any other call.
+// arm, and both spellings are one graph. The program builds with no error
+// and runs to 7 — the rest binding is the list runtime's slice, reached
+// like any other call.
 fn pick(f, xs) = f(xs)
 
 fn main(q) = pick({ [h, ...t] => h }, [7, 8, 9])

@@ -1,9 +1,12 @@
+// expect: 42
 // An address a typed store wrote into a young buffer, copied by `mem_copy`
 // into a slot older than the arena. Copied bytes carry no type, so a copy
 // that writes memory older than the arena keeps its region, and the exit
 // reads none of the bytes: the string the copied address names reads back
 // whole. Exit 42 when it does and the exit was a keep. With no barrier on a
 // raw copy, the compiler answered 1 for 42, with no diagnostic.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn fill(old) = {

@@ -1,3 +1,4 @@
+// expect: 42
 // dsp-demo.mn — a real DSP chain, generated and analyzed through the wheel.
 //
 // Synthesize a signal inline (two sinusoids plus a deterministic pseudo-noise
@@ -36,6 +37,7 @@
 // loud 64-cycle component in the filtered output, so the DFT argmax lands on the
 // high bin (base 0) and the zero-crossing count explodes to 127. Only the
 // raw-signal clip fact still holds, so the run exits 1, not 42.
+import math
 
 effect Sample { sample_rate() -> Int }
 effect IterContext { iter_context() -> Bool }

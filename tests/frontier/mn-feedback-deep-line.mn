@@ -1,8 +1,8 @@
 // expect: 84
-// The cost of a deep line, as a number on the board: a 24,000-deep echo
+// The cost of a deep line: a 24,000-deep echo
 // driven 2,000,000 ticks with a constant input of 1 answers
 // ⌈2,000,000 / 24,000⌉ = 84. The ring makes a tick four memory ops at any
-// depth; the frontier leg prints the ticks per second beside the verdict.
+// depth.
 fn echo(x) = ((prev) => x + prev) <~ delay(24000)
 
 fn drive(n, acc) = if n == 0 { acc } else { drive(n - 1, echo(1)) }

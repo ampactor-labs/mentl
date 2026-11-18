@@ -1,7 +1,10 @@
+// expect: 42
 // An arena whose body suspends stands where its value is used: the rest of
 // the enclosing expression runs after each resumption's arena exits, on the
 // value that exit published. Expected (0 * 10 + 5) + (1 * 10 + 5) +
 // (2 * 10 + 5) = 45 and three exits.
+import arena
+
 effect Pick {
   pick() -> Int
 }

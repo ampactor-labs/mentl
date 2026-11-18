@@ -6,5 +6,5 @@
 // saturated and holed CALL paths already forced the face, and the bare
 // VarRef mention was the last raw-scheme leak. seq_face_ty closes it
 // at the mention, so pipes, HOF args, and stored seq-ops all type as
-// the face. The leg asserts zero diagnostics and exit 3.
+// the face. It runs to 3, and its check reports nothing (check.transcript).
 fn main(q) = [1, 2, 3] |> len

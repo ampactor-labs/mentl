@@ -1,6 +1,9 @@
+// expect: 42
 // A `<~` line whose prior is a pointer, ticked inside an arena: the ring is
 // older than the arena, so each tick journals the slot with its type, and
 // the history the line holds moves out with the arena's value.
+import arena
+
 type Hist = Empty | Cell(Int, Hist)
 
 fn hist_len(h) = match h {

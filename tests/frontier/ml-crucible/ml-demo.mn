@@ -1,3 +1,4 @@
+// expect: 42
 // ml-demo.mn — a tiny learner that RUNS through the wheel: batch gradient
 // descent for a 2-parameter linear regression y = w*x + b.
 //

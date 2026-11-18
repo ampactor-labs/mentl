@@ -1,8 +1,11 @@
+// expect: 42
 // The resumed rest stores a list it built into a handler's state, which is
 // older than the arena: the store is journaled, and the list moves out at
 // the re-entry's exit rather than die with the region. Read after both
 // resumptions and after more allocation. Expected 1 * 100 + (1 + … + 5) =
 // 115, two exits, nothing kept.
+import arena
+
 effect Pick {
   pick() -> Int
 }

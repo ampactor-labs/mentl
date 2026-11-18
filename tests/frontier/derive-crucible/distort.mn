@@ -1,3 +1,4 @@
+// expect: 42
 // distort.mn — the derivative of scene 1's distortion PERFORM, through the
 // stateful handler that runs it, against the finite difference of the same
 // chain.
@@ -21,6 +22,9 @@
 //
 // EXIT 42 iff every one of the 12 slopes (6 chains × two seeds) agrees with
 // its difference to 1e-5 relative; otherwise 10 plus the number that missed.
+import dsp/spectral
+
+import ml/grad
 
 fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.00001 * (1.0 + abs(b))
 

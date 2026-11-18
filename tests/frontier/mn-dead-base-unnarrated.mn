@@ -4,8 +4,8 @@
 // proves its own layout, and nothing calls the base body — whose row never
 // closes, so it can only floor.
 //
-// Contract (the frontier leg dead-base-unnarrated): the program answers 46
-// and the compile says nothing about the base of `pick`. On boot c5439637 it
+// Contract: the program answers 46, and its check says nothing about the
+// base of `pick` (tests/frontier/check.transcript). On boot c5439637 it
 // answered 46 and narrated two unprovable-field-offset floors at stdin 0:0,
 // a warning about a body the program never runs; the emitted reach keeps a
 // decl only when a live reference reaches it.

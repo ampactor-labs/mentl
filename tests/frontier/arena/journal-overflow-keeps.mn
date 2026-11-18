@@ -1,6 +1,9 @@
+// expect: 42
 // More in-place writes than the journal holds: the arena cannot know every
 // slot it would have to move, so it keeps its region, and the program is
 // correct.
+import arena
+
 effect Stash {
   put([Int])
   get(Int) -> [Int]

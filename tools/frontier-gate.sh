@@ -96,114 +96,10 @@ PERSIST_RTLIBS=(
   persist
 )
 
-# The CFC pipeline links the DSP math substrate (math.mn), the comodulogram
-# (dsp/cfc.mn, whose read_recording crosses the WASI boundary → io.mn), and
-# the synthetic-signal generator (cfc_demo/gen.mn). The demo builds its
-# signal inline, so its run preopens nothing.
-CFC_RTLIBS=(
-  "${RTLIBS[@]}"
-  io
-  math
-  dsp/cfc
-  tests/frontier/cfc_demo/gen
-)
-
-# The signal-crucible link set: the CFC substrate plus lib/dsp/signal.mn (the
-# STFT + `<~` bandpass + filter-based comodulogram). signal.mn reuses cfc.mn's
-# mean-vector-length, matrix readers, and file transport (import, never
-# duplicate), so both are linked; its own demodulation columns, STFT, and `<~`
-# bandpass sit on top. The run preopens /tmp for the recording.
-SIGNAL_RTLIBS=(
-  "${RTLIBS[@]}"
-  io
-  math
-  dsp/cfc
-  dsp/signal
-)
-
-# The data-validator lib set: the base runtime plus the WASI fs layer (io.mn),
-# for the on-disk [Float]-statistics and String=[byte]-text validators. Their
-# runs preopen /tmp for the fixture.
-IO_RTLIBS=(
-  "${RTLIBS[@]}"
-  io
-  fs
-)
-
-# The real-workload crucible lib set: the base runtime plus the transcendental
-# float substrate (math.mn — sin/cos/sqrt/atan2). The dsp/ml/adaptive crucibles
-# build their signals and learners inline (no file I/O), so their runs preopen
-# nothing.
-MATH_RTLIBS=(
-  "${RTLIBS[@]}"
-  math
-)
-
-# The derivative-reading lib set (L4a, 2026-09-28): the signal set plus the
-# spectral distortion scene 1 renders and lib/ml/grad.mn's `Derivative` /
-# `grad`, so the crucibles differentiate the library's own stages rather than
-# copies of them.
-DERIVE_RTLIBS=(
-  "${SIGNAL_RTLIBS[@]}"
-  dsp/spectral
-  ml/grad
-)
-
-# The arena lib set (2026-10-03): the base runtime plus lib/arena.mn's
-# `arena` handler and the `Arena` effect its install charges.
-ARENA_RTLIBS=(
-  "${RTLIBS[@]}"
-  arena
-)
-
 total_pass=0
 total_fail=0
 # Declared standing failures (frontier_expected_red) — not reds. See judge().
 total_xred=0
-RUNTIME_SHADOW=""
-BOOT_RUNTIME_SHADOW=""
-# 2026-07-17: repinned after Stage 1b removed check_ref_escape. The runtime libs
-# shed their "escapes its scope (returned)" false alarms (a syntactic check with
-# no hazard model, 356 across the wheel), so the inherited-debt multiset SHRANK —
-# a removal, which the rule above explicitly permits. Verified by reading the new
-# shadow: the same E_TypeMismatch/E_RedundantBraces set minus the ownership false
-# positives, never a NEW entry.
-#
-# 2026-07-18: repinned for the bounds-trap landing — lists.mn gained the checked
-# list_index entry + list_index_unchecked (SYNTAX §Indexing made real), and
-# strings.mn/cache_map.mn spell their guarded reads as control flow (sound
-# under both the old eager `&&` and the short-circuit lowering). The shadow's
-# byte change is those three files; the diagnostic multiset did not grow.
-#
-# 2026-07-18 (2): repinned for the effect-truth sweep — the runtime libs'
-# declared rows widened to their bodies' truth (prelude iterate, combinators'
-# Pure fictions dropped for the Memory/Alloc the list ops perform, cache_map's
-# Pure declarations, persist's Persist op, threading's Memory). Rows only;
-# the diagnostic multiset SHRANK (the sweep's own purpose).
-#
-# 2026-07-20: repinned for the §4① string-layer typing + the expect_same
-# chase-first fix (Hβ.infer.expect-same-chases-bound-var). The multiset GREW
-# 2 -> 13, and the growth is benign-by-construction: the new entries are all
-# `Int vs List` in prelude's GENERIC list combinators (reduce/unique/chunk/
-# iterate) whose element type is a free var when the libs compile WITHOUT
-# src/. The expect_same fix propagates that var precisely instead of the old
-# clobber masking it, so the isolation shadow surfaces it — but the FULL
-# wheel census is 0 (they resolve at every concrete use), so no user program
-# and no self-compile sees them. Growth here is the isolation context lacking
-# src/, not a regression; the full-wheel census is the real gate.
-# 2026-07-21: the shadow is EMPTY (the sha256 of zero bytes) — the §4①
-# String=[byte] landing healed the whole inherited class. The 13 entries were
-# ONE root: list_to_flat's raw body typed (Int)->Int and poisoned the element
-# var of every generic combinator that called it (iterate/reduce/unique/chunk)
-# when the libs compiled without src/. The two-altitude split (list_to_flat
-# joins the seq-op table as [a] -> [a]; flat_raw is the raw body — the
-# make_list/alloc_list precedent) deleted the class at its origin. The libs
-# now compile in isolation with ZERO diagnostics. TRAP (2026-10-06) moved it
-# once, on the record: every runtime index read whose bound nothing in sight
-# proves is an open PInBounds claim, so the libs judged alone carry the one
-# class V_Pending (the debt the row now states; #109's path read proves the
-# guarded ones and returns this to the empty multiset).
-EXPECTED_RUNTIME_SHADOW_SHA256="2c3b4947f8a331994032bdb27e1ff7ecb72e9450cb9d40eabe119ed969fae920"
 
 pass() {
   echo "  PASS $*"
@@ -261,11 +157,10 @@ judge() {
   fi
 }
 
-# Normalize only compiler errors and unresolved proof obligations. Runtime
-# sources currently carry a known diagnostic shadow; comparing this multiset
-# keeps that debt explicit while refusing every diagnostic introduced by a
-# frontier fixture. Messages and graph epochs are deliberately omitted, but
-# source spans and duplicate counts remain part of the fingerprint.
+# The classes a compile reported, one line for each error and one for the
+# summary of the claims it left open, sorted. A report names its module
+# before its line (`at main:2:3-2:9`), which the span pattern below does not
+# match, so each line holds a class alone.
 normalize_errors() {
   awk '
     /E_[A-Za-z0-9_]+ error:|V_?Pending[A-Za-z0-9_]*/ {
@@ -284,93 +179,26 @@ normalize_errors() {
   ' "$1" | LC_ALL=C sort
 }
 
-capture_runtime_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/runtime-shadow.wat" err="$dir/runtime-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "runtime shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-
-  RUNTIME_SHADOW="$dir/runtime-shadow.normalized"
-  normalize_errors "$err" > "$RUNTIME_SHADOW"
-  pass "runtime shadow captured ($(wc -l < "$RUNTIME_SHADOW") inherited errors)"
-}
-
+# run_program <compiler> <label> <source> <expected> <dir> — a program read on
+# the compiler's stdin, compiled, assembled and run. The compile reports no
+# error and leaves no claim open, and the run answers the expected exit,
+# judged by the leg's label.
 run_program() {
-  local compiler="$1" label="$2" source="$3" expected="$4" link_runtime="$5"
-  local dir="$6" wat="$dir/$label.wat" wasm="$dir/$label.wasm"
+  local compiler="$1" label="$2" source="$3" expected="$4" dir="$5"
+  local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
   local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
   local rout="$dir/$label.run.out" rerr="$dir/$label.run.err"
-  local rc diags errors shadow="" normalized unexpected run_flags=()
+  local normalized="$dir/$label.normalized" rc diags errors
 
-  case "$link_runtime" in
-    yes)
-      wt_entry "$source" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
-    persist)
-      wt_entry "$source" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
-      run_flags=(--dir /tmp) ;;
-    cfc)
-      wt_entry "$source" "${CFC_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
-    cfc-rec)
-      wt_entry "$source" "${CFC_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
-      run_flags=(--dir "$dir::/tmp") ;;
-    signal)
-      wt_entry "$source" "${SIGNAL_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
-      run_flags=(--dir "$dir::/tmp") ;;
-    io-rec)
-      wt_entry "$source" "${IO_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
-      run_flags=(--dir "$dir::/tmp") ;;
-    math)
-      wt_entry "$source" "${MATH_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
-    derive)
-      wt_entry "$source" "${DERIVE_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
-    arena)
-      wt_entry "$source" "${ARENA_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
-    *)
-      wt_run "$compiler" < "$source" > "$wat" 2> "$cerr" ;;
-  esac
+  wt_run "$compiler" < "$source" > "$wat" 2> "$cerr"
   rc=$?
   diags=$(grep -cE '(^|: )[EWVTP]_' "$cerr" 2>/dev/null || true)
-  normalized="$dir/$label.normalized"
-  unexpected="$dir/$label.unexpected"
   normalize_errors "$cerr" > "$normalized"
-  if [ "$link_runtime" = yes ]; then
-    comm -23 "$normalized" "$RUNTIME_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$RUNTIME_SHADOW")"
-  elif [ "$link_runtime" = persist ]; then
-    comm -23 "$normalized" "$PERSIST_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$PERSIST_SHADOW")"
-  elif [ "$link_runtime" = cfc ] || [ "$link_runtime" = cfc-rec ]; then
-    comm -23 "$normalized" "$CFC_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$CFC_SHADOW")"
-  elif [ "$link_runtime" = signal ]; then
-    comm -23 "$normalized" "$SIGNAL_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$SIGNAL_SHADOW")"
-  elif [ "$link_runtime" = io-rec ]; then
-    comm -23 "$normalized" "$IO_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$IO_SHADOW")"
-  elif [ "$link_runtime" = math ]; then
-    comm -23 "$normalized" "$MATH_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$MATH_SHADOW")"
-  elif [ "$link_runtime" = derive ]; then
-    comm -23 "$normalized" "$DERIVE_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$DERIVE_SHADOW")"
-  elif [ "$link_runtime" = arena ]; then
-    comm -23 "$normalized" "$ARENA_SHADOW" > "$unexpected"
-    shadow="; inherited-shadow=$(wc -l < "$ARENA_SHADOW")"
-  else
-    cp "$normalized" "$unexpected"
-  fi
-  errors=$(wc -l < "$unexpected")
+  errors=$(wc -l < "$normalized")
   if [ "$rc" -eq 0 ] && [ "$errors" -eq 0 ]; then
-    pass "$label compile (diagnostics=$diags$shadow)"
+    pass "$label compile (diagnostics=$diags)"
   elif [ "$rc" -eq 0 ]; then
-    fail "$label compile (new-errors-or-debt=$errors diagnostics=$diags; see $unexpected)"
+    fail "$label compile (new-errors-or-debt=$errors diagnostics=$diags; see $normalized)"
   else
     fail "$label compile (exit=$rc diagnostics=$diags; see $cerr)"
     return
@@ -383,14 +211,8 @@ run_program() {
     return
   fi
 
-  wt_run "${run_flags[@]}" "$wasm" > "$rout" 2> "$rerr"
+  wt_run "$wasm" > "$rout" 2> "$rerr"
   rc=$?
-  # The run's verdict goes through judge, keyed by the leg's label, so a
-  # program leg can be DECLARED RED by name in frontier_expected_red and
-  # retires loudly the day it passes — the same two-direction contract the
-  # named legs already have. Compile and assemble stay plain: a declared
-  # standing failure is a claim about the program's ANSWER, never a licence
-  # for it to stop compiling.
   if [ "$rc" -eq "$expected" ]; then
     judge "$label" 1 "$label run (exit=$rc)"
   else
@@ -751,25 +573,6 @@ run_wasatch() {
   fi
 }
 
-# A program that links library modules by import runs as a project — the
-# compile resolves its imports the way a developer's program does, where a
-# battery fixture is compiled over the runtime floor alone — and answers
-# its expected exit.
-run_project() {
-  local compiler="$1" dir="$2" label="$3" source="$4" expected="$5"
-  local pdir="$dir/$label.proj" rc
-  rm -rf "$pdir"
-  mkdir -p "$pdir"
-  cp "$source" "$pdir/main.mn"
-  run_module "$compiler" "$pdir" main "$dir/$label.run.out" "$dir/$label.run.err"
-  rc=$?
-  if [ "$rc" -eq "$expected" ]; then
-    pass "$label: runs to $expected"
-  else
-    fail "$label: run exit=$rc, want $expected (see $dir/$label.run.err)"
-  fi
-}
-
 # The environment protocol (E1): required reads refuse before main, while
 # optional literal reads are narrowly passed and computed optional reads
 # request the whole environment. Exercise the actual generated `mentl run`
@@ -1005,131 +808,9 @@ run_warm_incremental() {
   fi
 }
 
-# A refusal leg a function or loop drives: the fixture links lib/ (a schedule
-# handler, the prelude) and must refuse — no WAT, nonzero exit, the class named
-# at least once. A fixture of its own carries this as its contract instead
-# (`// expect: refuse E_X`, judged by `mentl test tests/frontier`).
-run_refusal_linked() {
-  local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
-  local link_runtime="${6:-yes}"
-  local wat="$dir/$label.wat" err="$dir/$label.compile.err"
-  local rc count size
-
-  # The lib set is the program's, as run_program reads it: the runtime floor
-  # by default, the derivative-reading set for a refusal the reading makes.
-  case "$link_runtime" in
-    derive)
-      wt_entry "$source" "${DERIVE_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
-    arena)
-      wt_entry "$source" "${ARENA_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
-    *)
-      wt_entry "$source" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
-  esac
-  rc=$?
-  count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
-  size=$(wc -c < "$wat" 2>/dev/null || echo 0)
-  # A refusal leg's verdict goes through judge too: a program the medium
-  # SHOULD refuse and still compiles is a standing failure a name can declare
-  # (spine-callee-alloc was one from 2026-09-30 until its refusal fired on
-  # 2026-10-01), and it retires loudly the day the refusal fires.
-  if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
-    judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
-  else
-    judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
-  fi
-}
-
-run_diagnostic() {
-  local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
-  local wat="$dir/$label.wat" err="$dir/$label.compile.err"
-  local rc count other
-
-  wt_run "$compiler" < "$source" > "$wat" 2> "$err"
-  rc=$?
-  count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
-  other=$(grep -E 'E_[A-Za-z0-9_]+ error:' "$err" 2>/dev/null \
-    | grep -vc "$expected_code error:" || true)
-  if [ "$rc" -eq 0 ] && [ "$count" -gt 0 ] && [ "$other" -eq 0 ]; then
-    pass "$label diagnostic ($expected_code=$count)"
-  else
-    fail "$label diagnostic (exit=$rc $expected_code=$count other-errors=$other; see $err)"
-  fi
-}
-
-# The narration contract — run_diagnostic's Warning-tier sibling: the program
-# COMPILES (exit 0, narration is a finding not a failure) and the expected
-# T_/W_ class surfaces on stderr with no error-class noise beside it.
-run_narration() {
-  local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
-  local wat="$dir/$label.wat" err="$dir/$label.compile.err"
-  local rc count other
-
-  wt_run "$compiler" < "$source" > "$wat" 2> "$err"
-  rc=$?
-  count=$(grep -c "$expected_code Warning:" "$err" 2>/dev/null || true)
-  other=$(grep -cE 'E_[A-Za-z0-9_]+ error:' "$err" 2>/dev/null || true)
-  if [ "$rc" -eq 0 ] && [ "$count" -gt 0 ] && [ "$other" -eq 0 ]; then
-    pass "$label narration ($expected_code=$count)"
-  else
-    fail "$label narration (exit=$rc $expected_code=$count other-errors=$other; see $err)"
-  fi
-}
-
-# The silence contract — run_narration's dual: the program compiles, runs
-# to its answer, and one NAMED class never appears, at either severity. A
-# floor in a body the program never runs is not a finding about the
-# developer's program, so it is not said at them.
-run_unnarrated() {
-  local compiler="$1" label="$2" source="$3" expected="$4" code="$5" dir="$6"
-  local n
-  run_program "$compiler" "$label" "$source" "$expected" "" "$dir"
-  n=$(grep -cE "$code (Warning|error):" "$dir/$label.compile.err" 2>/dev/null || true)
-  if [ "$n" -eq 0 ]; then
-    pass "$label unnarrated ($code=0)"
-  else
-    fail "$label unnarrated ($code=$n; see $dir/$label.compile.err)"
-  fi
-}
-
-# The open-claim contract — run_program's third face: the program's whole
-# point is an obligation the judgment cannot decide, so the compile must
-# SURFACE it (V_Pending, zero errors) rather than pass clean, the module
-# assembles, and the run answers the expected exit — for a claim that
-# stays open, the trap the row promised.
-run_open_claim() {
-  local compiler="$1" label="$2" source="$3" expected="$4" dir="$5"
-  local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
-  local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
-  local rout="$dir/$label.run.out" rerr="$dir/$label.run.err"
-  local rc pending errors
-
-  wt_run "$compiler" < "$source" > "$wat" 2> "$cerr"
-  rc=$?
-  pending=$(grep -c 'V_Pending' "$cerr" 2>/dev/null || true)
-  errors=$(grep -cE 'E_[A-Za-z0-9_]+ error:' "$cerr" 2>/dev/null || true)
-  if [ "$rc" -eq 0 ] && [ "$pending" -gt 0 ] && [ "$errors" -eq 0 ]; then
-    pass "$label compile (open claim surfaced: V_Pending=$pending errors=0)"
-  else
-    fail "$label compile (exit=$rc V_Pending=$pending errors=$errors; see $cerr)"
-    return
-  fi
-  if wt_asm "$wat" "$wasm" 2> "$aerr"; then
-    pass "$label assemble"
-  else
-    fail "$label assemble ($(head -1 "$aerr"))"
-    return
-  fi
-  wt_run "$wasm" > "$rout" 2> "$rerr"
-  rc=$?
-  if [ "$rc" -eq "$expected" ]; then
-    judge "$label" 1 "$label run (exit=$rc)"
-  else
-    judge "$label" 0 "$label run (exit=$rc expected=$expected; see $rerr)"
-  fi
-}
-
-# Same differential accounting for the persist lib set: pin boot's shadow,
-# per-compiler shadows may only shrink it.
+# The persist legs' baseline: what a program of nothing but the persist
+# libraries reports, normalized. A persist leg's compile may report nothing
+# beyond it.
 capture_persist_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/persist-shadow.wat" err="$dir/persist-shadow.err"
@@ -1147,71 +828,19 @@ capture_persist_shadow() {
   pass "persist shadow captured ($(wc -l < "$PERSIST_SHADOW") inherited errors)"
 }
 
-# Same differential accounting for the CFC lib set (runtime + io + math +
-# dsp/cfc + gen): the demo may only add refusals the base libs do not carry.
-capture_cfc_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/cfc-shadow.wat" err="$dir/cfc-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${CFC_RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "cfc shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-
-  CFC_SHADOW="$dir/cfc-shadow.normalized"
-  normalize_errors "$err" > "$CFC_SHADOW"
-  pass "cfc shadow captured ($(wc -l < "$CFC_SHADOW") inherited errors)"
-}
-
-# Same differential accounting for the signal lib set (runtime + io + math +
-# dsp/cfc + dsp/signal): the demo may only add refusals the base libs do not carry.
-capture_signal_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/signal-shadow.wat" err="$dir/signal-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${SIGNAL_RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "signal shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-
-  SIGNAL_SHADOW="$dir/signal-shadow.normalized"
-  normalize_errors "$err" > "$SIGNAL_SHADOW"
-  pass "signal shadow captured ($(wc -l < "$SIGNAL_SHADOW") inherited errors)"
-}
-
-# The STFT + `<~` bandpass + comodulogram (lib/dsp/signal.mn) on a REAL on-disk
-# recording + a python cross-validation. The recording carries a 4 Hz-phase ->
-# 50 Hz-amplitude coupling — a DIFFERENT pair than cfc_demo (6->40) and cfc-rec
-# (6->60), so the pipeline is proven to find a coupling it was never tuned to, not
-# to memorize one grid cell.
-#   (1) Mentl reads the recording (WASI fs -> parse_float -> native [Float]),
-#       computes the comodulogram (`<~` bandpass conditioner + cfc.mn's windowed-
-#       DFT mean-vector-length), the STFT dominant bin, and the `<~` bandpass
-#       selectivity, and exits 42 iff all three verdicts hold.
-#   (2) oracle.py (an INDEPENDENT port of signal.mn's pipeline using math.mn's
-#       exact Taylor series — no numpy) computes the SAME grid over the SAME bytes;
-#       the gate asserts it independently agrees on the argmax cell (flat 2 =
-#       (4,50)) and the strong-coupling separation (floor(peak/median) >= 20).
+# The signal crucible's oracle (tests/frontier/signal-crucible/oracle.py), an
+# independent port of lib/dsp/signal.mn's pipeline using math.mn's Taylor
+# series and no numpy, run over the recording the program reads. The
+# program's own battery holds it to the cell flat 2 and a strong coupling; the
+# oracle must find the same two facts.
 run_signal_crucible() {
-  local compiler="$1" dir="$2"
   local rec="$ROOT/tests/frontier/signal-crucible/recording.txt"
-  local tmp="$dir/mentl-signal-recording.txt"
-  cp -f "$rec" "$tmp"
-  run_program "$compiler" signal-crucible \
-    "$ROOT/tests/frontier/signal-crucible/demo.mn" 42 signal "$dir"
-  local oracle="$ROOT/tests/frontier/signal-crucible/oracle.py"
-  local out; out=$(python3 "$oracle" oracle "$tmp" 2>/dev/null)
+  local out flat strong ok=1
+  out=$(python3 "$ROOT/tests/frontier/signal-crucible/oracle.py" oracle "$rec" 2>/dev/null)
   if ! printf '%s\n' "$out" | grep -q '^EXPECTED_'; then
     pass "signal-crucible cross-validation skipped (oracle deps unavailable)"
     return
   fi
-  local flat strong ok=1
   flat=$(printf '%s\n' "$out" | sed -n 's/^EXPECTED_FLAT=//p')
   strong=$(printf '%s\n' "$out" | sed -n 's/^EXPECTED_STRONG_COUPLING=//p')
   [ "$flat" = 2 ] || { ok=0; fail "signal-crucible cross-validation (argmax flat=$flat, expected 2)"; }
@@ -1219,32 +848,14 @@ run_signal_crucible() {
   [ "$ok" = 1 ] && pass "signal-crucible cross-validation (argmax flat=2 + strong coupling agree with the oracle)"
 }
 
-# The CFC pipeline on a REAL on-disk recording + a LIVE numpy cross-validation.
-# Two independent legs, both load-bearing:
-#   (1) Mentl reads recording.txt (WASI fs → newline split → parse_float → native
-#       [Float]), runs the comodulogram, and asserts the (6,60) argmax = flat 7.
-#       A different value origin than the inline demo's literal-built signal, so
-#       it stresses parse_float + the [Float] round-trip end to end.
-#   (2) IF python3+numpy is present, the SAME on-disk bytes are run through
-#       oracle.py (a faithful numpy port of cfc.mn) and its INDEPENDENT argmax is
-#       asserted to agree with Mentl's. This is the representation-stress oracle
-#       the m3==m4 fixpoint is structurally BLIND to — a corrupt [Float] would
-#       make Mentl's argmax diverge from numpy's. No numpy on host → the cross-
-#       check is skipped (noted), and Mentl's self-assertion still runs.
+# The CFC recording's oracle (tests/frontier/cfc-rec/oracle.py), a numpy port
+# of lib/dsp/cfc.mn, run over the recording the program reads. The program's
+# own battery holds it to the cell flat 7; numpy must find the same cell. With
+# no numpy on the host the leg is skipped.
 run_cfc_rec() {
-  local compiler="$1" dir="$2"
-  local rec="$ROOT/tests/frontier/cfc-rec/recording.txt"
-  # The fixture lives in the gate's OWN per-run dir, which run_program maps as
-  # the guest's /tmp (--dir "$dir::/tmp") — the .mn source keeps its /tmp path
-  # while the host never writes the shared world-writable /tmp (a predictable
-  # path there is a symlink hazard).
-  local tmp="$dir/mentl-cfc-recording.txt"
-  cp -f "$rec" "$tmp"
-  run_program "$compiler" cfc-rec \
-    "$ROOT/tests/frontier/cfc-rec/rec-demo.mn" 42 cfc-rec "$dir"
-  local oflat
+  local rec="$ROOT/tests/frontier/cfc-rec/recording.txt" oflat
   if python3 -c 'import numpy' 2>/dev/null; then
-    oflat=$(python3 "$ROOT/tests/frontier/cfc-rec/oracle.py" oracle "$tmp" 2>/dev/null \
+    oflat=$(python3 "$ROOT/tests/frontier/cfc-rec/oracle.py" oracle "$rec" 2>/dev/null \
       | sed -n 's/^EXPECTED_FLAT=//p')
     if [ "$oflat" = 7 ]; then
       pass "cfc-rec cross-validation (numpy argmax flat=$oflat agrees with Mentl)"
@@ -1256,100 +867,16 @@ run_cfc_rec() {
   fi
 }
 
-# The IO shadow — the base runtime + WASI fs, the pinned inherited-debt baseline
-# for the on-disk data validators.
-capture_io_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/io-shadow.wat" err="$dir/io-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${IO_RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "io shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-  IO_SHADOW="$dir/io-shadow.normalized"
-  normalize_errors "$err" > "$IO_SHADOW"
-  pass "io shadow captured ($(wc -l < "$IO_SHADOW") inherited errors)"
-}
-
-# The MATH shadow — the base runtime + math.mn, the pinned inherited-debt
-# baseline for the real-workload crucibles (dsp/ml/adaptive). math.mn is `with
-# Pure` throughout, so this shadow is empty; a crucible may only add refusals
-# the base libs do not carry.
-capture_math_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/math-shadow.wat" err="$dir/math-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${MATH_RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "math shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-  MATH_SHADOW="$dir/math-shadow.normalized"
-  normalize_errors "$err" > "$MATH_SHADOW"
-  pass "math shadow captured ($(wc -l < "$MATH_SHADOW") inherited errors)"
-}
-
-# The DERIVE shadow — the derivative crucibles' link set with an empty main,
-# so a crucible may only add refusals its libraries do not already carry.
-capture_derive_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/derive-shadow.wat" err="$dir/derive-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${DERIVE_RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "derive shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-  DERIVE_SHADOW="$dir/derive-shadow.normalized"
-  normalize_errors "$err" > "$DERIVE_SHADOW"
-  pass "derive shadow captured ($(wc -l < "$DERIVE_SHADOW") inherited errors)"
-}
-
-# The ARENA shadow — the arena legs' link set with an empty main, so a leg
-# may only add refusals its libraries do not already carry.
-capture_arena_shadow() {
-  local compiler="$1" dir="$2"
-  local wat="$dir/arena-shadow.wat" err="$dir/arena-shadow.err"
-
-  printf 'fn main() = 0\n' | wt_entry - "${ARENA_RTLIBS[@]}" \
-    | wt_rooted "$compiler" > "$wat" 2> "$err"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    fail "arena shadow compile (exit=$rc; see $err)"
-    return 1
-  fi
-  ARENA_SHADOW="$dir/arena-shadow.normalized"
-  normalize_errors "$err" > "$ARENA_SHADOW"
-  pass "arena shadow captured ($(wc -l < "$ARENA_SHADOW") inherited errors)"
-}
-
-# A generic on-disk DATA VALIDATOR + a LIVE oracle cross-check. Mentl reads a
-# committed fixture (copied to /tmp), computes discrete facts over it, and
-# asserts exit 42; then the SAME on-disk bytes are run through a python oracle
-# whose EXPECTED_<KEY>=<value> lines are asserted to match the values Mentl's
-# exit-42 encodes. Two independent implementations agreeing on the same real
-# data — the representation-stress oracle the m3==m4 fixpoint is blind to. The
-# oracle runs only if it can import its deps; otherwise the cross-check is
-# skipped-noted and Mentl's self-assertion still runs. Trailing args are
-# KEY=value expectations checked against the oracle's output. `guest_path` is
-# the /tmp path the .mn source reads; the host copy lives in the gate's own
-# per-run dir, which run_program maps as the guest's /tmp (--dir "$dir::/tmp"),
-# so the host never writes the shared world-writable /tmp.
+# A data program's oracle: tests/frontier/<name>/oracle.py computes the same
+# discrete facts over the file the program reads, and each
+# EXPECTED_<KEY>=<value> line it prints must equal the value given here, the
+# value the program's own battery holds it to. The oracle runs only if it can
+# import its deps; otherwise the leg is skipped.
 run_data_validator() {
-  local compiler="$1" label="$2" source="$3" fixture="$4" guest_path="$5" oracle="$6" dir="$7"
-  shift 7
+  local label="$1" data="$2" oracle="$3"
+  shift 3
   local expected=("$@")
-  local tmp="$dir/$(basename "$guest_path")"
-  cp -f "$fixture" "$tmp"
-  run_program "$compiler" "$label" "$source" 42 io-rec "$dir"
-  local out; out=$(python3 "$oracle" oracle "$tmp" 2>/dev/null)
+  local out; out=$(python3 "$oracle" oracle "$data" 2>/dev/null)
   if ! printf '%s\n' "$out" | grep -q '^EXPECTED_'; then
     pass "$label cross-validation skipped (oracle deps unavailable)"
     return
@@ -1374,7 +901,7 @@ run_accepted_fill() {
   cp "$ROOT/tests/frontier/mn-constrained-hole-workflow.mn" "$copy"
   printf 'y\n' | "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" "$compiler" \
     edit "../${dir#$ROOT/}/positive-hole" > "$dir/positive-hole.edit.out" 2> "$dir/positive-hole.edit.err"
-  run_program "$compiler" positive-hole-post-edit "$copy" 1 no "$dir"
+  run_program "$compiler" positive-hole-post-edit "$copy" 1 "$dir"
 }
 
 # lsp_frame — one Content-Length-framed JSON-RPC message (LSP wire format, per
@@ -1443,22 +970,19 @@ run_lsp_hover() {
   fi
 }
 
-# Pin the inherited runtime debt to the checked boot compiler and current
-# runtime sources. A changed hash is an explicit baseline change, never an
-# automatically blessed shadow. Other compiler artifacts may remove entries
-# from this multiset, but may not introduce a new one.
-baseline_dir="$ROOT/.build/frontier-gate/runtime-baseline"
-rm -rf "$baseline_dir"
-mkdir -p "$baseline_dir"
-capture_runtime_shadow "$ROOT/boot/mentl.wasm" "$baseline_dir" || exit 1
-BOOT_RUNTIME_SHADOW="$RUNTIME_SHADOW"
-runtime_shadow_sha=$(sha256sum "$BOOT_RUNTIME_SHADOW" | awk '{print $1}')
-if [ "$runtime_shadow_sha" = "$EXPECTED_RUNTIME_SHADOW_SHA256" ]; then
-  pass "runtime shadow fingerprint pinned ($runtime_shadow_sha)"
-else
-  fail "runtime shadow fingerprint changed ($runtime_shadow_sha; expected $EXPECTED_RUNTIME_SHADOW_SHA256)"
-  exit 1
-fi
+# The data programs' oracles. Each program in tests/frontier/cfc-rec,
+# signal-crucible, stats and text is the battery of its own directory, whose
+# first line holds its run to the facts it computes over its file; each oracle,
+# a python program that shares nothing with the medium, must compute the same
+# facts over the same file. An oracle reads no compiler, so it runs once.
+run_cfc_rec
+run_signal_crucible
+run_data_validator stats-float "$ROOT/tests/frontier/stats/data.txt" \
+  "$ROOT/tests/frontier/stats/oracle.py" \
+  EXPECTED_ARGMIN=137 EXPECTED_ARGMAX=298 EXPECTED_ABOVE=199
+run_data_validator text-bytes "$ROOT/tests/frontier/text/corpus.txt" \
+  "$ROOT/tests/frontier/text/oracle.py" \
+  EXPECTED_BYTES=429 EXPECTED_COUNT_E=47 EXPECTED_COUNT_T=32 EXPECTED_TOP_LETTER=101
 
 for i in "${!compilers[@]}"; do
   label="${labels[$i]}"
@@ -1469,192 +993,7 @@ for i in "${!compilers[@]}"; do
   mkdir -p "$dir"
 
   echo "frontier: compiler=$label artifact=$compiler"
-  capture_runtime_shadow "$compiler" "$dir" || continue
-  shadow_regressions="$dir/runtime-shadow.regressions"
-  comm -23 "$RUNTIME_SHADOW" "$BOOT_RUNTIME_SHADOW" > "$shadow_regressions"
-  if [ -s "$shadow_regressions" ]; then
-    fail "$label runtime shadow introduced new errors (see $shadow_regressions)"
-    continue
-  else
-    pass "$label runtime shadow is a subset of the pinned baseline"
-  fi
   capture_persist_shadow "$compiler" "$dir" || continue
-  capture_cfc_shadow "$compiler" "$dir" || continue
-  # The CFC pipeline end to end (PLAN §11 col 4): the synthetic PAC signal
-  # (4096 samples @ 512 Hz) run through the comodulogram over low=[4,6,8,10]
-  # high=[30,40,50,60]. Exit 42 iff the coupled cell is (6, 40) — the phase-
-  # amplitude coupling built into the signal (peak/median MVL ratio ≈ 5.9).
-  run_program "$compiler" cfc_demo \
-    "$ROOT/tests/frontier/cfc_demo/demo.mn" 42 cfc "$dir"
-  # The same pipeline on a REAL on-disk recording, cross-validated against numpy
-  # (a distinct 6→60 coupling, flat 7). The felt research payoff + the
-  # representation oracle the fixpoint cannot be (see run_cfc_rec).
-  run_cfc_rec "$compiler" "$dir"
-  # The STFT + `<~` bandpass + filter-based comodulogram (lib/dsp/signal.mn) on a
-  # real recording with a planted 8→50 Hz coupling, cross-validated cell-for-cell
-  # against a python oracle (PLAN §11 col 4's research half, filter-based).
-  capture_signal_shadow "$compiler" "$dir" || continue
-  run_signal_crucible "$compiler" "$dir"
-  # Two more on-disk data validators, cross-validated against numpy/python (the
-  # representation-stress the m3==m4 fixpoint is structurally blind to):
-  #  - native [Float] statistics: fold-sum mean, comparison-reduction argmin/
-  #    argmax, mean-threshold count over 400 real samples (argmin 137, argmax
-  #    298, above-mean 199).
-  #  - String=[byte] text: byte_len, byte_at, structural ==, and a 256-slot Int
-  #    histogram argmax over a 429-byte corpus (count_e 47, count_t 32, top 'e').
-  capture_io_shadow "$compiler" "$dir" || continue
-  run_data_validator "$compiler" stats-float \
-    "$ROOT/tests/frontier/stats/stats-demo.mn" \
-    "$ROOT/tests/frontier/stats/data.txt" /tmp/mentl-stats-data.txt \
-    "$ROOT/tests/frontier/stats/oracle.py" "$dir" \
-    EXPECTED_ARGMIN=137 EXPECTED_ARGMAX=298 EXPECTED_ABOVE=199
-  run_data_validator "$compiler" text-bytes \
-    "$ROOT/tests/frontier/text/text-demo.mn" \
-    "$ROOT/tests/frontier/text/corpus.txt" /tmp/mentl-text-corpus.txt \
-    "$ROOT/tests/frontier/text/oracle.py" "$dir" \
-    EXPECTED_BYTES=429 EXPECTED_COUNT_E=47 EXPECTED_COUNT_T=32 EXPECTED_TOP_LETTER=101
-  # ── the real-workload crucibles (inline signals + learners, no file I/O) ──
-  # Each builds its data in Mentl, computes discrete verdict facts, and exits 42
-  # iff they match an independent python oracle (tests/frontier/<name>-crucible/
-  # oracle.py). Real DSP/ML stress on the wheel — the representation + numerics
-  # the m3==m4 fixpoint is structurally blind to.
-  #
-  #  - dsp: a two-sinusoid + pseudo-noise signal through a single-pole IIR
-  #    lowpass built with the `<~` feedback recurrence (float feedback — the
-  #    prior threads through f64 state slots, repr read live). Verdict composes
-  #    the argmax bin of an 8-bin DFT of the filtered output (1), a
-  #    zero-crossing count (21), and a raw-signal clip count (64): 42 iff all.
-  #  - ml: batch gradient descent for a 2-parameter linear regression recovering
-  #    a known slope/intercept (round to 3, 1) over 32 inline points.
-  #  - adaptive: a 2-tap LMS adaptive filter learning an unknown channel [2, 1]
-  #    online while filtering; verdict = rounded taps + a >=1e6 residual-power
-  #    drop.
-  capture_math_shadow "$compiler" "$dir" || continue
-  run_program "$compiler" dsp-crucible \
-    "$ROOT/tests/frontier/dsp-crucible/dsp-demo.mn" 42 math "$dir"
-
-  if [ -f "$dir/feedback-deep-line.wasm" ]; then
-    dl_t0=$(date +%s%N)
-    "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/feedback-deep-line.wasm" >/dev/null 2>&1 || true
-    dl_t1=$(date +%s%N)
-    dl_ms=$(( (dl_t1 - dl_t0) / 1000000 ))
-    if [ "$dl_ms" -gt 0 ]; then
-      echo "  · deep line: 2,000,000 ticks at depth 24,000 in ${dl_ms} ms ($(( 2000000000 / dl_ms )) ticks/s)"
-    else
-      echo "  · deep line: 2,000,000 ticks at depth 24,000 in <1 ms"
-    fi
-  fi
-  run_program "$compiler" ml-crucible \
-    "$ROOT/tests/frontier/ml-crucible/ml-demo.mn" 42 math "$dir"
-  run_program "$compiler" adaptive-crucible \
-    "$ROOT/tests/frontier/adaptive-crucible/adaptive-demo.mn" 42 math "$dir"
-  # The derivative reading (L4a, 2026-09-28), against oracles it cannot share
-  # a mistake with. derive-shape: the slope of scene 1's distortion
-  # (spectral.mn's adaptive_shape) in the drive and in the flux, by two
-  # readings, against the central difference of the same function at 18
-  # points over all three crossfade regimes — 42 iff all 36 agree to 1e-6.
-  # derive-lms: the adaptive crucible's LMS filter with its hand-derived step
-  # replaced by `d(e * e)`, judged by the crucible's own oracle facts. Both
-  # RED on boot 51f332d7 (46 and 10: the install ran as an ordinary handler
-  # and `d` answered the seed).
-  capture_derive_shadow "$compiler" "$dir" || continue
-  run_program "$compiler" derive-shape \
-    "$ROOT/tests/frontier/derive-crucible/shape.mn" 42 derive "$dir"
-  run_program "$compiler" derive-lms \
-    "$ROOT/tests/frontier/derive-crucible/lms.mn" 42 derive "$dir"
-  # derive-distort (L4a′, 2026-09-30): the distortion PERFORM under its
-  # stateful handler — the arm's derivative twin, the install record's lanes
-  # carrying the envelopes' tangents from sample to sample — in the drive
-  # and in the first sample (whose influence on every later one runs only
-  # through the state), against the central difference of the same chain
-  # under fresh installs; 42 iff all 12 agree to 1e-5. RED on boot 0bc95063
-  # (refused: the tangent stopped at the perform).
-  run_program "$compiler" derive-distort \
-    "$ROOT/tests/frontier/derive-crucible/distort.mn" 42 derive "$dir"
-  # derive-grad (L4b, 2026-09-30): a product seed answered in ONE reverse
-  # sweep — {bias, drive} over a rational waveshaper, a fixed chain, the
-  # gradient read by destructuring where it is asked — against the central
-  # differences of the same function at 18 points; 42 iff all 36 partials
-  # agree to 1e-6. RED on boot 8ee3d09a (refused: a seed had to be a Float
-  # variable). derive-grad-series: the same product seed over scene 1's
-  # distortion, whose reach runs through lib/math.mn's series, each a fixed
-  # sequence of stages since 2026-11-04, so the reverse sweep carries them
-  # and a branch whose value is a call ends in that value; 42 iff all 12
-  # partials agree to 1e-6. RED on boot 627072cd (refused: a recursion).
-  run_program "$compiler" derive-grad \
-    "$ROOT/tests/frontier/derive-crucible/grad.mn" 42 derive "$dir"
-  run_program "$compiler" derive-grad-series \
-    "$ROOT/tests/frontier/derive-crucible/grad-series.mn" 42 derive "$dir"
-  # ── THE ARENA (2026-10-03): `(body) ~> arena` ──
-  # What the body allocated and did not publish is reclaimed at the exit;
-  # the value, and what the body stored into older memory, moves out of the
-  # region by its type — the type the STORE knew, journaled where the store
-  # happened, so no handler names anything at the exit. Ten legs, each RED
-  # on boot 9d27c325 (exit 1 — the install ran as an ordinary handler:
-  # nothing reclaimed, no exit counted), each 42 on the landing's m2: the
-  # value moves; the dropped is reclaimed and the memory behind the line is
-  # zero again; a handler's in-place buffer and a plain buffer written by
-  # plain code (the second KEPT its region under the owner protocol, RED on
-  # that form's m2); a rebound state's commit; nested arenas; a `<~` line's
-  # pointer history; a buffer replaced by its own growth; and two that KEEP
-  # the region rather than move a value no leaf moves (a closure, a journal
-  # overflow), each still correct. The eleventh is a control, 42 on both: a
-  # module that spawns owns no region per instance, so its arena runs the
-  # body. The twelfth stores through a GENERIC helper: the helper's claim
-  # names the parameter it stores into, the call hands it the handler's
-  # state, so the value's type is a demand and the helper's twin journals the
-  # leaf — RED (exit 1, the region kept) on an m2 built with that call's
-  # transport switched off. The thirteenth reaches `list_set` as a VALUE: no
-  # leaf can be carried through the call, so its table face journals with
-  # none and the exit keeps — refused at compile on boot 9ec6db48 as an
-  # internal invariant, a correct program the medium would not run. The
-  # fourteenth moves nothing out of a region larger than the memory had grown
-  # before it opened, so the exit's copy space lies past the memory's end —
-  # a trap at the exit on boot fb8921e3 (a zero-length copy there is out of
-  # bounds too), found by the battery once each fixture ran in an arena.
-  # The next five hold an ADDRESS where the exit looks — as the value, in a
-  # slot `store_addr` journaled, as a record's field, as a list's element, in
-  # bytes `mem_copy` carried into older memory — and each keeps the region,
-  # since nothing can say what an address names, and the exit reads no copied
-  # byte at all. Held as Ints, the first four read 0, 0, 0 and 2 where they
-  # compute 42, 42, 42 and 12, silently, on boot 0a096302; typed, none
-  # compiled there. The fifth answered 1 on boot 2198ed97 with this pin's
-  # library, whose emit had no barrier on a raw copy. The last writes a float
-  # into a packed list older than the arena: a wide slot holds a number,
-  # copied as one, so the exit reclaims past it — exit 1, the region kept,
-  # on this landing's m2 with the slot's bytes copied raw. Two refusals
-  # follow: an address stored where a word goes, and one in a list of
-  # numbers, each compiling and answering wrong (1 for 42, 7 for 12) on boot
-  # 2198ed97 with that pin's library, where `alloc` and the cast answered Ints.
-  # The last eight suspend an arena (2026-10-03): an op performed inside it
-  # and answered outside it — a held resume, a multi-shot one, an arm that
-  # never resumes, a perform in a callee of the arena's body, an arena
-  # standing where its value is used, a list-valued arena, a rest that stores
-  # into older memory, and a rest that performs again. The exit keeps the
-  # region rather than end the extent, and each resumption runs the rest of
-  # the body in a fresh instance around every segment it encloses. On boot
-  # 10cd1956 (the census clause stripped, the stat being new) six trap at 134
-  # — the exit had reclaimed the continuation, or the arena's tail call met
-  # the floor — and two answer silently wrong: the abandoning arm read the
-  # argument the exit reclaimed (1), and the list came back empty (length 0).
-  capture_arena_shadow "$compiler" "$dir" || continue
-  for leg in value-moves dropped-is-reclaimed handler-buffer-moves \
-             plain-buffer-moves state-commit-moves nested ring-history-moves \
-             growth-link closure-keeps journal-overflow-keeps \
-             spawning-module-runs-the-body generic-store-moves value-store-keeps \
-             nothing-moved-past-memory addr-value-keeps addr-store-keeps \
-             addr-field-keeps addr-list-keeps addr-copy-keeps \
-             wide-slot-reclaims held-resume-reenters multishot-resume-reenters \
-             abort-exits resume-nests-exactly arena-is-a-junction \
-             list-value-reenters older-store-reenters reyield-reenters \
-             float-value-reenters abandon-through-arena; do
-    run_program "$compiler" "arena-$leg" \
-      "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
-  done
-  for leg in addr-stored-as-word-refuses addr-among-numbers-refuses; do
-    run_refusal_linked "$compiler" "arena-$leg" \
-      "$ROOT/tests/frontier/arena/$leg.mn" E_TypeMismatch "$dir" arena
-  done
   # The run's stdout, which a fixture contract cannot name yet, read off a
   # run of the leg's own.
   wt_entry "$ROOT/tests/frontier/mn-spawn-module-init-once.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/spawn-module-init-once.wat" 2> /dev/null \
@@ -1666,14 +1005,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "spawn-module-init-once: the init ran ${init_lines:-0} time(s) — a spawned instance re-ran a module init"
   fi
-  for leg in spawn-alloc-contention spawn-alloc-contention-seq; do
-    if [ -f "$dir/$leg.wasm" ]; then
-      t0=$(date +%s%N)
-      wt_run "$dir/$leg.wasm" > /dev/null 2>&1
-      t1=$(date +%s%N)
-      echo "  time $leg: $(( (t1 - t0) / 1000000 )) ms"
-    fi
-  done
   # The rooted-image persist (B-i landing 1): ONE build, TWO processes. Leg A
   # persists the whole image mid-computation (exit 40); leg B — a fresh
   # process of the SAME wasm — passes the build-key + world-fingerprint
@@ -1710,10 +1041,6 @@ for i in "${!compilers[@]}"; do
   # own header); then Wasatch's score and its network twin (run_wasatch).
   run_course "$compiler" "$dir"
   run_wasatch "$compiler" "$dir"
-  # The JSON serializer's string escape over the shapes that defeated it — a
-  # one-byte string serialized as a NUL, a quote as two, a control byte with
-  # no short spelling crossed raw. RED on boot 2198ed97: exit 1.
-  run_project "$compiler" "$dir" json-escape-total "$ROOT/tests/frontier/mn-json-escape-total.mn" 42
   # Configuration is an effect and the demand is the manifest (E1,
   # run_env_protocol's header).
   run_env_protocol "$compiler" "$dir"
@@ -1728,43 +1055,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "the compile's live line (linked='$linked', carriage returns into a pipe=$piped)"
   fi
-  # C5 — partiality is a row fact: the absorb rewrite x * 0 ≡ 0 keeps a
-  # division whose precondition stays open (it carries `Trap`), so
-  # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the engine).
-  # The claim is OPEN by design — `n` is unbounded — so the compile
-  # surfaces it as V_Pending, which the leg ASSERTS: an open claim is the
-  # whole reason the operand survives. RED on boot 21f8e691: the shape-read
-  # gate dropped the operand and the program answered 0.
-  run_open_claim "$compiler" absorb-keeps-trap \
-    "$ROOT/tests/frontier/mn-absorb-keeps-trap.mn" 134 "$dir"
-  # A base whose every call is keyed to a twin is not emitted (the emitted
-  # reach, 2026-09-28), so its floors are never settled, let alone refused:
-  # RED on boot c5439637, which answered 46 and warned twice about `pick`'s
-  # base.
-  run_unnarrated "$compiler" dead-base-unnarrated \
-    "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 E_FieldOffsetUnprovable "$dir"
   run_lsp_hover "$compiler" "$dir" lsp
-
-  # Hβ.emit.under-application-suspension's crucible: a bare
-  # under-application (one field absent, no ?? marker) is the partial it
-  # names, and the program RUNS as the suspension, exit 42. Nothing else
-  # passes (G2): the leg accepted "loud at assemble" as green for as long as
-  # the fix was unbuilt, and kept accepting it after the fix landed, so the
-  # suspension could regress to invalid WAT under a green frontier.
-  ua_dir="$dir/under-app"
-  mkdir -p "$ua_dir"
-  wt_run "$compiler" < "$ROOT/tests/frontier/mn-under-application-loud.mn" > "$ua_dir/ua.wat" 2> "$ua_dir/ua.compile.err"
-  if wt_asm "$ua_dir/ua.wat" "$ua_dir/ua.wasm" 2> "$ua_dir/ua.assemble.err"; then
-    "$WT" run "${WT_RUN_FLAGS[@]}" "$ua_dir/ua.wasm" > "$ua_dir/ua.run.out" 2> "$ua_dir/ua.run.err"
-    ua_rc=$?
-    if [ "$ua_rc" = "42" ]; then
-      pass "under-application: the suspension runs (exit 42)"
-    else
-      fail "under-application: a bare under-application RAN with exit $ua_rc, not 42 — the silent-wrong transition (see $ua_dir)"
-    fi
-  else
-    fail "under-application: the suspension no longer assembles (see $ua_dir/ua.assemble.err)"
-  fi
 
   # The arena census (2026-10-02, replacing the image-classified byte count
   # the deleted ImageAlloc brackets fed): the compiler judges each binding
@@ -1865,29 +1156,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "one renderer (got: $(printf '%s' "$rall" | grep -E '@e[0-9]|_: |-> \(\)( with [A-Za-z0-9_+!() ]*)?$|WASI\(a\)' | head -3 | tr '\n' ' '))"
   fi
-  # THE PROPOSAL BATTERY (C7): every fixture in tests/proposals carries its
-  # own `// propose L:C: <want>` contract — one proven survivor whose source
-  # is the text, a tie whose divergence is the named ARM, or no candidate —
-  # and the medium's own `test` verb judges it against the Verdict itself,
-  # structurally, never through the rendered line. Born with twenty-four
-  # fixtures: one per enumerator, one per divergence arm, one per proposal
-  # landing. RED on boot 2fcad4e9 as a whole: the facet did not exist.
-  if wt_battery "$compiler" tests/proposals "proposals-through-m2"; then
-    pass "proposal battery: every fixture's contract holds (the test verb's propose facet)"
-  else
-    fail "proposal battery (see the battery lines above)"
-  fi
-  # THE TEACH BATTERY (D4): every fixture in tests/teach carries a `// teach
-  # L: <want>` contract — the annotation the gradient proposes at the
-  # declaration on line L, the alternatives it asks between, a need, or
-  # nothing — judged by the medium's own test verb against the Teaching.
-  # RED on boot 6f62b7c4: the precondition, need and return fixtures were
-  # taught `with !Alloc` or `with Pure`, and the contract did not exist.
-  if wt_battery "$compiler" tests/teach "teach-through-m2"; then
-    pass "teach battery: every fixture's contract holds (preconditions, return contracts, questions, needs)"
-  else
-    fail "teach battery (see the battery lines above)"
-  fi
   # THE TEACH BATTERY REFUSES A CONTRACT AT NO DECLARATION (Landing 3,
   # 2026-10-13): a `teach L: none` whose line L holds no declaration met the
   # view of whatever node the address resolved to, which teaches nothing, and
@@ -1980,21 +1248,6 @@ for i in "${!compilers[@]}"; do
   # serves (tools/space-stage.sh, tools/space-serve.py) — and its gate is
   # tools/ide-gate.sh's leg 2 over the staged artifact; the wheel serves no
   # socket since 2026-10-05.
-  # ── the persist VALUE barrier (owns across replay) ─────────────────
-  # A frame-declared authored `own` free in a persist_branch thunk is
-  # re-consumed per resumed run — T_OwnAcrossReplay names it at the call
-  # edge (narration: the loop still runs 42); the self-contained sibling
-  # thunk stays silent (exactly one line).
-  wt_entry "$ROOT/tests/frontier/mn-own-across-replay.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/pb-own.wat" 2> "$dir/pb-own.err" \
-    && wt_asm "$dir/pb-own.wat" "$dir/pb-own.wasm" 2>/dev/null \
-    && "$WT" run "${WT_RUN_FLAGS[@]}" --dir /tmp "$dir/pb-own.wasm" > /dev/null
-  pbo_rc=$?
-  pbo_n=$(grep -c 'T_OwnAcrossReplay' "$dir/pb-own.err")
-  if [ "$pbo_rc" = "42" ] && [ "$pbo_n" = "1" ] && grep -q "'buf'" "$dir/pb-own.err"; then
-    pass "persist value barrier: the captured open own narrates, the self-contained thunk is silent, the loop runs"
-  else
-    fail "persist value barrier (rc=$pbo_rc fired=$pbo_n; see $dir/pb-own.err)"
-  fi
   run_accepted_fill "$compiler" "$dir"
 
   # ─── The decl-name address face (bound beats ghost) ────────────────
@@ -2062,23 +1315,6 @@ for i in "${!compilers[@]}"; do
     fail "transport meets (pending: $tm_n, at main's line: $tm_at; want 1 and 1)"
   fi
 
-  # ─── The directional fn-arg edge (quiet-under-cap admits) ──────────
-  # A Pure fn passed where a `with Tick` fn is expected ADMITS and runs
-  # (RED through every pin before cd43c23c: "E_EffectMismatch: Pure vs
-  # Tick" — the closed-closed equality at the symmetric TFun meet); the
-  # noisy-into-narrow refusal stays the hof-row-gate leg's contract.
-  dir_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-fn-arg-row-directional.mn" 2>/dev/null)
-  if [ -n "$dir_wat" ]; then
-    printf '%s' "$dir_wat" > "$dir/dirfn.wat"
-    if wt_asm "$dir/dirfn.wat" "$dir/dirfn.wasm" 2>/dev/null && [ "$(wt_run "$dir/dirfn.wasm" > /dev/null 2>&1; echo $?)" = "7" ]; then
-      pass "directional fn-arg edge: the quiet fn admits under the declared cap (runs 7)"
-    else
-      fail "directional fn-arg edge (assemble/run)"
-    fi
-  else
-    fail "directional fn-arg edge (compile refused the quiet fn)"
-  fi
-
   # ─── Diagnostics speak the developer's coordinates ─────────────────
   # A check-path diagnostic renders ONCE (the discovery parse absorbs
   # under diag_quiet — every parse warning printed twice since the DAG
@@ -2100,129 +1336,6 @@ for i in "${!compilers[@]}"; do
   else
     fail "diagnostics localize (reports: $lc_n; $(printf '%s' "$lc_out" | grep -m1 'E_TypeMismatch'))"
   fi
-
-  # ─── The record-pattern rest (SYNTAX's documented form, made real) ──
-  # `{age, ...rest}` binds the named field AND a fresh record of the
-  # remaining fields; rest's own field access reads the residual layout.
-  # Did not PARSE through any pin before 7932c192.
-  rr_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-record-pattern-rest.mn" 2>/dev/null)
-  if [ -n "$rr_wat" ]; then
-    printf '%s' "$rr_wat" > "$dir/recrest.wat"
-    if wt_asm "$dir/recrest.wat" "$dir/recrest.wasm" 2>/dev/null && [ "$(wt_run "$dir/recrest.wasm" > /dev/null 2>&1; echo $?)" = "30" ]; then
-      pass "record-pattern rest: the residual record builds and reads (runs 30)"
-    else
-      fail "record-pattern rest (assemble/run)"
-    fi
-  else
-    fail "record-pattern rest (compile refused)"
-  fi
-
-  # ─── The as-pattern (SYNTAX §As-patterns, made real) ───────────────
-  # `e @ Click(x)` binds the whole value AND the payload in one arm.
-  # Did not PARSE through any pin before 010fc317.
-  as_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-as-pattern.mn" 2>/dev/null)
-  if [ -n "$as_wat" ]; then
-    printf '%s' "$as_wat" > "$dir/aspat.wat"
-    if wt_asm "$dir/aspat.wat" "$dir/aspat.wasm" 2>/dev/null && [ "$(wt_run "$dir/aspat.wasm" > /dev/null 2>&1; echo $?)" = "47" ]; then
-      pass "as-pattern: the whole value and the payload bind in one arm (runs 47)"
-    else
-      fail "as-pattern (assemble/run)"
-    fi
-  else
-    fail "as-pattern (compile refused)"
-  fi
-
-  # ─── The repr pin (SYNTAX §Representation-pinned alias, made real) ──
-  # `type Coeff = Float repr f64` + the bare-width param `k: f64`: the pin
-  # types transparently (identity is the base's), emission reads the width
-  # via repr_of's own arm. Did not PARSE through any prior pin (`repr` and
-  # `f64` refused as unknown names).
-  rp_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-repr-pin.mn" 2>/dev/null)
-  if [ -n "$rp_wat" ]; then
-    printf '%s' "$rp_wat" > "$dir/reprpin.wat"
-    if wt_asm "$dir/reprpin.wat" "$dir/reprpin.wasm" 2>/dev/null && [ "$(wt_run "$dir/reprpin.wasm" > /dev/null 2>&1; echo $?)" = "42" ]; then
-      pass "repr-pin: the width pin parses, types transparently, runs (42)"
-    else
-      fail "repr-pin (assemble/run)"
-    fi
-  else
-    fail "repr-pin (compile refused)"
-  fi
-
-  # ─── The `><` value-branch quartet (PLAN §11 Phase 2.2) ─────────────
-  # Four spellings of one fanout — calls, literals, pipes, vars — every
-  # branch : Int. A `><` branch is a VALUE computation, so the compile
-  # carries ZERO diagnostics and the run answers 96. The shape-keyed
-  # E_BranchNotStage convicted two spellings and passed two; the
-  # type-keyed law has one verdict for all four.
-  pq_err="$dir/pcompose-quartet.err"
-  pq_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-pcompose-value-branches.mn" 2> "$pq_err")
-  pq_diags=$(grep -c 'E_' "$pq_err" 2>/dev/null || true)
-  if [ -n "$pq_wat" ] && [ "$pq_diags" = "0" ]; then
-    printf '%s' "$pq_wat" > "$dir/pcompose-quartet.wat"
-    if wt_asm "$dir/pcompose-quartet.wat" "$dir/pcompose-quartet.wasm" 2>/dev/null && [ "$(wt_run "$dir/pcompose-quartet.wasm" > /dev/null 2>&1; echo $?)" = "96" ]; then
-      pass "pcompose quartet: all four value-branch spellings compile silent and run (96)"
-    else
-      fail "pcompose quartet (assemble/run)"
-    fi
-  else
-    fail "pcompose quartet (diagnostics on a correct fanout: $pq_diags; see $pq_err)"
-  fi
-
-  # ─── A NON-FN BINDING IN VALUE POSITION (Hβ.emit.nonfn-binding-as-
-  # function-value) ──────────────────────────────────────────────────
-  # Both faces of one class, and the ASSEMBLE step is the load-bearing
-  # one: before the fix each face compiled with ZERO diagnostics, so a
-  # check-only leg would have called both green. The constructor face
-  # built payload-less variants and trapped `unreachable` in the match
-  # that read them; the op face emitted `(global.get $<op>)` for a
-  # global that never existed and the ASSEMBLER was the first thing in
-  # the chain to object. Both born RED against the prior boot; both
-  # answer 6 through the reified hole-product.
-  for nb in "ctor-as-value:mn-ctor-as-value:the constructor" \
-            "op-as-value:mn-op-as-value:the effect op"; do
-    nb_tag=${nb%%:*}; nb_rest=${nb#*:}; nb_fix=${nb_rest%%:*}; nb_what=${nb_rest#*:}
-    nb_err="$dir/$nb_tag.err"
-    nb_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/$nb_fix.mn" 2> "$nb_err")
-    nb_diags=$(grep -c 'E_' "$nb_err" 2>/dev/null || true)
-    if [ -z "$nb_wat" ] || [ "$nb_diags" != "0" ]; then
-      fail "$nb_what as a value (compile: $nb_diags diagnostic(s); see $nb_err)"
-    else
-      printf '%s' "$nb_wat" > "$dir/$nb_tag.wat"
-      if ! wt_asm "$dir/$nb_tag.wat" "$dir/$nb_tag.wasm" 2>"$dir/$nb_tag.asm.err"; then
-        fail "$nb_what as a value (ASSEMBLER refused what check passed: $(head -1 "$dir/$nb_tag.asm.err"))"
-      elif [ "$(wt_run "$dir/$nb_tag.wasm" > /dev/null 2>&1; echo $?)" = "6" ]; then
-        pass "$nb_what as a value: the bare name reifies through the hole-product and runs (6)"
-      else
-        fail "$nb_what as a value (ran, wrong answer — want 6)"
-      fi
-    fi
-  done
-
-  for ok in "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
-    ok_tag=${ok%%:*}; ok_r=${ok#*:}; ok_fix=${ok_r%%:*}; ok_r=${ok_r#*:}
-    ok_want=${ok_r%%:*}; ok_what=${ok_r#*:}
-    ok_err="$dir/$ok_tag.err"
-    ok_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/$ok_fix.mn" 2> "$ok_err")
-    # ERRORS, not the E_ prefix. The sibling legs grep 'E_' and get away with
-    # it because their fixtures happen to raise no format-liftable warning;
-    # these two raised E_RedundantBraces and both read RED on a clean
-    # compile. A gate that cannot tell a warning from a refusal is measuring
-    # the reporter, not the artifact.
-    ok_diags=$(grep -c ' error: ' "$ok_err" 2>/dev/null || true)
-    if [ -z "$ok_wat" ] || [ "$ok_diags" != "0" ]; then
-      fail "$ok_what (compile: $ok_diags diagnostic(s); see $ok_err)"
-    else
-      printf '%s' "$ok_wat" > "$dir/$ok_tag.wat"
-      if ! wt_asm "$dir/$ok_tag.wat" "$dir/$ok_tag.wasm" 2>"$dir/$ok_tag.asm.err"; then
-        fail "$ok_what (ASSEMBLER refused what check passed: $(head -1 "$dir/$ok_tag.asm.err"))"
-      elif [ "$(wt_run "$dir/$ok_tag.wasm" > /dev/null 2>&1; echo $?)" = "$ok_want" ]; then
-        pass "$ok_what ($ok_want)"
-      else
-        fail "$ok_what (ran, wrong answer — want $ok_want)"
-      fi
-    fi
-  done
 
   wdoc="$ROOT/tests/frontier/mn-where-badges.mn"
   # The bare why verb (SYNTAX's lag list, first name retired): the
@@ -2259,122 +1372,6 @@ for i in "${!compilers[@]}"; do
   judge why-coordinates "$wy_file_ok" \
     "why coordinates carry their file (line half fixed; file half is Hβ.why.reason-span-is-a-weave-coordinate) (got: $wy_out)"
 
-  # ─── The lambda list-pattern parameter (PLAN §11 Phase 3.3) ─────────
-  # A list pattern with a rest as a literal's parameter parses, checks clean AND RUNS to 7. The leg gated the
-  # check alone (G2): the run half's peer (Hβ.lower.list-rest-binding-runtime)
-  # closed and the leg never learned, so a regression in the binding would
-  # have stayed green.
-  lp_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-lambda-list-param.mn" 2>&1)
-  lp_n=$(printf '%s' "$lp_chk" | grep -cE 'P_(Unexpected|Expected)Token|E_.* error')
-  lp_dir="$dir/lambda-list-param"
-  mkdir -p "$lp_dir"
-  lp_rc=x
-  if wt_run --dir "$ROOT" "$compiler" compile "$ROOT/tests/frontier/mn-lambda-list-param.mn" > "$lp_dir/lp.wat" 2> "$lp_dir/lp.err" \
-     && wt_asm "$lp_dir/lp.wat" "$lp_dir/lp.wasm" 2>> "$lp_dir/lp.err"; then
-    "$WT" run "${WT_RUN_FLAGS[@]}" "$lp_dir/lp.wasm" > /dev/null 2>> "$lp_dir/lp.err"
-    lp_rc=$?
-  fi
-  if [ "$lp_n" = "0" ] && [ "$lp_rc" = "7" ]; then
-    pass "lambda list-pattern param: { [h, ...t] => h } parses, checks clean and runs to 7"
-  else
-    fail "lambda list-pattern param ($lp_n diagnostics, exit $lp_rc, want 0 and 7; see $lp_dir)"
-  fi
-
-  # ─── Named effect rows (PLAN §11 Phase 3.3, Hβ.types.named-effect-rows) ─
-  # `type Both = A + B` + `type JustA = Both - B` (the alias-of-alias
-  # GROUPING case — the alias's row builds whole before the outer
-  # connective applies) compile silent and run 3.
-  nr_err="$dir/named-rows.err"
-  nr_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-named-effect-rows.mn" 2> "$nr_err")
-  nr_diags=$(grep -c 'E_' "$nr_err" 2>/dev/null || true)
-  if [ -n "$nr_wat" ] && [ "$nr_diags" = "0" ]; then
-    printf '%s' "$nr_wat" > "$dir/named-rows.wat"
-    if wt_asm "$dir/named-rows.wat" "$dir/named-rows.wasm" 2>/dev/null && [ "$(wt_run "$dir/named-rows.wasm" > /dev/null 2>&1; echo $?)" = "3" ]; then
-      pass "named effect rows: the alias and the alias-of-alias grouping compile silent and run (3)"
-    else
-      fail "named effect rows (assemble/run)"
-    fi
-  else
-    fail "named effect rows (diagnostics: $nr_diags; see $nr_err)"
-  fi
-
-  # ─── The bare-mention seq-op stage (PLAN §11 Phase 3.3) ─────────────
-  # `[1, 2, 3] |> len` compiles SILENT and runs 3 — the false
-  # E_TypeMismatch (the raw-body scheme leaking into the pipe's
-  # unification) is dead; seq_face_ty types every mention as the face.
-  pil_err="$dir/pipe-into-len.err"
-  pil_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-pipe-into-len.mn" 2> "$pil_err")
-  pil_diags=$(grep -c 'E_' "$pil_err" 2>/dev/null || true)
-  if [ -n "$pil_wat" ] && [ "$pil_diags" = "0" ]; then
-    printf '%s' "$pil_wat" > "$dir/pipe-into-len.wat"
-    if wt_asm "$dir/pipe-into-len.wat" "$dir/pipe-into-len.wasm" 2>/dev/null && [ "$(wt_run "$dir/pipe-into-len.wasm" > /dev/null 2>&1; echo $?)" = "3" ]; then
-      pass "pipe into len: the bare-mention seq-op stage compiles silent and runs (3)"
-    else
-      fail "pipe into len (assemble/run)"
-    fi
-  else
-    fail "pipe into len (diagnostics on a correct stage: $pil_diags; see $pil_err)"
-  fi
-
-  # ─── Sig'd polymorphic recursion (§11 5.3 step one) ─────────────────
-  # `fn depth(x: a, n: Int) -> Int = ... depth([x], n-1)` with a full
-  # authored signature checks (the prereg quantified scheme stays in
-  # scope; self-calls instantiate fresh), compiles (the spec ctx
-  # self-reference floors at the word terminal instead of exhausting
-  # spec_resolve_build), and runs 3. Born RED: E_OccursCheck through
-  # the incumbent boot (2026-08-07).
-  sp_err="$dir/sigd-poly.err"
-  sp_wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-sigd-poly-recursion.mn" 2> "$sp_err")
-  sp_diags=$(grep -c 'E_' "$sp_err" 2>/dev/null || true)
-  if [ -n "$sp_wat" ] && [ "$sp_diags" = "0" ]; then
-    printf '%s' "$sp_wat" > "$dir/sigd-poly.wat"
-    if wt_asm "$dir/sigd-poly.wat" "$dir/sigd-poly.wasm" 2>/dev/null && [ "$(wt_run "$dir/sigd-poly.wasm" > /dev/null 2>&1; echo $?)" = "3" ]; then
-      pass "sigd poly recursion: the signature buys the poly self-call; compiles and runs (3)"
-    else
-      fail "sigd poly recursion (assemble/run)"
-    fi
-  else
-    fail "sigd poly recursion (diagnostics: $sp_diags; see $sp_err)"
-  fi
-
-  # ─── The Mycroft fragment (§11 5.3): unsig'd poly recursion INFERS ──
-  # depth(x, n) = ... depth([x], n-1), no annotation anywhere, checks
-  # clean and runs 3 — inference where Haskell/OCaml demand the
-  # annotation. Born as the teach fixture's flip the day the fragment
-  # landed (rounds: fingerprinted refusal → general assumption →
-  # recheck under the result scheme).
-  pf_err="$dir/poly-fragment.err"
-  pf_wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-poly-fragment.mn" 2> "$pf_err")
-  pf_diags=$(grep -c 'E_' "$pf_err" 2>/dev/null || true)
-  if [ -n "$pf_wat" ] && [ "$pf_diags" = "0" ]; then
-    printf '%s' "$pf_wat" > "$dir/poly-fragment.wat"
-    if wt_asm "$dir/poly-fragment.wat" "$dir/poly-fragment.wasm" 2>/dev/null && [ "$(wt_run "$dir/poly-fragment.wasm" > /dev/null 2>&1; echo $?)" = "3" ]; then
-      pass "poly fragment: unsig'd poly recursion inferred; compiles and runs (3)"
-    else
-      fail "poly fragment (assemble/run)"
-    fi
-  else
-    fail "poly fragment (diagnostics: $pf_diags; see $pf_err)"
-  fi
-
-  # ─── The multi-call fragment boundary (§11 5.3 named-next (b)) ──────
-  # TWO self-calls at different shapes ([x] and (x,x)) — outside
-  # Henglein's single-call fragment — still infer: both fit the
-  # converged scheme, the recheck verifies, the belt confirms. Runs 4.
-  mc_err="$dir/poly-multicall.err"
-  mc_wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-poly-multicall.mn" 2> "$mc_err")
-  mc_diags=$(grep -c 'E_' "$mc_err" 2>/dev/null || true)
-  if [ -n "$mc_wat" ] && [ "$mc_diags" = "0" ]; then
-    printf '%s' "$mc_wat" > "$dir/poly-multicall.wat"
-    if wt_asm "$dir/poly-multicall.wat" "$dir/poly-multicall.wasm" 2>/dev/null && [ "$(wt_run "$dir/poly-multicall.wasm" > /dev/null 2>&1; echo $?)" = "4" ]; then
-      pass "poly multicall: two self-calls at different shapes inferred; runs (4)"
-    else
-      fail "poly multicall (assemble/run)"
-    fi
-  else
-    fail "poly multicall (diagnostics: $mc_diags; see $mc_err)"
-  fi
-
   # ─── Information flow (PLAN §4⑥): a label is an effect op over `self`
   # and a sink's demand is its absence. Each tests/micros/mn-flow-*
   # fixture's second line is its contract at the sink — `flow: refused at
@@ -2398,26 +1395,6 @@ for i in "${!compilers[@]}"; do
     pass "information flow: every mn-flow contract holds at its sink; the facet names a source and an endorsement"
   else
     fail "information flow (broken:${fl_bad:- none} · source: $(printf '%s' "$fl_src" | tail -1) · endorse: $(printf '%s' "$fl_end" | tail -1))"
-  fi
-
-  # ─── The float sentinels (NaN, ±Inf, -0.0) — the four values
-  # float_to_str renders through a branch the digit path never touches,
-  # so a change to that path loses them silently. Each match is a bit, so
-  # the exit code names WHICH branch broke: 15 is all four. Pinned at 15
-  # BEFORE `str_literal_5` was deleted (an identity fn whose comment
-  # claimed it built strings from byte arguments and which named the
-  # bootstrap deleted 2026-07-10), and re-measured 15 after.
-  wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-float-sentinels.mn" > "$dir/fsent.wat" 2>/dev/null
-  if wt_asm "$dir/fsent.wat" "$dir/fsent.wasm" >/dev/null 2>&1; then
-    wt_run --dir "$dir" "$dir/fsent.wasm" >/dev/null 2>&1
-    fs_code=$?
-    if [ "$fs_code" = "15" ]; then
-      pass "float sentinels: NaN, ±Inf and -0.0 all render (exit=15)"
-    else
-      fail "float sentinels (exit=$fs_code, want 15 — the bits name the branch)"
-    fi
-  else
-    fail "float sentinels: assemble"
   fi
 
   # ─── The cost facet, and the prelude floor it makes a contract: the nodes

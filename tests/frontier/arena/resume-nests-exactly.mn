@@ -1,9 +1,12 @@
+// expect: 42
 // The arena is in the caller and the perform in a callee whose remainder
 // builds after it. A resumption re-enters the arena BEFORE the callee's
 // remainder runs, exactly as the first run entered it before the call, so
 // what the callee builds after the perform dies at each resumption's exit.
 // Expected 0 + 1 + 2 = 3, three exits, and the heap no further than the
 // three continuations and what the resumptions published.
+import arena
+
 effect Pick {
   pick() -> Int
 }

@@ -15,6 +15,16 @@ source tools/wt-env.sh
 
 reds=0
 
+# Every battery: a directory whose fixtures each state their contract on
+# their first line, judged by `mentl test` with the host running each module.
+# The candidate is judged against all of them before a pin, and the boot after.
+batteries=(tests/micros tests/frontier tests/frontier/arena
+  tests/frontier/derive-crucible tests/frontier/dsp-crucible
+  tests/frontier/ml-crucible tests/frontier/adaptive-crucible
+  tests/frontier/cfc_demo tests/frontier/cfc-rec tests/frontier/signal-crucible
+  tests/frontier/stats tests/frontier/text tests/syntax tests/proposals
+  tests/teach tests/crown native)
+
 # Run one gate and print its verdict, the lines that matter and its seconds.
 gate() {
   local label="$1"; shift
@@ -65,7 +75,7 @@ if [ "${1:-}" = "--land" ]; then
     fell=$(echo "$GATE_OUT" | awk '/ — within / && $2 + 0 < $NF + 0')
     [ -z "$fell" ] || { printf '%s\n' "$fell" "▸ LAND STOPPED: lower each fallen ceiling in src/board.mn (a dated reason), then run \`mentl land\` again."; exit 1; }
     step "MARCH (the cost ratchets and the fixed point)" bash tools/march.sh
-    for d in tests/micros tests/frontier tests/syntax tests/proposals tests/teach tests/crown native; do side gate "BATTERY $d" wt_battery "$cand" "$d"; done
+    for d in "${batteries[@]}"; do side gate "BATTERY $d" wt_battery "$cand" "$d"; done
     side gate "PROOF-EXACTNESS" bash tools/proof-exactness-gate.sh fresh
     side gate "FRONTIER" bash tools/frontier-gate.sh --compiler fresh
     side memo_gate "INSTRUMENT" instrument "$cand" tools/instrument-gate.sh env MENTL_BOOT="$cand" bash tools/instrument-gate.sh
@@ -120,7 +130,7 @@ if [ "${1:-}" != "--quick" ]; then
   memo_gate "MARCH (the fixpoint ratchet)" march "$boot" tools/march.sh bash tools/march.sh
   side gate "FRONTIER (scheduled matrix + the ?? authoring workflows)"        bash tools/frontier-gate.sh
   side gate "PROOF-EXACTNESS (hole refuses · debt surfaces · suspension runs)" bash tools/proof-exactness-gate.sh
-  for d in tests/crown native; do side gate "BATTERY $d" wt_battery "$boot" "$d"; done
+  for d in "${batteries[@]}"; do side gate "BATTERY $d" wt_battery "$boot" "$d"; done
   side memo_gate "INSTRUMENT (can the board go RED?)" instrument "$boot" tools/instrument-gate.sh bash tools/instrument-gate.sh; joined
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
   memo_gate "THREADS (is the concurrency width what the source says?)" threads "$boot" tools/thread-gate.sh bash tools/thread-gate.sh

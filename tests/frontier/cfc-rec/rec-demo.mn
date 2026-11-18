@@ -1,3 +1,4 @@
+// expect: 42
 // rec-demo.mn — the CFC pipeline on a REAL on-disk recording.
 //
 // The synthetic demo (../cfc_demo) BUILDS its signal inline; this one READS a
@@ -16,10 +17,15 @@
 //
 // EXIT 42 iff the argmax cell is (6, 60). Otherwise exit the flat index, naming
 // which pair won — a teaching code, never a silent pass.
+import dsp/cfc
+
+import fs
+
+import io
 
 fn main() = {
   let sr = 512
-  let signal = read_recording("/tmp/mentl-cfc-recording.txt")
+  let signal = read_recording("tests/frontier/cfc-rec/recording.txt")
   let low_freqs = [4, 6, 8, 10]
   let high_freqs = [30, 40, 50, 60]
   let matrix = comodulogram(signal, sr, low_freqs, high_freqs, 128, 32)

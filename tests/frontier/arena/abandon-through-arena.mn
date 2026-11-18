@@ -1,9 +1,12 @@
+// expect: 42
 // AN-2 — an abandon crossing an ARENA on its way out: a dead continuation
 // holds nothing of the region, so the arena EXITS as it would have
 // (reclaiming) rather than suspending, and the unwind continues to the
 // install whose arm answers. The arm's 5 is the install's value; the leg
 // answers 42 on it. Correct on boot 311479e1 by suspension; the exit is the
 // honest form, and the exit is counted: one, nothing kept, no suspension.
+import arena
+
 effect Ab {
   ab() -> Int
 }

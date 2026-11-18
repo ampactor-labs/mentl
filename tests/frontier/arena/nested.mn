@@ -1,5 +1,8 @@
+// expect: 42
 // Nested arenas: the inner one's value moves into the outer region, the
 // outer one's value moves out of both.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b

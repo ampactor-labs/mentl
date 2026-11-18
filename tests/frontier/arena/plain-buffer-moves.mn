@@ -1,7 +1,10 @@
+// expect: 42
 // A buffer older than the arena, written in place by plain code inside it:
 // no handler stands between the store and the buffer, and none is needed —
 // the store journals its slot with the type it stores, so the values move
 // out and the region is reclaimed.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b

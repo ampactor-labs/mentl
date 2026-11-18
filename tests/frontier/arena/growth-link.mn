@@ -1,8 +1,11 @@
+// expect: 42
 // A buffer written in place inside an arena and then replaced by its own
 // growth: every store journals its slot with the type it stores, whichever
 // buffer it lands in, and the state commit that installs the grown buffer
 // journals the state's slot with the state's type — so the old buffer's
 // slots, the new buffer and its slots all move, and nothing names either.
+import arena
+
 effect Grow {
   grow_put([Int])
   grow_get(Int) -> [Int]

@@ -1,8 +1,11 @@
+// expect: refuse E_TypeMismatch
 // An address stored where a word goes: `addr` answers an address and
 // `store_i32` stores a word, so the program is refused where it mixes them
 // (E_TypeMismatch). With the cast answering an Int, on boot 2198ed97 with
 // that pin's library, it compiled and answered 1 for 42: the store was a word
 // store the journal never saw, and the exit reclaimed the string under it.
+import arena
+
 fn fill(old) = {
   let s = "hello" ++ "world"
   store_i32(old, addr(s))

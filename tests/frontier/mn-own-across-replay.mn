@@ -3,7 +3,7 @@
 // a frame-declared authored `own` FREE in a persist_branch thunk crosses
 // the wire as bytes while the duty to finish it stays behind — each
 // resumed run re-consumes it, BParallel's collision law read on the TIME
-// axis. T_OwnAcrossReplay names `buf` at risky's call edge; safe's
+// axis. T_OwnAcrossReplay names buf at risky's call edge; safe's
 // self-contained thunk stays silent. Narration tier (the census arming
 // law), so the whole checkpoint+run+join loop still runs.
 import io

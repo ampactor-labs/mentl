@@ -2,9 +2,9 @@
 // mn-under-application-loud — a bare under-application (one field absent,
 // no ?? marker) IS the partial SYNTAX names: `add3(10, 30)` is a value
 // awaiting its last field, and calling it with 2 runs the suspension to 42.
-// The frontier leg passes on 42 and nothing else; a run with any other value
-// is the silent wrong this crucible exists to refuse, and a module that no
-// longer assembles is a regression.
+// The contract is 42 and nothing else; a run with any other value is the
+// silent wrong this crucible exists to refuse, and a module that no longer
+// assembles fails the battery too.
 fn add3(a, b, c) = a + b + c
 
 fn main() = {

@@ -1,3 +1,4 @@
+// expect: 42
 // stats-demo.mn — native [Float] statistics on a REAL on-disk dataset.
 //
 // A sibling to the CFC validators, stressing a DIFFERENT set of [Float] paths:
@@ -19,6 +20,9 @@
 //
 // EXIT 42 iff all three facts match numpy. Otherwise exit a teaching code
 // (1 argmin, 2 argmax, 3 above-count), naming which reduction diverged.
+import fs
+
+import io
 
 // Read newline-separated decimals into a native [Float]. `split` yields VIEW
 // strings ([-1][buf][start][len]); str_concat("", line) materializes each into
@@ -79,7 +83,7 @@ fn count_above_loop(xs, thresh: Float, i: Int, acc: Int) ={
 fn count_above(xs, thresh: Float) =count_above_loop(xs, thresh, 0, 0)
 
 fn main() = {
-  let xs = read_floats("/tmp/mentl-stats-data.txt")
+  let xs = read_floats("tests/frontier/stats/data.txt")
   let n = len(xs)
   let mean = fsum(xs) / float_of_int(n)
   let amin = argmin(xs)

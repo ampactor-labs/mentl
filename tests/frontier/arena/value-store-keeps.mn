@@ -1,3 +1,4 @@
+// expect: 42
 // `list_set` reached as a VALUE inside an arena, storing lists the arena
 // allocates into a buffer older than it. The store's barrier is written at a
 // direct call, where the stored type is known; through a function value the
@@ -5,6 +6,8 @@
 // no leaf, and the exit keeps the whole region rather than move a value it
 // cannot read. Exit 42 when the stored lists read back whole and the exit
 // was a keep.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b

@@ -1,7 +1,10 @@
+// expect: 42
 // The resumed rest performs the op again inside the re-entered arena, so
 // the re-entry suspends in its turn and wraps the fresh continuation. The
 // answer is the deep-handler value of the same body with no arena:
 // pick() + pick() * 10 under `both` = (0 + 10) + (1 + 11) = 22.
+import arena
+
 effect Pick {
   pick() -> Int
 }

@@ -4,8 +4,8 @@
 // <row-expr>` stores the with-clause's own signed triples and the
 // declared-row build expands the name where rows are built — grouping
 // by construction (an alias's row builds WHOLE before the outer
-// connective applies). Both fns run through their handlers; the leg
-// asserts zero diagnostics and exit 3.
+// connective applies). Both fns run through their handlers, and the
+// program builds with no error and runs to 3.
 effect A {
   opa() -> Int
 }

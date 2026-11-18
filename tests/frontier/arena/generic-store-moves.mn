@@ -1,9 +1,12 @@
+// expect: 42
 // A GENERIC helper stores the young value into a buffer older than the
 // arena. Its claim names the parameter it stores into, the arm hands it the
 // handler's state, and the install wraps an arena, so the value's type is a
 // demand on the helper: its twin journals the slot with the leaf the value
 // moves through, and nothing names the buffer. Without the demand the
 // helper's one body journals the slot opaque and the arena keeps its region.
+import arena
+
 effect Stash {
   put([Int])
   get(Int) -> [Int]

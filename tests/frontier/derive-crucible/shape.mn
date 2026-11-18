@@ -1,3 +1,4 @@
+// expect: 42
 // shape.mn — the derivative of the distortion scene 1 ships, against the
 // finite difference of the same function.
 //
@@ -19,6 +20,9 @@
 //
 // EXIT 42 iff every one of the 36 slopes (18 points × two seeds) agrees with
 // its difference to 1e-6 relative; otherwise 10 plus the number that missed.
+import dsp/spectral
+
+import ml/grad
 
 fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.000001 * (1.0 + abs(b))
 

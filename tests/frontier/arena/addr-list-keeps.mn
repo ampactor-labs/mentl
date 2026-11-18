@@ -1,9 +1,12 @@
+// expect: 42
 // A list of addresses the arena allocated, returned as its value. The list
 // moves by its element type, and an address is an element no leaf can move,
 // so the exit keeps the region and every cell reads back. Exit 42 when they
 // do and the exit was a keep. Held as Ints the list moved and its cells were
 // reclaimed, their sum reading 2 for 12 on boot 0a096302 with no diagnostic;
 // typed, it did not compile there.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn cell(v) = {

@@ -1,4 +1,7 @@
+// expect: 42
 // An arena's value moves out; what the body allocated and dropped is reclaimed.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b

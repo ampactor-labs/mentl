@@ -1,3 +1,4 @@
+// expect: 42
 // An address the arena allocated, stored by store_addr into a slot older than
 // the arena. The store's barrier journals the slot with no leaf — an address
 // names memory the exit cannot read — so the exit that finds one of its
@@ -6,6 +7,8 @@
 // an Int by store_i32, the slot was invisible to the journal and the cell
 // read 0 for 42 on boot 0a096302, with no diagnostic; typed, it did not
 // compile there.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn fill(slot) = {

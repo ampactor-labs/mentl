@@ -1,5 +1,8 @@
+// expect: 42
 // State rebound inside the arena by a handler installed outside it: the
 // commit journals the slot with its type, and the value moves.
+import arena
+
 effect Acc {
   acc_put([Int])
   acc_taken() -> [[Int]]

@@ -1,3 +1,4 @@
+// expect: 42
 // lms.mn — the adaptive crucible's filter, with the gradient asked for
 // instead of written.
 //
@@ -23,6 +24,8 @@
 //
 // EXIT 42 iff round(w0)==2 and round(w1)==1 and the power drops by 1e6;
 // otherwise 10 = tap0, 11 = tap1, 12 = power drop.
+import ml/grad
+
 fn lcg_next(s: Int) with Pure = (75 * s + 74) % 65537
 
 fn gen_ref(out, s: Int, i: Int, n: Int) = if i >= n {

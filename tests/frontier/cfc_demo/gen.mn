@@ -1,3 +1,4 @@
+// check: accepted
 // gen.mn — the synthetic phase-amplitude-coupled test signal
 //
 // x(t) = (1 + 0.8·cos(2π·6·t))·sin(2π·40·t) + 0.1·sin(2π·13·t),  t = i/sr

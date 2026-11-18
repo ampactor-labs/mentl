@@ -1,8 +1,11 @@
+// expect: 42
 // An exit that moves nothing, from a region larger than the memory had grown
 // before it opened: the exit's copy space starts past the memory's end, and
 // the slide must not touch it, since a zero-length copy there is out of
 // bounds too. RED on boot fb8921e3 (the exit trapped); the battery found it,
 // its first fixture's compile being a 14 MB region at a process's start.
+import arena
+
 fn fill(acc, n) = if n == 0 { acc } else { fill(push(acc, n), n - 1) }
 
 fn main() = {

@@ -1,6 +1,9 @@
+// expect: 42
 // A buffer written in place by a handler installed outside the arena: the
 // store journals its slot with the type it stores, so the values the slots
 // hold move out with that type, and nothing names the buffer.
+import arena
+
 effect Stash {
   put([Int])
   get(Int) -> [Int]

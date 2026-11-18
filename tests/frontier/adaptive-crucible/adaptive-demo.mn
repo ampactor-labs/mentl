@@ -1,3 +1,4 @@
+// expect: 42
 // adaptive-demo.mn — the DSP×ML fusion only Mentl states cleanly: a 2-tap LMS
 // adaptive filter that LEARNS its coefficients online while filtering.
 //

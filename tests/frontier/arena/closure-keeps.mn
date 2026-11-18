@@ -1,5 +1,8 @@
+// expect: 42
 // A value no leaf can move — a closure holding a young list — keeps the
 // region: the program stays correct and nothing is reclaimed.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn add_int(a, b) = a + b

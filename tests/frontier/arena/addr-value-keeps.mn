@@ -1,3 +1,4 @@
+// expect: 42
 // An address the arena allocated, returned as the arena's value. Nothing can
 // say what an address names, so the exit keeps the region rather than move
 // the cell out from under it: the word stored there reads back after the
@@ -5,6 +6,8 @@
 // Exit 42 when it does and the exit was a keep. This program with the
 // address held as an Int had its cell reclaimed and read 0 for 42 on boot
 // 0a096302, with no diagnostic; typed, it did not compile there.
+import arena
+
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn cell(v) = {

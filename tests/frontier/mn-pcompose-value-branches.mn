@@ -1,8 +1,8 @@
 // expect: 96
 // The `><` value-branch quartet (PLAN §11 Phase 2.2): four spellings of
 // the same fanout, every branch : Int, every form emitting correct
-// values. The gate asserts the compile carries ZERO diagnostics and the
-// run answers 96 — a `><` branch is a VALUE computation (the value
+// values. Its check reports nothing (check.transcript), and the run
+// answers 96 — a `><` branch is a VALUE computation (the value
 // boundary evaluates it, the tuple carries the results), so no shape of
 // a correct branch may draw a report. The shape-keyed E_BranchNotStage
 // convicted the first two forms and passed the last two on spelling

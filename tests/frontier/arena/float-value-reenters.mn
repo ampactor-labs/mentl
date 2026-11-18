@@ -1,8 +1,11 @@
+// expect: 42
 // An arena whose value is a Float, suspended by a multi-shot op: each
 // resumption's fresh arena exits with an f64 that crosses the continuation
 // in a register rather than a heap cell, so the exit has nothing of the
 // value's to move. Expected (1.0 + 0.0) + (2.0 + 0.0) = 3.0, one suspension,
 // two exits, nothing kept.
+import arena
+
 effect Fp {
   fp() -> Float
 }

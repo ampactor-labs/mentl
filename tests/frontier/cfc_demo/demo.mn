@@ -1,3 +1,4 @@
+// expect: 42
 // demo.mn — the CFC pipeline, end to end on CPU
 //
 // Build the synthetic PAC signal (4096 samples @ 512 Hz), run the
@@ -8,9 +9,9 @@
 // signal. Otherwise exit the flat cell index (li·4 + hi), a teaching code
 // naming which pair won instead. (6, 40) is low index 1, high index 1 =
 // flat 5, so a correct run returns 42, never 5.
-//
-// Links the wheel runtime + lib/math.mn + lib/dsp/cfc.mn +
-// this dir's gen.mn (the gate cats them in dependency order).
+import dsp/cfc
+
+import gen
 
 fn main() = {
   let sr = 512
