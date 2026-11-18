@@ -1423,7 +1423,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1536,7 +1536,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
+3 is P3h.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2126,6 +2127,189 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · P3h · Every program the frontier gate compiled and ran for its
+   exit is judged by a battery from its own first line, and builds as
+   written.** Written 2026-11-17 and measured on the pinned boot,
+   c866711ba72e, with the form built in the working tree. It changes no
+   compiler source, so the boot stays the pin.
+
+   What a person sees.
+   - `mentl test tests/frontier/arena` judges the arena's 33 programs, each
+     by its first line: 30 run to 42, the first of persist-resumes-outside's
+     two processes answers 40, and two programs are refused with
+     E_TypeMismatch. Nine more directories are batteries the same way, with
+     14 programs between them: tests/frontier/derive-crucible (5),
+     dsp-crucible, ml-crucible, adaptive-crucible, cfc_demo (the demo, and
+     the module that generates its signal, which checks as accepted),
+     cfc-rec, signal-crucible, stats and text.
+   - Each of the 47 builds as written. `mentl run
+     tests/frontier/arena/value-moves.mn` answers 42 from the repository's
+     root, and so does `mentl run tests/frontier/stats/stats-demo.mn`: the
+     four programs that read a data file read it from its own path under
+     tests/frontier.
+   - tests/frontier/check.transcript holds what `mentl check` says about
+     five programs the frontier battery runs: the claim
+     mn-absorb-keeps-trap.mn leaves open at 6:16, which its run traps on;
+     nothing at all about mn-dead-base-unnarrated.mn, whose dead base once
+     drew two warnings; the warning T_OwnAcrossReplay naming 'buf' once in
+     mn-own-across-replay.mn; and nothing about
+     mn-pcompose-value-branches.mn or mn-pipe-into-len.mn, whose comments
+     promise a check that reports nothing.
+   - `mentl land` judges every battery on the candidate before a pin and
+     on the boot after it, so a TRANSITION pin, and a landing whose source
+     is its boot's fixed point, judge all 17 batteries.
+   - tools/frontier-gate.sh falls from 252 verdicts to 84, from 2,508 lines
+     to 1,485, and from 218 s to 142 s on the boot (217 s to 141 s of
+     processor time; the pulse render inside each run took 2,668 ms and
+     2,708 ms, so the machine was equally busy for both). The ten new
+     batteries take 23 s run one after another (30 s of processor time).
+
+   Fails today, on pin c866711ba72e.
+   - `mentl test tests/frontier/arena` answers NOEXPECT for each of its 33
+     programs and exits 33, and the nine crucible directories answer
+     NOEXPECT for all 14 of theirs. Only the gate judges these 47 programs,
+     by a compile, an assembly and a run of its own for each.
+   - 44 of the 47 do not build as written. `mentl check
+     tests/frontier/arena/value-moves.mn` answers "infer: E_MissingVariable
+     error: arena at tests/frontier/arena/value-moves:8:26-8:31" and exits
+     1. The gate appends each program's imports from one of six lists
+     (`wt_entry`) and compiles it from stdin. The four data programs read
+     files under /tmp that the gate copies there before each run.
+   - A compile leg compares a program's reports with a shadow, what a
+     program of nothing but the same libraries reports. Each of the seven
+     shadows normalizes to one line, `V_Pending`, since a report names its
+     module before its line and the gate's span pattern misses it. So the
+     comparison it prints as "new-errors-or-debt" sees errors alone, which
+     the battery refuses too, and never a program's own open claim:
+     tests/frontier/arena/journal-overflow-keeps.mn leaves three claims of
+     its own open (`mentl check`), and its leg reads "PASS
+     arena-journal-overflow-keeps compile (diagnostics=1;
+     inherited-shadow=1)".
+   - 25 verdicts re-run contracts the frontier battery already judges on
+     the same programs: under-application (42), json-escape-total (42), the
+     directional function argument (7), the record pattern's rest (30), the
+     as-pattern (47), the repr pin (42), the four value branches of `><`
+     (96), a constructor and an effect op as values (6 each), a handler
+     arm's own perform (51), a list pattern as a lambda's parameter (7),
+     named effect rows (3), a pipe into `len` (3), polymorphic recursion
+     with a signature, without one and with two calls (3, 3 and 4), the
+     float sentinels (15), absorb-keeps-trap (134, three verdicts),
+     dead-base-unnarrated (46, four) and the persist value barrier (42).
+     Eight of them count the lines of the compile that hold `E_`, a
+     warning's among them, where the battery counts errors; none of the
+     eight compiles with such a line today.
+   - Two verdicts run the proposals and teach batteries, which the landing
+     pass runs too.
+   - The landing pass's second reading, on the new boot, judges two of its
+     seven batteries, tests/crown and native. A landing whose source is its
+     boot's fixed point skips the candidate's batteries, so tests/frontier
+     and tests/syntax are judged nowhere in it.
+   - Two timing blocks print a time only for a module in the gate's own
+     directory, where nothing writes one, so they print nothing, while
+     docs/SYNTAX.md and tests/frontier/mn-feedback-deep-line.mn say the
+     frontier leg prints the deep line's ticks per second.
+
+   What it reads, each fact carried by a foundation the order built, with
+   a command on the pin that shows it.
+   - A fixture's contract is its first line (`battery_expect`, P3b's
+     battery): `mentl test tests/frontier` prints a RUN line with each run
+     fixture's wanted exit, and a REFUSE or CHECK line for the others.
+   - A fixture's link is its own import graph and the prelude edge
+     (`battery_compile`): `mentl check tests/frontier/arena/value-moves.mn`
+     refuses `arena`, which only the gate's appended import supplied.
+   - What a command prints is a transcript's contract (P3b): `mentl test
+     --write` writes the answers of tests/frontier/check.transcript.
+   - `mentl check` runs the emitter's floors, so its answer holds what a
+     compile reports: `mentl check
+     tests/frontier/mn-field-offset-unprovable.mn` refuses with "lower:
+     E_FieldOffsetUnprovable error", which the emitter raises (`mentl query
+     src/main.mn "refs of EFieldOffsetUnprovable"`: backends/wasm:685, 691
+     and 842).
+   - The battery's host runs each module with the repository's root as its
+     working directory and a /tmp of its own (`wt_battery_run_one`,
+     tools/wt-env.sh).
+
+   The form.
+   - The 47 programs. Each gains its contract as its first line: `//
+     expect: 42` (43 programs), `// expect: 40` (persist-resumes-outside,
+     the first of its two processes, as tests/frontier/mn-persist-image.mn
+     states its own), `// expect: refuse E_TypeMismatch`
+     (addr-among-numbers-refuses, addr-stored-as-word-refuses) and `//
+     check: accepted` (cfc_demo/gen.mn). Each imports what it uses, after
+     its header comment: `arena` in every arena program, with `fs`, `io`
+     and `persist` in persist-resumes-outside; `dsp/spectral` and
+     `ml/grad`, or `ml/grad` alone (grad, lms), in the derivative
+     programs; `math` in dsp-demo; `dsp/cfc` and `gen` in cfc_demo/demo;
+     `dsp/cfc`, `fs` and `io` in rec-demo, and those with `dsp/signal` in
+     the signal demo; `fs` and `io` in stats-demo and text-demo. ml-demo and
+     adaptive-demo need none. The data programs read
+     tests/frontier/cfc-rec/recording.txt, signal-crucible/recording.txt,
+     stats/data.txt and text/corpus.txt, where they read /tmp, and
+     cfc_demo/demo.mn's paragraph saying the gate links it leaves.
+   - tests/frontier/check.transcript: its five commands written by hand,
+     their answers by `mentl test --write`. mn-own-across-replay.mn's
+     comment names buf without backticks, since no module declares it.
+   - The comments that describe a leg that leaves describe the contract
+     instead: mn-dead-base-unnarrated, mn-lambda-list-param,
+     mn-named-effect-rows, mn-pcompose-value-branches, mn-pipe-into-len and
+     mn-under-application-loud. mn-feedback-deep-line and
+     mn-spawn-alloc-contention stop saying a leg times them. Each keeps its
+     line count, so no transcript's coordinates move.
+   - tools/frontier-gate.sh. The legs above leave, and with them the six
+     lists of libraries, the runtime shadow with its fingerprint and the
+     history beside it, every shadow but the persist legs', `run_project`,
+     `run_refusal_linked`, `run_open_claim`, `run_unnarrated`, the
+     uncalled `run_diagnostic` and `run_narration`, and the two timing
+     blocks. `run_program` keeps the one route its last caller, the
+     accepted fill, takes. The four oracle checks stay, run once before the
+     compilers' loop over the files the programs read. The comments on
+     `normalize_errors` and the persist legs' shadow say what each does.
+   - tools/state.sh: one list of the 17 batteries, judged on the candidate
+     before a pin and on the boot after it.
+   - CLAUDE.md names the new batteries and says which runs still need a
+     leg. docs/SYNTAX.md cites the quartet and the deep line by what their
+     programs answer.
+
+   Edge cases, each run on the boot.
+   - persist-resumes-outside's first process persists into the battery's
+     own /tmp and exits 40. The gate's leg that runs both processes stays,
+     and its `wt_entry` appends no import, since the program has each one.
+   - spawning-module-runs-the-body asserts only what holds on every run,
+     and the battery runs it beside other programs: 42.
+   - value-moves with its contract made 41 fails its battery: "FAIL(run)
+     value-moves: exit=42 expected=41 diags=0".
+   - The drift audit is clean on all 56 changed fixtures.
+
+   What pays for its code. No code is added to the wheel, and the board
+   does not move.
+
+   Left alone, each for the batch that brings its form.
+   - Runs whose contract is what a program prints, or a program a verb
+     writes: spawn-module-init-once's stdout, the program the accepted fill
+     writes, tighten's rostered match, and fmt's renders with the lets
+     beside them. Each needs a transcript that runs a program, and running
+     one is the host's.
+   - Two processes over one image: persist-image, persist-resumes-outside
+     and course 12's resume.
+   - Warm images, the environment protocol and the installed command, the
+     terminal's live line, and the LSP exchange.
+   - The renders judged by an outside program (Pulse, the course,
+     Wasatch) and the four oracle checks. Two of those four, cfc-rec's and
+     stats', print PASS when they skip for want of numpy, as they do on
+     Morgan's machine, so there they check nothing.
+   - Legs that read a verb's text on a file the gate writes (the
+     declaration-name address, query order, local spans), count open
+     claims on a compile's stderr (the interval fragment, transport meets),
+     or read information flow, the cost facet, the relocation pins, the
+     arena census, the trap in the row, the one renderer, the teach
+     battery's refusal and the why verb.
+   - The persist legs' shadow, which normalizes to `V_Pending` too.
+
+   Proves it. On the boot: tests/frontier 249 of 249,
+   tests/frontier/arena 33 of 33, the nine crucible directories 14 of 14,
+   and the gate 83 pass, 0 red, 1 expected red. The old gate's legs on the
+   same boot the same day: 251 pass, 0 red, 1 expected red. `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
