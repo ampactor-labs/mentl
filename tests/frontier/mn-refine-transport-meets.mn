@@ -5,7 +5,7 @@
 // where it crosses into `outer` — `drive2` calls it with 30000.0. On boot
 // 13e8484a the class kept `drive`'s provision and the demand discharged
 // silently; on pin e23392f6 the debt sat inside `outer`, the class reading
-// `drive`'s provision as `g`'s own demand. Expect exactly one pending
+// `drive`'s provision as g's own demand. Expect exactly one pending
 // obligation.
 type Hz = Float where 0.0 < self && self < 22050.0
 

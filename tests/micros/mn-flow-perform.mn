@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 26
 // A perform's value is every value an arm serving its op resumes it with:
 // `feed` resumes `ask` with an untrusted value, so `ask()` is untrusted
 // where the sink is handed it. On boot cb12aeea the claim was pending debt.

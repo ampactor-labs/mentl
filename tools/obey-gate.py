@@ -12,11 +12,10 @@ refuses, with no flag that lets a commit through:
                             or the human reshaped it into a bound born in the
                             same commit (`reshaped: old -> new` in the staged
                             file, refused in any later one), never raised
-  3. a red leg declared   — a new `frontier_expected_red:` entry
-  4. a gate silenced      — more `drift-audit: ignore` markers in .mn source
-  5. work left unfinished — more "landed in part" or "NOT LANDED" records in
+  3. a gate silenced      — more `drift-audit: ignore` markers in .mn source
+  4. work left unfinished — more "landed in part" or "NOT LANDED" records in
                             the documents: a landing is committed whole
-  6. a sidecar grown      — a new script (.sh .py .js .mjs .ts) outside ide/,
+  5. a sidecar grown      — a new script (.sh .py .js .mjs .ts) outside ide/,
                             a new .md document, or more text lines under
                             tools/: a capability belongs in the medium's own
                             source, and the scaffolds only shrink
@@ -67,10 +66,6 @@ def baseline_maxes(text):
     return {m.group(1): int(m.group(2)) for m in re.finditer(r"^([a-z0-9_]+_max):\s*(\d+)\s*$", text, re.M)}
 
 
-def expected_red(text):
-    return {m.group(1).strip() for m in re.finditer(r"^frontier_expected_red:\s*(\S+)", text, re.M)}
-
-
 def silencers(rev):
     args = ["grep", "-c", "drift-audit: ignore"] + ([rev] if rev != ":" else [] if WORKTREE else ["--cached"])
     return sum(int(line.rsplit(":", 1)[1]) for line in git(*args, "--", "*.mn").splitlines())
@@ -105,8 +100,6 @@ def main():
                 refusals.append(f"{path}: the bound on `{key}` (ceiling {was}) is gone")
             elif key in staged and staged[key] > was and not re.search(rf"^# paid \d{{4}}-\d\d-\d\d \({key}\): .+", texts[1], re.M):
                 refusals.append(f"{path}: `{key}` raised {was} -> {staged[key]}")
-    added = expected_red(show(":", "tools/verify-baseline.txt")) - expected_red(show("HEAD", "tools/verify-baseline.txt"))
-    refusals += [f"tools/verify-baseline.txt: `{leg}` declared an expected red" for leg in sorted(added)]
 
     head_paths, paths = tracked("HEAD"), tracked(":")
     for what, was, now in (
@@ -132,7 +125,7 @@ def main():
         print("  the marker hides, build the capability in the medium). A bound a correct")
         print("  landing must raise is the wrong shape: reshape it — a raise is never the fix.")
         sys.exit(1)
-    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced, unfinished or grown beside the medium")
+    print("✓ obey gate: no ceiling raised, no bound dropped, nothing silenced, unfinished or grown beside the medium")
 
 
 if __name__ == "__main__":

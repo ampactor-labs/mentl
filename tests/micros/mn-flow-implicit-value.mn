@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 20
 // An implicit flow into a value: the let holds one of two constants, and
 // which one is decided by an untrusted value, so the let carries it and the
 // sink refuses. On boot cb12aeea the claim was pending debt.

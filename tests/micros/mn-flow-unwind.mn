@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 29
 // An implicit flow through an abandon: `halt` never resumes `stop`, so the
 // install's body stops at the perform, and whether the sink after it runs is
 // decided by the untrusted value the perform is reached under. On boot

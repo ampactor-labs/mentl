@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 20
 // An implicit flow through a call: `wipe` reaches a trusted sink, so what
 // decides whether `wipe` runs reaches the sink, and the call `main` makes
 // under an untrusted value refuses the sink's claim, naming the condition

@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 18
 // A splice is a computation like any other: the string carries what it was
 // built from to wherever it goes, and the sink refuses it. On boot cb12aeea
 // the claim was pending debt.

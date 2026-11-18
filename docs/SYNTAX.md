@@ -1927,8 +1927,8 @@ function's reading is a summary over its own parameters, read once per
 settle and repeated until it reaches its least fixed point, so recursion
 terminates. `mentl query
 <file> "flow of NAME"` shows what a function returns, endorses and requires
-(`tests/micros/mn-flow-*.mn`; each fixture's second line states its
-contract at the sink).
+(`tests/micros/mn-flow-*.mn`; tests/micros/flow.transcript holds what
+`mentl check` says about each at its sink).
 
 The predicate is a compile-time obligation. At gradient-top it is erased entirely and there is no runtime check; the only check a program runs is a partial primitive's, where its instruction would trap anyway (§«Partiality»). `Verify`'s default ledger collects what it cannot discharge statically (`V_Pending`). Verify's own solver discharges more of it as the fragment of logic it decides grows (`PLAN.md §11`, Verify's own solver: overflow-aware intervals, linear arithmetic, case splits by fork), so the same source gets deeper proofs without being changed. An external solver can plug in only as a proposer whose certificate the kernel checks.
 

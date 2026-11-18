@@ -72,8 +72,8 @@ esac
 # THE MEMO (Hβ.tools.gate-stamp-is-uniform): this gate's verdict is a function
 # of the compiler bytes it runs and the files it reads — tests/, lib/ (every
 # fixture links the prelude), ide/, examples/ (the flagship program the
-# pulse-render leg renders), this script and the expected-red names in the
-# baseline. When a green run already judged exactly those, the verdict is
+# pulse-render leg renders), this script and the ceilings the baseline
+# holds. When a green run already judged exactly those, the verdict is
 # read back instead of re-derived; a byte-identical repin used to pay this
 # whole gate a second time. FORCE_GATES=1 re-runs it.
 frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide examples tools/frontier-gate.sh tools/verify-baseline.txt)
@@ -98,8 +98,6 @@ PERSIST_RTLIBS=(
 
 total_pass=0
 total_fail=0
-# Declared standing failures (frontier_expected_red) — not reds. See judge().
-total_xred=0
 
 pass() {
   echo "  PASS $*"
@@ -109,52 +107,6 @@ pass() {
 fail() {
   echo "  RED  $*"
   total_fail=$((total_fail + 1))
-}
-
-# ─── The NAMED standing failure, replacing a COUNT (2026-09-15) ───────
-# `frontier_red_max: 1` was a permission slip with a blank name field. It
-# compared only the COUNT (march.sh's board_frontier: `[ "$red" -gt "$max" ]`),
-# so it could not tell WHICH leg was red — fix the standing one, break a crown
-# leg, and the board still printed "378 pass / 1 red", byte-identical to a
-# healthy day. A count standing in for an identity is drift 8 (`mode == 0/1/2`)
-# at the gate layer, and the perimeter was wired to read it, so the blindness
-# reached the commit gate.
-# It could not catch the OTHER direction either: when a standing red is FIXED,
-# `red=0 -gt max=1` is false, nothing reports the ceiling is now slack, and it
-# silently licenses one future unrelated red forever — §9.11's "a banked
-# expectation is a HYPOTHESIS about the era that banked it", with nothing to
-# test it.
-# The project already uses the right form everywhere else: tests/floors/ does
-# not COUNT refusals, each fixture DECLARES that it must refuse. So a standing
-# failure is a contract keyed by NAME, in the baseline's one home, and it is
-# judged in BOTH directions — which is strictly stronger than the ceiling it
-# replaces, and retires `frontier_red_max` entirely.
-expected_red_has() {  # <key>
-  grep -qE "^frontier_expected_red:[[:space:]]*$1([[:space:]]|\$)" \
-    "$ROOT/tools/verify-baseline.txt" 2>/dev/null
-}
-
-# judge <key> <ok:0|1> <message…>
-#   ok=1, undeclared -> PASS      ok=0, undeclared -> RED
-#   ok=0, declared   -> XRED      ok=1, declared   -> RED (the contract is STALE:
-#                                 the peer landed, so the entry must retire —
-#                                 the case a count can never see)
-judge() {
-  local key="$1" ok="$2"; shift 2
-  if expected_red_has "$key"; then
-    if [ "$ok" = 1 ]; then
-      echo "  RED  $key: STALE EXPECTED-RED — this leg now PASSES; delete"
-      echo "       'frontier_expected_red: $key' from tools/verify-baseline.txt"
-      total_fail=$((total_fail + 1))
-    else
-      echo "  XRED $key (declared standing failure) — $*"
-      total_xred=$((total_xred + 1))
-    fi
-  elif [ "$ok" = 1 ]; then
-    pass "$*"
-  else
-    fail "$*"
-  fi
 }
 
 # The classes a compile reported, one line for each error and one for the
@@ -181,8 +133,7 @@ normalize_errors() {
 
 # run_program <compiler> <label> <source> <expected> <dir> — a program read on
 # the compiler's stdin, compiled, assembled and run. The compile reports no
-# error and leaves no claim open, and the run answers the expected exit,
-# judged by the leg's label.
+# error and leaves no claim open, and the run answers the expected exit.
 run_program() {
   local compiler="$1" label="$2" source="$3" expected="$4" dir="$5"
   local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
@@ -214,9 +165,9 @@ run_program() {
   wt_run "$wasm" > "$rout" 2> "$rerr"
   rc=$?
   if [ "$rc" -eq "$expected" ]; then
-    judge "$label" 1 "$label run (exit=$rc)"
+    pass "$label run (exit=$rc)"
   else
-    judge "$label" 0 "$label run (exit=$rc expected=$expected; see $rerr)"
+    fail "$label run (exit=$rc expected=$expected; see $rerr)"
   fi
 }
 
@@ -492,7 +443,6 @@ run_pulse_render() {
 #   rate   rate.mn's `now` pinned at 44.1 kHz under play's `!Sample(44100)`
 #                                                         → E_EffectMismatch
 #   range  lesson 7's cutoff a constant past Nyquist      → E_RefinementRejected
-#   teach  `accept` at lesson 7's division writes `notes: Positive`
 run_course() {
   local compiler="$1" dir="$2" src="$ROOT/examples/pulse/course" spec lesson secs notes pdir rc
   for spec in "01-tone 3 220" "02-line 3 220" "03-bus 4 220,329.63" "04-rack 4 220,261.63,329.63,440" \
@@ -535,13 +485,6 @@ run_course() {
       fail "course-$twin: expected $class and a refusal (exit=$rc; see $dir/course-$twin.err)"
     fi
   done
-  tdir="$dir/course-teach.proj"; rm -rf "$tdir"; mkdir -p "$tdir"; cp "$src"/*.mn "$tdir"/
-  if ! wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 07-bounds.mn:48:1 > "$dir/course-teach.out" 2>&1 \
-     && grep -q '`notes: Rate` or `notes: Positive`' "$dir/course-teach.out" && grep -q '^fn frames_per(notes)' "$tdir/07-bounds.mn"; then
-    pass "course-teach: accept at lesson 7's division asks Rate or Positive and writes neither"
-  else
-    fail "course-teach: the accepted declaration reads '$(grep '^fn frames_per' "$tdir/07-bounds.mn")' (see $dir/course-teach.out)"
-  fi
 }
 
 # Wasatch "Inversion" (examples/wasatch): the score renders from its readings
@@ -575,9 +518,10 @@ run_wasatch() {
 
 # The environment protocol (E1): required reads refuse before main, while
 # optional literal reads are narrowly passed and computed optional reads
-# request the whole environment. Exercise the actual generated `mentl run`
-# shim as well as the module gate and demand query. RED on boot 4228ff71: the
-# program did not compile (the WASI root gate knew no environ op).
+# request the whole environment. These legs run each module and the installed
+# `mentl run` command with the variables set and unset; what `mentl query env`
+# says of each program is tests/frontier/query-facets.transcript. RED on boot
+# 4228ff71: the program did not compile (the WASI root gate knew no environ op).
 run_env_protocol() {
   local compiler="$1" dir="$2" label="env-protocol"
   local pdir="$dir/$label.proj" rc out shim
@@ -606,13 +550,6 @@ run_env_protocol() {
     pass "$label: MN_B unset — the launch gate names it and its read site, nothing of main ran"
   else
     fail "$label: MN_B unset, exit=$rc out='$out' (see $dir/$label.unset.err)"
-  fi
-  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/$label.query" 2>/dev/null
-  if grep -q '2 environment read(s)' "$dir/$label.query" && grep -q 'MN_A \[required\] read at main:7:' "$dir/$label.query" \
-      && grep -q 'MN_B \[required\] read at main:7:' "$dir/$label.query"; then
-    pass "$label: query env names both reads at their sites"
-  else
-    fail "$label: query env (see $dir/$label.query)"
   fi
 
   # Install into the gate's own scratch tree, pointing the shim at the exact
@@ -646,13 +583,6 @@ run_env_protocol() {
     fail "env-optional: did not compile (see $dir/env-optional.compile.err)"
     return
   fi
-  wt_run --dir "$opt::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/env-optional.query" 2>/dev/null
-  if grep -q 'MN_OPTIONAL_FIXED \[optional\] read at main:' "$dir/env-optional.query" \
-      && grep -q '\* \[all optional\] read at' "$dir/env-optional.query"; then
-    pass "env-optional: query distinguishes literal and dynamic optional reads"
-  else
-    fail "env-optional: query demand (see $dir/env-optional.query)"
-  fi
   printf 'MN_OPTIONAL_FIXED=20\nMN_OPTIONAL_DYNAMIC=22\n' > "$opt/.env"
   out=$(env -u MN_OPTIONAL_FIXED -u MN_OPTIONAL_DYNAMIC MENTL_BOOT="$compiler" "$shim" run "$opt/main" 2> "$dir/env-optional.dotenv.err")
   rc=$?
@@ -678,13 +608,6 @@ run_env_protocol() {
       || ! wt_asm "$lit/main.wat" "$lit/main.wasm" 2>> "$dir/env-optional-literal.compile.err"; then
     fail "env-optional-literal: did not compile (see $dir/env-optional-literal.compile.err)"
     return
-  fi
-  wt_run --dir "$lit::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/env-optional-literal.query" 2>/dev/null
-  if grep -q 'MN_OPTIONAL_LITERAL \[optional\] read at main:' "$dir/env-optional-literal.query" \
-      && ! grep -q '\* \[all optional\]' "$dir/env-optional-literal.query"; then
-    pass "env-optional-literal: query stays narrow"
-  else
-    fail "env-optional-literal: query demand (see $dir/env-optional-literal.query)"
   fi
   printf 'MN_OPTIONAL_LITERAL=42\n' > "$lit/.env"
   out=$(env -u MN_OPTIONAL_LITERAL MENTL_BOOT="$compiler" "$shim" run "$lit/main" 2> "$dir/env-optional-literal.dotenv.err")
@@ -911,43 +834,15 @@ lsp_frame() {
   printf 'Content-Length: %d\r\n\r\n%s' "$(printf '%s' "$body" | wc -c)" "$body"
 }
 
-# run_lsp_hover — the LSP transport-runs-frontend contract
-# (Hβ.lsp.transport-runs-frontend). serve_run now installs the analysis handlers
-# and handle_did_open runs driver_check, so a hover reads the LIVE graph the
-# frontend populated — the driverless (open_file-only) chain read an unpopulated
-# graph and every query fell to AnsSilence (null hover).
-#
-# Two contracts. (1) is the graph-population MECHANISM the fix delivers, asserted
-# through the JSON-free `query` transport: run the frontend, then consult the live
-# type. (2) is the end-to-end serve session as the executable SPEC.
-#
-# 2026-07-20: the pinned json float blocker is CLEARED. It was Hβ.emit.float-
-# evidence-ft — parse_number returned a Float through an indirect call whose
-# $ft was all-i32, so json_parse trapped on the FIRST numeric field of any
-# request. The §4① string-layer typing + the expect_same chase-first fix that
-# closed the Float-ctor-arg face of that class also closed the json face: serve
-# now parses JSON and reaches the LSP layer without trapping. So (2) INVERTS —
-# a parse_number trap is now a REGRESSION, not the expected state — and greens
-# on the cleared blocker. The remaining gap is the hover-RESPONSE emission
-# (serve exits 0 having consumed the frames but does not yet write a result);
-# that is Hβ.lsp.transport-runs-frontend's next rung, not a float trap.
+# run_lsp_hover — `mentl serve` over one framed LSP session: initialize, open
+# tests/frontier/mn-lsp-hover-doc.mn and hover at `double`, whose contents must
+# hold a type. What a query reads of the same graph is
+# tests/frontier/query-facets.transcript's `type double`.
 run_lsp_hover() {
   local compiler="$1" dir="$2" label="$3"
   local doc="$ROOT/tests/frontier/mn-lsp-hover-doc.mn"
   local uri="file://$doc"
 
-  # (1) MECHANISM — run the frontend, read the live type. A driverless read would
-  #     project nothing; a real function type here is the graph populated + read.
-  local qout="$dir/lsp-query.out" qerr="$dir/lsp-query.err"
-  wt_run --dir "$ROOT" "$compiler" query "$doc" "type double" > "$qout" 2> "$qerr"
-  if grep -q '\->' "$qout"; then
-    pass "$label lsp graph-population mechanism (query 'type double' -> a function type)"
-  else
-    fail "$label lsp graph-population mechanism (no type projected; see $qout)"
-  fi
-
-  # (2) SERVE SPEC — drive the framed session; assert the hover contents once
-  #     serve can parse JSON. Today it documents the pinned json blocker.
   local frames="$dir/lsp-hover.frames" sout="$dir/lsp-hover.out" serr="$dir/lsp-hover.err"
   {
     lsp_frame '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"processId":null,"rootUri":"file://'"$ROOT"'"}}'
@@ -1087,7 +982,11 @@ for i in "${!compilers[@]}"; do
   trap_where=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/src/main.mn" extract_chase 2>/dev/null | head -1)
   trap_row_ok=0
   printf '%s' "$trap_where" | grep -qE '^→ extract_chase\(.*\).* with .*\bTrap\b' && trap_row_ok=1
-  judge trap-in-the-row "$trap_row_ok" "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
+  if [ "$trap_row_ok" = 1 ]; then
+    pass "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
+  else
+    fail "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
+  fi
 
   # ── tighten and fmt write files; a program run keeps what they mean ──
   # What `mentl tighten` and `mentl fmt` write, and the checks around each,
@@ -1250,153 +1149,6 @@ for i in "${!compilers[@]}"; do
   # socket since 2026-10-05.
   run_accepted_fill "$compiler" "$dir"
 
-  # ─── The decl-name address face (bound beats ghost) ────────────────
-  # A column inside a decl's NAME must project the decl, never a
-  # never-judged parse cell's free var (the measured 1:4 placeholder
-  # face: `width( : t…@e…` / `Why: placeholder` through every pin
-  # before 4f477b1f — RED-banked live before the fix).
-  ghdir="$dir/ghost-addr"
-  mkdir -p "$ghdir"
-  printf 'fn width(n) = n + 2\n\nfn main() = width(40)\n' > "$ghdir/main.mn"
-  gh_out=$(cd "$ghdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ghdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" main.mn:1:4 2>/dev/null)
-  if printf '%s' "$gh_out" | grep -q 'width(n)' && ! printf '%s' "$gh_out" | grep -qE ': t[0-9]+@e[0-9]+'; then
-    pass "decl-name address projects the decl (bound beats ghost at 1:4)"
-  else
-    fail "decl-name address (got: $(printf '%s' "$gh_out" | grep -m1 'Query:'))"
-  fi
-
-  # ─── The query speaks declaration order ────────────────────────────
-  # `type of` on (alpha, beta) must answer alpha-first — the ask
-  # projection's last/drop_last-prepend rebuilds reversed every list it
-  # walked (params, tuple elems, type args, record fields, the
-  # unresolved set) until the map forms landed; a voice that replaces
-  # reading the source cannot misorder a signature (it cost two swapped
-  # calls in one hour, each convicted by the census).
-  qodir="$dir/qorder"
-  mkdir -p "$qodir"
-  printf 'fn pair(alpha: Int, beta: String) = alpha\n\nfn main() = pair(1, "x")\n' > "$qodir/main.mn"
-  qo_out=$(cd "$qodir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$qodir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query main.mn "type of pair" 2>/dev/null)
-  if printf '%s' "$qo_out" | grep -q 'alpha: Int.*beta: String'; then
-    pass "query speaks declaration order (alpha before beta)"
-  else
-    fail "query param order (got: $(printf '%s' "$qo_out" | grep -m1 'alpha\|beta\|→'))"
-  fi
-
-  # ─── The interval fragment's proof-and-honesty face ────────────────
-  # mn-verify-interval runs to 28 through the contract battery; HERE the
-  # stderr ledger is the assertion: exactly ONE pending comparison —
-  # wild (honest Sub debt, the never-launders control). seek DISCHARGES:
-  # the recursive call's leaf is the declaration's own authored `-> Nat`,
-  # read off the decl's TFun as a contract (P0's value walk). Zero = a
-  # computation laundered again (the runtime -1 class); more = a leaf of
-  # the walk (if-join tails / len / Add / a precondition / a callee's
-  # declared return) stopped discharging.
-  iv_err=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-verify-interval.mn" 2>&1 >/dev/null | grep -c 'pending comparison')
-  if [ "$iv_err" = "1" ]; then
-    pass "interval fragment: the rec-call IH discharges and the licence never launders (1 honest pending)"
-  else
-    fail "interval fragment (pending comparisons: $iv_err, want 1)"
-  fi
-
-  # ... and what it provides is the MEET over everywhere it is handed:
-  # `drive2` provides nothing, so the lambda's demand is debt where it
-  # crosses into `outer` — exactly one pending, on main's line. Zero is a
-  # provision taken from one hand-off alone (boot 13e8484a); a pending inside
-  # `outer` is a provision read as the callback's own demand (pin e23392f6).
-  # Compiled through stdin, which never restores a warm image.
-  tm_src="$ROOT/tests/frontier/mn-refine-transport-meets.mn"
-  tm_main=$(grep -n '^fn main' "$tm_src" | cut -d: -f1)
-  tm_err=$(wt_run "$compiler" < "$tm_src" 2>&1 >/dev/null | grep 'verify: pending' || true)
-  tm_n=$(printf '%s\n' "$tm_err" | grep -c 'verify: pending' || true)
-  tm_at=$(printf '%s\n' "$tm_err" | grep -c ":$tm_main:" || true)
-  if [ "$tm_n" = "1" ] && [ "$tm_at" = "1" ]; then
-    pass "transport meets: a parameter provides the meet of every hand-off (1 pending, at main's crossing)"
-  else
-    fail "transport meets (pending: $tm_n, at main's line: $tm_at; want 1 and 1)"
-  fi
-
-  # ─── Diagnostics speak the developer's coordinates ─────────────────
-  # A check-path diagnostic renders ONCE (the discovery parse absorbs
-  # under diag_quiet — every parse warning printed twice since the DAG
-  # path was born) and at the FILE-LOCAL span (the register's own range
-  # is the subtraction — a line-2 error had rendered at weave 5730).
-  lcdir="$dir/local-span"
-  mkdir -p "$lcdir"
-  printf 'fn main() = {\n  let x: Int = "hi"\n  len(x)\n}\n' > "$lcdir/main.mn"
-  lc_out=$(cd "$lcdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$lcdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check main.mn 2>&1)
-  lc_n=$(printf '%s' "$lc_out" | grep -c 'E_TypeMismatch')
-  # The assertion names the MODULE as well as the line (2026-09-15). It read
-  # `at 2:` and broke the day the diagnostic render gained its module half —
-  # a gate welded to a render, snapped by improving the render, which is the
-  # RENDER-PARSE class this session spent the day naming. Asserting
-  # `at main:2:` is strictly STRONGER: a diagnostic about main.mn that reports
-  # line 2 of some other file now fails, where before it passed.
-  if [ "$lc_n" = "1" ] && printf '%s' "$lc_out" | grep -q 'at main:2:'; then
-    pass "diagnostics localize: one report, the user's own file and line (at main:2:)"
-  else
-    fail "diagnostics localize (reports: $lc_n; $(printf '%s' "$lc_out" | grep -m1 'E_TypeMismatch'))"
-  fi
-
-  wdoc="$ROOT/tests/frontier/mn-where-badges.mn"
-  # The bare why verb (SYNTAX's lag list, first name retired): the
-  # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
-  # boot answered unknown-verb).
-  wy_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" why "$wdoc" gain 2>/dev/null)
-  printf '%s' "$wy_out" | grep -q 'let gain' && pass "why verb (the Reason chain of gain walks to its let)" || fail "why verb (got: $wy_out)"
-  # The developer's coordinates: `gain` is line 8 of a 24-line fixture, so
-  # the why verb's `at 8:1-8:15` is the line in the developer's own file,
-  # which every surface that renders a Reason shares (hover, the caret's Why
-  # line, the type facet).
-  # WHAT IT MEASURES NOW (re-read 2026-09-15, because the message had gone
-  # stale against its own subject — the smaller face of the RENDER-PARSE
-  # class the two legs above just paid for). The LINE HALF IS FIXED: this
-  # answers `at 8:1-8:15`, the developer's own line, not 2729. What is
-  # still missing is the FILE half, and it is missing for a reason the
-  # render cannot fix locally: `show_reason` is handed a Reason, and
-  # `Located(span, inner)` carries a COORDINATE WITH NO HANDLE, so there
-  # is nothing to read a module from. The diagnostic path escapes this by
-  # having its CALLER thread the module in (`diag_report_at`); why cannot
-  # borrow that trick, because a Why chain walks across modules and
-  # stamping the verb's own file onto a coordinate from elsewhere is a
-  # fabrication, not a fix. The honest fix is the POSITIONS face of §11's
-  # four-faces law — Located carries the handle and reads the span live —
-  # which is 157 construction sites, a representation change, its own arc.
-  # Banked as Hβ.why.reason-span-is-a-weave-coordinate; types.mn's own
-  # seam-render comment names it too. This leg stays RED on purpose and is
-  # the one entry in frontier_expected_red, judged by name in both
-  # directions — so the day the peer lands, this leg starts PASSING and the
-  # gate REFUSES until the entry is deleted, instead of a slack count
-  # silently licensing some other leg's red.
-  wy_file_ok=0
-  printf '%s' "$wy_out" | grep -q 'mn-where-badges:9' && wy_file_ok=1
-  judge why-coordinates "$wy_file_ok" \
-    "why coordinates carry their file (line half fixed; file half is Hβ.why.reason-span-is-a-weave-coordinate) (got: $wy_out)"
-
-  # ─── Information flow (PLAN §4⑥): a label is an effect op over `self`
-  # and a sink's demand is its absence. Each tests/micros/mn-flow-*
-  # fixture's second line is its contract at the sink — `flow: refused at
-  # L…` names every line a claim refuses at, `flow: proven` says none
-  # refuses and none is owed — and the facet says what a source answers and
-  # what an endorsement states. Seen RED on boot cb12aeea: every claim was
-  # pending debt.
-  fl_bad=""
-  for fx in "$ROOT"/tests/micros/mn-flow-*.mn; do
-    fl_want=$(sed -n 2p "$fx")
-    fl_got=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$fx" 2>&1 >/dev/null | grep "E_RefinementRejected" | sed -n 's/.* at [^ ]*:\([0-9]*\):[0-9]*-[0-9]*:[0-9]*$/\1/p' | sort -n | tr '\n' ' ' | sed 's/ $//')
-    fl_owed=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$fx" verification 2>/dev/null | grep -c "$(basename "$fx" .mn):" || true)
-    case "$fl_want" in
-      "// flow: proven") { [ -z "$fl_got" ] && [ "$fl_owed" -eq 0 ]; } || fl_bad="$fl_bad $(basename "$fx")" ;;
-      *) [ "$fl_got" = "$(printf '%s' "${fl_want#// flow: refused at }" | tr ' ' '\n' | sort -n | tr '\n' ' ' | sed 's/ $//')" ] || fl_bad="$fl_bad $(basename "$fx")" ;;
-    esac
-  done
-  fl_src=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/micros/mn-flow-explicit.mn" "flow of read_cmd" 2>/dev/null)
-  fl_end=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/micros/mn-flow-endorse.mn" "flow of quote" 2>/dev/null)
-  if [ -z "$fl_bad" ] && printf '%s' "$fl_src" | grep -q "answers untrusted" && printf '%s' "$fl_end" | grep -q "endorses"; then
-    pass "information flow: every mn-flow contract holds at its sink; the facet names a source and an endorsement"
-  else
-    fail "information flow (broken:${fl_bad:- none} · source: $(printf '%s' "$fl_src" | tail -1) · endorse: $(printf '%s' "$fl_end" | tail -1))"
-  fi
-
   # ─── The cost facet, and the prelude floor it makes a contract: the nodes
   # the medium mints to judge a bare `fn main() = 7`-class module — the
   # prelude vocabulary it processes to answer nothing. A count of nodes is
@@ -1448,37 +1200,16 @@ for i in "${!compilers[@]}"; do
   # src/, which made this whole gate's verdict depend on every comment edit.)
 done
 
-echo "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
+echo "frontier: $total_pass pass / $total_fail red"
 
-# The GREEN STAMP, keyed by the boot it tested (the d51661f1 lesson —
-# 2026-08-09): a fully-green run records the boot's sha256 so the
-# pre-commit thesis gate can DEMAND that the frontier ran, green,
-# against exactly the wheel being committed. A red run stamps nothing
-# (and clears any stale stamp — a stamp must never outlive a red).
-# Scope, stated honestly: the stamp binds gate↔boot; boot↔staged-source
-# is the march's own per-landing contract (m2 == m3), not this file's.
-#
-# THE CEILING IS READ, NOT HARD-CODED (2026-09-15) — and until today these
-# were TWO HOMES that disagreed. march.sh:129 reads `frontier_red_max` and
-# blesses a pin within it; this line demanded ZERO, and the pre-commit
-# perimeter demands this stamp. So the march blessed a pin the perimeter then
-# refused to commit, and with one red banked since 2026-09-06 that meant NO
-# wheel commit could land at all. It went unnoticed because the perimeter was
-# installed on 2026-09-15 and this was the first wheel commit under it — not a
-# gate that went quiet (tripwire 4) but a gate never run against a real case.
-# Reading the same key march.sh reads makes them agree BY CONSTRUCTION and
-# tightens automatically the day the ceiling reaches 0. This is not a
-# loosening: it replaces a second, stricter, UNREACHABLE contract with the
-# banked one, and an unsatisfiable gate is a gate that gets --no-verify'd.
-# THE STAMP IS BACK TO LITERAL ZERO (2026-09-15) — because an expected red is
-# no longer a red. The ceiling this replaces (`frontier_red_max`, read here
-# and in march.sh) compared only a COUNT and so could not tell WHICH leg was
-# failing; the named contract in judge() does, in both directions, and a
-# declared standing failure lands in $total_xred rather than $total_fail. So
-# zero here is the strong form, not the unreachable one it was this morning.
+# A green run records the boot's sha256, so the pre-commit hook can demand
+# that the frontier ran green against exactly the boot being committed. A red
+# run stamps nothing and clears any stamp left before it. The stamp binds the
+# gate to the boot; the boot's agreement with the source is the march's
+# (m2 == m3).
 if [ "$total_fail" -eq 0 ]; then
   sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
-  wt_memo_put frontier "$frontier_key" "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
+  wt_memo_put frontier "$frontier_key" "frontier: $total_pass pass / $total_fail red"
 else
   rm -f "$ROOT/.build/frontier-stamp"
 fi

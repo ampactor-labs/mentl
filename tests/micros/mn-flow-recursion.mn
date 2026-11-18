@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 18
 // A demand is owed at every call, the function's own among them: `retry`
 // hands itself an untrusted command, and the call refuses at that argument.
 // On boot cb12aeea the sink's claim was pending debt.

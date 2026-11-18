@@ -1,5 +1,4 @@
 // expect: 2
-// flow: proven
 // The precision control beside mn-flow-field: a part is read at its position
 // in what it was built from, so the constant half of a pair whose other half
 // is untrusted reaches the sink proven. A pattern of one arm asserts its

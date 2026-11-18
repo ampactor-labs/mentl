@@ -1,5 +1,4 @@
 // expect: 10
-// flow: proven
 // Endorsement is a declared return: `quote` states that what it answers is
 // trusted, so a call of it is trusted whatever it was handed. The statement is
 // the declaration's own, never claimed of its body — that is what makes it an

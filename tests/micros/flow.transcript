@@ -1,0 +1,67 @@
+$ mentl check tests/micros/mn-flow-endorse.mn
+$ mentl check tests/micros/mn-flow-explicit.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-explicit:19:30 through what `read_cmd` is declared to answer at tests/micros/mn-flow-explicit:19:13-19:41
+[exit 1]
+$ mentl check tests/micros/mn-flow-explicit-sound.mn
+$ mentl check tests/micros/mn-flow-field.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-field:18:19 through what `read_cmd` is declared to answer at tests/micros/mn-flow-field:19:3-19:16
+[exit 1]
+$ mentl check tests/micros/mn-flow-hof.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-hof:18:13 through what `read_args` is declared to answer at tests/micros/mn-flow-hof:18:50-18:57
+! verify: 1 place(s) can stop this program with a trap, 1 of them inside the library through the program's calls; `mentl query tests/micros/mn-flow-hof traps` lists each with its claim
+[exit 1]
+$ mentl check tests/micros/mn-flow-implicit-branch.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-implicit-branch:17:16 through what `read_cmd` is declared to answer at tests/micros/mn-flow-implicit-branch:17:38-17:48
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-implicit-branch:17:16 through what `read_cmd` is declared to answer at tests/micros/mn-flow-implicit-branch:17:58-17:68
+[exit 1]
+$ mentl check tests/micros/mn-flow-implicit-call.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-implicit-call:21:16 through what `read_cmd` is declared to answer at tests/micros/mn-flow-implicit-call:19:13-19:34
+[exit 1]
+$ mentl check tests/micros/mn-flow-implicit-value.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-implicit-value:18:16 through what `read_cmd` is declared to answer at tests/micros/mn-flow-implicit-value:19:3-19:12
+[exit 1]
+$ mentl check tests/micros/mn-flow-let-annotation.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-let-annotation:17:24 through the let's annotation at tests/micros/mn-flow-let-annotation:18:3-18:12
+[exit 1]
+$ mentl check tests/micros/mn-flow-param-demand.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-param-demand:21:17 through what `read_cmd` is declared to answer at tests/micros/mn-flow-param-demand:19:15-19:36
+[exit 1]
+$ mentl check tests/micros/mn-flow-param-demand-sound.mn
+$ mentl check tests/micros/mn-flow-part.mn
+$ mentl check tests/micros/mn-flow-perform.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-perform:22:19 through what `read_cmd` is declared to answer at tests/micros/mn-flow-perform:25:13-25:24
+[exit 1]
+$ mentl check tests/micros/mn-flow-recursion.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-recursion:17:57 through what `read_cmd` is declared to answer at tests/micros/mn-flow-recursion:17:32-17:41
+[exit 1]
+$ mentl check tests/micros/mn-flow-secret.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !secret(...) — secret enters at tests/micros/mn-flow-secret:22:26 through what `password` is declared to answer at tests/micros/mn-flow-secret:22:8-22:37
+[exit 1]
+$ mentl check tests/micros/mn-flow-splice.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-splice:17:25 through what `read_cmd` is declared to answer at tests/micros/mn-flow-splice:17:13-17:38
+[exit 1]
+$ mentl check tests/micros/mn-flow-stage.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-stage:17:13 through what `read_cmd` is declared to answer at tests/micros/mn-flow-stage:17:34-17:41
+[exit 1]
+$ mentl check tests/micros/mn-flow-state.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-state:30:7 through what `read_cmd` is declared to answer at tests/micros/mn-flow-state:31:3-31:14
+[exit 1]
+$ mentl check tests/micros/mn-flow-state-sound.mn
+$ mentl check tests/micros/mn-flow-store.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-store:20:21 through what `read_cmd` is declared to answer at tests/micros/mn-flow-store:21:3-21:16
+! verify: 1 place(s) can stop this program with a trap, 1 of them inside the library through the program's calls; `mentl query tests/micros/mn-flow-store traps` lists each with its claim
+[exit 1]
+$ mentl check tests/micros/mn-flow-tee-arm.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-tee-arm:22:12 through what `read_cmd` is declared to answer at tests/micros/mn-flow-tee-arm:25:13-25:34
+[exit 1]
+$ mentl check tests/micros/mn-flow-tee-arm-sound.mn
+$ mentl check tests/micros/mn-flow-unwind.mn
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-unwind:27:6 through what `read_cmd` is declared to answer at tests/micros/mn-flow-unwind:28:3-28:13
+[exit 1]
+$ mentl query tests/micros/mn-flow-explicit.mn flow of read_cmd
+! verify: E_RefinementRejected error: refinement predicate proven false at compile time: !untrusted(...) — untrusted enters at tests/micros/mn-flow-explicit:19:30 through what `read_cmd` is declared to answer at tests/micros/mn-flow-explicit:19:13-19:41
+  → 1 flow fact(s)
+    `read_cmd` answers untrusted
+$ mentl query tests/micros/mn-flow-endorse.mn flow of quote
+  → 1 flow fact(s)
+    `quote` endorses: what it answers carries no untrusted

@@ -61,3 +61,6 @@ $ mentl accept tests/teach/precondition-over-a-plain-type.mn:8:1
 >
 > fn main() = inv(5)
 $ mentl check tests/teach/precondition-over-a-plain-type.mn
+$ mentl accept examples/pulse/course/07-bounds.mn:48:1
+! mentl accept: `notes: Rate` or `notes: Positive` — either way the division cannot fail, which unlocks trap-free (nothing it reaches can stop with an error; that it always finishes is not proven); they mean different things, so which is meant?
+[exit 1]

@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 18
 // A stage's parameter is the value piped into it, so an untrusted value piped
 // into a stage that hands it to a sink refuses at the sink's argument. On boot
 // cb12aeea the claim was pending debt.

@@ -1,5 +1,4 @@
 // expect: 10
-// flow: proven
 // The sound twin of mn-flow-explicit: every value the argument is built from
 // is a constant, so nothing untrusted reaches the sink and the claim is
 // proven, not owed. On boot cb12aeea it was pending debt.

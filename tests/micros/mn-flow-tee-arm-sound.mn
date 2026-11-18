@@ -1,5 +1,4 @@
 // expect: 2
-// flow: proven
 // The sound twin of mn-flow-tee-arm: `plain`'s arm answers a constant, so
 // every value the install can answer is trusted and the claim is proven, not
 // owed. On boot cb12aeea it was pending debt.

@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 20
 // A field holds what was placed in it: the record's cmd field is untrusted, so
 // reading it back hands the sink an untrusted value. On boot cb12aeea the
 // claim was pending debt.

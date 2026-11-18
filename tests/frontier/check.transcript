@@ -10,3 +10,9 @@ $ mentl check tests/frontier/mn-own-across-replay.mn
 ! verify: 1 place(s) can stop this program with a trap, 0 of them inside the library through the program's calls; `mentl query tests/frontier/mn-own-across-replay traps` lists each with its claim
 $ mentl check tests/frontier/mn-pcompose-value-branches.mn
 $ mentl check tests/frontier/mn-pipe-into-len.mn
+$ mentl check tests/frontier/mn-refine-transport-meets.mn
+! verify: pending conjunction 0.0 < self && self < 22050.0 at tests/frontier/mn-refine-transport-meets:20:16-20:40
+! verify: V_Pending VerificationPending: 1 verification obligations pending at tests/frontier/mn-refine-transport-meets:20:16-20:40
+$ mentl check tests/frontier/mn-verify-interval.mn
+! verify: pending comparison 0 <= self at tests/frontier/mn-verify-interval:29:20-29:23
+! verify: V_Pending VerificationPending: 1 verification obligations pending at tests/frontier/mn-verify-interval:29:20-29:23

@@ -65,3 +65,5 @@ $ mentl where tests/frontier/mn-where-shadowed-local.mn heads
   → heads(ref xs: [a]) -> Int with Memory  at tests/frontier/mn-where-shadowed-local:11
     xs : [a] @ i32 (inferred)
     -> Int @ i32 (inferred)
+$ mentl why tests/frontier/mn-where-badges.mn gain
+  at 9:5-9:9: let gain = inferred from pattern

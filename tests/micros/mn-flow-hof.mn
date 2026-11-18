@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 19
 // A function handed to another is applied to what that function is handed:
 // `each` applies its stage to the elements of an untrusted list, so the
 // stage's parameter is untrusted where it reaches the sink. On boot cb12aeea

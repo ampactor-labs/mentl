@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 20
 // An untrusted value reaching a trusted sink through a concatenation. The
 // label is an op the program declares, so it has no body to read: the medium
 // gives it its meaning, and `untrusted(v)` holds of every value a source

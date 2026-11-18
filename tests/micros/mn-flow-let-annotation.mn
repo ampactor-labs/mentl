@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 19
 // A let's annotation that states the label is a source: the let holds an
 // untrusted value whatever it was built from, so the sink refuses with the
 // annotation as where the label enters. On boot cb12aeea the claim was

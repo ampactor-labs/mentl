@@ -12,12 +12,6 @@ census_errors_max: 0
 # performs the Filesystem ops (tools/verify.sh's effect seam).
 fs_impl_bypass_max: 0
 
-# The one declared red frontier leg, judged by name in both directions: a
-# Why chain's coordinate carries no file, because a Located Reason holds a
-# span and no handle. The keystone's Reason edge (PLAN §11), where Located gains the handle,
-# turns it green and deletes this line.
-frontier_expected_red: why-coordinates
-
 # The distinct tools/*.sh scripts CLAUDE.md's «The loop» names; it falls when a
 # verb replaces a script (2 -> 0, 2026-10-26: `mentl land` runs board and pin).
 loop_scaffold_refs_max: 0

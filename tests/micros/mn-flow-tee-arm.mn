@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 26
 // A tee's value is every value its install can answer: `reveal`'s arm never
 // resumes and answers an untrusted value, so the install's value is untrusted
 // and the sink refuses. On boot cb12aeea the claim was pending debt.

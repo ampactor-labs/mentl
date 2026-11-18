@@ -1,5 +1,4 @@
 // expect: 8
-// flow: proven
 // The sound twin of mn-flow-param-demand: `main` hands `run` a constant, so
 // the demand its parameter owes is met where it is paid and nothing is
 // pending.

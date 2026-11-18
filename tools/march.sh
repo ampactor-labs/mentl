@@ -126,27 +126,17 @@ board_self_run() {
 # So march runs it, after the swap, against the boot it just wrote — the
 # same principle it already applies to m4: the orchestrator re-derives the
 # ground truth rather than committing on another runner's word (CLAUDE.md
-# ⟲). A red frontier marks the board RED and refuses the pin, EXCEPT for
-# the standing reds the baseline names, which is the project's own answer
-# to "expected red" everywhere else: a ratchet, not a sentence in a commit
-# message.
+# ⟲). A red frontier marks the board RED and refuses the pin.
 board_frontier() {
-  local gate="tools/frontier-gate.sh" line red max
+  local gate="tools/frontier-gate.sh" line red
   [ -x "$gate" ] && [ -f "$gate" ] || { printf '%s' "NOT RUN (no $gate)"; return; }
   line=$(bash "$gate" --compiler boot 2>&1 | grep -E '^frontier: [0-9]+ pass' | tail -1)
   [ -n "$line" ] || { printf '%s' "NOT RUN (the gate produced no summary)"; return; }
-  # ANY red refuses the pin (2026-09-15). This read `[ "$red" -gt "$max" ]`
-  # against `frontier_red_max`, a COUNT — so it could not tell WHICH leg was
-  # red, and fixing the standing one while breaking a crown leg left the pin
-  # blessable and the board printing the same "1 red" as a healthy day. A
-  # count standing in for an identity is drift 8 at the gate layer. The
-  # standing failures are now DECLARED BY NAME (frontier_expected_red, judged
-  # in both directions by frontier-gate.sh's judge()), and land in the
-  # summary's `expected-red` field rather than in `red` — so this comparison
-  # is against ZERO, which is the strong form rather than the unreachable one.
+  # Any red leg refuses the pin: a leg passes or fails, and none is declared
+  # failing in advance.
   red=$(printf '%s' "$line" | grep -oE '[0-9]+ red' | head -1 | grep -oE '[0-9]+')
   if [ -n "$red" ] && [ "$red" -gt 0 ]; then
-    printf '%s' "${line#frontier: } — RED: a leg no frontier_expected_red entry declares"
+    printf '%s' "${line#frontier: } — RED: a leg failed"
   else
     printf '%s' "${line#frontier: }"
   fi

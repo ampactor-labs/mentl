@@ -42,3 +42,20 @@ $ mentl query tests/frontier/mn-debt-facet.mn verification in tests/frontier/mn-
 $ mentl query tests/frontier/mn-reading-facets.mn variants Count
   → total/0
     add/1
+$ mentl query tests/frontier/lede-demo/lede.mn type of apply
+  → (ref f: (a) -> b with e, ref v: a) -> b with e
+    Reason: at 15:1-15:22: declared as apply
+$ mentl query tests/frontier/mn-lsp-hover-doc.mn type double
+  → (ref x: a) -> a
+    Reason: at 6:1-6:21: declared as double
+$ mentl query tests/frontier/env-protocol/main.mn env
+  → 2 environment read(s) beneath a host install
+    MN_A [required] read at tests/frontier/env-protocol/main:7:24 in total
+    MN_B [required] read at tests/frontier/env-protocol/main:7:49 in total
+$ mentl query tests/frontier/env-optional/main.mn env
+  → 2 environment read(s) beneath a host install
+    * [all optional] read at tests/frontier/env-optional/main:5:28 in dynamic
+    MN_OPTIONAL_FIXED [optional] read at tests/frontier/env-optional/main:8:21 in main
+$ mentl query tests/frontier/env-optional-literal/main.mn env
+  → 1 environment read(s) beneath a host install
+    MN_OPTIONAL_LITERAL [optional] read at tests/frontier/env-optional-literal/main:4:19 in main

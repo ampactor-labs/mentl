@@ -1,5 +1,4 @@
 // expect: 2
-// flow: proven
 // The sound twin of mn-flow-state: every value `put` is performed with is a
 // constant, so the state holds nothing untrusted and the sink's claim is
 // proven.

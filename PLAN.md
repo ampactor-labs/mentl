@@ -76,8 +76,10 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   keeps the module an mcp proposal proves and never reads the medium's
   hidden files from the host. P3h followed the same day: every program the
   frontier gate compiled and ran for its exit is judged by a battery from
-  its own first line, and builds as written. The rest of P3 waits on what
-  its legs need (§11.B, P3); P4, P7 and P5 follow.
+  its own first line, and builds as written. P3i followed the same day:
+  what the gate read off a command's answer on a committed program is a
+  transcript, and no leg is declared failing in advance. The rest of P3
+  waits on what its legs need (§11.B, P3); P4, P7 and P5 follow.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1123,6 +1125,11 @@ accepts each program and `mentl run` shows the break.
 - A type, a `Reason` and the lowered program are value trees. The lowered
   program is identified by its symbol, so the emit's reach walks key their
   units by spelling (§11.2, §11.3).
+- A Reason names a line and column and no file. `mentl why
+  tests/frontier/mn-where-badges.mn gain` answers "at 9:5-9:9: let gain =
+  inferred from pattern", and `mentl query FILE "type of NAME"` gives its
+  Reason the same way, since a located Reason holds a span and not the
+  node it names (tests/frontier/where-badges.transcript; §11.2).
 - An arm's resume grade and a callee's tail facts are read by spelling and
   derived again for every reader. The emit cuts a list rest, names an arm's
   kind and writes a schedule's performs by spelling (§11.2, §11.3, §11.4).
@@ -1202,11 +1209,11 @@ accepts each program and `mentl run` shows the break.
 - The page cannot play a lesson (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
   calls. The landing pass, the march and the batteries' host loop are shell
-  scripts under tools/ (§11.9). 16 lines of the frontier gate pipe a
+  scripts under tools/ (§11.9). 10 lines of the frontier gate pipe a
   captured answer into `grep -q` (144 before P3c moved 56 legs into
   transcripts, 2026-11-15, 38 before P3d moved 20 more, 36 before P3e
-  moved 31 more, 2026-11-16, 24 before P3f moved 6 more, and 19 before
-  P3g moved 6 more, 2026-11-17),
+  moved 31 more, 2026-11-16, 24 before P3f moved 6 more, 19 before P3g
+  moved 6 more, and 16 before P3i moved 13 more, 2026-11-17),
   which can read a present answer as absent at
   random (§11.B, "Three checks that failed at random"); P3's later
   batches move them.
@@ -1430,7 +1437,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1494,7 +1501,9 @@ leave, and the landing deletes them.
    the module an mcp proposal proves and never reads the medium's hidden
    files from the host. P3h landed the same day: every program the frontier
    gate compiled and ran for its exit is judged by a battery from its own
-   first line, and builds as written.
+   first line, and builds as written. P3i landed the same day: what the
+   gate read off a command's answer on a committed program is a
+   transcript, and no leg is declared failing in advance.
    P3's later batches are cut into boxes as their groundwork comes. Then P4, P7
    and P5, the newest engine, which T4 needs for exception handling and M5
    for multiple memories.
@@ -1545,8 +1554,7 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
-3 is P3i.
+in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1654,15 +1662,30 @@ minute, and no expectation kept by hand.
   which normalized to one line and saw a program's errors alone (the
   persist legs' does the same). The gate fell to 84 verdicts,
   1,485 lines and 16 lines that pipe into `grep -q`, and from 218 s to
-  142 s on the boot. Each later batch brings what its legs need: a form in
-  which a transcript runs a program and shows what it printed, for the
-  runs whose contract is a program's output or a program a verb wrote
-  (the accepted fill, tighten's roster, fmt's renders, a spawned module's
-  init); the same for two processes over one image; transcripts for the
-  legs that read a verb's text on a file the gate writes or count a
-  compile's open claims; and a form for the legs that compare against an
-  outside program, a warm image, which `files_kept` cannot keep yet (its
-  `fs_write_image` answers false), or an LSP exchange, whose frames
+  142 s on the boot. P3i, built the same day, made each fact the gate
+  read off a command's answer on a committed program that command in a
+  transcript: the caret on a declaration's name, the order of `type of`,
+  two compiles' open claims, `why`, the LSP query, lesson 7's accept, three
+  env queries, and the 23 information-flow programs, whose second-line
+  contract became tests/micros/flow.transcript. The one leg declared red,
+  `why`'s answer without a file, became that answer in a transcript, and
+  the machinery that declared it left the gate, the march, the commit
+  hook and the obey gate, so no leg is declared failing in advance. The
+  gate fell to 71 verdicts, 1,216 lines and 10 lines that pipe into `grep
+  -q`, and starts 59 fewer compiler processes. Each later batch brings
+  what its legs need: a bound the board measures or a query facet, for
+  the legs that read facts about the compiler itself (the prelude's node
+  count, the arena census only a compile prints, `extract_chase`'s row,
+  the one renderer and the relocation pins); a transcript that may run
+  `mentl test`, for the teach battery's refusal; a form in which a
+  transcript runs a program and shows what it printed, for the runs whose
+  contract is a program's output or a program a verb wrote (the accepted
+  fill, tighten's roster, fmt's renders, a spawned module's init); the
+  same for two processes over one image; a user's project folder outside
+  the repository, for the user link and the installed command; and a form
+  for the legs that compare against an outside program, a warm image,
+  which `files_kept` cannot keep yet (its `fs_write_image` answers
+  false), the terminal's live line, or an LSP exchange, whose frames
   `serve` writes past the transcript's writers. Two of the four oracle
   checks pass without running where numpy is missing (§7).
 - P4. A document's quoted output is re-run by a command that fails when
@@ -1957,7 +1980,7 @@ answer from a file, as the gate's relocation legs already did, and read
 false in none of 2,000 runs. On 2026-11-15 the frontier gate held 144
 lines that pipe a captured answer into `grep -q`, 38 after P3c the same
 day, 36 after P3d on 2026-11-16, 24 after P3e the same day, 19 after P3f
-on 2026-11-17, and 16 after P3g the same day. Any of them whose answer
+on 2026-11-17, 16 after P3g the same day, and 10 after P3i. Any of them whose answer
 is written in more than one chunk can read false the same way, and a
 negated one, `! printf … | grep -q`, can read true, which passes a leg
 that should fail.
@@ -2153,155 +2176,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · P3i · What the frontier gate read off a command's answer on a
-   committed program is a transcript, and no leg is declared failing in
-   advance.** Written 2026-11-17 and measured on the pinned boot,
-   c866711ba72e, with the form built in the working tree. It changes no
-   compiler source, so the boot stays the pin.
-
-   What a person sees.
-   - Each fact these legs read off a command's answer with `grep` is that
-     command in a transcript, which `mentl test` replays and `mentl test
-     --write` writes:
-     - the caret at a column inside a declaration's name projects the
-       declaration: `mentl tests/frontier/address-module-demo/addr.mn:4:4`
-       answers as the line address `addr.mn:4` does
-       (tests/frontier/address-module.transcript);
-     - `mentl query tests/frontier/lede-demo/lede.mn type of apply` lists
-       `f` before `v`, the parameters in declaration order
-       (query-facets.transcript);
-     - the interval fragment's one pending comparison, and transport meets'
-       one pending claim, at `main`'s line 20 (check.transcript);
-     - `mentl why tests/frontier/mn-where-badges.mn gain`
-       (where-badges.transcript);
-     - the 23 information-flow programs: tests/micros/flow.transcript holds
-       what `mentl check` says at each one's sink, the refusals and the
-       seven programs that answer nothing, and what `flow of read_cmd` and
-       `flow of quote` answer;
-     - `mentl query tests/frontier/mn-lsp-hover-doc.mn type double`, and
-       `mentl query <program> env` on the three environment programs
-       (query-facets.transcript);
-     - `mentl accept examples/pulse/course/07-bounds.mn:48:1` asks for
-       `notes: Rate` or `notes: Positive` and writes nothing
-       (accept.transcript).
-     A check that reports each diagnostic once, at the program's own line,
-     is in transcripts already: tighten.transcript's two errors on
-     tighten-demo/wild.mn and check.transcript's parser warning on
-     mn-own-across-replay.mn.
-   - No leg is declared failing in advance. The one that was,
-     why-coordinates, read the same `why` answer, which names a line and no
-     file: where-badges.transcript records it as it stands, and PLAN §7
-     says a Reason names no file until §11.2 makes it an edge to its node.
-     The machinery that declared it leaves the gate, the march, the commit
-     hook and the obey gate.
-   - tools/frontier-gate.sh falls from 84 verdicts to 71, from 1,485 lines
-     to 1,216, and from 16 lines that pipe an answer into `grep -q` to 10.
-     It starts 59 fewer compiler processes, 48 of them the flow programs'
-     checks and verification queries; the transcript's 25 commands run
-     inside the micros battery's one process. Its wall time was not
-     compared, since the machine was busy for the run: the pulse render
-     inside it took 7,926 ms, where it took 2,708 ms in P3h's measurement.
-
-   Fails today, on pin c866711ba72e.
-   - These legs grep a command's answer: the caret at `main.mn:1:4` and
-     `query main.mn "type of pair"` on files the gate writes with `printf`,
-     a check on a third such file, the interval's and transport's pending
-     lines on a compile's stderr, `why`, the flow programs' check and
-     verification answers against a second-line convention only the gate
-     reads (`// flow: refused at 20`, which docs/SYNTAX.md describes), the
-     LSP query, the lesson 7 accept on a copy of the course, and the three
-     env queries in copies of their folders.
-   - One leg is declared red through a mechanism of its own: an entry in
-     tools/verify-baseline.txt, a `judge` function that turns its failure
-     into a third verdict, a summary field the march and the commit hook
-     explain, and an obey-gate rule against a new entry. Its answer, "at
-     9:5-9:9: let gain = inferred from pattern", stands in no transcript,
-     and PLAN does not record that a Reason names no file.
-   - tests/frontier/mn-refine-transport-meets.mn's comment names the
-     parameter `g` in backticks, so its check prints a W_CommentRefUnresolved
-     warning beside its claim.
-
-   What it reads, each fact carried by a foundation the order built, with
-   a command on the pin that shows it.
-   - What a command prints is a transcript's contract (P3b): `mentl test
-     tests/frontier` replays 25 transcripts.
-   - A transcript keeps what its commands write in memory (P3d): the
-     accept.transcript commands that accept a hole show `[wrote …]` and the
-     repository is unchanged.
-   - A transcript never reads a hidden path from the host (P3g), so no warm
-     image from an earlier compile enters the check of transport meets,
-     which the leg compiled from stdin to keep one out.
-   - `mentl check` prints a program's own open claims and refusals:
-     tests/frontier/check.transcript (P3h).
-
-   The form.
-   - Transcript commands, each answer written by `mentl test --write`:
-     `$ mentl tests/frontier/address-module-demo/addr.mn:4:4` in
-     address-module.transcript; `$ mentl query
-     tests/frontier/lede-demo/lede.mn type of apply`, `$ mentl query
-     tests/frontier/mn-lsp-hover-doc.mn type double` and `$ mentl query
-     <program> env` for tests/frontier/env-protocol, env-optional and
-     env-optional-literal in query-facets.transcript; `$ mentl why
-     tests/frontier/mn-where-badges.mn gain` in where-badges.transcript; `$
-     mentl check` of mn-refine-transport-meets.mn and mn-verify-interval.mn
-     in check.transcript; `$ mentl accept
-     examples/pulse/course/07-bounds.mn:48:1` in accept.transcript; and
-     tests/micros/flow.transcript, new, with a check of each
-     tests/micros/mn-flow-*.mn and the two flow queries.
-   - The 23 flow programs lose their second line, whose contract the
-     transcript now holds. docs/SYNTAX.md says so where it described the
-     second line. mn-refine-transport-meets.mn names g without backticks.
-   - tools/frontier-gate.sh: the legs above leave, the lesson 7 accept from
-     `run_course`, the three env queries from `run_env_protocol`, and the
-     query from `run_lsp_hover`, whose headers say where those answers
-     went. `judge`, `expected_red_has` and the third summary field leave,
-     and `run_program`'s run and the trap in the row pass or fail.
-   - The declared-red entry leaves tools/verify-baseline.txt; tools/march.sh
-     reports "RED: a leg failed"; .githooks/pre-commit and its refusal say
-     green is zero red legs; tools/obey-gate.py loses the rule and its line.
-     CLAUDE.md's list of what the obey gate refuses drops "an expected
-     failure".
-   - PLAN §7 records that a Reason names a line and no file (§11.2).
-
-   Edge cases, each run on the boot.
-   - The flow transcript, written before the second lines left, matched
-     each one: 16 refusals at the stated lines, mn-flow-implicit-branch
-     twice at 18, and the 7 proven programs answering nothing. Written
-     again after, every line it cites moved by exactly one.
-   - The lesson 7 accept shows no `[wrote …]` block, and the lesson's bytes
-     are unchanged after the replay.
-   - The env queries name each program by its path from the repository's
-     root, where the legs' folder copies named it `main`. The installed
-     `mentl run` command reads these lines to choose what it passes, so the
-     transcript now pins the shape it reads.
-   - The `why` answer has no file. The transcript records it as it stands,
-     and the landing that makes a Reason an edge to its node writes it
-     again with the file.
-
-   What pays for its code. No code is added to the wheel, and the board
-   does not move.
-
-   Left alone, each for the batch that brings its form.
-   - Facts about the compiler itself: the cost facet's prelude floor, a
-     ceiling in tools/verify-baseline.txt; the arena census, a line only a
-     compile prints (`mentl check tests/frontier/mn-census-verbs.mn` prints
-     nothing); the trap in `extract_chase`'s row and the one renderer,
-     answers about src/ and lib/ that move with every edit there; and the
-     relocation pins, the emitted module's text. Each needs a bound the
-     board measures or a query facet, not a transcript.
-   - The teach battery's refusal of a contract at a blank line: a
-     transcript refuses `mentl test`.
-   - A user's own project folder (hello, owes and the installed command's
-     runs), the environment protocol's runs, the terminal's live line, and
-     the LSP exchange.
-   - Runs whose contract is what a program prints or a program a verb
-     wrote, two processes over one image, warm images, and the renders and
-     oracles.
-
-   Proves it. On the boot: tests/micros 852 of 852, tests/frontier 249 of
-   249, and the gate 71 pass, 0 red. The legs' last run on the same boot
-   the same day: 83 pass, 0 red, 1 expected red. `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

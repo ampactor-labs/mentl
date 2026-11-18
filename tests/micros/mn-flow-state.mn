@@ -1,5 +1,4 @@
 // expect: refuse E_RefinementRejected
-// flow: refused at 32
 // A handler's state is every value written into it, and an arm's argument is
 // every value its op is performed with: `put` writes what it is handed into
 // the state, `main` hands it an untrusted value, and `get` answers the state,

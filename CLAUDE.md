@@ -217,7 +217,7 @@ At commit time `.githooks/pre-commit` runs. Install it with
 
 - A commit that changes, renames or deletes MENTL_MEMORY.md is refused.
 - The obey gate (`tools/obey-gate.py`) refuses a commit that raises a limit,
-  deletes a bound, adds an expected failure or a silencer, records a partly
+  deletes a bound, adds a silencer, records a partly
   finished landing, adds a script or a `.md` file, or adds lines under
   `tools/`.
 - It formats each staged file in `src/` and `lib/`, and drift-checks each
