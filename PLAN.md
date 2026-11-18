@@ -1447,7 +1447,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1566,7 +1566,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. Box 1 is T3, Box 2 is the second half of L1, and Box
+3 is P3k.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -2196,6 +2197,102 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 3 · P3k · Three of the frontier gate's checks of the compiler
+   itself are carried by the medium: the march's bound, a test program and
+   a transcript.** Written 2026-11-18 and measured on the pinned boot,
+   c866711ba72e, with the form built in the working tree. It changes no
+   compiler source, so the boot stays the pin.
+
+   What a person sees.
+   - tests/micros/mn-trap-call-is-in-the-row.mn: a function that calls
+     `trap` on purpose carries `Trap` in its row, so a `main` declared
+     `with !Trap` over it is refused, and `mentl check` names the path:
+     "main calls `chase` … → chase calls `trap` … → `trap` is an
+     operation of Trap".
+   - tests/frontier/prelude-doc.transcript: what `mentl doc lib/prelude.mn`
+     prints, 174 lines in which every type is written as SYNTAX writes it:
+     `Some(a)`, `Ok(a)` and `Err(e)` with their variables named,
+     `fail(String) -> !` with no phantom parameter, a function that answers
+     nothing with no `-> ()`, and a function type's parameters with no `_:`.
+   - tools/frontier-gate.sh loses three checks and falls from 71 verdicts
+     to 68, from 1,216 lines to 1,163, and from 10 lines that pipe an
+     answer into `grep -q` to 8.
+
+   Fails today, on pin c866711ba72e.
+   - The gate's arena-census check compiles tests/frontier/mn-census-verbs.mn
+     from stdin and reads the `arena:` line the compile prints. On the
+     stdin route that compile refuses the program, "E_MissingVariable
+     error: map" twice and once for `Delay`, and "mentl: 3 error(s), so
+     nothing was built"; the check passes on the line the refused compile
+     printed anyway: "arena: 87 exit(s), 0 kept".
+   - The trap-row check reads `mentl where src/main.mn extract_chase`
+     through `head -1` and a piped `grep -qE`. No test program calls `trap`
+     directly: `mentl query tests/micros "refs of trap"` answers 0
+     references across 806 programs, and tests/crown 0 across 205.
+   - The one-renderer check greps three answers for four marks it must not
+     hold. Two of the answers read src/main.mn, and no transcript holds
+     what `doc` prints for a declared type's constructors or an effect's
+     operations.
+
+   What carries each fact, with a command on the pin that shows it.
+   - The judgment's arenas keep nothing: the march holds the self-compile
+     to 0 regions kept at exits (src/board.mn, `self_compile_bounds`; `mentl
+     verify` lists it), and holds the self-compile's line peak to the
+     boot's on the same wheel (tools/march.sh, "image: line peak").
+   - A call of `trap` is in the row: the judgment charges an operation's
+     effect where it is performed (`mentl where src/main.mn extract_chase`
+     answers `with Trap + GraphRead + Diverge`); the test program states it
+     as a refusal a battery checks.
+   - The type printer: the transcript pins the prelude's surface; lede.transcript
+     already pins a bare `WASI` on examples/hello/five.mn's `main`; and
+     `mentl query src/main.mn heads` holds every module-level head of the
+     wheel's link that does not come back through its own render at 0
+     (tools/verify.sh's heads ratchet).
+
+   The form.
+   - tests/micros/mn-trap-call-is-in-the-row.mn, its first line `//
+     expect: refuse E_EffectMismatch`.
+   - tests/frontier/prelude-doc.transcript, its answer written by `mentl
+     test --write`.
+   - tools/frontier-gate.sh: the arena-census, trap-row and one-renderer
+     checks leave, with the comment about a check retired on 2026-09-17,
+     and the key's comment says the shim leg is now the one that reads
+     src/.
+
+   What it leaves alone.
+   - The prelude floor's check. A question that carries it to the board,
+     `cost PROGRAM`, judging the program on a chain of its own and listing
+     every node it mints at its module and place, was built in the working
+     tree and measured on a candidate: 11,925 nodes, the count the pin's
+     `cost` prints, of them lib/strings 5,047, lib/prelude 3,163, lib/lists
+     2,233, the program's own module 1,075 (1,072 at no place in its text),
+     lib/threading 229, lib/memory 177 and the link 1. It adds 9 values the
+     memory walk cannot place (the uses of the question's own argument,
+     each a part of a value taken apart, and the answers of the calls that
+     name a node's module and place), and the board refuses the rise.
+     Rewriting two walks in src/pipeline.mn as pipelines, `mn_walk` and
+     `report_holes`, took the iteration costumes from 368 to 366 and the
+     places that can trap with no claim from 3,097 to 3,095, and added 8
+     more such values, since the walk cannot place a stage's answer or the
+     answer of a member of its own recursive group. F3, which teaches the
+     walk to place what later boxes add, pays for both; the check stays
+     until then.
+   - The relocation pins, which read the emitted module's text: the reach
+     as one walk (K1) and the lowering as a column (K3) carry them.
+   - The teach battery's refusal, which needs a transcript that may run
+     `mentl test`.
+
+   What pays for it. No wheel code changes, and tools/ falls by 53 lines.
+
+   Proves it, measured with the form on the boot.
+   - `mentl check tests/micros/mn-trap-call-is-in-the-row.mn` refuses with
+     E_EffectMismatch and the path above.
+   - The transcript's answer is the text `mentl doc lib/prelude.mn` prints,
+     line for line.
+   - `FORCE_GATES=1 bash tools/frontier-gate.sh` on the boot: "frontier:
+     68 pass / 0 red".
+   - `mentl land` is green.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
