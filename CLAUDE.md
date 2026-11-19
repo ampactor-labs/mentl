@@ -344,6 +344,11 @@ order they run.
   box's text and never during the build. A box that turns out unclear or
   wrong is a stop: report what was found, rewrite the box, and ask for the
   gate again.
+- A box that changes no compiler source is a host box: the page's code in
+  `ide/`, an example program, a document or a picture. It needs no pin and
+  reads only what the pin carries. Host boxes take turns with the wheel's
+  boxes, and one box is in flight at a time (Morgan, 2026-11-19; PLAN
+  §4㉑). MENTL_MEMORY.md's landings lead the wheel's order (PLAN §4⑲).
 - When a box lands, its commit deletes it from PLAN §11.B and brings §7 up
   to date, and its message is the receipt: the files changed, the output of
   the command that proves it, and anything that was unclear.

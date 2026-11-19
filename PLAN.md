@@ -2277,6 +2277,54 @@ first two.
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
 
+3. **Box H1 · A lesson plays in the page.** Written 2026-11-19; a host
+   box (§4㉑), so it changes no compiler source and the boot stays.
+
+   What a person sees. With lesson 1 open in the page, Run compiles,
+   assembles and runs it as today, and then plays what it wrote: three
+   seconds of a 220 Hz tone. The Run tab says the length, the rate and
+   the channels, draws the left channel's wave, and offers play, stop and
+   a saved `.wav`. A program that prints text shows its text as today. A
+   refused program shows its refusal and plays nothing.
+
+   Fails today. The Run tab shows a lesson's WAV decoded as text, and
+   `ide/` holds no audio code. The gate's new leg is seen red on the
+   unchanged page before the change.
+
+   What it reads. The run's standard output as bytes: the worker's `run`
+   role already returns `outBytes` when asked with `binary`
+   (ide/wheel-worker.js, as `mentl asm`'s answer is read). Nothing from
+   the graph. The page takes an output for a WAV by the file's own header
+   (`RIFF`, `WAVE`, 16-bit PCM), as an operating system picks a player by
+   a file's header, and parses nothing the compiler printed.
+
+   The form, in ide/index.html. `runProgram` asks for bytes, and decodes
+   them as text itself when they are no WAV. `renderRun` draws the wave
+   and the controls. `smoke()` gains a leg that runs
+   examples/pulse/course/01-tone.mn and prints `SMOKE-SOUND` with the
+   frames, the rate, the channels and the left channel's upward zero
+   crossings a second. tools/ide-gate.sh judges that line as its sound
+   leg, and its header comment loses at least as many lines as the leg
+   adds, so `tools/` gains none.
+
+   Edge cases. What the program wrote to standard error still shows. A
+   WAV with no frames says so and plays nothing. A header the page does
+   not know is shown as text. Lesson 10 runs on the worker's pool as
+   before. Sound starts only from the Run click, since a browser gives a
+   page sound only after a person's gesture. Playing stops when the
+   program changes or Run is pressed again.
+
+   Left alone. Sound while the program is still running, lesson 12's
+   second process, and any view of the audit beside the wave.
+
+   Proves it. `bash tools/ide-gate.sh` prints a sound leg that passes:
+   lesson 1 ran in headless Chromium and wrote 144,000 frames at 48,000 a
+   second in 2 channels, whose left channel crosses zero upward 220 times
+   a second, the figure README states. The other legs print what they
+   printed. README, ide/README.md, §7 and docs/MENTL_SPACE.md say what
+   the page does. No command can listen, so Morgan opens the page and
+   reports the sound.
+
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
 above under the letter at its start, and is cut into boxes when its turn
