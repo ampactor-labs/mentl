@@ -85,6 +85,39 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   the compiler itself are carried by the medium, the march's bound, a test
   program and a transcript. The rest of P3 waits on what its legs need
   (§11.B, P3); P4, P7 and P5 follow.
+- Morgan's word of 2026-11-19: the work is led by MENTL_MEMORY.md, the
+  five operators and the thesis, and the instrument, the buyer's evidence,
+  the gate and the Daisy follow from doing those right (§4⑲ to ㉑). That
+  day the board's largest count was read on pin c866711ba72e, and it is
+  one missing fact. `mentl query src/main.mn "census unplaced"` lists
+  31,998 values, which trace to 16,563 distinct places where the walk
+  stops: 12,927 values are parts of a value taken apart (4,653 places),
+  12,763 are answers of calls (7,692 places, 2,107 callees), 2,669 are
+  answers of effect operations, 1,408 are field reads, 1,264 are out of
+  sight and 759 are answers of stages. The calls lead with `list_index`
+  (661 values), `fold` (392) and `flat_map` (376), and `mentl query
+  src/main.mn "claim of list_index"` answers `returns: older` and `holds:
+  older`, as it does for `fold`, `flat_map`, `find`, `drop_last`,
+  `wmap_get` and `pt_get`. A list's element has no place, so everything
+  read out of a list, and every pattern over it, is unplaced. Because that
+  limit may not rise, landings since 2026-11-12 have avoided records,
+  options and pipelines (CLAUDE.md, "Hand words"), and the wheel holds
+  6,755 `match` sites against 1,100 `|>`, 5 `<|`, 5 `><` and 1 `<~`
+  (`census`). So §11.B's F3, in which a list says what it holds, is the
+  next wheel box to make exact, and no reader of stage 5 stands before a
+  memory landing that does not read it. The same day's `mentl march`
+  printed the columns: 74,351 leaves of 64 cells, about 19.6 MB of the
+  286,203 KB line peak, of which the eight sparse columns (verdicts,
+  claims, late, instances, gates, perform_installs, arena_roots, births)
+  hold 2,087 leaves, about 0.55 MB. That is what F2 buys today, so F2
+  comes before F3 only if F3's own column measures over the line-peak
+  limit on a probe compiler. It also printed 56,868 arena exits, 0 kept,
+  302,606 KB moved at exits and a journal high of 13,707 entries. Owed to
+  the documents and not yet written: README, ide/README.md and §7 say the
+  page cannot run a program, and ide/index.html compiles, assembles and
+  runs one (`runProgram`) and seals the fixed point (`sealWheel`); only
+  sound is missing. SYNTAX says the course has eleven lessons and it has
+  twelve. §11.14 names WASI 0.2 where §4⑯ names 0.3, ratified 2026-06-11.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -704,6 +737,27 @@ imported with a negation may be emitted as a component of its own, so the
 engine enforces what the judgment proved and anyone can read it off the
 import list. Garbage collection by the engine and continuations the engine
 owns stay out (⑨, ⑫).
+
+**⑲ MENTL_MEMORY.md's landings lead, and a foundation is ordered by the
+memory landing that reads it** (Morgan, 2026-11-19: the work is
+"realizing MENTL_MEMORY.md and exemplifying the 5 topological operators
+and Mentl's thesis overall", and the instrument, the buyer's evidence, the
+gate for agents and the Daisy "all fall out of doing Mentl the right
+way"; not built). §11.B's rule stays: a landing reads only what earlier
+landings carry. A reader of stage 5 no longer stands before a memory
+landing that does not read it.
+
+**⑳ A count that makes new code avoid the language's own forms is paid at
+its root before other work** (the builder, 2026-11-19, under ⑲; not
+built). The first such count is the values the judgment cannot place:
+while a list's element has no place, a record, an option, a pattern and a
+pipeline each raise a limit that may not rise. The opening screen holds
+the measurement.
+
+**㉑ Boxes that change no compiler source take turns with the wheel's
+boxes** (Morgan, 2026-11-19). A host box changes `ide/`, `examples/`,
+documents or pictures, needs no pin and reads only what the pin carries.
+One box is in flight at a time. This lifts ⑭'s freeze on the page.
 
 Four decisions of 2026-11-05 to 2026-11-10 are about method and are
 written in CLAUDE.md: the work runs as boxes (2026-11-10), a change that
