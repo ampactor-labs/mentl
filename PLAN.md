@@ -129,6 +129,21 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   and ide/README.md quoted timings the page does not show. The documents
   that said the page cannot run a program, and the three wrong counts of
   the course's lessons, are corrected.
+- The same day, programs written to break F3's first step showed that the
+  pinned compiler's own memory proof is wrong in six shapes (§7, "Programs
+  the check accepts and the run breaks"). Four testers and the builder ran
+  98 programs on pin c866711ba72e. `mentl check` accepts each of the six.
+  Five stop when they run, at the arena's own check ("a barrier journaled
+  inside an extent the judgment proved root-free"). The sixth runs to its
+  end with a wrong value and no message: a list stored into older memory is
+  reclaimed at the arena's exit, because the judgment read a part of a part
+  of a fresh list as fresh memory and wrote the store with no barrier. The
+  step measured first for F3 (a load answers a part of the memory its
+  address names, and a branch that never returns adds no answer; 31,998
+  unplaced values to 30,818 on a probe compiler) makes one of the six
+  shapes reachable from seven more programs, so it waits. The next wheel
+  box, F3a, makes the judgment's reading of what a value holds sound, and
+  F3b then says that a list's element is a part of the list (§11.B).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -988,9 +1003,10 @@ when its design lands. What was built, and when, is `git log` and
 from the command that prints it and is not written here. A gate that did
 not run counts as unknown, never as passing.
 
-**Programs the check accepts and the run breaks.** Four false proofs are
-open, each run again on pin b46b71133838 on 2026-11-10. `mentl check`
-accepts each program and `mentl run` shows the break.
+**Programs the check accepts and the run breaks.** Four false proofs were
+open on 2026-11-10, each run again that day on pin b46b71133838, and a
+fifth, in six shapes, was found on 2026-11-19. `mentl check` accepts each
+program and `mentl run` shows the break.
 
 - A `!Trap` recursion a million calls deep stops with "call stack
   exhausted": running out of stack is a trap that no row shows (§11.2).
@@ -1013,6 +1029,40 @@ accepts each program and `mentl run` shows the break.
   tests/micros/mn-sum-that-wraps-stays-open.mn prints its claim as
   pending, builds, and `mentl run` exits 4 after reading its list at the
   index -2147483648.
+- The judgment's proof that an arena's exit needs no journal is wrong in
+  six shapes, found on 2026-11-19 by programs written to break it (scratch
+  programs of about 25 lines over `make_list`, `list_set` and `~> arena`,
+  on pin c866711ba72e; §11.B, F3a, whose landing commits them as
+  fixtures). In each, a list built before an arena opens receives a list
+  built inside it, and the program sums that list after the exit. `mentl
+  check` accepts all six.
+  1. A part of a part of a fresh list is read as fresh memory. With `fn
+     first_of(xs) = xs[0]`, the arena's body runs `let e =
+     first_of(young)` and `list_set(e[0], 0, build(10))`, where `young`
+     was built inside the arena and holds a list that holds the old one.
+     The store is written with no barrier, the exit reclaims the stored
+     list, and `mentl run` exits 1 where the program states 7. Nothing
+     traps and nothing is printed.
+  2. A store through a part of a parameter is read as a store into the
+     parameter. `fn fill(young, v) = { let e = young[0]; let _ =
+     list_set(e, 0, v); … }` claims `stores: parameter 0`, so a caller
+     that hands it a list built inside its arena is judged to store
+     nothing older. The run stops at the arena's exit: "a barrier
+     journaled inside an extent the judgment proved root-free", as it does
+     for the four shapes below.
+  3. A `let` bound inside an outer arena is read as that arena's memory,
+     whatever it names. After `let alias = old` in the outer arena,
+     `list_set(alias, 0, build(10))` in an inner arena roots the inner one
+     alone. A part read off a tuple or a list bound there does the same.
+  4. A part of two arguments is read as older only when neither argument
+     has a place. `fn pick2(a, b, i) = if i == 0 { a[0] } else { b[0] }`,
+     called with a list built inside the arena and a parameter, is read as
+     a part of the parameter alone.
+  5. A closure's store into a value it captured roots no arena: `let f =
+     (v) => list_set(e0, 2, v)`, called inside an arena.
+  6. A claim leaves out memory its function allocated. `fn g(y, z) = (z,
+     mk_inner(y))` claims `holds: parameters 1`, so a part of a part of
+     its answer is read as a part of `z` and never as `y`.
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
@@ -1613,7 +1663,18 @@ leave, and the landing deletes them.
    effect operations, 1,407 are field reads, 1,233 are out of sight and
    783 are answers of stages. F3 is the column of what
    each store puts into an allocation (§11.8), so the memory walk can place
-   what later boxes add. F5: a module is a scope (§11.4's first part).
+   what later boxes add. Its first box, F3a, makes the judgment's reading
+   of what a value holds sound, since six programs show it is not (§7):
+   fresh memory is named among a value's targets and no longer read off an
+   empty list, a claim says for each parameter whether the function
+   reaches the parameter itself or memory the parameter holds, a `let` an
+   arena does not own is its value's memory, and a closure's write into a
+   capture roots the arenas the capture predates. F3b then says that a
+   load answers a part of the memory its address names and that a branch
+   which never returns adds no answer. A probe compiler measured F3b at
+   31,998 unplaced values to 30,818 on 2026-11-19; built before F3a, it
+   makes §7's second shape reachable through `list_index`. F5: a module
+   is a scope (§11.4's first part).
    F8, after F2: what a `let` or a destructured part can be is a fact at
    its binder, held in a column and read by the path's proof, which
    closes T1a's twelfth claim. Box 2, the second half of L1, reads only
