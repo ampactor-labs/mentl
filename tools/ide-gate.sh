@@ -1,30 +1,14 @@
 #!/usr/bin/env bash
-# the IDE gate — the browser host, held green.
-#
-# Leg 1: the node twin (ide/test-shim.mjs) drives ide/wheel-worker.js — the
-#   SAME execution host the page uses — through its faces: compile-stdin,
-#   the stub-spawn RED control (armed only while the judgment spawns —
-#   VACUOUS and said so otherwise: the judgment has spawned nothing since
-#   pin 7c9dc538), the address CursorView, the ?? Propose socket, and the
-#   resident session, the View, and the canvas (legs 11–13, L-D: the
-#   tokens cover the text, the strip reads the graph per line, find by
-#   edge). The twin loads boot/mentl.wasm itself (2026-09-27).
-# Leg 2: the browser itself — the staged site served with the isolation
-#   headers, headless chrome loads ?smoke, and the page's own console wire
-#   reports the VIEW (the first lesson's View from the page's resident
-#   session — eight ring facts, no refusing diagnostic, open and read
-#   timed, the bytes counted) and then the PRODUCT (what the page painted:
-#   fidelity, no undefined, eight real rows, the Lens structural), then
-#   the CANVAS (painted from the wheel's spans, the strip, frames, marks,
-#   find by edge, fmt on idle, the accept an undo step). The page
-#   parses nothing the wheel prints; it paints the record `mentl space
-#   <address>` answers (src/space.mn). Skipped, loudly, when
-#   no browser or the mentl shim is absent. The browser is FOUND, not
-#   assumed: $MENTL_CHROME, then google-chrome / chromium /
-#   chromium-browser on PATH, then a Playwright chromium under
-#   $PLAYWRIGHT_BROWSERS_PATH. The leg tested for the literal command
-#   `google-chrome` and skipped on every board until 2026-09-25, when a
-#   container with Playwright's chromium ran it green on the first try.
+# The IDE gate checks the browser page (ide/index.html) on the pinned compiler.
+# Leg 1 runs ide/test-shim.mjs, which drives ide/wheel-worker.js, the host the
+#   page uses, from node: compiling, the session, proposals and the canvas.
+# Leg 2 stages the site (tools/space-stage.sh), serves it with the isolation
+#   headers (tools/space-serve.py) and opens it in headless Chrome at ?smoke.
+#   The page prints one SMOKE line per check (smoke() in ide/index.html), and
+#   this script judges each: the project, the View, what the page painted,
+#   the sound lesson 1 writes, and the canvas. The page parses nothing the
+#   compiler printed. Leg 2 is skipped, and says so, when no browser is found
+#   in $MENTL_CHROME, on PATH or under $PLAYWRIGHT_BROWSERS_PATH.
 set -u
 cd "$(dirname "$0")/.."
 fail=0
@@ -154,6 +138,14 @@ if [ -n "$browser" ]; then
       fi ;;
     *) echo "  canvas leg: FAIL — ${cline:-no SMOKE-CANVAS line}"; fail=1 ;;
   esac
+  # The sound leg: lesson 1, run by the page's Run function, wrote a WAV file
+  # of 144,000 frames at 48,000 a second in 2 channels (3 seconds), whose
+  # left channel crosses zero upward 220 times a second (a 220 Hz tone).
+  sline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-SOUND'); echo "  $sline"; cps=$(field crossings-per-second "$sline")
+  if [ "$(field wav "$sline")" = true ] && [ "$(field frames "$sline")" = 144000 ] && [ "$(field rate "$sline")" = 48000 ] \
+     && [ "$(field channels "$sline")" = 2 ] && [ "$(printf '%.0f' "${cps:-0}" 2>/dev/null)" = 220 ]; then
+    echo "  sound leg: PASS — lesson 1 wrote 144000 frames at 48000 a second in 2 channels; the left channel crosses zero upward $cps times a second"
+  else echo "  sound leg: FAIL — ${sline:-no SMOKE-SOUND line}"; fail=1; fi
 else
   echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME) ──"
 fi

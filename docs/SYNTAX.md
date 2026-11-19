@@ -3838,7 +3838,7 @@ which the parser builds as the pipe it is (§«`<|` — diverge»).
 
 ## What this document is NOT
 
-- Not a tutorial. The course is `examples/pulse/course`: eleven programs on one audio chain, each a lesson that `mentl run` renders and that the page opens as a project (`docs/MENTL_SPACE.md` §5.5).
+- Not a tutorial. The course is `examples/pulse/course`: twelve programs on one audio chain, each a lesson that `mentl run` renders and that the page opens as a project (`docs/MENTL_SPACE.md` §5.5).
 - Not a reference for library functions. See `lib/` and `mentl doc <module>`.
 - Not a description of the current parser. The parser implements this document; where they disagree, the parser is wrong.
 - Not a wishlist. Every form here must be implemented in the parser. Closing the gap between this spec and the parser is a standing obligation, not something for later (the parser is built to match SYNTAX.md; where they disagree, the parser is wrong).

@@ -212,7 +212,7 @@ Never claimed: that a program does what its author meant. What the compiler cann
 - A program's own handler of `trap` takes `Trap` out of its row while a failed check still stops the machine, so `main with !Trap` is accepted and the run stops ("An extent can end early, and leaves older memory as it found it").
 - No program can reach a network or read the host's clock or randomness yet ("The WASI 0.2 component target, and a real network"; "The host's clock, randomness and sleep are real").
 - A program shares one namespace with everything it links, so it cannot declare a name the library declares: `fn count(x) = x + 1` is refused with `E_DuplicateFnName` ("A module is a scope, and a package carries its judgment").
-- The browser page cannot play a lesson yet, the compile runs on one core, and there is no native backend ("Edits cost what they change, and the page plays the course"; "Forks on every core"; "`!Outside` closes").
+- The browser page plays a lesson's sound only after the run has ended, and it cannot run lesson 12's second process; the compile runs on one core, and there is no native backend ("Edits cost what they change, and the page plays the course"; "Forks on every core"; "`!Outside` closes").
 
 ## Quick start
 
@@ -225,7 +225,7 @@ bash tools/install.sh        # writes ~/.local/bin/mentl, a pointer to boot/ment
 mentl run examples/hello/five.mn
 ```
 
-`mentl run examples/pulse/course/01-tone.mn > 01.wav` renders the course's first lesson: 3.000 seconds of 16-bit stereo at 48,000 samples per second, a 220 Hz tone (220.0 upward zero crossings per second in the left channel). `mentl new hello` writes a one-file project, and `mentl run hello` runs it. The installed command runs whatever `boot/mentl.wasm` the checkout holds, so a new pin takes effect without reinstalling. Mentl Space, the browser editor, runs the same compiler in the page at https://mentl.ampactor.dev/. It is deployed from the main branch and serves an older pin (`156a841220d8…`), so its answers can differ from this page's.
+`mentl run examples/pulse/course/01-tone.mn > 01.wav` renders the course's first lesson: 3.000 seconds of 16-bit stereo at 48,000 samples per second, a 220 Hz tone (220.0 upward zero crossings per second in the left channel). `mentl new hello` writes a one-file project, and `mentl run hello` runs it. The installed command runs whatever `boot/mentl.wasm` the checkout holds, so a new pin takes effect without reinstalling. Mentl Space, the browser editor, runs the same compiler in the page at https://mentl.ampactor.dev/. It is deployed from the main branch each time the page, the pinned compiler or the library changes there, so it serves the compiler main holds. Press Run on a lesson to hear it.
 
 ## Learn it
 

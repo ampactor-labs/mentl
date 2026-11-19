@@ -186,6 +186,13 @@
   .run-result .status.ok { color: var(--green-b); }
   .run-result .status.bad { color: var(--verm-b); }
   .run-result pre { margin-top: 10px; color: var(--primary); overflow: auto; }
+  /* the sound a run wrote: one sentence, the left channel's wave, and its controls */
+  .run-result .sound { font-family: var(--sans); white-space: normal; color: var(--primary); }
+  .run-result .wave { display: block; width: 100%; height: 80px; margin: 10px 0; background: var(--raised2); border: 1px solid var(--border); border-radius: 7px; }
+  .run-result .wave line { stroke: var(--border-lift); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .run-result .wave polygon { fill: var(--green-b); stroke: var(--green-b); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .run-result .controls { display: flex; gap: 8px; }
+  button.action:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
   @media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation: none !important; transition: none !important; } }
   @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .rail { border-left: 0; border-top: 1px solid var(--border); } }
@@ -503,7 +510,10 @@ function executionKey(){
   const members = project ? project.members.filter(m => m !== PROGRAM).map(draftOr).join("\u0000") : "";
   return [PROGRAM, FILE, $("src").value, members].join("\u0000");
 }
-function invalidateExecution(){ EXECUTION = null; EXEC_STATE = { phase: "idle", text: "the program changed; its next run will compile and assemble this version." }; renderRun(); }
+// A rewrite by the formatter changes only the layout, so the run's answer (a
+// refusal, a trap, an output or a sound) still describes the program and stays.
+let LAYOUT_ONLY = false;
+function invalidateExecution(){ if (LAYOUT_ONLY) return; stopSound(); EXECUTION = null; EXEC_STATE = { phase: "idle", text: "the program changed; its next run will compile and assemble this version." }; renderRun(); }
 function executionProblem(label, r){
   const detail = r && (r.trapped || r.err || `exit ${r.exit}`);
   return new Error(`${label}: ${(detail || "no result").trim()}`);
@@ -513,7 +523,90 @@ function renderRun(){
   const state = EXEC_STATE || {};
   const cls = state.phase === "ok" ? "ok" : state.phase === "bad" ? "bad" : "";
   const output = state.output ? `<pre>${esc(state.output)}</pre>` : "";
-  panel.innerHTML = `<div class="run-result"><div class="status ${cls}">${esc(state.text || "")}</div>${output}</div>`;
+  panel.innerHTML = `<div class="run-result"><div class="status ${cls}">${esc(state.text || "")}</div>${state.sound ? soundHtml(state.sound, state.wave) : ""}${output}</div>`;
+  if (!state.sound || !state.sound.frames) return;
+  $("sound-play").onclick = () => playSound(soundContext(), state.sound);
+  $("sound-stop").onclick = () => stopSound();
+  $("sound-save").onclick = () => saveSound(state.sound);
+}
+
+/* ── sound: a run whose standard output is a WAV file. The page knows the file
+   by its own header (RIFF, WAVE, a fmt chunk of 16-bit PCM, a data chunk), as
+   an operating system picks a player by a file's header; it parses nothing
+   the compiler printed. A header the page does not know is shown as text. ── */
+function readWav(bytes){
+  if (bytes.length < 12) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = o => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+  if (tag(0) !== "RIFF" || tag(8) !== "WAVE") return null;
+  let fmt = null, data = null;
+  for (let o = 12; o + 8 <= bytes.length && !(fmt && data); ){
+    const id = tag(o), size = dv.getUint32(o + 4, true), body = o + 8;
+    if (id === "fmt " && size >= 16 && body + 16 <= bytes.length)
+      fmt = { format: dv.getUint16(body, true), channels: dv.getUint16(body + 2, true), rate: dv.getUint32(body + 4, true), bits: dv.getUint16(body + 14, true) };
+    else if (id === "data") data = { at: body, size: Math.min(size, bytes.length - body) };
+    o = body + size + (size & 1);   // a chunk of odd size is followed by one byte of padding
+  }
+  if (!fmt || !data || fmt.format !== 1 || fmt.bits !== 16 || !fmt.channels || !fmt.rate) return null;
+  const frames = Math.floor(data.size / (2 * fmt.channels));
+  const pcm = new Int16Array(frames * fmt.channels);   // interleaved: frame f, channel c at f * channels + c
+  for (let i = 0; i < pcm.length; i++) pcm[i] = dv.getInt16(data.at + 2 * i, true);
+  return { rate: fmt.rate, channels: fmt.channels, frames, pcm, bytes };
+}
+// the left channel drawn as the band between its lowest and highest sample in each of 600 columns
+function waveSvg(s){
+  if (!s.frames) return "";
+  const W = 600, H = 80, cols = Math.min(W, s.frames), per = s.frames / cols, top = [], bottom = [];
+  for (let c = 0; c < cols; c++){
+    let lo = 1, hi = -1;
+    for (let f = Math.floor(c * per), end = Math.max(f + 1, Math.floor((c + 1) * per)); f < end; f++){
+      const v = s.pcm[f * s.channels] / 32768; if (v < lo) lo = v; if (v > hi) hi = v;
+    }
+    const x = ((c + .5) * W / cols).toFixed(1);
+    top.push(`${x},${(H / 2 - hi * H / 2).toFixed(1)}`); bottom.push(`${x},${(H / 2 - lo * H / 2).toFixed(1)}`);
+  }
+  return `<svg class="wave" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="the left channel's wave over the whole sound"><line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}"/><polygon points="${top.join(" ")} ${bottom.reverse().join(" ")}"/></svg>`;
+}
+function soundHtml(s, wave){
+  if (!s.frames) return `<div class="sound">The program wrote a WAV file with no frames, so there is no sound to play.</div>`;
+  const seconds = (s.frames / s.rate).toFixed(2), ch = s.channels === 1 ? "1 channel" : `${s.channels} channels`;
+  return `<div class="sound">The program wrote ${seconds} seconds of sound: ${s.frames.toLocaleString()} frames at ${s.rate.toLocaleString()} frames a second, in ${ch}.${wave}`
+    + `<div class="controls"><button class="action" id="sound-play">play</button><button class="action" id="sound-stop">stop</button><button class="action" id="sound-save">save .wav</button></div></div>`;
+}
+// A browser gives a page sound only after a person's gesture, so the context
+// is made and resumed inside the Run click or the play click. The resume is
+// never awaited: without a gesture it stays pending, and nothing waits on it.
+let AUDIO = null, VOICE = null;
+function soundContext(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!AUDIO) AUDIO = new AC();
+  if (AUDIO.state !== "running") AUDIO.resume().catch(() => {});
+  return AUDIO;
+}
+function stopSound(){
+  const v = VOICE; VOICE = null;
+  if (v){ v.onended = null; try { v.stop(); } catch (e) {} }
+}
+// the AudioBuffer is built from the PCM the page read, sample by sample, scaled into [-1, 1)
+function playSound(ctx, s){
+  stopSound();
+  if (!ctx || !s || !s.frames) return;
+  const buf = ctx.createBuffer(s.channels, s.frames, s.rate);
+  for (let c = 0; c < s.channels; c++){
+    const ch = buf.getChannelData(c);
+    for (let f = 0; f < s.frames; f++) ch[f] = s.pcm[f * s.channels + c] / 32768;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination);
+  src.onended = () => { if (VOICE === src) VOICE = null; };
+  src.start(); VOICE = src;
+}
+function saveSound(s){
+  const href = URL.createObjectURL(new Blob([s.bytes], { type: "audio/wav" }));
+  const link = document.createElement("a");
+  link.href = href; link.download = (FILE.split("/").pop() || "program.mn").replace(/\.mn$/, ".wav");
+  document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 function setExecutionBusy(on){
   EXECUTING = on;
@@ -527,9 +620,11 @@ async function assembleCurrent(){
   if (EXECUTION && EXECUTION.key === key) return EXECUTION;
   const tree = currentProgramTree();
   EXEC_STATE = { phase: "working", text: "compiling the current program…" }; renderRun();
+  const t0 = performance.now();
   const compiled = await runWheel({ argv: ["mentl", "compile", FILE], vfs: tree }, 120000);
   if (compiled.exit !== 0 || compiled.trapped) throw executionProblem("compile refused", compiled);
   EXEC_STATE = { phase: "working", text: "assembling the compiler's WAT inside the page…" }; renderRun();
+  const t1 = performance.now();
   const assembled = await runWheel({ argv: ["mentl", "asm"], stdin: te.encode(compiled.out), binary: true }, 120000);
   const bytes = assembled.outBytes instanceof Uint8Array ? assembled.outBytes
     : assembled.outBytes ? new Uint8Array(assembled.outBytes) : new Uint8Array(0);
@@ -538,24 +633,41 @@ async function assembleCurrent(){
   let module;
   try { module = await WebAssembly.compile(bytes); }
   catch (e) { throw new Error(`the assembled bytes do not validate in this browser: ${e.message || e}`); }
-  EXECUTION = { key, tree, bytes, module, watBytes: te.encode(compiled.out) };
+  // the milliseconds the compile and the assembly took; the smoke's sound line
+  // prints them, and the Run tab shows no numbers
+  EXECUTION = { key, tree, bytes, module, watBytes: te.encode(compiled.out), ms: { compile: Math.round(t1 - t0), assemble: Math.round(performance.now() - t1) } };
   return EXECUTION;
 }
-async function runProgram(){
-  if (EXECUTING || busy) return;
+// The run's standard output arrives as bytes. A WAV file among them is kept as
+// sound; any other output is decoded as text. A context passed in (the Run
+// click's) plays the sound once the run ends; the smoke passes none.
+async function runProgram(ctx = null){
+  stopSound();
+  if (EXECUTING) return;
   setExecutionBusy(true); openTab("prun");
+  // An edit or a newly opened program starts the editor's check of the text.
+  // A Run pressed during that check waits for it to end and says so, so a
+  // click is never dropped without a word.
+  if (busy){ EXEC_STATE = { phase: "working", text: "waiting for the editor's check of this text to end, then running it…" }; renderRun(); }
+  while (busy) await new Promise(r => setTimeout(r, 50));
   try {
     const artifact = await assembleCurrent();
     EXEC_STATE = { phase: "working", text: "running the assembled module in this page…" }; renderRun();
-    const result = await runWheel({ module: artifact.module, argv: [], vfs: artifact.tree }, 120000);
-    const output = [result.out, result.err, result.trapped ? `trap: ${result.trapped}` : ""].filter(Boolean).join("");
-    EXEC_STATE = result.exit === 0 || (!result.trapped && Number.isInteger(result.exit))
-      ? { phase: "ok", text: `the current program ran in this page — exit ${result.exit}; ${artifact.bytes.length.toLocaleString()} wasm bytes`, output }
-      : { phase: "bad", text: "the assembled program did not complete", output };
+    const t0 = performance.now();
+    const result = await runWheel({ module: artifact.module, argv: [], vfs: artifact.tree, binary: true }, 120000);
+    const ms = Object.assign({ run: Math.round(performance.now() - t0) }, artifact.ms);
+    const bytes = result.outBytes instanceof Uint8Array ? result.outBytes : new Uint8Array(result.outBytes || 0);
+    const sound = readWav(bytes);
+    const output = [sound ? "" : td.decode(bytes), result.err, result.trapped ? `trap: ${result.trapped}` : ""].filter(Boolean).join("");
+    // a run that trapped did not complete, whatever exit code came with the trap
+    EXEC_STATE = !result.trapped && Number.isInteger(result.exit)
+      ? { phase: "ok", text: `the current program ran in this page — exit ${result.exit}; ${artifact.bytes.length.toLocaleString()} wasm bytes`, output, ms, sound, wave: sound ? waveSvg(sound) : "" }
+      : { phase: "bad", text: "the assembled program did not complete", output, ms };
   } catch (e) {
     EXEC_STATE = { phase: "bad", text: "the current program could not run", output: String(e.message || e) };
   }
   setExecutionBusy(false); $("dot").className = EXEC_STATE.phase === "bad" ? "bad" : "ok"; renderRun();
+  if (ctx && EXEC_STATE.sound) playSound(ctx, EXEC_STATE.sound);
 }
 async function downloadProgram(){
   if (EXECUTING || busy) return;
@@ -866,16 +978,25 @@ async function fmtIdle(){
   const ink = s => s.replace(/\s/g, "").length;                          // the characters that are not layout
   const k = ink(before.slice(0, ta.selectionStart));
   let at = 0; for (let seen = 0; at < text.length && seen < k; at++) if (!/\s/.test(text[at])) seen++;
-  writeBuffer(text);
+  LAYOUT_ONLY = text.replace(/\s/g, "") === before.replace(/\s/g, "");
+  try { writeBuffer(text); } finally { LAYOUT_ONLY = false; }
   ta.setSelectionRange(at, at);
   saveDraft(); project(true);
 }
+// Tab in the editor accepts a proposal or indents. Escape and then Tab leaves
+// the editor as the browser's Tab does, so the controls after it are reached
+// by keyboard alone.
+let TAB_LEAVES = false;
 $("src").addEventListener("keydown", e => {
+  if (e.key === "Escape"){ TAB_LEAVES = true; return; }
+  if (e.key === "Shift") return;
+  if (e.key === "Tab" && TAB_LEAVES){ TAB_LEAVES = false; return; }
+  TAB_LEAVES = false;
   if (e.key === "Tab"){ e.preventDefault(); if (PROPOSAL){ acceptProposal(); return; } const ta = e.target; ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); ta.dispatchEvent(new Event("input")); }
 });
 document.querySelectorAll(".tabs div[data-p]").forEach(t => t.onclick = () => openTab(t.dataset.p));
 $("theme").onclick = () => { const cur = document.documentElement.dataset.theme; const next = cur === "parchment" ? "obsidian" : "parchment"; document.documentElement.dataset.theme = next; try { localStorage.setItem("mentl-space-theme", next); } catch (x) {} };
-$("run").onclick = () => runProgram();
+$("run").onclick = () => runProgram(soundContext());   // the context is made inside the click, the gesture sound needs
 $("download").onclick = () => downloadProgram();
 $("seal").onclick = () => sealWheel();
 $("program").onchange = e => openEntry(e.target.value);
@@ -974,6 +1095,22 @@ async function smoke(){
   const html = chrome.innerHTML; const ui = html.indexOf("undefined");
   const undef = ui >= 0 ? JSON.stringify(html.slice(Math.max(0, ui - 70), ui + 12)) : false;
   console.log(`SMOKE-PRODUCT fidelity=${fidelity} undefined=${undef} ring-real=${realRows} lens-warning-at-line=${warnAt} lens-mismatch-at-site=${mismatchAt} diags=${diags} program=${PROGRAM}`);
+  // THE SOUND: the course's first lesson runs through the function the Run
+  // button calls. The line reports the WAV the page decoded from the run's
+  // standard output, and counts the left channel's upward zero crossings, so
+  // a 220 Hz tone shows as 220 crossings a second. The first program is then
+  // opened again, which is where the canvas leg expects the page to be.
+  const lesson = ENTRIES.find(e => e.path === "examples/pulse/course/01-tone.mn");
+  if (lesson){
+    openEntry(lesson.key); await settled();
+    const t0 = performance.now(); await runProgram(); const total = performance.now() - t0;
+    const s = EXEC_STATE.sound, ms = EXEC_STATE.ms || {};
+    let up = 0;
+    if (s) for (let i = 1; i < s.frames; i++) if (s.pcm[(i - 1) * s.channels] < 0 && s.pcm[i * s.channels] >= 0) up++;
+    const seconds = s && s.rate ? s.frames / s.rate : 0;
+    console.log(`SMOKE-SOUND wav=${!!s} frames=${s ? s.frames : 0} rate=${s ? s.rate : 0} channels=${s ? s.channels : 0} crossings=${up} crossings-per-second=${(seconds ? up / seconds : 0).toFixed(1)} compile-ms=${ms.compile ?? "-"} assemble-ms=${ms.assemble ?? "-"} run-ms=${ms.run ?? "-"} total-ms=${total.toFixed(0)} status=${JSON.stringify(EXEC_STATE.text || "")}`);
+    openEntry(ENTRIES[0].key); await settled();
+  } else console.log("SMOKE-SOUND wav=false lesson=missing");
   // THE CANVAS (L-D): the text painted from the wheel's own spans — no
   // tokenizer in the page, every painted token the source sliced at the
   // span the canvas names, every strip cell the View's own cell at its line,

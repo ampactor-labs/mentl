@@ -113,11 +113,22 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   comes before F3 only if F3's own column measures over the line-peak
   limit on a probe compiler. It also printed 56,868 arena exits, 0 kept,
   302,606 KB moved at exits and a journal high of 13,707 entries. Owed to
-  the documents and not yet written: README, ide/README.md and §7 say the
-  page cannot run a program, and ide/index.html compiles, assembles and
-  runs one (`runProgram`) and seals the fixed point (`sealWheel`); only
-  sound is missing. SYNTAX says the course has eleven lessons and it has
-  twelve. §11.14 names WASI 0.2 where §4⑯ names 0.3, ratified 2026-06-11.
+  the documents and not yet written: §11.14 names WASI 0.2 where §4⑯
+  names 0.3, ratified 2026-06-11.
+- H1, the first host box, landed on 2026-11-19: a lesson plays in the
+  page. Run on lesson 1 compiles, assembles and runs it in the browser,
+  then plays the WAV file it wrote and draws its wave, with play, stop and
+  a saved file. `bash tools/ide-gate.sh` holds it with a sound leg:
+  144,000 frames at 48,000 a second in 2 channels, the left channel
+  crossing zero upward 220.0 times a second. Three testers ran 40 cases
+  against the built page and found five defects, all closed: a run that
+  trapped was called a run that finished; Run pressed during the editor's
+  check did nothing and said nothing; the idle formatter erased a shown
+  refusal; play, stop and save could not be reached by keyboard, so Escape
+  and then Tab now leaves the editor (new behavior, Morgan's to confirm);
+  and ide/README.md quoted timings the page does not show. The documents
+  that said the page cannot run a program, and the three wrong counts of
+  the course's lessons, are corrected.
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1265,7 +1276,9 @@ accepts each program and `mentl run` shows the break.
   query FILE heads` counts it, and the landing pass refuses a pin over it
   (§11.5).
 - `sin(3.0)` is 9e-9 from its value (§11.7).
-- The page cannot play a lesson (§11.6).
+- The page plays a lesson's WAV file after the run ends (`bash
+  tools/ide-gate.sh`, its sound leg). It plays no sound while the program
+  is still running, and it cannot run lesson 12's second process (§11.6).
 - A Mentl program runs only as WebAssembly, under an engine with tail
   calls. The landing pass, the march and the batteries' host loop are shell
   scripts under tools/ (§11.9). 8 lines of the frontier gate pipe a
@@ -2276,54 +2289,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box H1 · A lesson plays in the page.** Written 2026-11-19; a host
-   box (§4㉑), so it changes no compiler source and the boot stays.
-
-   What a person sees. With lesson 1 open in the page, Run compiles,
-   assembles and runs it as today, and then plays what it wrote: three
-   seconds of a 220 Hz tone. The Run tab says the length, the rate and
-   the channels, draws the left channel's wave, and offers play, stop and
-   a saved `.wav`. A program that prints text shows its text as today. A
-   refused program shows its refusal and plays nothing.
-
-   Fails today. The Run tab shows a lesson's WAV decoded as text, and
-   `ide/` holds no audio code. The gate's new leg is seen red on the
-   unchanged page before the change.
-
-   What it reads. The run's standard output as bytes: the worker's `run`
-   role already returns `outBytes` when asked with `binary`
-   (ide/wheel-worker.js, as `mentl asm`'s answer is read). Nothing from
-   the graph. The page takes an output for a WAV by the file's own header
-   (`RIFF`, `WAVE`, 16-bit PCM), as an operating system picks a player by
-   a file's header, and parses nothing the compiler printed.
-
-   The form, in ide/index.html. `runProgram` asks for bytes, and decodes
-   them as text itself when they are no WAV. `renderRun` draws the wave
-   and the controls. `smoke()` gains a leg that runs
-   examples/pulse/course/01-tone.mn and prints `SMOKE-SOUND` with the
-   frames, the rate, the channels and the left channel's upward zero
-   crossings a second. tools/ide-gate.sh judges that line as its sound
-   leg, and its header comment loses at least as many lines as the leg
-   adds, so `tools/` gains none.
-
-   Edge cases. What the program wrote to standard error still shows. A
-   WAV with no frames says so and plays nothing. A header the page does
-   not know is shown as text. Lesson 10 runs on the worker's pool as
-   before. Sound starts only from the Run click, since a browser gives a
-   page sound only after a person's gesture. Playing stops when the
-   program changes or Run is pressed again.
-
-   Left alone. Sound while the program is still running, lesson 12's
-   second process, and any view of the audit beside the wave.
-
-   Proves it. `bash tools/ide-gate.sh` prints a sound leg that passes:
-   lesson 1 ran in headless Chromium and wrote 144,000 frames at 48,000 a
-   second in 2 channels, whose left channel crosses zero upward 220 times
-   a second, the figure README states. The other legs print what they
-   printed. README, ide/README.md, §7 and docs/MENTL_SPACE.md say what
-   the page does. No command can listen, so Morgan opens the page and
-   reports the sound.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

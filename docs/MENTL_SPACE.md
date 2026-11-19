@@ -664,9 +664,14 @@ runs lesson 12's two processes and compares its file with lesson 11's, and
 checks that the course's twins are still refused (`run_course`,
 tools/frontier-gate.sh).
 
-Running a lesson in the page (the worker instantiating the bytes that `mentl
-asm` writes, and the samples reaching the page's audio output) is PLAN §11's
-course item. Until it lands, a lesson renders in the terminal.
+The page runs a lesson: its run button compiles the program, assembles it
+with `mentl asm`, and runs the bytes in a worker. When the run's standard
+output is a WAV file, the Run tab says its length, rate and channels, draws
+the left channel's wave, and plays it through the page's audio output once
+the run has ended. The IDE gate's sound leg checks lesson 1 this way. Sound
+while the program is still running, and lesson 12's second process, are
+still PLAN §11's course item; until they land, lesson 12 renders in the
+terminal.
 
 ---
 
@@ -968,9 +973,10 @@ real ring row, and a clean Lens).
   (`Hβ.viz.why-walk-elides-trivial-hops`). Together they make the codebase's
   shape (§4.3) and the time axis (§4.4) into surfaces.
 - **Running the program in the page** (L-F): the assembler in the wheel
-  (`Hβ.felt.ide-run-in-page`), the worker's run role for user programs, WABT
-  removed from every gate, and the fixpoint seal animated on the page; then
-  the Pulse course (§5.5), once the samples reach the page's audio output.
+  (`Hβ.felt.ide-run-in-page`), the worker's run role for user programs and
+  the playing of a WAV file a run wrote are served. Still to come are WABT
+  removed from every gate, the fixpoint seal animated on the page, sound while the program is still
+  running, and lesson 12's second process (§5.5).
 - **Fill-and-resume, reality scrubbing, the fork tree** need band B (the
   re-execution driver and the fused search over the multi-shot producer).
   Until then, the time axis draws only the forks the medium held (§4.4), never
@@ -1018,7 +1024,7 @@ interaction patterns from other IDEs to reject.
 | A dashboard as a separate app | Ambient chrome that re-projects around the cursor; never a second data model |
 | A density slider, a "simple mode" | Degree of interest computed from the graph; the page shows what scores at the caret, and nothing is configured |
 | Build telemetry in the chrome (ms, exit codes, heap lines, a WAT pane) | The compile's cost is a facet of the program under the caret, and the compiler is one project the page opens; the chrome shows no numbers |
-| A tutorial app beside the editor | The course is a project: ten lessons on one growing program, each a lesson because there is a property for the compiler to prove at its hole |
+| A tutorial app beside the editor | The course is a project: twelve lessons on one growing program, each a lesson because there is a property for the compiler to prove at its hole |
 | Feature-count growth | Projection-count growth; every new surface must name the read it projects and the cursor mode it runs in |
 
 The main design rule, stated for interaction: every affordance either reads

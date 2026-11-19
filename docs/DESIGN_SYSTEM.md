@@ -434,8 +434,9 @@ change in front of you, each one proven. That moment is the whole pitch.
 - **Contrast measured**: `tools/contrast.py` runs in the IDE gate, on both
   grounds.
 - **Motion**: opacity-only or instant under `prefers-reduced-motion`.
-- **Keyboard-first**: Tab accepts the proven proposal at a socket, each of the
-  ring's rows opens its detail, and nothing needs a pointer.
+- **Keyboard-first**: Tab accepts the proven proposal at a socket, Escape and
+  then Tab moves focus out of the editor, each of the ring's rows opens its
+  detail, and nothing needs a pointer.
 - **Local-first**: the page registers a service worker that keeps every file
   it fetched, so it opens again offline. There is no account and no server.
 

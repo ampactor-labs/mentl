@@ -4,7 +4,7 @@
 # lives in ide/), `.` once staged beside the page. A `program` is a
 # one-file project; a `project` is a folder of modules, which staging expands
 # into `member` lines (a static host lists no folder): Pulse's renderer, the
-# course's ten lessons with the module they share, and Wasatch's score.
+# course's twelve lessons with the module they share, and Wasatch's score.
 root ..
 wasm boot/mentl.wasm
 wheel src/main.mn

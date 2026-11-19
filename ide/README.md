@@ -86,14 +86,28 @@ docs/DESIGN_SYSTEM.md the tokens, which live in `ide/tokens.css`):
 - **The proposal strip** appears at a `??` whose Propose facet returned
   exactly one proven survivor. Tab accepts it through
   `mentl accept main.mn:L:C`, which writes a graph edge first and then the
-  text as that edge's projection (the reply carries the rewritten file). A
+  text as that edge's projection (the reply carries the rewritten file).
+  Elsewhere in the editor Tab indents, and Escape and then Tab moves focus
+  out of the editor to the controls after it. A
   tie produces no proposal; the medium shows the computed question instead.
 - **The Ledger** lists the declarations nearest the caret, measured by
   distance in the graph, each with its inferred row, its open obligations and
   the tightenings the medium would write. The Why chain is the ring's eighth
   facet.
+- **The Run tab** shows what the run button did. The button compiles the
+  program in the editor, assembles it with `mentl asm` and runs the bytes in
+  a worker. When the program's standard output is a WAV file (the header
+  says RIFF, WAVE, 16-bit PCM and has a data chunk), the tab says how many
+  seconds of sound it holds, at how many frames a second and in how many
+  channels, draws the left channel's wave, and offers play, stop and a
+  saved `.wav`. The sound plays once the run ends. Any other output is shown
+  as text, and what the program wrote to standard error is shown below it.
+  The page reads the file's own header and parses nothing the compiler
+  printed. A run that traps says it did not complete and plays nothing. Run
+  pressed while the editor is still checking an edit waits for that check
+  and then runs.
 - **The programs** are the projects the manifest names, each member under
-  its own path: Pulse's renderer, the course's ten lessons
+  its own path: Pulse's renderer, the course's twelve lessons
   (`examples/pulse/course`, with the module they share next to them) and
   Wasatch's score. There is also a scratch buffer, and drafts persist in the
   browser. `mentl space <dir>` opens a folder of your own the same way.
@@ -101,12 +115,12 @@ docs/DESIGN_SYSTEM.md the tokens, which live in `ide/tokens.css`):
   ground (the background) between obsidian and parchment, and it follows the
   system preference by default.
 
-Several things do not exist yet. The page cannot yet run the compiled
-program. `mentl asm` assembles the wheel's own output, and having the worker
-instantiate those bytes so that a lesson plays through the speaker is the
-PLAN §11 work named "the page plays the course", where the graph's evaluator
-runs a lesson at once. Until then, a lesson renders in the terminal
-(`mentl run … > lesson.wav`). Also missing are the row-flow tint and the
+Several things do not exist yet. The page plays a lesson's WAV file only
+after the run has ended, so no sound comes out while the program is still
+running, and lesson 12's second process, which resumes the first one's
+saved memory, does not run in the page. Both belong to the PLAN §11 work
+named "the page plays the course". Until then, lesson 12 renders in the
+terminal (`mentl run … > lesson.wav`). Also missing are the row-flow tint and the
 sealed `!E` wall over the canvas (named as next work in docs/MENTL_SPACE.md
 §8), fill-and-resume and reality scrubbing (band B), and the transitive `!E`
 proof (band A's crown).
