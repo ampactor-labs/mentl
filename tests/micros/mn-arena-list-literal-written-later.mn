@@ -1,0 +1,29 @@
+// expect: 7
+// `mk` answers a list it built as a literal. Main stores `old`, built before
+// the arena, into that list, reads it back, and stores a list built inside
+// the arena into it, which must survive the exit. A list built as a literal
+// is memory its function allocated, and its elements hold whatever a store
+// puts there later, so the claim of `mk` says its answer's parts are older
+// memory, and the last store keeps its barrier.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn mk() = [make_list(1)]
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let l = mk()
+    let _ = list_set(l, 0, old)
+    let e = l[0]
+    let _ = list_set(e, 0, build(10))
+    len(build(300))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

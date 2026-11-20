@@ -1,0 +1,30 @@
+// expect: 7
+// `mid` is built in the outer arena and holds `old`, built before both
+// arenas. The inner arena reads `mid[0]`, which is `old`, and stores a list
+// it built into it. A part of a let bound in an outer arena is what that
+// let's value holds, which may be older than the outer arena, so the store
+// roots both arenas and the stored list survives both exits.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let mid = make_list(2)
+    let _ = list_set(mid, 0, old)
+    let j = {
+      let o = mid[0]
+      let _ = list_set(o, 0, build(10))
+      len(build(300))
+    } ~> arena
+    let junk = build(300)
+    j + len(junk)
+  } ~> arena
+  let junk2 = build(700)
+  if k == 600 && len(junk2) == 700 { chk(old[0]) } else { 2 }
+}

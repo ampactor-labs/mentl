@@ -1,0 +1,32 @@
+// expect: 7
+// `first_of` answers an element of its parameter, and main hands it a list
+// built inside the arena that holds `mid`, built before the arena, which
+// holds `old`. So `e` is `mid` and `f` is `old`, memory older than the
+// arena, and the list built inside it that is stored into `old` must survive
+// the exit. A part of a part of memory the arena allocated is whatever a
+// store put there, so the store keeps its barrier and roots the arena.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn first_of(xs) = xs[0]
+
+fn main() = {
+  let old = make_list(4)
+  let mid = make_list(1)
+  let _ = list_set(mid, 0, old)
+  let k = {
+    let young = make_list(1)
+    let _ = list_set(young, 0, mid)
+    let e = first_of(young)
+    let f = e[0]
+    let _ = list_set(f, 0, build(10))
+    len(build(300))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

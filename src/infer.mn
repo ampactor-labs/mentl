@@ -10450,23 +10450,33 @@ fn rows_copy_rest(eb, ec, names, span: ValidSpan, reason) = match eb {
 // root it; it too carries the depth it was bound at, 0 where unknown.
 // A literal in the module's static data (`TgStatic`, the literal's node) is
 // older than every extent, and nothing stores into it.
-// A part of the memory a parameter names (`TgPart`), such as a word read off
-// a list the parameter holds, is as old as the parameter: a store into it is
-// a write into the parameter's memory, and the frame's claim names the
-// parameter.
+// A parameter's memory (`TgParam`) carries how far into the parameter a
+// store reaches: the parameter's own memory, or memory its parts reach, such
+// as a list the parameter holds as an element. Both are as old as the
+// parameter, and the frame's claim names the parameter and, for the second,
+// says it is written through its parts (`StoreClaim.parts`), so a caller
+// reads its argument's parts there.
 // The answer of a call into a member of the group being judged (`TgAnswer`,
 // the call's node) and a part of that answer (`TgAnswerPart`) are read when
 // the group ends, when every member has said what it answers.
+// Memory the view's extent allocated (`TgFresh`) is no older memory: a store
+// into it changes nothing that existed before the extent, and needs no
+// barrier. It is named, and not left out, because a part of it is whatever a
+// store has put there, which this walk reads as older memory.
 type StoreTarget
-  = TgParam(Int)
+  = TgParam(Int, WriteReach)
   | TgState(Int)
   | TgCapture(Int)
   | TgOlder(Int)
   | TgChain(Int)
-  | TgPart(Int)
   | TgAnswer(Int)
   | TgAnswerPart(Int)
   | TgStatic(Int)
+  | TgFresh
+
+// How far into a value a store or a write reaches: the value's own memory, or
+// memory its parts reach.
+type WriteReach = ReachValue | ReachParts
 
 // What a scope is to a store: a declared function with its parameters, a
 // closure with its own (whose captures predate any call of it), or a
@@ -10486,7 +10496,9 @@ type AgeScopeKind = AgeFn([Int]) | AgeClosure([Int]) | AgeArm(String, [Int], [In
 // group, read when the group ends, and the calls into the group whose
 // answers the scope stores into. Each deferred call is its
 // node, its callee and, per argument, the argument's targets read at the
-// call against the frame (the `ToFrame` view).
+// call against the frame (the `ToFrame` view). Its parts are the positions
+// of its own parameters that a store or a write reached through their parts
+// (`StoreClaim.parts`).
 type AgeScope = {
   answer_writes: [Int],
   applies: [(ApplyPath, [Handed])],
@@ -10500,6 +10512,7 @@ type AgeScope = {
   mutated: [Int],
   older: Beyond,
   opaque: Bool,
+  parts: [Int],
   record: Bool,
   stores: [(Int, [Int])],
 }
@@ -10562,18 +10575,19 @@ fn ages_root() = AgesSeed{groups: [], scopes: []}
 // The perform's reading of an arm opens the same scope the handler's
 // judgment opened for it (`perform_targets`).
 fn scope_of_kind(kind) = AgeScope({
-  answer_writes: [],
+  answer_writes: no_positions,
   applies: [],
   arenas: [],
   branches: [],
-  captures: [],
+  captures: no_positions,
   deferred: [],
   installs: [],
   kind,
   lets: [],
-  mutated: [],
+  mutated: no_positions,
   older: WritesNothingOlder,
   opaque: false,
+  parts: no_positions,
   record: false,
   stores: [],
 })
@@ -10653,8 +10667,9 @@ fn ages_declared(decl) = match ages_top() {
 // answer when the group ends, as the least fixpoint across the members
 // (`settle_unit_writes`). A function outside a group reads its own
 // recursive call through the claim being formed, so the claim is its
-// LEAST FIXPOINT: it starts at "fresh" and is read again
-// through what the last round found until a round adds nothing —
+// LEAST FIXPOINT: it starts at no memory at all, no parameter and never
+// fresh, and is read again through what the last round found until a round
+// adds nothing —
 // `list_copy_into` returns its dst parameter or itself, so it returns dst,
 // where reading the unpublished call as older made every buffer it grows
 // older too (the measured first form: `map` still twinned 119 times). A
@@ -10689,12 +10704,13 @@ fn ages_close_scope(decl, scope, body_h, param_handles, beyond) = match scope {
       applies: r.applies,
       beyond,
       captures: r.captures,
-      holds: ReturnsFresh,
+      holds: no_memory,
       mutated,
       opaque: r.opaque,
+      parts: r.parts,
       record: r.record,
       returned: returned_fns(body_h),
-      returns: ReturnsFresh,
+      returns: no_memory,
       stores,
     }
     match r.kind {
@@ -10733,7 +10749,7 @@ fn ages_close_scope(decl, scope, body_h, param_handles, beyond) = match scope {
 fn returned_fns(body_h) = match chase_ty(TVar(body_h)) {
   TFun(_, _, _) => fn_leaves(body_h),
   TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
-  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => no_positions,
 }
 
 // The arms' claim, published where they end, read by each install as a call
@@ -10755,12 +10771,13 @@ fn ages_close_arms(decl, config_cells) = match ages_top() {
         StoreClaim({
           applies: r.applies,
           beyond,
-          captures: [],
+          captures: no_positions,
           holds: ReturnsOlder,
           mutated,
           opaque: r.opaque,
+          parts: r.parts,
           record: false,
-          returned: [],
+          returned: no_positions,
           returns: ReturnsOlder,
           stores: [],
         })
@@ -10791,84 +10808,115 @@ fn ages_claim_fixpoint(decl, scope, body_h, params, summary) = {
 fn same_claim(a, b) = match a {
   ReturnsFresh => match b {
     ReturnsFresh => true,
-    ReturnsParams(_) | ReturnsPartOf(_) | ReturnsStatic(_) | ReturnsOlder => false,
+    ReturnsParams(_, _) | ReturnsPartOf(_, _) | ReturnsStatic(_) | ReturnsOlder => false,
   },
   ReturnsOlder => match b {
     ReturnsOlder => true,
-    ReturnsFresh | ReturnsParams(_) | ReturnsPartOf(_) | ReturnsStatic(_) => false,
+    ReturnsFresh | ReturnsParams(_, _) | ReturnsPartOf(_, _) | ReturnsStatic(_) => false,
   },
-  ReturnsParams(xs) => match b {
-    ReturnsParams(ys) => len(xs) == len(ys) && all(index_in(ys, ??), xs),
-    ReturnsFresh | ReturnsPartOf(_) | ReturnsStatic(_) | ReturnsOlder => false,
+  ReturnsParams(xs, fx) => match b {
+    ReturnsParams(ys, fy) => fx == fy && same_handles(xs, ys),
+    ReturnsFresh | ReturnsPartOf(_, _) | ReturnsStatic(_) | ReturnsOlder => false,
   },
-  ReturnsPartOf(xs) => match b {
-    ReturnsPartOf(ys) => len(xs) == len(ys) && all(index_in(ys, ??), xs),
-    ReturnsFresh | ReturnsParams(_) | ReturnsStatic(_) | ReturnsOlder => false,
+  ReturnsPartOf(xs, fx) => match b {
+    ReturnsPartOf(ys, fy) => fx == fy && same_handles(xs, ys),
+    ReturnsFresh | ReturnsParams(_, _) | ReturnsStatic(_) | ReturnsOlder => false,
   },
   ReturnsStatic(xs) => match b {
-    ReturnsStatic(ys) => len(xs) == len(ys) && all(index_in(ys, ??), xs),
-    ReturnsFresh | ReturnsParams(_) | ReturnsPartOf(_) | ReturnsOlder => false,
+    ReturnsStatic(ys) => same_handles(xs, ys),
+    ReturnsFresh | ReturnsParams(_, _) | ReturnsPartOf(_, _) | ReturnsOlder => false,
   },
 }
+
+fn same_handles(xs, ys) = len(xs) == len(ys) && all(index_in(ys, ??), xs)
 
 fn index_in(ys, x) = any(handle_is(x, ??), ys)
 
-// What a result may be: fresh where no target is older memory; where every
-// target is a parameter or a part of one, the parameters it names, each
-// once, handed back whole where no target is a part, else a part of them;
-// where every target is a literal in the static data, those literals, each
-// once; else older. A result that may be a literal or a parameter is older,
-// as is one that may be a literal or any other older memory.
-fn returns_of(targets, params) = if any(target_is_static, targets) {
-  if all(target_is_static, targets) {
-    ReturnsStatic(fold([], add_index, map(target_static_node, targets)))
-  } else {
-    ReturnsOlder
-  }
-} else if all(target_is_param, targets) {
-  let idxs = fold([], add_index, map(target_param_index(params, ??), targets))
-  if len(idxs) == 0 {
-    ReturnsFresh
-  } else if any(target_is_part, targets) {
-    ReturnsPartOf(idxs)
-  } else {
-    ReturnsParams(idxs)
-  }
-} else {
-  ReturnsOlder
+// What a result may be, joined target by target from no memory at all: the
+// parameters it hands back, by position, each once, whole, or a part of them
+// where any target reaches through a parameter's parts, and whether memory
+// fresh at the call is among them too; the literals in the static data it
+// may be, each once, or memory fresh at the call; else older memory. A
+// result that may be a literal or a parameter is older, as is one that may
+// be anything else older than the call.
+fn returns_of(targets, params) =
+  targets |> fold(no_memory, returns_join(params, ??, ??)) |> returns_settled
+
+// No memory at all: no parameter and never fresh. One value, shared by every
+// claim of a function that answers a word, so such a claim keeps nothing of
+// its own in the graph.
+let no_memory = ReturnsParams(no_positions, false)
+
+// The empty list of positions, shared by every claim that names none.
+let no_positions = []
+
+fn returns_join(params, acc, t) = match t {
+  TgFresh => returns_or_fresh(acc),
+  TgParam(b, reach) => returns_with_param(acc, handle_position(params, b), reach),
+  TgStatic(n) => returns_with_static(acc, n),
+  TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) => ReturnsOlder,
 }
+
+fn returns_or_fresh(acc) = match acc {
+  ReturnsParams(xs, _) => ReturnsParams(xs, true),
+  ReturnsPartOf(xs, _) => ReturnsPartOf(xs, true),
+  ReturnsFresh | ReturnsStatic(_) | ReturnsOlder => acc,
+}
+
+// A parameter joined in by its position: a position the claim cannot name
+// is older memory.
+fn returns_with_param(acc, p, reach) = if p < 0 {
+  ReturnsOlder
+} else {
+  match acc {
+    ReturnsParams(xs, fresh) => match reach {
+      ReachValue => ReturnsParams(add_index(xs, p), fresh),
+      ReachParts => ReturnsPartOf(add_index(xs, p), fresh),
+    },
+    ReturnsPartOf(xs, fresh) => ReturnsPartOf(add_index(xs, p), fresh),
+    ReturnsFresh => returns_with_param(ReturnsParams([], true), p, reach),
+    ReturnsStatic(_) | ReturnsOlder => ReturnsOlder,
+  }
+}
+
+// A literal joined in: a result that may be a parameter and a literal is
+// older memory.
+fn returns_with_static(acc, n) = match acc {
+  ReturnsParams(xs, _) => if len(xs) == 0 { ReturnsStatic([n]) } else { ReturnsOlder },
+  ReturnsStatic(ns) => ReturnsStatic(add_index(ns, n)),
+  ReturnsFresh => ReturnsStatic([n]),
+  ReturnsPartOf(_, _) | ReturnsOlder => ReturnsOlder,
+}
+
+// A join that named fresh memory and no parameter says the result is fresh.
+// One that named neither says the result is no memory at all, a word or a
+// record of words: no parameters, and never fresh.
+fn returns_settled(r) = match r {
+  ReturnsParams(xs, fresh) => if fresh && len(xs) == 0 { ReturnsFresh } else { r },
+  ReturnsFresh | ReturnsPartOf(_, _) | ReturnsStatic(_) | ReturnsOlder => r,
+}
+
+// Whether a target is memory that existed before the view's extent, and
+// whether any of a value's targets is.
+fn target_predates(t) = match t {
+  TgFresh => false,
+  TgParam(_, _) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_)
+  | TgAnswerPart(_) | TgStatic(_) => true,
+}
+
+fn predates_any(targets) = any(target_predates, targets)
+
+// The fresh target a claim's answer adds where it says the answer may be
+// memory fresh at the call.
+fn fresh_targets(fresh) = if fresh { [TgFresh] } else { [] }
 
 fn add_index(acc, i) = if index_in(acc, i) { acc } else { push(acc, i) }
 
 // Whether a target is a parameter's memory: the parameter or a part of it.
 fn target_is_param(t) = match t {
-  TgParam(_) | TgPart(_) => true,
-  TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => false,
-}
-
-fn target_is_part(t) = match t {
-  TgPart(_) => true,
-  TgParam(_) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_)
-  | TgStatic(_) => false,
-}
-
-fn target_is_static(t) = match t {
-  TgStatic(_) => true,
-  TgParam(_) | TgPart(_) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_)
-  | TgAnswerPart(_) => false,
-}
-
-// The literal node a static target names; -1 for any other target, which
-// `returns_of` never hands it.
-fn target_static_node(t) = match t {
-  TgStatic(n) => n,
-  TgParam(_) | TgPart(_) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_)
-  | TgAnswerPart(_) => -1,
-}
-
-fn target_param_index(params, t) = match t {
-  TgParam(b) | TgPart(b) => handle_position(params, b),
-  TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => -1,
+  TgParam(_, _) => true,
+  TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_)
+  | TgFresh => false,
 }
 
 fn store_at_index(params, entry) = match entry {
@@ -10980,10 +11028,24 @@ fn scope_holds_arenas(scope) = match scope {
 // A store of values of the cells' types into the value at `target_h`, made
 // at `site`: a target older than an arena open here roots that arena, and
 // each cell is read as a move where the target may be older.
-fn ages_store(site, target_h, cells) = match ages_top() {
-  Some(scope) => each(ages_settle(site, scope, cells, ??), targets_of(target_h, scope, ToArena)),
+fn ages_store(site, target_h, reach, cells) = match ages_top() {
+  Some(scope) => each(ages_settle(site, scope, cells, ??), reach_targets(target_h, reach, scope, ToArena)),
   None => each(demand_move, cells),
 }
+
+// What a store or a write reaching that far into the value at `h` may land
+// in. A part of memory the extent allocated is older memory to this walk.
+fn reach_targets(h, reach, scope, view) = match reach {
+  ReachValue => targets_of(h, scope, view),
+  ReachParts => part_fallback(h, scope, view) |> with_reachable,
+}
+
+// Memory reached through parts at any depth: each part, and every part of
+// each part, since a write through a parameter's parts may land at any depth.
+fn with_reachable(targets) = targets ++ map(part_of_target, targets)
+
+// How far a claim's store or write at the parameter `i` reaches.
+fn reach_at(parts, i) = if index_in(parts, i) { ReachParts } else { ReachValue }
 
 // A list slot's store (`list_set`), the one store the emitter can write with
 // no barrier: where no target is older than the extent the store stands in
@@ -10997,7 +11059,7 @@ fn ages_list_store(site, target_h, cells) = match ages_top() {
   Some(scope) => {
     let targets = targets_of(target_h, scope, ToArena)
     each(ages_settle(site, scope, cells, ??), targets)
-    len(targets) == 0
+    !predates_any(targets)
   },
   None => {
     each(demand_move, cells)
@@ -11016,8 +11078,8 @@ fn ages_store_binder(site, b, cells) = match ages_top() {
 
 fn commit_settle(site, scope, cells, t) = match t {
   TgState(_) => (),
-  TgParam(_) | TgPart(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_)
-  | TgStatic(_) => ages_settle(site, scope, cells, t),
+  TgParam(_, _) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_)
+  | TgStatic(_) | TgFresh => ages_settle(site, scope, cells, t),
 }
 
 fn ages_settle(site, scope, cells, t) = match t {
@@ -11032,11 +11094,11 @@ fn ages_settle(site, scope, cells, t) = match t {
     each(demand_move, cells)
     ages_roots_note(site, cells, 0)
   },
-  TgParam(b) | TgPart(b) => match ages_top() {
-    Some(now) => match now {
-      AgeScope(r) => ages_put(AgeScope({...r, stores: push(r.stores, (b, cells))})),
-    },
-    None => each(demand_move, cells),
+  // A store into a parameter's memory is the caller's question about its
+  // argument, or about its argument's parts, which the claim's parts say.
+  TgParam(b, reach) => {
+    ages_note_store(b, cells)
+    ages_note_reach(b, reach)
   },
   TgState(b) => match scope {
     AgeScope(r) => match r.kind {
@@ -11046,6 +11108,26 @@ fn ages_settle(site, scope, cells, t) = match t {
         ages_roots_note(site, cells, 0)
       },
     },
+  },
+  // Memory the extent allocated roots nothing and moves nothing.
+  TgFresh => (),
+}
+
+fn ages_note_store(b, cells) = match ages_top() {
+  Some(AgeScope(r)) => ages_put(AgeScope({...r, stores: push(r.stores, (b, cells))})),
+  None => each(demand_move, cells),
+}
+
+// A parameter of the scope's own that a store or a write reaches through its
+// parts, noted by its position.
+fn ages_note_reach(b, reach) = match reach {
+  ReachValue => (),
+  ReachParts => match ages_top() {
+    Some(AgeScope(r)) => match own_param_position(b) {
+      Some(p) => if index_in(r.parts, p) { () } else { ages_put(AgeScope({...r, parts: push(r.parts, p)})) },
+      None => (),
+    },
+    None => (),
   },
 }
 
@@ -11059,12 +11141,12 @@ fn demand_move(cell) = shape_demand(cell, MovedShape)
 // spawned instances of the branch would both write it (`BoundaryEdge`). The
 // site is the node that makes the store — the call, the stage, the install —
 // so the Why walk that reaches it enters the callee whose store it is.
-fn ages_mutation(site, target_h) = match ages_top() {
+fn ages_mutation(site, target_h, reach) = match ages_top() {
   Some(scope) => {
-    frame_settle(site, scope, targets_of(target_h, scope, ToFrame))
-    branch_mutation(site, target_h)
+    frame_settle(site, scope, reach_targets(target_h, reach, scope, ToFrame))
+    branch_mutation(site, target_h, reach)
     if scope_holds_arenas(scope) {
-      each(raw_root(site, ??), targets_of(target_h, scope, ToArena))
+      root_arenas(site, reach_targets(target_h, reach, scope, ToArena))
     } else {
       ()
     }
@@ -11079,8 +11161,11 @@ fn ages_mutation(site, target_h) = match ages_top() {
 fn raw_root(site, t) = match t {
   TgOlder(d) | TgChain(d) => ages_roots_note(site, [0], d),
   TgCapture(_) | TgState(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => ages_roots_note(site, [0], 0),
-  TgParam(_) | TgPart(_) => (),
+  TgParam(_, _) | TgFresh => (),
 }
+
+// Each target roots every arena open here that it predates.
+fn root_arenas(site, targets) = each(raw_root(site, ??), targets)
 
 // Which extent a target is read against: an arena open around the store (the
 // barrier's move), the frame that makes it (Mutate), or a fanout branch (the
@@ -11112,8 +11197,12 @@ fn frame_settle(site, scope, targets) = {
 }
 
 fn param_written(t) = match t {
-  TgParam(b) | TgPart(b) => ages_note_mutated(b),
-  TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => (),
+  TgParam(b, reach) => {
+    ages_note_mutated(b)
+    ages_note_reach(b, reach)
+  },
+  TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_)
+  | TgFresh => (),
 }
 
 // A write older than the frame that the claim names by none of its
@@ -11126,7 +11215,7 @@ fn older_noted(t) = match t {
   TgChain(_) | TgState(_) => ages_note_state_write(),
   TgOlder(_) | TgStatic(_) => ages_note_older(),
   TgAnswer(s) | TgAnswerPart(s) => ages_note_answer_write(s),
-  TgParam(_) | TgPart(_) => (),
+  TgParam(_, _) | TgFresh => (),
 }
 
 // The answer of a call into the group may be older than the frame while the
@@ -11134,8 +11223,8 @@ fn older_noted(t) = match t {
 // decided at the store stay as they are for older memory.
 fn older_than_frame(scope, t) = match t {
   TgOlder(_) | TgCapture(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => true,
-  TgParam(_) | TgPart(_) => false,
-  TgState(b) => len(targets_of(b, scope, ToFrame)) > 0,
+  TgParam(_, _) | TgFresh => false,
+  TgState(b) => predates_any(targets_of(b, scope, ToFrame)),
 }
 
 // A store the frame makes into memory older than itself that nothing in the
@@ -11316,6 +11405,9 @@ fn own_param_of_node(node) = match node {
 fn binder_mutation(site, b) = match ages_top() {
   Some(scope) => {
     frame_settle(site, scope, targets_of_binder(b, scope, ToFrame))
+    // The write roots every arena open here that the binder's memory
+    // predates, as a callee's write into a parameter does.
+    if scope_holds_arenas(scope) { root_arenas(site, targets_of_binder(b, scope, ToArena)) } else { () }
     match scope {
       AgeScope(r) => if len(r.branches) == 0 {
         ()
@@ -11328,7 +11420,7 @@ fn binder_mutation(site, b) = match ages_top() {
 }
 
 fn branch_binder_settle(site, b, scope, entry) = match entry {
-  (br, sites) => if len(targets_of_binder(b, scope, ToBranch(br))) > 0 && !index_in(sites, site) {
+  (br, sites) => if predates_any(targets_of_binder(b, scope, ToBranch(br))) && !index_in(sites, site) {
     (br, push(sites, site))
   } else {
     entry
@@ -11348,19 +11440,19 @@ fn ages_note_mutated(b) = match ages_top() {
 
 // Every fanout branch open in the scope whose start the target predates
 // records the site.
-fn branch_mutation(site, target_h) = match ages_top() {
+fn branch_mutation(site, target_h, reach) = match ages_top() {
   Some(scope) => match scope {
     AgeScope(r) => if len(r.branches) == 0 {
       ()
     } else {
-      ages_put(AgeScope({...r, branches: map(branch_settle(site, target_h, scope, ??), r.branches)}))
+      ages_put(AgeScope({...r, branches: map(branch_settle(site, target_h, reach, scope, ??), r.branches)}))
     },
   },
   None => (),
 }
 
-fn branch_settle(site, target_h, scope, entry) = match entry {
-  (br, sites) => if len(targets_of(target_h, scope, ToBranch(br))) > 0 && !index_in(sites, site) {
+fn branch_settle(site, target_h, reach, scope, entry) = match entry {
+  (br, sites) => if predates_any(reach_targets(target_h, reach, scope, ToBranch(br))) && !index_in(sites, site) {
     (br, push(sites, site))
   } else {
     entry
@@ -11705,10 +11797,12 @@ fn handed_arg(leaf, args, inner, h) = match h {
 
 fn loop_resolves(inner, k) = match inner.claim {
   StoreClaim(s) => match s.returns {
-    ReturnsParams(idxs) => all({ i => i == k }, idxs),
+    // An accumulator that may be memory the function allocated is not the
+    // init handed back.
+    ReturnsParams(idxs, fresh) => !fresh && len(idxs) > 0 && all({ i => i == k }, idxs),
     // A part of the accumulator is not the accumulator handed back, and
     // neither is a literal.
-    ReturnsPartOf(_) | ReturnsFresh | ReturnsStatic(_) | ReturnsOlder => false,
+    ReturnsPartOf(_, _) | ReturnsFresh | ReturnsStatic(_) | ReturnsOlder => false,
   },
 }
 
@@ -11744,13 +11838,13 @@ fn charge_leaf(site, leaf, args, depth) = match leaf.claim {
   StoreClaim(s) => if depth > 8 {
     FateKept
   } else {
-    each(charge_written(site, leaf, args, ??), s.mutated)
+    each(charge_written(site, leaf, args, s.parts, ??), s.mutated)
     match s.beyond {
       WritesOlder => ages_mutate_older(site),
       WritesState => ages_rooted_in_state(site),
       WritesNothingOlder => (),
     }
-    if s.record { ages_mutation(site, leaf.value) } else { () }
+    if s.record { ages_mutation(site, leaf.value, ReachValue) } else { () }
     each(binder_mutation(site, ??), s.captures)
     let applied = fold(FateWhole, charge_applied(site, leaf, args, depth, ??, ??), s.applies)
     // An opaque leaf is kept. A leaf that writes older memory stands, since
@@ -11767,8 +11861,8 @@ fn charge_leaf(site, leaf, args, depth) = match leaf.claim {
   },
 }
 
-fn charge_written(site, leaf, args, i) = match leaf_arg(leaf, i, args) {
-  Some(n) => ages_mutation(site, n),
+fn charge_written(site, leaf, args, parts, i) = match leaf_arg(leaf, i, args) {
+  Some(n) => ages_mutation(site, n, reach_at(parts, i)),
   None => ages_mutate_older(site),
 }
 
@@ -11886,10 +11980,10 @@ fn handed_plain(leaf, args, h) = match h {
 
 // A call into a member of the caller's own group, kept until the group ends:
 // each argument aged against the frame. Every fanout branch open around the
-// call records the call wherever an argument is older than the branch, since
-// what the callee writes is not said yet.
+// call records the call wherever an argument, or a part of one, is older
+// than the branch, since what the callee writes is not said yet.
 fn ages_note_deferred(site, callee, args) = {
-  each(branch_mutation(site, ??), args)
+  each(branch_mutation(site, ??, ReachParts), args)
   ages_note_deferred_aged(site, callee, map(Some, args))
 }
 
@@ -11930,8 +12024,8 @@ fn closure_handed_targets(scope, arg) =
   handed_targets(scope, arg) |> map(closure_target_in_declarer)
 
 fn closure_target_in_declarer(t) = match t {
-  TgParam(_) | TgPart(_) | TgCapture(_) => TgOlder(0),
-  TgState(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => t,
+  TgParam(_, _) | TgCapture(_) => TgOlder(0),
+  TgState(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) | TgFresh => t,
 }
 
 // A group's members are judged one at a time, so a member may call one that
@@ -11976,7 +12070,7 @@ fn member_waits(m) =
 
 fn target_is_answer(t) = match t {
   TgAnswer(_) | TgAnswerPart(_) => true,
-  TgParam(_) | TgPart(_) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgStatic(_) => false,
+  TgParam(_, _) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgStatic(_) | TgFresh => false,
 }
 
 // A member of a group no call enters publishes what its own body answers and
@@ -12080,7 +12174,7 @@ fn resolve_target(sites, returns, holds, seen, t) = match t {
     None => [],
     Some(ts) => ts,
   },
-  TgParam(_) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgPart(_) | TgStatic(_) => [t],
+  TgParam(_, _) | TgState(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgStatic(_) | TgFresh => [t],
 }
 
 // What the call `s` into the group answers, read through its callee's entry
@@ -12097,9 +12191,9 @@ fn site_answer(sites, returns, holds, seen, s) = if index_in(seen, s) {
     Some((callee, args)) => match wmap_get(returns, callee) {
       None => Some([TgOlder(0)]),
       Some(AnswerNotYet) => None,
-      Some(AnswerIs(ReturnsFresh)) => Some([]),
-      Some(AnswerIs(ReturnsParams(idxs))) => Some(idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s))),
-      Some(AnswerIs(ReturnsPartOf(idxs))) => Some(idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s)) |> part_of_targets),
+      Some(AnswerIs(ReturnsFresh)) => Some([TgFresh]),
+      Some(AnswerIs(ReturnsParams(idxs, fresh))) => Some((idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s))) ++ fresh_targets(fresh)),
+      Some(AnswerIs(ReturnsPartOf(idxs, fresh))) => Some((idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s)) |> part_of_targets) ++ fresh_targets(fresh)),
       Some(AnswerIs(ReturnsStatic(ns))) => Some(map(TgStatic, ns)),
       Some(AnswerIs(ReturnsOlder)) => Some([TgOlder(0)]),
     },
@@ -12121,9 +12215,9 @@ fn site_holds(sites, returns, holds, seen, s) = if index_in(seen, s) {
     Some((callee, args)) => match wmap_get(holds, callee) {
       None => Some([TgOlder(0)]),
       Some(AnswerNotYet) => None,
-      Some(AnswerIs(ReturnsFresh)) => Some([]),
-      Some(AnswerIs(ReturnsParams(idxs))) => Some(idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s))),
-      Some(AnswerIs(ReturnsPartOf(idxs))) => Some(idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s)) |> map(part_of_target)),
+      Some(AnswerIs(ReturnsFresh)) => Some([TgFresh]),
+      Some(AnswerIs(ReturnsParams(idxs, fresh))) => Some((idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s))) ++ fresh_targets(fresh)),
+      Some(AnswerIs(ReturnsPartOf(idxs, fresh))) => Some((idxs |> flat_map(handed_at_slot(args, ??)) |> resolve_answers(sites, returns, holds, push(seen, s)) |> map(part_of_target)) ++ fresh_targets(fresh)),
       Some(AnswerIs(ReturnsStatic(ns))) => Some(map(TgStatic, ns)),
       Some(AnswerIs(ReturnsOlder)) => Some([TgOlder(0)]),
     },
@@ -12169,7 +12263,7 @@ fn answer_writes_settle(sites, returns, holds, m) = if len(m.written) == 0 {
     Some(StoreClaim(s)) => {
       let next =
         m.written |> flat_map({ w => resolve_target(sites, returns, holds, [], TgAnswer(w)) }) |> fold(s, answer_write_into(m.params, ??, ??))
-      if len(next.mutated) == len(s.mutated) && next.beyond == s.beyond {
+      if len(next.mutated) == len(s.mutated) && len(next.parts) == len(s.parts) && next.beyond == s.beyond {
         ()
       } else {
         graph_store_claim_note(m.decl, StoreClaim(next))
@@ -12183,9 +12277,15 @@ fn answer_writes_settle(sites, returns, holds, m) = if len(m.written) == 0 {
 // into the group remains once the answer is read, and one that did would
 // be memory nothing names.
 fn answer_write_into(params, s, t) = match t {
-  TgParam(b) | TgPart(b) => {...s, mutated: add_index(s.mutated, handle_position(params, b))},
+  TgParam(b, ReachValue) => {...s, mutated: add_index(s.mutated, handle_position(params, b))},
+  TgParam(b, ReachParts) => {
+    ...s,
+    mutated: add_index(s.mutated, handle_position(params, b)),
+    parts: add_index(s.parts, handle_position(params, b)),
+  },
   TgOlder(_) | TgCapture(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => {...s, beyond: beyond_join(s.beyond, WritesOlder)},
   TgChain(_) | TgState(_) => {...s, beyond: beyond_join(s.beyond, WritesState)},
+  TgFresh => s,
 }
 
 // A member's deferred calls, each with its caller and, per argument, what the
@@ -12200,19 +12300,26 @@ fn resolved_call(sites, returns, holds, m, call) = match call {
     m.decl,
     site,
     callee,
-    args |> map(resolve_answers(sites, returns, holds, [], ??)) |> map(age_of_targets(m.params, ??))
+    args |> map(resolve_answers(sites, returns, holds, [], ??)) |> map(arg_ages(m.params, ??))
   ),
 }
 
+// What one argument reaches, read two ways: the argument's own memory, and
+// memory its parts reach, for a callee that writes it through its parts.
+fn arg_ages(params, ts) = (age_of_targets(params, ts), age_of_targets(params, part_of_targets(ts)))
+
 // The age of what one argument reaches: what it is beyond the frame's
-// parameters, and the parameters it may be, by position.
-fn age_of_targets(params, ts) = fold((WritesNothingOlder, []), add_age(params, ??, ??), ts)
+// parameters, the parameters it may be, by position, and those it reaches
+// through their parts. Memory the frame allocated is none of them.
+fn age_of_targets(params, ts) = fold((WritesNothingOlder, [], []), add_age(params, ??, ??), ts)
 
 fn add_age(params, age, t) = match age {
-  (b, ps) => match t {
-    TgOlder(_) | TgCapture(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => (beyond_join(b, WritesOlder), ps),
-    TgChain(_) | TgState(_) => (beyond_join(b, WritesState), ps),
-    TgParam(x) | TgPart(x) => (b, add_index(ps, handle_position(params, x))),
+  (b, ps, pps) => match t {
+    TgOlder(_) | TgCapture(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => (beyond_join(b, WritesOlder), ps, pps),
+    TgChain(_) | TgState(_) => (beyond_join(b, WritesState), ps, pps),
+    TgParam(x, ReachValue) => (b, add_index(ps, handle_position(params, x)), pps),
+    TgParam(x, ReachParts) => (b, add_index(ps, handle_position(params, x)), add_index(pps, handle_position(params, x))),
+    TgFresh => age,
   },
 }
 
@@ -12228,12 +12335,12 @@ fn deferred_site_note(entry) = match entry {
 }
 
 fn call_writes_older(claim, ages) = match claim {
-  Some(StoreClaim(g)) => writes_older_memory(g.beyond) || any(arg_written_older(ages, ??), g.mutated),
+  Some(StoreClaim(g)) => writes_older_memory(g.beyond) || any(arg_written_older(ages, g.parts, ??), g.mutated),
   None => true,
 }
 
-fn arg_written_older(ages, i) =
-  writes_older_memory(written_beyond(ages, i)) || len(written_params(ages, i)) > 0
+fn arg_written_older(ages, parts, i) =
+  writes_older_memory(written_beyond(ages, i, reach_at(parts, i))) || len(written_params(ages, i, reach_at(parts, i))) > 0
 
 fn member_writes_late(decl) = match graph_store_claim_of(decl) {
   Some(StoreClaim(s)) => if writes_older_memory(s.beyond) || len(s.mutated) > 0 {
@@ -12251,7 +12358,7 @@ fn settle_deferred(grew, entry) = match entry {
   (caller, _, callee, ages) => match graph_store_claim_of(caller) {
     Some(StoreClaim(c)) => {
       let next = callee_writes_through(c, graph_store_claim_of(callee), ages)
-      if len(next.mutated) == len(c.mutated) && next.beyond == c.beyond && len(next.applies) == len(c.applies) && next.opaque == c.opaque {
+      if len(next.mutated) == len(c.mutated) && len(next.parts) == len(c.parts) && next.beyond == c.beyond && len(next.applies) == len(c.applies) && next.opaque == c.opaque {
         grew
       } else {
         graph_store_claim_note(caller, StoreClaim(next))
@@ -12269,28 +12376,30 @@ fn settle_deferred(grew, entry) = match entry {
 // settlement cannot read, and the caller is opaque for it.
 fn callee_writes_through(c, callee_claim, ages) = match callee_claim {
   Some(StoreClaim(g)) => {
-    applies: fold(c.applies, applies_through(ages, ??, ??), g.applies),
-    beyond: beyond_join(
-      c.beyond,
-      beyond_join(
-        g.beyond,
-        g.mutated |> map(written_beyond(ages, ??)) |> fold(WritesNothingOlder, beyond_join)
-      )
-    ),
-    captures: c.captures,
-    holds: c.holds,
-    mutated: g.mutated |> flat_map(written_params(ages, ??)) |> fold(c.mutated, add_index),
-    opaque: c.opaque || g.opaque || any(applied_unseen(ages, ??), g.applies),
-    record: c.record,
-    returned: c.returned,
-    returns: c.returns,
-    stores: c.stores,
+    let written = g.mutated |> fold(c, written_through(ages, g.parts, ??, ??))
+    {
+      ...written,
+      applies: fold(c.applies, applies_through(ages, ??, ??), g.applies),
+      beyond: beyond_join(written.beyond, g.beyond),
+      opaque: c.opaque || g.opaque || any(applied_unseen(ages, ??), g.applies),
+    }
   },
   None => {...c, beyond: WritesOlder},
 }
 
+// One parameter the callee writes, joined into the caller's claim: what the
+// call handed it, read as far as the callee's write reaches, is memory
+// beyond the caller's parameters, or the caller's parameters, whole or
+// through their parts.
+fn written_through(ages, parts, acc, i) = {
+  ...acc,
+  beyond: beyond_join(acc.beyond, written_beyond_at(ages, parts, i)),
+  mutated: fold(acc.mutated, add_index, written_params_at(ages, parts, i)),
+  parts: fold(acc.parts, add_index, written_parted_at(ages, parts, i)),
+}
+
 fn applies_through(ages, acc, entry) = match entry {
-  (path, handed) => written_params(ages, path_position(path)) |> map({ p => (rebased_path(path, p), map(handed_through(ages, ??), handed)) }) |> fold(acc, push_applied),
+  (path, handed) => written_params(ages, path_position(path), ReachValue) |> map({ p => (rebased_path(path, p), map(handed_through(ages, ??), handed)) }) |> fold(acc, push_applied),
 }
 
 // The same path, read off the caller's parameter at the given position.
@@ -12310,11 +12419,11 @@ fn applied_is(a, b) = match a {
 fn handed_same(handed, other, i) = list_index(handed, i) == list_index(other, i)
 
 fn handed_through(ages, h) = match h {
-  HandedParam(q) => match written_params(ages, q) {
+  HandedParam(q) => match written_params(ages, q, ReachValue) {
     [p] => HandedParam(p),
     _ => HandedNone,
   },
-  HandedLoop(q, k) => match written_params(ages, q) {
+  HandedLoop(q, k) => match written_params(ages, q, ReachValue) {
     [p] => HandedLoop(p, k),
     _ => HandedNone,
   },
@@ -12322,31 +12431,51 @@ fn handed_through(ages, h) = match h {
 }
 
 fn applied_unseen(ages, entry) = match entry {
-  (path, _) => len(written_params(ages, path_position(path))) == 0,
+  (path, _) => len(written_params(ages, path_position(path), ReachValue)) == 0,
 }
 
-// What the call handed the slot `i` beyond the caller's parameters: memory
-// older than the frame, handler state, or nothing older. An argument the
-// call did not hand, a parameter its default fills, is read as older, since
-// nothing here says what the default names.
-fn written_beyond(ages, i) = if i < len(ages) {
+// What the call handed the slot `i`, read as far as a write reaches into it:
+// what it is beyond the caller's parameters (memory older than the frame,
+// handler state, or nothing older), the caller's parameters it may be, and
+// those it reaches through their parts. An argument the call did not hand, a
+// parameter its default fills, is read as older, since nothing here says
+// what the default names.
+fn arg_age(ages, i, reach) = if i < len(ages) {
   match list_index(ages, i) {
-    (b, _) => b,
+    (value, parts) => match reach {
+      ReachValue => value,
+      ReachParts => parts,
+    },
   }
 } else {
-  WritesOlder
+  (WritesOlder, [], [])
 }
 
-fn written_params(ages, i) = if i < len(ages) {
-  match list_index(ages, i) {
-    (_, ps) => ps,
-  }
+fn written_beyond(ages, i, reach) = match arg_age(ages, i, reach) {
+  (b, _, _) => b,
+}
+
+fn written_params(ages, i, reach) = match arg_age(ages, i, reach) {
+  (_, ps, _) => ps,
+}
+
+fn written_parted(ages, i, reach) = match arg_age(ages, i, reach) {
+  (_, _, pps) => pps,
+}
+
+// The same three, read as far as the callee's claim says its write at `i`
+// reaches.
+fn written_beyond_at(ages, parts, i) = written_beyond(ages, i, reach_at(parts, i))
+
+fn written_params_at(ages, parts, i) = written_params(ages, i, reach_at(parts, i))
+
+fn written_parted_at(ages, parts, i) = written_parted(ages, i, reach_at(parts, i))
+
+fn mutation_transport(site, args, i) = if i < len(args) {
+  ages_mutation(site, list_index(args, i), ReachValue)
 } else {
-  []
+  ages_mutate_older(site)
 }
-
-fn mutation_transport(site, args, i) =
-  if i < len(args) { ages_mutation(site, list_index(args, i)) } else { ages_mutate_older(site) }
 
 // A tick stores the output into the line its record owns, older than every
 // call of its owner, which performs Mutate for it. A declared function's
@@ -12411,15 +12540,16 @@ fn state_field_written_cells(sf) = match graph_binder_of(state_field_init(sf)) {
   None => [],
 }
 
-// Which older memory a store into the value at `h` reaches, read from the
-// scope the store stands in against the view's extent: the stops `stops_of`
-// finds (src/graph.mn), each read as the judgment's question asks. A let the
-// view owns is its value, and one it does not predates the view at the depth
-// it was bound; a product built here is its parts' memory, a part read off a
-// value is the value at that step (`part_targets`), a word and a fresh record
-// are no memory, and a
-// literal in the static data predates every extent. A call is read by
-// `call_targets`. A value the extent allocated has no target at all.
+// Which memory a store into the value at `h` reaches, read from the scope the
+// store stands in against the view's extent: the stops `stops_of` finds
+// (src/graph.mn), each read as the judgment's question asks. A let the view
+// owns is its value. A let it does not own predates the view at the depth it
+// was bound, and it is also its value, which may be older still. A tuple or
+// a record built here is its parts' memory, a part read off a value is the
+// value at that step (`part_targets`), a word is no memory, and a literal in
+// the static data predates every extent. A list built here and a fresh
+// record are memory the extent allocated (`TgFresh`). A call is read by
+// `call_targets`.
 fn targets_of(h, scope, view) = stops_of(h) |> flat_map(target_of_stop(scope, view, ??))
 
 // The same question of a binder itself: a state commit's, at the value's node.
@@ -12441,9 +12571,13 @@ fn target_of_stop(scope, view, stop) = match stop {
   StopDecl(_, d) => let_targets(d, scope, view),
   StopCall(call, callee, args) => call_targets(call, callee, args, scope, view),
   StopPerform(h, answered) => perform_targets(h, answered, scope, view),
-  StopProduct(_, parts) => flat_map(targets_of(??, scope, view), parts),
-  // A mint is memory of the frame that mints it.
-  StopAlloc(_) | StopWord(_) => [],
+  // A list built here is memory the extent allocated, which a store can
+  // write; a tuple or a record built here is its parts' memory, since
+  // nothing stores into it.
+  StopProduct(n, parts) => if builds_list(n) { [TgFresh] } else { flat_map(targets_of(??, scope, view), parts) },
+  // A mint is memory of the frame that mints it, and a word is no memory.
+  StopAlloc(_) => [TgFresh],
+  StopWord(_) => [],
   StopStatic(n) => [TgStatic(n)],
   StopBeyond(_) => [TgOlder(0)],
   StopPartOf(n, recv) => part_targets(recv, read_step_of(n, recv), scope, view),
@@ -12451,30 +12585,39 @@ fn target_of_stop(scope, view, stop) = match stop {
 
 // A part of a value's memory: a part of a parameter is a part, and a part of
 // state is state, a part of older memory older, and a part of a literal in
-// the static data is static too.
+// the static data is static too. A part of memory the extent allocated, or
+// of a capture, is whatever a store has put there, which may be memory older
+// than every arena open here.
 fn part_of_target(t) = match t {
   TgStatic(n) => TgStatic(n),
-  TgParam(b) => TgPart(b),
-  TgPart(b) => TgPart(b),
+  TgParam(b, _) => TgParam(b, ReachParts),
   TgState(b) => TgState(b),
-  TgCapture(b) => TgCapture(b),
+  TgCapture(_) | TgFresh => TgOlder(0),
   TgOlder(d) => TgOlder(d),
   TgChain(d) => TgChain(d),
   TgAnswer(s) => TgAnswerPart(s),
   TgAnswerPart(s) => TgAnswerPart(s),
 }
 
+// Whether a product node builds a list, whose slots a store can write.
+fn builds_list(n) = match graph_node_body(n) {
+  NExpr(MakeListExpr(_)) => true,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
+}
+
 // A part read off a value is the value stored at that step, as old as the
 // memory that holds it, read for each stop of the whole: a record, a tuple
 // or a constructor built right here hands the value its construction holds
 // at the step; a let the view owns is read the same way through its value,
-// and a let the view does not own is older at the depth it was bound,
-// whatever its construction holds, since its memory was allocated before
-// the extent opened (a record bound before an arena and written through its
-// field inside it lost the young value at the exit, 2026-11-05); any other
-// stop's part is a part of that stop's memory: a part of a parameter is the
-// caller's, a part of state is state, a part of fresh or older memory is
-// older, since fresh memory holds what was stored into it.
+// and a let the view does not own is older at the depth it was bound, since
+// its memory was allocated before the extent opened (a record bound before
+// an arena and written through its field inside it lost the young value at
+// the exit, 2026-11-05), and is also what its construction holds at the
+// step, which may be older still; any other stop's part is a part of that
+// stop's memory: a part of a parameter is the caller's, a part of state is
+// state, a part of fresh or older memory is older, since fresh memory holds
+// what was stored into it.
 fn part_targets(whole, step, scope, view) =
   stops_of(whole) |> flat_map(stop_part_targets(step, scope, view, ??))
 
@@ -12504,14 +12647,15 @@ fn stop_part_targets(step, scope, view, stop) = match stop {
 }
 
 // A let's part: its value's where the view owns the let, else older at the
-// depth the let was bound. A let this scope did not bind is read as the
-// let's own targets are, as a part of them.
+// depth the let was bound and its value's too, which may be older still. A
+// let this scope did not bind is read as the let's own targets are, as a
+// part of them.
 fn let_part_targets(b, step, scope, view) = match scope {
   AgeScope(r) => match find(let_at(b, ??), r.lets) {
     Some((_, d)) => if view_owns_let(view, b, d, len(r.arenas)) {
       part_targets(b, step, scope, view)
     } else {
-      [TgOlder(d)]
+      [TgOlder(d)] ++ part_targets(b, step, scope, view)
     },
     None => part_of_targets(let_targets(b, scope, view)),
   },
@@ -12555,14 +12699,19 @@ fn part_fallback_of_stop(scope, view, stop) = match stop {
 }
 
 // What a store into a part of the value at `h` reaches, read off each stop
-// of the value: what the function's claim says its answer holds. A record, a
-// tuple or a list built here holds its parts, each a whole; a call holds what
-// its callee's answer holds; a let holds what its value holds; a word holds
-// nothing; and any other stop's part is a part of that stop's memory.
+// of the value: what the function's claim says its answer holds. A record or
+// a tuple built here holds its parts, each a whole; a list built here holds
+// whatever a store puts into it later, which is older memory; a call holds
+// what its callee's answer holds; a let holds what its value holds; a word
+// holds nothing; and any other stop's part is a part of that stop's memory.
 fn answer_holds(h, scope, view) = stops_of(h) |> flat_map(stop_holds(scope, view, ??))
 
 fn stop_holds(scope, view, stop) = match stop {
-  StopProduct(_, parts) => flat_map(targets_of(??, scope, view), parts),
+  StopProduct(n, parts) => if builds_list(n) {
+    part_fallback_of_stop(scope, view, stop)
+  } else {
+    flat_map(targets_of(??, scope, view), parts)
+  },
   StopCall(call, callee, args) => call_holds(call, callee, args, scope, view),
   StopLet(b) => let_holds(b, scope, view),
   StopWord(_) => [],
@@ -12571,17 +12720,23 @@ fn stop_holds(scope, view, stop) = match stop {
 }
 
 // What a let's value holds, as `let_part_targets` reads a let: its value's
-// where the view owns the let, else older at the depth the let was bound. A
-// let this scope did not bind holds a part of the let's own targets.
+// where the view owns the let, else older at the depth the let was bound and
+// its value's too. A let this scope did not bind holds a part of the let's
+// own targets.
 fn let_holds(b, scope, view) = match scope {
   AgeScope(r) => match find(let_at(b, ??), r.lets) {
-    Some((_, d)) => if view_owns_let(view, b, d, len(r.arenas)) { answer_holds(b, scope, view) } else { [TgOlder(d)] },
+    Some((_, d)) => if view_owns_let(view, b, d, len(r.arenas)) {
+      answer_holds(b, scope, view)
+    } else {
+      [TgOlder(d)] ++ answer_holds(b, scope, view)
+    },
     None => part_of_targets(let_targets(b, scope, view)),
   },
 }
 
-// The parts of what a value's targets name: fresh memory's parts are what was
-// stored into it, so they are older; the rest map part by part.
+// The parts of what a value's targets name, target by target: fresh memory's
+// parts are what was stored into it, so they are older. A value with no
+// target at all is read the same way, as older.
 fn part_of_targets(ts) = if len(ts) == 0 { [TgOlder(0)] } else { map(part_of_target, ts) }
 
 // The step a read node takes off its receiver: a field by name, an index a
@@ -12673,7 +12828,8 @@ fn provider_arm_targets(h, view, d) = match graph_node_body(d) {
 // no target, so it adds nothing.
 fn arm_target_unseen(t) = match t {
   TgState(_) | TgChain(_) => [TgChain(0)],
-  TgParam(_) | TgPart(_) | TgCapture(_) | TgOlder(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => [TgOlder(0)],
+  TgParam(_, _) | TgCapture(_) | TgOlder(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => [TgOlder(0)],
+  TgFresh => [TgFresh],
 }
 
 // The handler declaration an install names, as the scope kind its arms were
@@ -12720,10 +12876,11 @@ fn install_handler_stmt(install) = match graph_node_body(install) {
 // never arises in it; it reads as older, which keeps the reading safe.
 fn arm_target_in_caller(install, arm_scope, scope, view, t) = match t {
   TgState(b) => state_field_targets(install, [], b, arm_scope, scope, view),
-  TgParam(c) => config_targets(install, c, scope, view),
-  TgPart(c) => map(part_of_target, config_targets(install, c, scope, view)),
+  TgParam(c, ReachValue) => config_targets(install, c, scope, view),
+  TgParam(c, ReachParts) => map(part_of_target, config_targets(install, c, scope, view)),
   TgCapture(_) | TgOlder(_) | TgAnswer(_) | TgAnswerPart(_) | TgStatic(_) => [TgOlder(0)],
   TgChain(d) => [TgChain(d)],
+  TgFresh => [TgFresh],
 }
 
 // A state field `b`, named by its init, to the scope the install stands in:
@@ -12740,14 +12897,14 @@ fn state_field_targets(install, seen, b, arm_scope, scope, view) = match install
   Some(d) => match scope {
     AgeScope(r) => if any(handle_is(b, ??), seen) {
       []
-    } else if !view_owns_let(view, install, d, len(r.arenas)) {
-      [TgOlder(d)]
     } else {
       let values = match graph_binder_of(b) {
         Some(StateFact(f)) => f.writes,
         Some(ParamFact(_)) | Some(PartFact(_)) | None => [b],
       }
-      values |> flat_map(targets_of(??, arm_scope, view)) |> flat_map(init_target_in_caller(install, [b] ++ seen, arm_scope, scope, view, ??))
+      let reached =
+        values |> flat_map(targets_of(??, arm_scope, view)) |> flat_map(init_target_in_caller(install, [b] ++ seen, arm_scope, scope, view, ??))
+      if view_owns_let(view, install, d, len(r.arenas)) { reached } else { [TgOlder(d)] ++ reached }
     },
   },
   None => [TgOlder(0)],
@@ -12759,8 +12916,8 @@ fn state_field_targets(install, seen, b, arm_scope, scope, view) = match install
 // `arm_target_in_caller` carries an arm's target.
 fn init_target_in_caller(install, seen, arm_scope, scope, view, t) = match t {
   TgState(c) => state_field_targets(install, seen, c, arm_scope, scope, view),
-  TgParam(_) | TgPart(_) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_)
-  | TgStatic(_) => arm_target_in_caller(install, arm_scope, scope, view, t),
+  TgParam(_, _) | TgCapture(_) | TgOlder(_) | TgChain(_) | TgAnswer(_) | TgAnswerPart(_)
+  | TgStatic(_) | TgFresh => arm_target_in_caller(install, arm_scope, scope, view, t),
 }
 
 // The argument an install hands the config parameter `c`, by its position
@@ -12804,12 +12961,12 @@ fn collect_resumes(h) = {
 fn param_targets(b, scope, view) = match scope {
   AgeScope(r) => match r.kind {
     AgeFn(params) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), params) {
-      [TgParam(b)]
+      [TgParam(b, ReachValue)]
     } else {
       [TgOlder(0)]
     },
     AgeClosure(params) => if any(handle_is(b, ??), params) {
-      if view_owns_binders(view, len(r.arenas)) { [TgParam(b)] } else { [TgOlder(0)] }
+      if view_owns_binders(view, len(r.arenas)) { [TgParam(b, ReachValue)] } else { [TgOlder(0)] }
     } else {
       capture_target(view, b)
     },
@@ -12840,7 +12997,7 @@ fn state_targets(b, scope, view) = match scope {
 fn unfactored_targets(b, scope, view) = match scope {
   AgeScope(r) => match r.kind {
     AgeArm(_, _, configs) => if view_owns_binders(view, len(r.arenas)) && any(handle_is(b, ??), configs) {
-      [TgParam(b)]
+      [TgParam(b, ReachValue)]
     } else {
       let_targets(b, scope, view)
     },
@@ -12859,7 +13016,11 @@ fn capture_target(view, b) = match view {
 fn let_targets(b, scope, view) = match scope {
   AgeScope(r) => match find(let_at(b, ??), r.lets) {
     Some(found) => match found {
-      (_, d) => if view_owns_let(view, b, d, len(r.arenas)) { targets_of(b, scope, view) } else { [TgOlder(d)] },
+      (_, d) => if view_owns_let(view, b, d, len(r.arenas)) {
+        targets_of(b, scope, view)
+      } else {
+        [TgOlder(d)] ++ targets_of(b, scope, view)
+      },
     },
     None => match r.kind {
       AgeClosure(_) => capture_target(view, b),
@@ -12886,7 +13047,7 @@ fn call_targets(call, callee, args, scope, view) = match graph_node_body(callee)
     None => if answers_when_group_ends(callee) {
       [TgAnswer(call)]
     } else if cname == "alloc" {
-      []
+      [TgFresh]
     } else if ref_is_constructor(callee) {
       range(0, len(args)) |> flat_map(arg_targets(args, scope, view, ??))
     } else {
@@ -12908,10 +13069,10 @@ fn call_targets(call, callee, args, scope, view) = match graph_node_body(callee)
 // arguments the call hands it.
 fn claimed_targets(callee, args, scope, view) = match callee_summary(callee) {
   Some(StoreClaim(s)) => match s.returns {
-    ReturnsParams(idxs) => flat_map(arg_targets(args, scope, view, ??), idxs),
-    ReturnsPartOf(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)) |> part_of_targets,
+    ReturnsParams(idxs, fresh) => flat_map(arg_targets(args, scope, view, ??), idxs) ++ fresh_targets(fresh),
+    ReturnsPartOf(idxs, fresh) => (idxs |> flat_map(arg_targets(args, scope, view, ??)) |> part_of_targets) ++ fresh_targets(fresh),
     ReturnsStatic(ns) => map(TgStatic, ns),
-    ReturnsFresh => [],
+    ReturnsFresh => [TgFresh],
     ReturnsOlder => [TgOlder(0)],
   },
   None => [TgOlder(0)],
@@ -12948,9 +13109,9 @@ fn call_holds(call, callee, args, scope, view) = match graph_node_body(callee) {
 // against the arguments the call hands it.
 fn claimed_holds(callee, args, scope, view) = match callee_summary(callee) {
   Some(StoreClaim(s)) => match s.holds {
-    ReturnsFresh => [],
-    ReturnsParams(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)),
-    ReturnsPartOf(idxs) => idxs |> flat_map(arg_targets(args, scope, view, ??)) |> map(part_of_target),
+    ReturnsFresh => [TgFresh],
+    ReturnsParams(idxs, fresh) => (idxs |> flat_map(arg_targets(args, scope, view, ??))) ++ fresh_targets(fresh),
+    ReturnsPartOf(idxs, fresh) => (idxs |> flat_map(arg_targets(args, scope, view, ??)) |> map(part_of_target)) ++ fresh_targets(fresh),
     ReturnsStatic(ns) => map(TgStatic, ns),
     ReturnsOlder => [TgOlder(0)],
   },
@@ -12992,16 +13153,16 @@ fn ages_call(site, callee_h, arg_handles) = match raw_store_target(callee_h) {
   RsAll => ages_mutate_older(site),
   RsNone => {
     match callee_summary(callee_h) {
-      Some(StoreClaim(s)) => each(ages_transport(site, arg_handles, ??), s.stores),
+      Some(StoreClaim(s)) => each(ages_transport(site, arg_handles, s.parts, ??), s.stores),
       None => (),
     }
     ages_mutation_call(site, callee_h, arg_handles)
   },
 }
 
-fn ages_transport(site, args, entry) = match entry {
+fn ages_transport(site, args, parts, entry) = match entry {
   (i, cells) => if i >= 0 && i < len(args) {
-    ages_store(site, list_index(args, i), cells ++ [list_index(args, i)])
+    ages_store(site, list_index(args, i), reach_at(parts, i), cells ++ [list_index(args, i)])
   } else {
     each(demand_move, cells)
   },

@@ -1,0 +1,20 @@
+// transcript
+// What a function's store claim says about its answer and its writes.
+// `fill` writes into an element of its parameter, not into the parameter
+// itself, so its claim names parameter 0 under `through parts`. `first_of`
+// answers an element of its parameter. `either` answers its parameter or a
+// list it built. `rows_held` answers a word, which is no memory at all.
+fn fill(xs, v) = list_set(xs[0], 0, v)
+
+fn first_of(xs) = xs[0]
+
+fn either(xs, c) = if c { xs } else { make_list(1) }
+
+fn rows_held(xs) = len(xs)
+
+fn main() = {
+  let rows = [make_list(2)]
+  let _ = fill(rows, 3)
+  let got = either(first_of(rows), rows_held(rows) > 0)
+  len(got)
+}

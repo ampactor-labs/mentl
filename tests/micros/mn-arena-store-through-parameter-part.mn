@@ -1,0 +1,31 @@
+// expect: 7
+// `fill` stores into an element of its parameter, not into the parameter
+// itself, so its claim says it writes parameter 0 through its parts. Main
+// hands it a list built inside the arena whose element is `old`, built
+// before the arena. The caller reads what its argument's parts may be, which
+// is older memory, so the store roots the arena and the stored list
+// survives the exit.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn fill(young, v) = {
+  let e = young[0]
+  let _ = list_set(e, 0, v)
+  len(build(300))
+}
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let young = make_list(2)
+    let _ = list_set(young, 0, old)
+    fill(young, build(10))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

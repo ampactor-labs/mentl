@@ -1,0 +1,52 @@
+$ mentl query tests/micros/mn-claim-through-parts.mn claim of fill
+  → claim of fill
+    mutated: positions 0
+    through parts: positions 0
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: part of parameters 0
+    holds: part of parameters 0
+    stores: parameter 0 (1 cell(s))
+    returned: 0 node(s)
+$ mentl query tests/micros/mn-claim-through-parts.mn claim of first_of
+  → claim of first_of
+    mutated: none
+    through parts: none
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: part of parameters 0
+    holds: part of parameters 0
+    stores: none
+    returned: 0 node(s)
+$ mentl query tests/micros/mn-claim-through-parts.mn claim of either
+  → claim of either
+    mutated: none
+    through parts: none
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: parameters 0, or fresh
+    holds: older
+    stores: none
+    returned: 0 node(s)
+$ mentl query tests/micros/mn-claim-through-parts.mn claim of rows_held
+  → claim of rows_held
+    mutated: none
+    through parts: none
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: no memory
+    holds: no memory
+    stores: none
+    returned: 0 node(s)

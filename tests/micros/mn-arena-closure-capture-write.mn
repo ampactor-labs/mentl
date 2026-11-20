@@ -1,0 +1,26 @@
+// expect: 7
+// The closure `f` captures `e0`, a list built before the arena, and stores
+// into it. Main calls `f` inside the arena with a list built there. A
+// closure's write into a value it captured roots every arena that value
+// predates, as a function's write into its parameter does, so the stored
+// list survives the exit.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn main() = {
+  let outer = make_list(2)
+  let _ = list_set(outer, 0, make_list(4))
+  let e0 = outer[0]
+  let f = (v) => list_set(e0, 2, v)
+  let k = {
+    let _ = f(build(10))
+    len(build(300))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(e0[2]) } else { 2 }
+}

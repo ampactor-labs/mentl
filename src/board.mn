@@ -294,8 +294,10 @@ fn board_bounds() = [
   // depend on. 648 -> 645 (2026-11-17): the editor built a reply's
   // references, diagnostics and locations by walking each list with an index
   // and reversing what it gathered; each walk became a map, and its read by
-  // index left with it.
-  Bound({ceiling: 645, question: QCensus(CsCallClaim)}),
+  // index left with it. 645 -> 644 (2026-11-20): the judgment's two readers
+  // of what a call handed a slot, each reading the slot by index, became one
+  // reader of both ways a write reaches into it (`arg_age`).
+  Bound({ceiling: 644, question: QCensus(CsCallClaim)}),
   // THE PLACES THAT CAN TRAP WITH NO CLAIM CHECKED THERE (`mentl query
   // src/main.mn "census silent-trap"`): a place in the program's own modules
   // whose `Trap` reaches main's row while no claim stands at it, most of them
@@ -361,7 +363,14 @@ fn board_bounds() = [
   // stood in. The mcp server's tools looked up the call's arguments object
   // again for each argument they read, ten calls of json_obj_get in five
   // tools; one helper in the mcp module reads every argument with two.
-  Bound({ceiling: 3097, question: QCensus(CsSilentTrap)}),
+  // 3,097 -> 3,088 (2026-11-20), and the places left with the code they
+  // stood in, all in the infer module. What a function's result may be is
+  // one join over its targets (`returns_join`), where four predicates and
+  // eight calls of list stages read them, and a callee's writes join into
+  // its caller's claim with one fold for each parameter it writes; three
+  // calls of list stages came with what a write reaches through a parameter's
+  // parts.
+  Bound({ceiling: 3088, question: QCensus(CsSilentTrap)}),
   // THE ARENAS WHOSE ROOTS THE JUDGMENT CANNOT PLACE (`ArenaRoots`, PLAN
   // §4⑨): an install whose body applies a function nothing names (a field
   // of a parameter, a value out of sight), writes memory nothing names, or
@@ -514,7 +523,16 @@ fn board_bounds() = [
   // resumes and its install answers with its body's value. The editor's three
   // walks that built a reply's lists by index became maps, and the lsp module
   // lost 31.
-  Bound({ceiling: 31998, question: QCensus(CsUnplaced)}),
+  // 31,998 -> 31,240 (2026-11-20): the walk places values it could not
+  // place before. The judgment names memory the extent allocated among a
+  // value's targets, so a function that answers a list it built as a
+  // literal says its answer is fresh, where it said its elements' memory,
+  // and a function that answers a word says no memory at all. The verifier
+  // reads a fresh answer as the call's own allocation. Most of the fall is
+  // in modules whose code did not change: derive 172, the emitter 159, the
+  // verify module 121 and the lowering 99. The infer module's new code is
+  // net of it.
+  Bound({ceiling: 31240, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and
@@ -524,7 +542,7 @@ fn board_bounds() = [
   // token cursor, two of whose ops move it, is named a cursor.
   Bound({ceiling: 0, question: QCensus(CsReadOpWrites)}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
-  // program a developer hears (examples/pulse/course, eleven lessons on one
+  // program a developer hears (examples/pulse/course, twelve lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned
   // boot can yet judge it clean, and Wasatch "Inversion" (examples/wasatch)
   // and Pulse (examples/pulse/render) are held to the same bar. The owed

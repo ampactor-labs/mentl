@@ -1,0 +1,34 @@
+// expect: 7
+// `x` is a tuple holding either `fresh`, built in the inner arena and
+// holding `old`, or `outer`, built in the outer arena. Its first part `l` is
+// one of the two lists, and `l[0]` may be `old`, built before both arenas.
+// A part of memory the inner arena allocated is whatever a store put there,
+// so the store into `l[0]` roots both arenas, not only the inner one, and
+// the stored list survives both exits.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let outer = make_list(1)
+    let j = {
+      let fresh = make_list(1)
+      let _ = list_set(fresh, 0, old)
+      let x = if len(build(3)) > 0 { (fresh, 0) } else { (outer, 0) }
+      let (l, _) = x
+      let e = l[0]
+      let _ = list_set(e, 0, build(10))
+      len(build(300))
+    } ~> arena
+    let junk = build(300)
+    j + len(junk)
+  } ~> arena
+  let junk2 = build(700)
+  if k == 600 && len(junk2) == 700 { chk(old[0]) } else { 2 }
+}

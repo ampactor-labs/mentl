@@ -1,0 +1,28 @@
+// expect: 7
+// `alias` is bound in the outer arena to `old`, built before both arenas.
+// The inner arena stores a list it built into `alias`. A let bound in an
+// outer arena is older than the inner arena, and it is also its value,
+// which here is older than the outer arena too, so the store roots both
+// arenas and the stored list survives both exits.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let alias = old
+    let j = {
+      let _ = list_set(alias, 0, build(10))
+      len(build(300))
+    } ~> arena
+    let junk = build(300)
+    j + len(junk)
+  } ~> arena
+  let junk2 = build(700)
+  if k == 600 && len(junk2) == 700 { chk(old[0]) } else { 2 }
+}

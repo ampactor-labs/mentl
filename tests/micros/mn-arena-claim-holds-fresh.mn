@@ -1,0 +1,45 @@
+// expect: 7
+// `g` answers a tuple whose second part is a list it built, holding its
+// first parameter. The claim of `g` says a part of its answer is its second
+// parameter or memory fresh at the call, and a part of fresh memory is
+// whatever a store put there. So the element of that list, which is `old`,
+// built before the arena, is read as older memory, and the list stored into
+// it inside the arena survives the exit.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn mk_inner(y) = {
+  let l = make_list(1)
+  let _ = list_set(l, 0, y)
+  l
+}
+
+fn g(y, z) = (z, mk_inner(y))
+
+fn caller(p, old, v) = {
+  let c = g(old, p)
+  match c {
+    (_, inner) => match inner {
+      [q, ..._] => {
+        let _ = list_set(q, 0, v)
+        0
+      },
+      [] => 0,
+    },
+  }
+}
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let _ = caller((1, 2), old, build(10))
+    len(build(300))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `c866711ba72e`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `67e006a75b26`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -129,21 +129,21 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   and ide/README.md quoted timings the page does not show. The documents
   that said the page cannot run a program, and the three wrong counts of
   the course's lessons, are corrected.
-- The same day, programs written to break F3's first step showed that the
-  pinned compiler's own memory proof is wrong (§7, "Programs the check
-  accepts and the run breaks"). By 2026-11-20 testers and the builder had
-  run more than 200 programs on pin c866711ba72e and found nine shapes, which
-  `mentl check` accepts. Two run to their end with a wrong value and no
-  message: a list stored into older memory is reclaimed at the arena's
-  exit, because the judgment read it as fresh memory and wrote the store
-  with no barrier. The other seven stop at the arena's own check ("a
-  barrier journaled inside an extent the judgment proved root-free"). The
-  step measured first for F3 (a load answers a part of the memory its
-  address names, and a branch that never returns adds no answer; 31,998
-  unplaced values to 30,818 on a probe compiler) makes one of the shapes
-  reachable from seven more programs, so it waits. Box 3, F3a, makes the
-  judgment's reading of what a value holds sound, and is the next wheel
-  box (§11.B). F3b then says that a list's element is a part of the list.
+- F3a landed on 2026-11-20 (pin 67e006a75b26): the judgment reads soundly
+  what a value may hold inside an arena. Programs written to break F3's
+  first step had shown the pinned compiler's memory proof wrong in nine
+  shapes. In two, a list stored into older memory was freed at the
+  arena's exit and the program ran to a wrong value with no message; in
+  seven, the run stopped at the arena's own check. Ten fixtures in
+  tests/micros now run as they state. The values the verifier's walk
+  cannot place fell from 31,998 to 31,240. Testers ran 313 programs
+  against three probe compilers, and found two older shapes of the same
+  false proof, a handler's arm that writes what its operation is handed
+  and a closure called from a fanout branch, which stand first in §11.B's
+  order now (§7). The sound reading refuses six of their programs that the
+  pin built, each declaring `!Mutate` or a race-free parallel fill over
+  rows its own function built, until F3's column records what a store
+  put there (§7).
 - The two things everything is built toward (Morgan, 2026-11-12): one
   exploration that proposes proven edits at every place a program lacks
   something, on every core (§4⑰), and audio on his Daisy Seed (§4⑱).
@@ -1005,7 +1005,7 @@ not run counts as unknown, never as passing.
 
 **Programs the check accepts and the run breaks.** Four false proofs were
 open on 2026-11-10, each run again that day on pin b46b71133838, and a
-fifth, in six shapes, was found on 2026-11-19. `mentl check` accepts each
+fifth, in two shapes, was found on 2026-11-20. `mentl check` accepts each
 program and `mentl run` shows the break.
 
 - A `!Trap` recursion a million calls deep stops with "call stack
@@ -1029,51 +1029,46 @@ program and `mentl run` shows the break.
   tests/micros/mn-sum-that-wraps-stays-open.mn prints its claim as
   pending, builds, and `mentl run` exits 4 after reading its list at the
   index -2147483648.
-- The judgment's proof that an arena's exit needs no journal is wrong in
-  nine shapes, found on 2026-11-19 and 2026-11-20 by programs written to
-  break it (scratch programs of about 25 lines over `make_list`,
-  `list_set` and `~> arena`, on pin c866711ba72e; §11.B, Box 3, whose
-  landing commits them as fixtures). In each, a list built before an arena
-  opens receives a list built inside it, and the program sums that list
-  after the exit. `mentl check` accepts all nine.
-  1. A part of a part of a fresh list is read as fresh memory. With `fn
-     first_of(xs) = xs[0]`, the arena's body runs `let e =
-     first_of(young)` and `list_set(e[0], 0, build(10))`, where `young`
-     was built inside the arena and holds a list that holds the old one.
-     The store is written with no barrier, the exit reclaims the stored
-     list, and `mentl run` exits 1 where the program states 7. Nothing
-     traps and nothing is printed.
-  2. A store through a part of a parameter is read as a store into the
-     parameter. `fn fill(young, v) = { let e = young[0]; let _ =
-     list_set(e, 0, v); … }` claims `stores: parameter 0`, so a caller
-     that hands it a list built inside its arena is judged to store
-     nothing older. The run stops at the arena's exit: "a barrier
-     journaled inside an extent the judgment proved root-free", as it does
-     for the four shapes below.
-  3. A `let` bound inside an outer arena is read as that arena's memory,
-     whatever it names. After `let alias = old` in the outer arena,
-     `list_set(alias, 0, build(10))` in an inner arena roots the inner one
-     alone. A part read off a tuple or a list bound there does the same.
-  4. A part of two arguments is read as older only when neither argument
-     has a place. `fn pick2(a, b, i) = if i == 0 { a[0] } else { b[0] }`,
-     called with a list built inside the arena and a parameter, is read as
-     a part of the parameter alone.
-  5. A closure's store into a value it captured roots no arena: `let f =
-     (v) => list_set(e0, 2, v)`, called inside an arena.
-  6. A claim leaves out memory its function allocated. `fn g(y, z) = (z,
-     mk_inner(y))` claims `holds: parameters 1`, so a part of a part of
-     its answer is read as a part of `z` and never as `y`.
-  7. A list built as a literal holds what was put into it when it was
-     built, and nothing a store puts there later. With `fn mk() =
-     [make_list(1)]`, the arena's body stores `old` into `mk()`'s answer,
-     reads it back and stores into it with no barrier, and `mentl run`
-     exits 1 where the program states 7, printing nothing.
-  8. A join of memory the inner arena allocated and memory an outer arena
-     allocated loses the first when it is taken apart twice, so the store
-     roots the inner arena alone.
-  9. A write two levels into a parameter, `l[0]` of the tuple's list,
-     reads only one level of its argument, the answer of a call, so the
-     list that call filled with `old` is read as fresh.
+- The judgment's proof that an arena's exit needs no journal is still
+  wrong in two shapes, found on 2026-11-20 by programs written to break
+  F3a's probe. Both fail the same way on pin c866711ba72e, so they are
+  older than F3a. In each, a list built before an arena opens receives a
+  list built inside it, `mentl check` accepts the program, and the run
+  stops at the arena's own check, "a barrier journaled inside an extent
+  the judgment proved root-free". None of the fourteen programs ran to a
+  wrong value. The scratch programs are in the build container's
+  `.build/out/f3a-break2/` and become the fixtures of the box that closes
+  each.
+  1. A handler's arm that writes into memory its operation is handed, or
+     into its own configuration, roots no arena opened under the install.
+     With `handler keeper { put_in(h, v) => { let _ = list_set(h, 0, v)
+     resume() } }` installed around an arena, `put_in(old, build(10))`
+     inside the arena stops the run: the arm's write is charged where the
+     handler is installed, outside the arena, and the perform inside it
+     charges nothing. Seven programs: the operation's argument whole and
+     through a part, the configuration whole, through a part and through a
+     record's field, a closure as the configuration, and the install
+     around a function that opens the arena (§11.1(a), the install that
+     answers each operation).
+  2. A closure made before an arena, which writes a value it captured,
+     roots no arena when a `><` or `<|` branch inside the arena calls it.
+     `let w = { v => list_set(old, 0, v) }`, then `(w(build(10))) ><
+     (len(build(300)))` inside an arena stops the run, where `w(build(10))`
+     called plainly there runs to its end. The caret on the branch shows a
+     row with no `Mutate`. Seven programs: a lambda, a nested named
+     function, a share, a helper applying the closure, a pipe, a block and
+     a closure made in an outer arena (§11.8).
+- A function that writes the parts of memory it built itself, through a
+  helper, is read as writing older memory, since a part of memory the
+  function allocated reads as older until F3's column records what a store
+  put there (§11.B, F3). So `with !Mutate` on such a function is refused,
+  as is a `><` under `parallel_compose` whose branches each build and fill
+  their own rows, read as a race: six scratch programs the pin builds,
+  found 2026-11-20 (`.build/out/f3a-break2/branches-and-precision/`). The
+  pin also builds a seventh of the same shape whose `!Mutate` is false. No
+  example, lesson, score or function of the compiler is refused (`mentl
+  check` on every program under examples/ answers on the F3a candidate
+  as on the pin).
 - A wrong proof is caught only where a fixture asks for a witness build
   with `// witness: N` on its first line, as
   tests/micros/mn-witness-proven-read-stops.mn does. No battery builds its
@@ -1584,7 +1579,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1628,6 +1623,11 @@ leave, and the landing deletes them.
    constructors, and `mentl check src/lexer.mn` prints one open position
    claim where it printed twelve. The one left needs the bound a `let` has
    by its value inside the path's proof, which F8 brings.
+   Two false proofs found on 2026-11-20 come next, before stage 2 (§7): a
+   perform charges, inside the arenas open around it, what its handler's
+   arms write into what it hands them and into the install's
+   configuration; and a fanout branch charges the writes of the closures
+   it calls. Each is written as a box first, from probes, as F3a was.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 144 lines that pipe into `grep -q`.
@@ -1674,17 +1674,16 @@ leave, and the landing deletes them.
    effect operations, 1,407 are field reads, 1,233 are out of sight and
    783 are answers of stages. F3 is the column of what
    each store puts into an allocation (§11.8), so the memory walk can place
-   what later boxes add. Its first box, F3a, makes the judgment's reading
-   of what a value holds sound, since six programs show it is not (§7):
-   fresh memory is named among a value's targets and no longer read off an
-   empty list, a claim says for each parameter whether the function
-   reaches the parameter itself or memory the parameter holds, a `let` an
-   arena does not own is its value's memory, and a closure's write into a
+   what later boxes add. Its first box, F3a, landed on 2026-11-20 (pin
+   67e006a75b26): memory the extent allocated is named among a value's
+   targets, a claim says which parameters a function writes through their
+   parts and whether its answer may also be fresh, a `let` an arena does
+   not own is also its value's memory, and a closure's write into a
    capture roots the arenas the capture predates. F3b then says that a
    load answers a part of the memory its address names and that a branch
-   which never returns adds no answer. A probe compiler measured F3b at
-   31,998 unplaced values to 30,818 on 2026-11-19; built before F3a, it
-   makes §7's second shape reachable through `list_index`. F5: a module
+   which never returns adds no answer. A probe compiler measured it at
+   31,998 unplaced values to 30,818 on the pin before F3a, and it is
+   measured again on F3a's pin before it is written as a box. F5: a module
    is a scope (§11.4's first part).
    F8, after F2: what a `let` or a destructured part can be is a fact at
    its binder, held in a column and read by the path's proof, which
@@ -2361,107 +2360,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 3 · F3a · The judgment reads soundly what a value may hold.**
-   Written 2026-11-20 from three probe compilers built on pin
-   c866711ba72e. It is F3's first box, in stage 3 of the order, and it is
-   built before any other box because it closes a false proof (§7,
-   "Programs the check accepts and the run breaks").
-
-   What a person sees. Ten programs that `mentl check` accepts now run as
-   their first lines say. Each builds a list before an arena opens, stores
-   a list built inside the arena into it by some route, and sums the
-   stored list after the exit. On the pin, two of them run to a wrong
-   value with no message, and eight stop at the arena's own check, "a
-   barrier journaled inside an extent the judgment proved root-free".
-   `mentl query FILE "claim of NAME"` gains a line, `through parts:
-   positions N`, for a function that writes into memory its parameter's
-   parts reach. Its answer lines say `parameters N, or fresh` where the
-   answer may also be memory the function allocated, and `no memory` where
-   the answer is a word.
-
-   Fails today, on pin c866711ba72e, each by `mentl run`:
-   - tests/micros/mn-arena-part-of-part-of-fresh.mn and
-     mn-arena-list-literal-written-later.mn exit 1 where they state 7, and
-     print nothing.
-   - mn-arena-store-through-parameter-part.mn, mn-arena-outer-let-alias.mn,
-     mn-arena-outer-let-part.mn, mn-arena-join-fresh-and-parameter.mn,
-     mn-arena-closure-capture-write.mn, mn-arena-claim-holds-fresh.mn,
-     mn-arena-join-fresh-and-outer.mn and
-     mn-arena-store-two-levels-into-call.mn exit 134 at the arena's check.
-   - In mn-claim-through-parts.mn, `claim of either` says `returns:
-     parameters 0`, though `either` may answer a list it built, and `claim
-     of rows_held`, which answers a word, says `returns: fresh`.
-
-   The form. The judgment's walk of what a store reaches (`targets_of` and
-   its readers, src/infer.mn) and the claim each function publishes
-   (`StoreClaim` and `Returns`, src/types.mn) change in six places.
-   1. Memory the extent allocated is a target of its own, `TgFresh`, where
-      it was the absence of a target. A store into it needs no barrier,
-      and a part of it is whatever a store put there, which is older
-      memory (`part_of_target`). An allocation, a list built here and a
-      call whose claim says fresh answer it.
-   2. A parameter's target says how far a write reaches into it:
-      `TgParam(Int, WriteReach)`, with `WriteReach = ReachValue |
-      ReachParts`, and `TgPart` leaves. A store or a write through a
-      parameter's parts notes the parameter's position in the scope's
-      `parts`, which the claim publishes as `StoreClaim.parts`. A caller
-      then reads every part of its argument, at every depth, where the
-      claim says so (`reach_targets`, `with_reachable`): in `ages_store`,
-      `ages_mutation`, `branch_mutation` and the settlement of a recursive
-      group (`arg_ages`, `written_through`).
-   3. A claim's answer says whether it may also be memory fresh at the
-      call: `ReturnsParams([Int], Bool)` and `ReturnsPartOf([Int], Bool)`.
-      `ReturnsParams([], false)` is no memory at all, and every claim's
-      least fixpoint, a lone function's or a group's, starts there.
-      `returns_of` is one join over the targets (`returns_join`), which
-      replaces four predicates and eight calls of list stages.
-   4. A list built as a literal is memory its function allocated, and its
-      parts hold whatever a later store puts there (`builds_list`, read by
-      `target_of_stop` and `stop_holds`).
-   5. A `let`, or an install's state, that an arena does not own is older
-      than that arena at the depth it was bound, and it is also what its
-      value is (`let_targets`, `let_part_targets`, `let_holds`,
-      `state_field_targets`).
-   6. A closure's write into a value it captured roots every arena that
-      value predates (`binder_mutation`, through `root_arenas`), and a part
-      of a captured value is older memory.
-   The verifier reads the two answer forms as before (`claimed_roots`,
-   src/verify.mn), and the printer says them (`claim_returns` and
-   `claim_lines`, src/pipeline.mn).
-
-   Reads. The walk's stops (`stops_of`, src/graph.mn), unchanged. The
-   claim column (`graph_store_claim_of`), which `mentl query FILE "claim of
-   NAME"` prints on the pin. The scope the judgment keeps while it judges
-   a function (`AgeScope`: its lets, its arenas and now its parts), its
-   own state.
-
-   Edge cases, each run on a probe. A pair of mutually recursive functions
-   in which one only forwards to the other (`fn qb(a, n) = qa(a, n)`): the
-   second probe started a claim at "fresh", which is not the least answer,
-   so the pair's "or fresh" passed back and forth between the two answers,
-   the rounds never settled, and `mentl check` ran out of memory. The
-   third probe starts at no memory and settles it. A record update, `{...r,
-   n: 1}`, is read as its fields' memory, which is `r`'s, so its claim's
-   `parameters 0` is right (a scratch program runs to 7 on the pin and on
-   the probes).
-
-   What pays for its code on the board, measured on the third probe:
-   values the verifier's walk cannot place fall from 31,998 to 31,240,
-   places that can trap with no claim from 3,097 to 3,088, and claims left
-   open at a call of a partial primitive from 645 to 644. Rosters stay at
-   1,346: `TgPart` and four predicates leave with the old `returns_of`, and
-   `target_predates`, `builds_list` and three joins come in.
-
-   Left alone. What a store puts into fresh memory: until F3's column
-   records it, a part of fresh memory reads as older, so a write through a
-   callee into the parts of a structure the caller built (a table filled
-   with `wmap_add`) roots the arenas open around it. F3b, the load and the
-   branch that never returns. The verifier's own walk (`roots_of`).
-
-   Proves it. The ten `// expect: 7` fixtures, red on the pin;
-   tests/micros/mn-claim-through-parts.transcript, written by `mentl test
-   --write`; `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

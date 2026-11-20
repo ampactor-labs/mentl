@@ -1661,6 +1661,7 @@ fn render_claim_rows(name: String, claim) = match claim {
 
 fn claim_lines(c) = [
   "mutated: {claim_positions(c.mutated)}",
+  "through parts: {claim_positions(c.parts)}",
   "captures: {int_to_str(len(c.captures))} binder(s)",
   if c.record { "record: writes its own record" } else { "record: no" },
   claim_beyond_line(c.beyond),
@@ -1710,11 +1711,17 @@ fn claim_handed_text(h) = match h {
 
 fn claim_returns(r) = match r {
   ReturnsFresh => "fresh",
-  ReturnsParams(ps) => "parameters {join(", ", map(int_to_str, ps))}",
-  ReturnsPartOf(ps) => "part of parameters {join(", ", map(int_to_str, ps))}",
+  ReturnsParams(ps, fresh) => if len(ps) == 0 && !fresh {
+    "no memory"
+  } else {
+    "parameters {join(", ", map(int_to_str, ps))}{claim_or_fresh(fresh)}"
+  },
+  ReturnsPartOf(ps, fresh) => "part of parameters {join(", ", map(int_to_str, ps))}{claim_or_fresh(fresh)}",
   ReturnsStatic(ns) => "static: {int_to_str(len(ns))} literal(s), else fresh",
   ReturnsOlder => "older",
 }
+
+fn claim_or_fresh(fresh) = if fresh { ", or fresh" } else { "" }
 
 fn claim_stores_lines(stores) =
   if len(stores) == 0 { ["stores: none"] } else { map(claim_stores_line, stores) }

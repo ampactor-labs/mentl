@@ -1,0 +1,34 @@
+// expect: 7
+// `pick2` answers an element of either parameter. `inner` hands it a list it
+// built, whose element is `old`, and its own parameter `p`. The answer is a
+// part of either argument, and a part of the list `inner` built is whatever
+// a store put there, which is older memory, so the store through the answer
+// roots the arena around the call and the stored list survives the exit.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn pick2(a, b, i) = if i == 0 { a[0] } else { b[0] }
+
+fn inner(p, old, v) = {
+  let young = make_list(1)
+  let _ = list_set(young, 0, old)
+  let e = pick2(young, p, 0)
+  let _ = list_set(e, 0, v)
+  0
+}
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let p = make_list(2)
+    let _ = list_set(p, 0, make_list(1))
+    inner(p, old, build(10)) + len(build(300))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

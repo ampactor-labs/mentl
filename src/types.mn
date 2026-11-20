@@ -1829,8 +1829,14 @@ type ApplyPath = AppliedParam(Int) | AppliedPart(Int, PartStep)
 // read off each tail of the body: a record, a tuple or a constructor built
 // there holds its parts, each a whole; a parameter holds its parts; a call
 // holds what its callee's claim says its answer holds, read against the
-// arguments; a raw allocation, an unknown callee and anything else hold
-// older memory, since their parts are whatever a store put there.
+// arguments; a list built there, a raw allocation, an unknown callee and
+// anything else hold older memory, since their parts are whatever a store
+// put there.
+// Its parts field lists the parameters, by position, that a store or a write
+// may reach through their parts rather than in their own memory, such as a
+// store into an element of a list the parameter holds. A call reads what
+// such an argument's parts may be, which is older memory wherever the
+// argument is memory the caller allocated.
 type StoreClaim = {
   applies: [(ApplyPath, [Handed])],
   beyond: Beyond,
@@ -1838,6 +1844,7 @@ type StoreClaim = {
   holds: Returns,
   mutated: [Int],
   opaque: Bool,
+  parts: [Int],
   record: Bool,
   returned: [Int],
   returns: Returns,
@@ -1849,8 +1856,15 @@ type StoreClaim = {
 // parameters it hands back by position, a part of the memory those
 // parameters name (a word read off a list, never the parameter itself), one
 // of a set of literals in the module's static data (by their nodes) or else
-// memory fresh at the call, or memory older than the call.
-type Returns = ReturnsFresh | ReturnsParams([Int]) | ReturnsPartOf([Int]) | ReturnsStatic([Int]) | ReturnsOlder
+// memory fresh at the call, or memory older than the call. The Bool beside
+// the parameters says the result may also be memory fresh at the call, whose
+// parts are whatever a store put there.
+type Returns
+  = ReturnsFresh
+  | ReturnsParams([Int], Bool)
+  | ReturnsPartOf([Int], Bool)
+  | ReturnsStatic([Int])
+  | ReturnsOlder
 
 // What a function writes beyond its parameters, captures and record: nothing
 // older than its frame; memory a handler's state reaches (through an op's

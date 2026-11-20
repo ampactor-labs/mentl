@@ -32,7 +32,7 @@ $ mentl session tests/frontier/mn-session-project.mn
 ! session: tree moved — re-judged 2 declaration(s) in 1 module(s); the graph is current
   → 1 report(s)
   infer: E_TypeMismatch error: Bool vs Int — call to 'triple' → inferred from unification at tests/frontier/mn-session-project:6:13-6:25
-! session: the answer cost 19800 bytes of image
+! session: the answer cost 19784 bytes of image
 $ mentl query tests/frontier/mn-session-project.mn reports
 ! infer: E_TypeMismatch error: Bool vs Int — call to 'triple' → inferred from unification at tests/frontier/mn-session-project:6:13-6:25
   → 1 report(s)
@@ -54,7 +54,7 @@ $ mentl session tests/frontier/mn-session-hole.mn
   Effects: Pure
   Why: accepted `1` — proposed: inferred from the type's integer inhabitants, at tests/frontier/mn-session-hole:4
        int literal
-! session: the answer cost 16152 bytes of image
+! session: the answer cost 16136 bytes of image
 < tests/frontier/mn-session-hole.mn:4:27
   Query: 1 : Int
   Effects: Pure

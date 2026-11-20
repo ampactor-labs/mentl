@@ -1,0 +1,37 @@
+// expect: 7
+// `deep` stores two levels into its parameter: into an element of the list
+// the tuple holds. Main hands it the answer of `mkt`, a tuple holding a list
+// that `mkt` built and filled with `old`, built before the arena. A write
+// through a parameter's parts may land at any depth, so the caller reads
+// every part of its argument, at every depth, and the store roots the arena.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn mkt(old) = {
+  let l = make_list(1)
+  let _ = list_set(l, 0, old)
+  (l, 0)
+}
+
+fn deep(t, v) = match t {
+  (l, _) => {
+    let e = l[0]
+    let _ = list_set(e, 0, v)
+    0
+  },
+}
+
+fn main() = {
+  let old = make_list(4)
+  let k = {
+    let _ = deep(mkt(old), build(10))
+    len(build(300))
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

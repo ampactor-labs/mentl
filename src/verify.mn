@@ -4647,7 +4647,7 @@ fn call_roots(memo, call, callee, args) = if ref_is_constructor(callee) {
 fn claimed_roots(memo, call, callee, args) = match graph_ref_decl(callee) {
   Some(d) => match graph_store_claim_of(d) {
     Some(StoreClaim(s)) => match s.returns {
-      ReturnsParams(idxs) | ReturnsPartOf(idxs) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
+      ReturnsParams(idxs, _) | ReturnsPartOf(idxs, _) => idxs |> map(slot_roots(memo, call, args, ??)) |> fold(RootsAt([call]), roots_join),
       ReturnsFresh => RootsAt([call]),
       // One of the literals in the static data, or fresh at the call.
       ReturnsStatic(ns) => RootsAt([call] ++ ns),
