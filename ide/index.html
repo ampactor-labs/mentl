@@ -45,6 +45,8 @@
   #dot.ok { background: var(--green); }
   #dot.diag { background: var(--gold); }
   #dot.bad { background: var(--verm); }
+  #note { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--raised2); color: var(--muted); border-bottom: 1px solid var(--border); font: 12px var(--sans); }
+  #note[hidden] { display: none; }
   #err-banner { display: none; padding: 12px 16px; background: var(--raised2); color: var(--verm-b); border-bottom: 1px solid var(--verm); font-size: 12px; white-space: pre-wrap; font-family: var(--mono); }
 
   /* ── main: the canvas | the rail ───────────────────────────────────────── */
@@ -219,6 +221,7 @@
 <main>
   <div class="canvas-pane">
     <div id="err-banner"></div>
+    <div id="note" hidden><span id="note-text"></span><button class="action" id="note-act" hidden></button></div>
     <div class="edwrap">
       <div id="gutter"></div>
       <svg id="topo" aria-hidden="true"><g id="topo-g"></g></svg>
@@ -461,11 +464,18 @@ function runWheel(req, timeoutMs = 90000){
     w.postMessage(Object.assign({ role: "run", module: MODULE, memPages: MEM_PAGES, dbg: location.search.includes("dbg") }, req));
   });
 }
+// The session serves the program in the editor: it is opened on that file,
+// as `mentl session FILE` is, so every module of the file's link answers from
+// one graph. A session opened on no file served only a main.mn, so every
+// lesson was answered by a fresh compile, about 260 ms a caret move
+// (measured 2026-11-20). When the editor holds another program, the old
+// session closes once its last answer is in, and a new one opens.
 let SESSION = null;
 function session(){
+  if (SESSION && SESSION.entry !== FILE){ const old = SESSION; old.chain.then(() => old.close()); SESSION = null; }
   if (!SESSION) SESSION = new MentlSession.Session({
     spawn: () => { const w = new Worker("wheel-worker.js"); return { post: m => w.postMessage(m), terminate: () => w.terminate(), onError: fn => { w.onerror = e => fn(e.message || e); } }; },
-    module: MODULE, vfs: VFS, memPages: MEM_PAGES, runCold: req => runWheel(req),
+    module: MODULE, vfs: VFS, memPages: MEM_PAGES, runCold: req => runWheel(req), entry: FILE,
   });
   return SESSION;
 }
@@ -730,6 +740,7 @@ async function project(edited){
   // bytes it has not seen, so a read with the same text stays a read, and a
   // canvas is always labeled with the text the session judged
   const text = $("src").value;
+  followAddress(line, col, text);
   const delta = Object.assign({}, EXTRA_DELTA, { [FILE]: text });
   EXTRA_DELTA = {};
   if (edited || !CANVAS || CANVAS_FILE !== FILE || CANVAS_TEXT !== text){
@@ -932,7 +943,7 @@ function caretOf(path){ try { const c = JSON.parse(localStorage.getItem("mentl-s
 function draftOr(path){ try { const d = localStorage.getItem(draftKey(path)); if (d !== null) return d; } catch (e) {} return path === "scratch" ? "fn main() = 42\n" : VFS_TEXT[path]; }
 function openEntry(key){
   const e = ENTRIES.find(x => x.key === key) || ENTRIES[0];
-  PROGRAM = e.path; FILE = e.file;
+  PROGRAM = e.path; FILE = e.file; $("program").value = e.key; clearNote();
   EXTRA_DELTA = {};
   if (e.dir) for (const m of PROJECTS.find(p => p.dir === e.dir).members) if (m !== e.path) EXTRA_DELTA[m.slice(e.dir.length + 1)] = draftOr(m);
   const ta = $("src"); ta.value = draftOr(e.path);
@@ -941,6 +952,40 @@ function openEntry(key){
   invalidateExecution();
   project(true);
 }
+
+/* ── the address: `?at=` names a program and a caret as `mentl` takes them,
+   its path or its path, a line and a column, so a quoted answer links to
+   the same answer computed here. A line and a column count lines of the
+   served text, so the address bar carries them only while the editor holds
+   that text, and a link to a file the person has edited here says so. */
+function openAddress(at){
+  const m = /^(.*?)(?::(\d+)(?::(\d+))?)?$/.exec(at);
+  const e = ENTRIES.find(x => x.path === m[1]);
+  if (!e){ openEntry(ENTRIES[0].key); note(`${m[1]} is not a program this page serves, so it opened ${ENTRIES[0].path}.`); return; }
+  openEntry(e.key);
+  if (!m[2]) return;
+  // a line past the end is the last line, and a column past a line's end
+  // is its end; a line alone puts the caret on its first character that is not a space
+  const rows = $("src").value.split("\n");
+  const line = Math.min(+m[2], rows.length) || 1, row = rows[line - 1];
+  const col = m[3] ? Math.min(+m[3], row.length + 1) || 1 : row.search(/\S/) + 1 || 1;
+  jump(line, col);
+  if ($("src").value !== VFS_TEXT[e.path])
+    note(`You have edited ${e.path} in this browser, so line ${line} may not be the line this link names.`, "restore the served text", () => { writeBuffer(VFS_TEXT[e.path]); clearNote(); jump(line, col); });
+}
+function followAddress(line, col, text){
+  const at = text === VFS_TEXT[PROGRAM] ? `${PROGRAM}:${line}:${col}` : PROGRAM;
+  const q = new URLSearchParams(location.search);
+  if (q.get("at") === at) return;
+  q.set("at", at);
+  // a browser may refuse to change the address too often; the page goes on without it
+  try { history.replaceState(null, "", "?" + q.toString().replace(/%2F/gi, "/").replace(/%3A/gi, ":")); } catch (e) {}
+}
+function note(text, act, fn){
+  $("note").hidden = false; $("note-text").textContent = text;
+  const b = $("note-act"); b.hidden = !act; b.textContent = act || ""; b.onclick = fn || null;
+}
+function clearNote(){ $("note").hidden = true; }
 
 /* ── wiring ─────────────────────────────────────────────────────────────── */
 function syncScroll(){ const ta = $("src"); $("hl").scrollTop = ta.scrollTop; $("hl").scrollLeft = ta.scrollLeft; $("gutter").scrollTop = ta.scrollTop; syncTopo(); }
@@ -1039,10 +1084,12 @@ async function boot(){
     offer({ key: "scratch", label: "scratch", dir: null, path: "scratch", file: "main.mn" }, sel);
     $("dot").className = "ok"; measureMetrics();
     $("seal").disabled = !WHEEL_ENTRY || WHEEL_FILES.length === 0;
-    openEntry(ENTRIES[0].key);
+    const link = new URLSearchParams(location.search).get("at");
+    if (link) openAddress(link); else openEntry(ENTRIES[0].key);
     // the one line the page prints on every open: a headless driver (ide/browser-leg.mjs) waits on it
     await settled();
-    console.log(`SPACE-READY boot=${(performance.now() - T_BOOT).toFixed(0)}ms program=${PROGRAM} theme=${document.documentElement.dataset.theme || "system"}`);
+    const topology = VIEW ? (VIEW.ring.find(f => f.kind === "topology") || {}).text || "" : "";
+    console.log(`SPACE-READY boot=${(performance.now() - T_BOOT).toFixed(0)}ms program=${PROGRAM} at=${new URLSearchParams(location.search).get("at")} theme=${document.documentElement.dataset.theme || "system"} topology=${JSON.stringify(topology)}`);
     if (location.search.includes("smoke")) smoke();
   } catch (e) {
     const b = $("err-banner"); b.style.display = "block"; b.textContent = "boot failed: " + e.message;
@@ -1068,7 +1115,7 @@ async function smoke(){
   console.log(`SMOKE-VIEW open=${(session().opened ? session().opened.ms : a.ms).toFixed(0)} read=${b.ms.toFixed(1)} resident=${!!(a.resident && b.resident)} bytes=${b.out.length} ring=${v ? v.ring.length : 0} lens=${v ? v.lens.filter(diag).length : -1} refusing=${v ? v.lens.filter(f => diag(f) && f.severity === "error").length : -1} ledger=${v ? v.ledger.length : -1}`);
   // THE PROJECT: a folder of modules the manifest names opens in the same
   // session — its main.mn the entry, its View from the resident session
-  const pr = PROJECTS[0], pm = pr && ENTRIES.find(e => e.dir === pr.dir && e.file === "main.mn");
+  const pr = PROJECTS.find(p => p.members.includes(p.dir + "/main.mn")), pm = pr && ENTRIES.find(e => e.dir === pr.dir && e.file === "main.mn");
   if (pm){
     openEntry(pm.key); await settled();
     const pv = VIEW, members = pr.members.length;

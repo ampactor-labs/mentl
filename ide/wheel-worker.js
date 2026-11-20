@@ -32,7 +32,7 @@
        stdout as `outBytes`, never through a text decoder)
         -> creates the shared memory, instantiates, runs _start, drains the
            task fan, posts {k:"result", exit, out, err, trapped, tasks}
-     {role:"session", module, memPages?, vfs, channel}
+     {role:"session", module, memPages?, vfs, channel, entry?}
         -> ONE instance running `mentl session` for the session's life, its
            stdin and its answers riding the channel (below)
      {role:"arm", module, memory, tids, q, vfs?}
@@ -357,7 +357,7 @@ function makeFan(q, tids, pool) {
    {line, delta: {path: text}} or {close: true}; a reply {state, out, err,
    written: {path: text}, memoryBytes, exit?, trapped?}. */
 const CH_WORDS = 8, CH_DATA = 4 * CH_WORDS;
-function sessionServe({ module, mem, vfs, channel }) {
+function sessionServe({ module, mem, vfs, channel, entry }) {
   const ctl = new Int32Array(channel, 0, CH_WORDS);
   const reqBytes = new Uint8Array(channel, CH_DATA, ctl[5]);
   const repBytes = new Uint8Array(channel, CH_DATA + ctl[5], ctl[6]);
@@ -387,7 +387,7 @@ function sessionServe({ module, mem, vfs, channel }) {
     for (const [p, text] of Object.entries(req.delta || {})) vfs[p] = te.encode(text);
     return req.close ? null : te.encode(req.line + "\n");
   };
-  shim = makeShim({ mem, argv: ["mentl", "session"], stdin: null, vfs, pull,
+  shim = makeShim({ mem, argv: ["mentl", "session"].concat(entry ? [entry] : []), stdin: null, vfs, pull,
     // the judgment spawns nothing (judge once, pin 7c9dc538), and a module that
     // cannot spawn does not import thread-spawn; a spawn reaching here is
     // refused loudly by the wheel, never served by a pool nobody armed
@@ -427,7 +427,7 @@ const adopt = (mem, inst) => { if (!mem.memory) mem.memory = inst.exports.memory
 
 HOST.listen(async (msg) => {
   if (msg.role === "session") {
-    const { module, memPages, vfs, channel, dbg } = msg;
+    const { module, memPages, vfs, channel, dbg, entry } = msg;
     DEBUG = !!dbg;
     let mem = null;
     try { mem = makeMemory(module, memPages); }
@@ -439,7 +439,7 @@ HOST.listen(async (msg) => {
       Atomics.store(ctl, 3, body.length); Atomics.store(ctl, 4, 2); Atomics.add(ctl, 2, 1); Atomics.notify(ctl, 2);
       return;
     }
-    await sessionServe({ module, mem, vfs: Object.assign({}, vfs || {}), channel });
+    await sessionServe({ module, mem, vfs: Object.assign({}, vfs || {}), channel, entry });
   } else if (msg.role === "run") {
     const { module, memPages, argv, stdin, vfs, stubSpawn, binary } = msg;
     DEBUG = !!msg.dbg;

@@ -6,9 +6,9 @@
 #   headers (tools/space-serve.py) and opens it in headless Chrome at ?smoke.
 #   The page prints one SMOKE line per check (smoke() in ide/index.html), and
 #   this script judges each: the project, the View, what the page painted,
-#   the sound lesson 1 writes, and the canvas. The page parses nothing the
-#   compiler printed. Leg 2 is skipped, and says so, when no browser is found
-#   in $MENTL_CHROME, on PATH or under $PLAYWRIGHT_BROWSERS_PATH.
+#   the sound lesson 1 writes, the canvas, and where a link opens. Leg 2 is
+#   skipped, and says so, when no browser is found in $MENTL_CHROME, on PATH
+#   or under $PLAYWRIGHT_BROWSERS_PATH.
 set -u
 cd "$(dirname "$0")/.."
 fail=0
@@ -45,13 +45,8 @@ if [ -n "$browser" ]; then
   sp=$!
   sleep 1
   echo "  browser: $browser"
-  # ide/browser-leg.mjs drives the browser over its debugging pipe: it loads
-  # ?smoke, prints the page's SMOKE lines as the console wire carries them,
-  # captures .build/space.png once the product leg has run and
-  # .build/space-parchment.png once the other ground says SPACE-READY. (A
-  # --screenshot with a virtual-time budget never returns on this page — the
-  # session's worker blocks inside the wheel's own read — and without one it
-  # captures the load event, before the wheel has booted.)
+  # ide/browser-leg.mjs drives the browser over its debugging pipe and prints
+  # the page's SMOKE and SPACE-READY lines (its header says why it is needed).
   lines=$(timeout 240 node ide/browser-leg.mjs "$browser" "http://127.0.0.1:$port/" .build 2>&1 | grep -E '^(SMOKE|SPACE-READY|PAGE-ERROR|BROWSER-LEG-ERROR)')
   kill "$sp" 2>/dev/null
   vline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-VIEW')
@@ -92,13 +87,9 @@ if [ -n "$browser" ]; then
       fi ;;
     *) echo "  view leg: FAIL — ${vline:-no SMOKE-VIEW line}"; fail=1 ;;
   esac
-  # The product — what the page RENDERS, measured in the browser: the
-  # projection shows every character the hand typed (a lost space was live
-  # in production for weeks), no \`undefined\` reaches the chrome, eight real
-  # ring rows painted from the View, and the Lens STRUCTURAL — a Warning
-  # lands as a Warning at its own line and a mismatch at its own site (the
-  # page's regexes had both wrong: lowercase kinds only, and the first
-  # address in a message — a Reason's — over the diagnostic's span).
+  # The product, what the page renders: every character the hand typed, no
+  # `undefined` in the chrome, eight ring rows from the View, and a Warning
+  # and a mismatch each shown at its own line.
   case "$pline" in
     *"fidelity=true undefined=false"*"lens-warning-at-line=true lens-mismatch-at-site=true"*)
       ring=$(field ring-real "$pline")
@@ -109,26 +100,17 @@ if [ -n "$browser" ]; then
       fi ;;
     *) echo "  product leg: FAIL — ${pline:-no SMOKE-PRODUCT line}"; fail=1 ;;
   esac
-  # THE CANVAS (L-D) — the text painted from the wheel's own projection:
-  # no tokenizer in the page; every painted token the source sliced at the
-  # span the canvas names (a count, never "some"); every strip cell painted
-  # the View's own cell at its line; frames and proof marks drawn from the
-  # canvas; the references at a caret drawn where the View puts them, and a
-  # needle's listed; the formatter's canon on idle; the accept one step of
-  # the native undo. RED on the page before L-D: it carried its own lexer
-  # and printed no canvas line; and with the pinned boot under the new page,
-  # tokens=0 and no refs (the boot answers no canvas).
+  # The canvas, the text painted from the compiler's own spans: no tokenizer
+  # in the page, every token and strip cell where the canvas puts it, frames
+  # and marks drawn, references at a caret and a needle's listed, the
+  # formatter's layout on idle, and an accept one step of the undo.
   num() { echo "$cline" | grep -oE "(^| )$1=[^ ]+" | head -1 | cut -d= -f2; }
   case "$cline" in
     "SMOKE-CANVAS no-page-lexer=true "*)
       tk=$(num tokens); sp=$(num spans); st=$(num strip); fr=$(num frames); mk=$(num marks)
       rc=$(num refs-at-caret); rd=$(num refs-drawn); nd=$(num needle); nl=$(num needle-listed)
       fmtv=$(num fmt); und=$(num undone); acc=$(num accepted); ct=$(num canvas-text)
-      # canvas-text: the canvas the line counts was judged for the text on the
-      # page. The smoke used to read whatever canvas the page held when its
-      # settle window closed — tokens=0 on a loaded machine, and 26 (a smaller
-      # step's program) where the fixture's own canvas has 115 — so a green
-      # here could measure the wrong canvas (2026-10-13).
+      # canvas-text: the canvas counted was judged for the text on the page.
       if [ "${tk:-0}" -gt 0 ] && [ "$ct" = true ] && [[ "$sp" =~ ^[0-9]+$ ]] && [[ "$st" =~ ^[0-9]+$ ]] && [ "${fr:-0}" -gt 0 ] && [ "${mk:-0}" -gt 0 ] \
          && [ "${rc:--1}" -gt 0 ] && [ "${rd:-0}" -eq "${rc:--1}" ] && [ "${nd:--1}" -gt 0 ] && [ "${nl:-0}" -eq "${nd:--1}" ] \
          && [ "$fmtv" = true ] && [ "$acc" = true ] && [ "$und" = true ]; then
@@ -146,6 +128,15 @@ if [ -n "$browser" ]; then
      && [ "$(field channels "$sline")" = 2 ] && [ "$(printf '%.0f' "${cps:-0}" 2>/dev/null)" = 220 ]; then
     echo "  sound leg: PASS — lesson 1 wrote 144000 frames at 48000 a second in 2 channels; the left channel crosses zero upward $cps times a second"
   else echo "  sound leg: FAIL — ${sline:-no SMOKE-SOUND line}"; fail=1; fi
+  # The link leg: a visit with no link opens lesson 1, and the address SYNTAX
+  # gives lesson 3's share opens it at that caret, where the ring says what
+  # `mentl examples/pulse/course/03-bus.mn:49:30` says.
+  printf '%s\n' "$lines" | grep '^SPACE-READY' | sed 's/^/  /'
+  case "$lines" in
+    *"SPACE-READY "*"program=examples/pulse/course/01-tone.mn "*"SPACE-READY "*"program=examples/pulse/course/03-bus.mn at=examples/pulse/course/03-bus.mn:49:30 "*'topology="the <| shares `dry` with 2 branches, borrowed, so they cannot race"'*)
+      echo "  link leg: PASS — lesson 1 opens first, and the link opens lesson 3 at 49:30 with the answer mentl gives there" ;;
+    *) echo "  link leg: FAIL — the page did not open lesson 1 first, or the link did not open lesson 3 at 49:30 with that answer"; fail=1 ;;
+  esac
 else
   echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME) ──"
 fi

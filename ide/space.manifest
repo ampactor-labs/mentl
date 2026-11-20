@@ -3,8 +3,10 @@
 # `root` is where the page finds these paths: `..` in the repo (the page
 # lives in ide/), `.` once staged beside the page. A `program` is a
 # one-file project; a `project` is a folder of modules, which staging expands
-# into `member` lines (a static host lists no folder): Pulse's renderer, the
-# course's twelve lessons with the module they share, and Wasatch's score.
+# into `member` lines (a static host lists no folder): the course's twelve
+# lessons with the module they share, Pulse's renderer, Wasatch's score, and
+# the grid controller with its refused twin. The first program named is the
+# one the page opens when no link names another.
 root ..
 wasm boot/mentl.wasm
 wheel src/main.mn
@@ -27,6 +29,9 @@ lib lib/dsp/envelope.mn
 lib lib/dsp/stereo.mn
 lib lib/audio/wav.mn
 lib lib/ml/grad.mn
-project examples/pulse/render
+lib lib/arena.mn
+lib lib/net.mn
 project examples/pulse/course
+project examples/pulse/render
 project examples/wasatch
+project examples/grid

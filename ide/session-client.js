@@ -59,8 +59,10 @@
   class Session {
     // spawn() -> {post(msg), terminate(), onError(fn)}: a fresh wheel-worker.
     // runCold({argv, vfs}) -> the `run` role's reply, for MISS and refusals.
-    constructor({ spawn, module, vfs, runCold, memPages, openMs, callMs }) {
-      this.spawn = spawn; this.module = module; this.runCold = runCold;
+    // entry: the file the session is opened on, as `mentl session FILE` names
+    // it; every module of that file's link answers from the session's graph.
+    constructor({ spawn, module, vfs, runCold, memPages, openMs, callMs, entry }) {
+      this.spawn = spawn; this.module = module; this.runCold = runCold; this.entry = entry || null;
       this.memPages = memPages || 16384;
       this.openMs = openMs || 120000; this.callMs = callMs || 60000;
       this.vfs = Object.assign({}, vfs || {});   // the tree as the host knows it
@@ -83,7 +85,7 @@
       this.worker.onError((e) => { this.died = String((e && e.message) || e); });
       // the session starts over the host's whole tree, so nothing is unsent
       this.worker.post({ role: "session", module: this.module, memPages: this.memPages,
-                         vfs: Object.assign({}, this.vfs), channel: this.channel });
+                         vfs: Object.assign({}, this.vfs), channel: this.channel, entry: this.entry });
       this.unsent = {};
       const r = await this.reply(this.openMs);
       if (!r || r.state !== 1) {

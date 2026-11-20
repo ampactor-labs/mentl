@@ -11,8 +11,10 @@ WebAssembly module and the page is its host.
 
 One file, `ide/space.manifest`, lists everything the site contains: the
 compiler, the runtime modules the driver links (`lib/*.mn`, `src/types.mn`)
-and the projects, which are Pulse's renderer, the course
-(`examples/pulse/course`) and Wasatch's score (`examples/wasatch`). The page
+and the projects, which are the course (`examples/pulse/course`), Pulse's
+renderer, Wasatch's score (`examples/wasatch`) and the grid controller
+(`examples/grid`). The page opens the first program the manifest names,
+lesson 1, unless its address names another. The page
 reads the manifest to know what to fetch, and the staging script copies
 exactly those files next to the page. The deploy workflow
 (`.github/workflows/deploy-space.yml`) and the IDE gate both serve that same
@@ -32,13 +34,17 @@ set them (the local server, or Cloudflare in front of Pages) needs no
 reload, and the worker is then a second safeguard.
 
 The editing loop runs in one resident session. One worker runs
-`mentl session` for as long as the page is open (ide/wheel-worker.js and
-ide/session-client.js, the same two files the node twin drives). An edit
+`mentl session FILE` on the program in the editor (ide/wheel-worker.js and
+ide/session-client.js, the same two files the node twin drives), and a new
+one starts when the editor holds another program. Until 2026-11-20 the
+session was started on no file and served only a main.mn, so every lesson
+was answered by a fresh compile, about 260 ms for each caret move. An edit
 sends the changed text with the caret's address. The session re-checks the
 part of the program that the edit changed (the moved cone), and it returns
 both the eight aspects at the caret and the program's diagnostics in one
 reply, in about 100 ms. Moving the caret without an edit only reads the graph
-the session already holds, in about 20 ms. The page renders the emitted
+the session already holds: 5 to 11 ms on a lesson, the renderer, Wasatch and
+the grid controller, measured on 2026-11-20 in headless Chromium. The page renders the emitted
 WebAssembly text only on demand, in the Module tab, and never on each
 keystroke.
 
@@ -107,10 +113,20 @@ docs/DESIGN_SYSTEM.md the tokens, which live in `ide/tokens.css`):
   pressed while the editor is still checking an edit waits for that check
   and then runs.
 - **The programs** are the projects the manifest names, each member under
-  its own path: Pulse's renderer, the course's twelve lessons
-  (`examples/pulse/course`, with the module they share next to them) and
-  Wasatch's score. There is also a scratch buffer, and drafts persist in the
-  browser. `mentl space <dir>` opens a folder of your own the same way.
+  its own path: the course's twelve lessons (`examples/pulse/course`, with
+  the module they share next to them), Pulse's renderer, Wasatch's score
+  and the grid controller with its refused twin. There is also a scratch
+  buffer, and drafts persist in the browser.
+- **The address** names the program and the caret as `mentl` takes them:
+  `?at=examples/pulse/course/03-bus.mn:49:30` opens lesson 3 with the caret
+  on its share, and the ring shows what `mentl
+  examples/pulse/course/03-bus.mn:49:30` prints. A file alone opens it where
+  you left it, and a line alone puts the caret on its first character that
+  is not a space. The address bar follows the caret while the editor holds
+  the served text, and names the file alone once you edit it. A link to a
+  file you have edited in this browser says so and offers to restore the
+  served text, as one step of the undo. README and SYNTAX link each answer
+  they quote at a caret this way. `mentl space <dir>` opens a folder of your own the same way.
   Density is computed from the caret and is never configured. ◐ switches the
   ground (the background) between obsidian and parchment, and it follows the
   system preference by default.

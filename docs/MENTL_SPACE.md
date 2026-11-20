@@ -76,9 +76,10 @@ extension; in Mentl Space, the compiler proves what each extension can do.
 
 A decision on 2026-10-05, recorded as THE VIEW IS A PROJECTION, puts this
 design into practice: the page is a host, and the wheel renders the IDE. Each
-page runs one resident session (the session role of `ide/wheel-worker.js`,
-reached over a shared-memory channel through its host side,
-`ide/session-client.js`). Each input event (opening a project, moving the
+page runs one resident session on the program in the editor (the session
+role of `ide/wheel-worker.js`, reached over a shared-memory channel through
+its host side, `ide/session-client.js`), and starts a new one when the
+editor holds another program. Each input event (opening a project, moving the
 caret, changing the text, an accept, choosing a surface) goes to the session
 as one line, and the session answers with the View. The View is a structured
 tree that carries the ring's eight facets with their spans and provenance, the
@@ -901,6 +902,11 @@ real ring row, and a clean Lens).
   address targets its module; the edited file sent in the delta under its
   path; and drafts kept per file. Pulse opens with zero refusals, and the
   worker's `fd_readdir` correctly lists the files it holds.
+- **The address**: `?at=FILE:LINE:COL`, the argument `mentl` takes, opens a
+  served program with the caret at that place, so README and SYNTAX link
+  each answer they quote at a caret to the same answer in the page. With no
+  address the page opens lesson 1. The address bar follows the caret while
+  the editor holds the served text.
 - **The Why facet** renders the Reason chain as the ring's notes. Drawing the
   walk's ink along the canvas is part of L-D.
 - **Accept is a graph edge** (C4): pressing Tab at a `??` whose Propose facet

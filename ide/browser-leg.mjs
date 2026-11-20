@@ -9,8 +9,9 @@
 // canvas leg, the last, has run (the page as the developer sees it: the
 // canvas fixture painted from the wheel's spans, its strip, frames and marks,
 // the caret projected),
-// then opens the parchment ground and captures it when the page says
-// SPACE-READY. Chrome's own --screenshot cannot do this: it captures at the
+// then opens the parchment ground at a link, the address SYNTAX gives lesson
+// 3's share (?at=examples/pulse/course/03-bus.mn:49:30), and captures it when
+// the page says SPACE-READY. Chrome's own --screenshot cannot do this: it captures at the
 // load event, before the wheel has booted, and under --virtual-time-budget
 // it never returns on this page (the session's worker blocks inside the
 // wheel's read). The exit code is the last leg's: 0 when SMOKE-CANVAS
@@ -92,7 +93,7 @@ try {
   if (a.line === null) console.log("SMOKE-TIMEOUT the page printed no SMOKE-CANVAS line in 240 s");
   ok = !!(a.line && a.line.startsWith("SMOKE-CANVAS"));
   await shot(a.sessionId, join(shotDir, "space.png"));
-  const b = await open(`${base}${sep}theme=parchment`, (t) => /^SPACE-READY/.test(t), 60000);
+  const b = await open(`${base}${sep}theme=parchment&at=examples/pulse/course/03-bus.mn:49:30`, (t) => /^SPACE-READY/.test(t), 60000);
   if (b.line !== null) await shot(b.sessionId, join(shotDir, "space-parchment.png"));
 } catch (e) {
   console.log(`BROWSER-LEG-ERROR ${e.message}`);

@@ -35,6 +35,8 @@ Why: the call to ??, at examples/pulse/course/08-hole:50
      expected
 ```
 
+[Open this answer in Mentl Space](https://mentl.ampactor.dev/?at=examples/pulse/course/08-hole.mn:50:76): the page runs the same compiler in your browser and shows these facts with the caret on the hole.
+
 Of the candidates the compiler tried, each judged on its own, only `brighten` passed: its type fits the stage, and its row is `Pure`, which the frame's `with !Alloc` admits. `mentl accept examples/pulse/course/08-hole.mn:50:76` writes it where the hole was, so line 50's `|> ?? |>` becomes `|> brighten |>`. Where two candidates both pass and mean different things, the compiler asks instead of guessing:
 
 ```
@@ -68,7 +70,7 @@ $ mentl where examples/grid/station.mn decide
   -> Mode @ i32 (inferred)
 ```
 
-The source writes the five rules and `hz: Int`. The compiler worked out the other parameters' types, the ownership of each (`own` or `ref`), and the first line's row, `Mutate + Station`, which is everything `decide` does: it keeps its own memory from one reading to the next, and it commands the two machines through the operations of the `Station` effect. Ask where the network enters, and the compiler answers that it does not:
+The source writes the five rules and `hz: Int`. The compiler worked out the other parameters' types, the ownership of each (`own` or `ref`), and the first line's row, `Mutate + Station`, which is everything `decide` does: it keeps its own memory from one reading to the next, and it commands the two machines through the operations of the `Station` effect. [Open `decide` in Mentl Space](https://mentl.ampactor.dev/?at=examples/grid/station.mn:185:4) to see the same row with the caret on its name. Ask where the network enters, and the compiler answers that it does not:
 
 ```
 $ mentl why examples/grid/station.mn decide Network
@@ -82,6 +84,8 @@ $ mentl check examples/grid/station-leak.mn
 effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI + !Trap`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:221:5 → price_m calls `fetch` at examples/grid/station-leak:113:14 → `fetch` is an operation of Network, declared at net:11:1 at examples/grid/station-leak:153:1-258:2
 effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:452:1-455:27
 ```
+
+[Open the refused program in Mentl Space](https://mentl.ampactor.dev/?at=examples/grid/station-leak.mn), where the two errors are listed under the editor.
 
 Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI preview 1, the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.2 component target, and a real network").
 
@@ -225,7 +229,7 @@ bash tools/install.sh        # writes ~/.local/bin/mentl, a pointer to boot/ment
 mentl run examples/hello/five.mn
 ```
 
-`mentl run examples/pulse/course/01-tone.mn > 01.wav` renders the course's first lesson: 3.000 seconds of 16-bit stereo at 48,000 samples per second, a 220 Hz tone (220.0 upward zero crossings per second in the left channel). `mentl new hello` writes a one-file project, and `mentl run hello` runs it. The installed command runs whatever `boot/mentl.wasm` the checkout holds, so a new pin takes effect without reinstalling. Mentl Space, the browser editor, runs the same compiler in the page at https://mentl.ampactor.dev/. It is deployed from the main branch each time the page, the pinned compiler or the library changes there, so it serves the compiler main holds. Press Run on a lesson to hear it.
+`mentl run examples/pulse/course/01-tone.mn > 01.wav` renders the course's first lesson: 3.000 seconds of 16-bit stereo at 48,000 samples per second, a 220 Hz tone (220.0 upward zero crossings per second in the left channel). `mentl new hello` writes a one-file project, and `mentl run hello` runs it. The installed command runs whatever `boot/mentl.wasm` the checkout holds, so a new pin takes effect without reinstalling. Mentl Space, the browser editor, runs the same compiler in the page at https://mentl.ampactor.dev/. It is deployed from the main branch each time the page, the pinned compiler or the library changes there, so it serves the compiler main holds. It opens on lesson 1; press Run on a lesson to hear it. An address ending in `?at=` and the argument `mentl` takes, a file or a file with a line and a column, opens that program with the caret there, and the address bar follows the caret, so a copied address shows someone else what you see.
 
 ## Learn it
 
