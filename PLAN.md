@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `67e006a75b26`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `087e88858d71`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -144,6 +144,15 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   pin built, each declaring `!Mutate` or a race-free parallel fill over
   rows its own function built, until F3's column records what a store
   put there (§7).
+- Box 5 landed on 2026-11-20 (pin 087e88858d71): a closure called from a `><`
+  or `<|` branch inside an arena roots the arena its write predates. On the
+  pin before it, `mentl check` accepted such a program and `mentl run`
+  stopped at the arena's own check, and a function whose closure wrote its
+  parameter from a branch had a claim saying it wrote nothing. Six
+  fixtures in tests/micros run as they state, and the testers' 313
+  programs judged again on both compilers changed in exactly the seven of
+  this shape, each from wrong to right. The handler arm's shape of the same
+  false proof waits for K4 (§7).
 - H2, a host box, landed on 2026-11-20: a quoted answer opens in the page
   at its caret. `?at=` and the argument `mentl` takes opens a program in
   Mentl Space with the caret there, the address bar follows the caret, and
@@ -1015,7 +1024,7 @@ not run counts as unknown, never as passing.
 
 **Programs the check accepts and the run breaks.** Four false proofs were
 open on 2026-11-10, each run again that day on pin b46b71133838, and a
-fifth, in two shapes, was found on 2026-11-20. `mentl check` accepts each
+fifth was found on 2026-11-20. `mentl check` accepts each
 program and `mentl run` shows the break.
 
 - A `!Trap` recursion a million calls deep stops with "call stack
@@ -1040,42 +1049,31 @@ program and `mentl run` shows the break.
   pending, builds, and `mentl run` exits 4 after reading its list at the
   index -2147483648.
 - The judgment's proof that an arena's exit needs no journal is still
-  wrong in two shapes, found on 2026-11-20 by programs written to break
-  F3a's probe. Both fail the same way on pin c866711ba72e, so they are
-  older than F3a. In each, a list built before an arena opens receives a
-  list built inside it, `mentl check` accepts the program, and the run
-  stops at the arena's own check, "a barrier journaled inside an extent
-  the judgment proved root-free". None of the fourteen programs ran to a
-  wrong value. Each shape is described below well enough to be written
-  again as the fixtures of the box that closes it, since the programs
-  themselves were kept only in the build container.
-  1. A handler's arm that writes into memory its operation is handed, or
-     into its own configuration, roots no arena opened under the install.
-     With `handler keeper { put_in(h, v) => { let _ = list_set(h, 0, v)
-     resume() } }` installed around an arena, `put_in(old, build(10))`
-     inside the arena stops the run: the arm's write is charged where the
-     handler is installed, outside the arena, and the perform inside it
-     charges nothing. Seven programs: the operation's argument whole and
-     through a part, the configuration whole, through a part and through a
-     record's field, a closure as the configuration, and the install
-     around a function that opens the arena (§11.1(a), the install that
-     answers each operation).
-  2. A closure made before an arena, which writes a value it captured,
-     roots no arena when a `><` or `<|` branch inside the arena calls it.
-     `let w = { v => list_set(old, 0, v) }`, then `(w(build(10))) ><
-     (len(build(300)))` inside an arena stops the run, where `w(build(10))`
-     called plainly there runs to its end. The caret on the branch shows a
-     row with no `Mutate`. Seven programs: a lambda, a nested named
-     function, a share, a helper applying the closure, a pipe, a block and
-     a closure made in an outer arena (§11.8).
+  wrong in one shape, found on 2026-11-20 by programs written to break
+  F3a's probe, and older than F3a: it fails the same way on pin
+  c866711ba72e. A list built before an arena opens receives a list built
+  inside it, `mentl check` accepts the program, and the run stops at the
+  arena's own check, "a barrier journaled inside an extent the judgment
+  proved root-free". None of the seven programs ran to a wrong value.
+  They were kept only in the build container, so the shape is described
+  here well enough to write them again as K4's failing tests. A handler's
+  arm that writes into memory its operation is handed, or into its own
+  configuration, roots no arena opened under the install. With `handler keeper { put_in(h, v) => { let _ = list_set(h, 0, v)
+  resume() } }` installed around an arena, `put_in(old, build(10))` inside
+  the arena stops the run: the arm's write is charged where the handler is
+  installed, outside the arena, and the perform inside it charges nothing.
+  The seven: the operation's argument whole and through a part, the
+  configuration whole, through a part and through a record's field, a
+  closure as the configuration, and the install around a function that
+  opens the arena (§11.1(a), the install that answers each operation).
 - A function that writes the parts of memory it built itself, through a
   helper, is read as writing older memory, since a part of memory the
   function allocated reads as older until F3's column records what a store
   put there (§11.B, F3). So `with !Mutate` on such a function is refused,
   as is a `><` under `parallel_compose` whose branches each build and fill
   their own rows, read as a race: six scratch programs the pin builds,
-  found 2026-11-20 (`.build/out/f3a-break2/branches-and-precision/`). The
-  pin also builds a seventh of the same shape whose `!Mutate` is false. No
+  found 2026-11-20 and kept only in the build container. The pin also
+  builds a seventh of the same shape whose `!Mutate` is false. No
   example, lesson, score or function of the compiler is refused (`mentl
   check` on every program under examples/ answers on the F3a candidate
   as on the pin).
@@ -1593,7 +1591,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Two
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1638,10 +1636,10 @@ leave, and the landing deletes them.
    claim where it printed twelve. The one left needs the bound a `let` has
    by its value inside the path's proof, which F8 brings.
    Two false proofs were found on 2026-11-20 (§7). The fanout branch's
-   comes next, as Box 5 below: a closure called from a `><` or `<|` branch
-   inside an arena roots no arena, because one step of the ages walk writes
-   back a copy of its scope that is out of date. The handler arm's waits
-   for K4: a perform can be charged with what its arm writes only once the
+   landed the same day as Box 5 (pin 087e88858d71): a closure called from a `><`
+   or `<|` branch inside an arena roots the arena its write predates, since
+   one step of the ages walk no longer writes back a copy of its scope that
+   is out of date. The handler arm's waits for K4: a perform can be charged with what its arm writes only once the
    judgment knows which install answers it, and a charge built before K4
    would be a compensation K4 deletes. Its seven programs are K4's failing
    tests.
@@ -2379,66 +2377,6 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
-
-3. **Box 5 · A closure called from a fanout branch roots the arena its
-   write predates.** Written 2026-11-20 from probes on pin 67e006a75b26.
-
-   What a person sees. A program that makes a closure writing into a list
-   it captured, opens an arena, and calls the closure from a branch of a
-   `><` or a `<|` inside it now runs as written. On the pin, `mentl check`
-   accepts it and `mentl run` stops with "trap: a barrier journaled inside
-   an extent the judgment proved root-free". The same call made outside a
-   branch already runs.
-
-   Fails today, on the pin, each `mentl check` exiting 0 and `mentl run`
-   exiting 134 with that trap: the testers' seven programs (a lambda made
-   before the arena called from a `><` branch; the same through a `<|`; a
-   nested named function; a helper that applies the closure; the closure
-   in a pipe and in a block inside the branch; a closure made in an outer
-   arena called from a split in an inner one) and an eighth of the
-   builder's, the closure made inside the arena. The caret on the arena's
-   `~>` says "nothing the judgment sees can root the extent it opens". A
-   direct `list_set` in the branch, a named function that writes its
-   parameter called from the branch, and the closure called plainly, in an
-   `if` or in another lambda all run to 7.
-
-   The cause. `binder_mutation` (src/infer.mn) charges a closure's write
-   into a capture in three steps: the frame's settlement, the arenas the
-   capture predates (`root_arenas`), and each open fanout branch. It reads
-   the scope once, at its start, and the branch step writes that copy
-   back with the branch list updated. So while a branch is open, the
-   write-back erases the roots the arena step has just recorded and what
-   the frame step noted. `ages_mutation`, the same charge for a write
-   through a reference, takes the frame, then the branches read afresh
-   (`branch_mutation`), then the arenas, and is right.
-
-   The form. `binder_mutation` takes `ages_mutation`'s order, and its branch
-   step becomes `branch_binder_mutation(site, b)`, which reads the scope as
-   the frame step left it, in the form `branch_mutation` already has. No
-   other function changes.
-
-   What it reads. The closure's claim (its captures), the scope's lets,
-   arenas and branches: all carried since F3a, and `mentl query FILE "claim
-   of NAME"` shows a closure's captures on the pin.
-
-   Edge cases. A closure that writes a captured parameter of the function
-   it is made in, called from a branch, must leave that parameter written
-   in the function's claim, which the frame step notes and the write-back
-   erased. Two branches that both call it; an arena inside the branch,
-   which the branch step does not touch; a branch with no arena open
-   around it, where only the branch list changes, as the race check reads
-   it.
-
-   What pays for it. Nothing is added to the board: `MENTL_BOOT=<candidate>
-   mentl verify` holds all 37 bounds at the pin's counts (measured).
-
-   Left alone. The handler arm's false proof (§7), which is K4's.
-
-   Proves it. Five fixtures in tests/micros, each exiting 7 as its first
-   line states and 134 on the pin: the lambda through `><` and through
-   `<|`, the nested function, the helper, and the closure made inside the
-   arena. The testers' 313 programs are judged again on the pin and on the
-   candidate, and no answer that was right turns wrong. `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

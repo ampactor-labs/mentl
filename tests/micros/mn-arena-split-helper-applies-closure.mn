@@ -1,0 +1,24 @@
+// expect: 7
+// A branch of a split inside the arena hands a capturing closure to a
+// helper that applies it. The closure's write into the list it captured must
+// root the arena.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn apply1(f, x) = f(x)
+
+fn main() = {
+  let old = make_list(4)
+  let w = { v => list_set(old, 0, v) }
+  let k = {
+    let (a, b) = (apply1(w, build(10))) >< (len(build(300)))
+    b
+  } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

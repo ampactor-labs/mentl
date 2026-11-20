@@ -1,0 +1,25 @@
+// expect: 7
+// `fill` writes into the list it is handed, through a closure it makes and
+// calls from a branch of a split. Its claim must say it writes parameter 0
+// (closure-writes-param.transcript), so the arena around its call is rooted
+// and the stored list survives the exit.
+import arena
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn chk(xs) = if fold(0, add_int, xs) == 55 { 7 } else { 1 }
+
+fn fill(xs, n) = {
+  let w = { v => list_set(xs, 0, v) }
+  let (a, b) = (w(build(n))) >< (n * 30)
+  b
+}
+
+fn main() = {
+  let old = make_list(4)
+  let k = { fill(old, 10) } ~> arena
+  let junk = build(400)
+  if k == 300 && len(junk) == 400 { chk(old[0]) } else { 2 }
+}

@@ -11401,20 +11401,28 @@ fn own_param_of_node(node) = match node {
 
 // A store the frame makes through a closure into one of the closure's
 // captures: the binder's age, read in this frame — its own parameter, a let
-// of its own, a capture of its own, or older.
+// of its own, a capture of its own, or older. Each step reads the scope as
+// the step before it left it, in the order `ages_mutation` takes.
 fn binder_mutation(site, b) = match ages_top() {
   Some(scope) => {
     frame_settle(site, scope, targets_of_binder(b, scope, ToFrame))
+    branch_binder_mutation(site, b)
     // The write roots every arena open here that the binder's memory
     // predates, as a callee's write into a parameter does.
     if scope_holds_arenas(scope) { root_arenas(site, targets_of_binder(b, scope, ToArena)) } else { () }
-    match scope {
-      AgeScope(r) => if len(r.branches) == 0 {
-        ()
-      } else {
-        ages_put(AgeScope({...r, branches: map(branch_binder_settle(site, b, scope, ??), r.branches)}))
-      },
-    }
+  },
+  None => (),
+}
+
+// Every fanout branch open in the scope whose start the binder's memory
+// predates records the site.
+fn branch_binder_mutation(site, b) = match ages_top() {
+  Some(scope) => match scope {
+    AgeScope(r) => if len(r.branches) == 0 {
+      ()
+    } else {
+      ages_put(AgeScope({...r, branches: map(branch_binder_settle(site, b, scope, ??), r.branches)}))
+    },
   },
   None => (),
 }

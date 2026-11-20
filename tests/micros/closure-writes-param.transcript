@@ -1,0 +1,13 @@
+$ mentl query tests/micros/mn-arena-split-closure-writes-param.mn claim of fill
+  → claim of fill
+    mutated: positions 0
+    through parts: none
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: older
+    holds: older
+    stores: none
+    returned: 0 node(s)
