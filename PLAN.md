@@ -1579,7 +1579,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -2360,6 +2360,95 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box H2 · A quoted answer opens in the page at its caret.** Written
+   2026-11-20; a host box (§4㉑), so it changes no compiler source and the
+   boot stays.
+
+   What a person sees. A reader of SYNTAX's "Composing the five" follows
+   the link beside lesson 3's answers, and Mentl Space opens lesson 3 with
+   the caret on the `<|` at line 49, column 30. The ring says what the
+   quoted answer says, "the <| shares `dry` with 2 branches, borrowed, so
+   they cannot race", computed by the compiler in the reader's browser.
+   The link's `at` is the argument the quoted command takes:
+   `?at=examples/pulse/course/03-bus.mn:49:30`. As the caret moves, the
+   address bar follows it, so a copied address opens the page where the
+   hand is. A visit with no link opens lesson 1, where Run plays its tone.
+   The grid controller that README's first screen names is served, with
+   its refused twin, so README's `decide` and its refusal open in the page
+   too.
+
+   Fails today, measured on 2026-11-20 on the staged page in headless
+   Chromium with the gate's own driver: the address
+   `?at=examples/pulse/course/03-bus.mn:49:30` opens
+   examples/pulse/render/main.mn at its first line, which is also what a
+   visit with no link opens (`SPACE-READY … program=examples/pulse/render/main.mn`).
+   examples/grid is not served: the manifest names neither the folder nor
+   lib/arena.mn and lib/net.mn, which station.mn imports (`mentl query
+   examples/grid/station.mn imports`). README and SYNTAX quote eight
+   answers at a caret, and none of them opens in the page.
+
+   What it reads. The served text of each program, which the page already
+   fetches. The View the session answers at a caret, `mentl space
+   FILE:LINE:COL`, which at lesson 3's share answers the same query,
+   topology, effects and first line of why as `mentl
+   examples/pulse/course/03-bus.mn:49:30` (measured). Nothing new from the
+   graph.
+
+   The form.
+   - ide/space.manifest names the course's project first, so the page's
+     first program is lesson 1, and adds `project examples/grid`, `lib
+     lib/arena.mn` and `lib lib/net.mn`.
+   - ide/index.html reads `at` when it boots. A served program's path
+     alone opens it as choosing it from the list does; the path with a
+     line and a column also puts the caret there. `project()` writes the
+     address it asks the session about into the address bar with
+     `history.replaceState`: the path, line and column while the editor
+     holds the served text, the path alone otherwise, and only when the
+     address changes. The ready line the page prints gains `at=` and the
+     ring's topology. The smoke's project leg takes the first project
+     that has a main.mn.
+   - A note under the header says what the link could not do. When the
+     person has edited that file in this browser: "You have edited PATH
+     here, so line L may not be the line this link names", with a button
+     that restores the served text as one step of the undo. When the path
+     is not served: "PATH is not a program this page serves", and the page
+     opens lesson 1.
+   - ide/browser-leg.mjs opens its second load, the parchment screenshot,
+     at the lesson 3 link, so .build/space-parchment.png shows the caret
+     on the share and the ring's answer there.
+   - tools/ide-gate.sh gains a link leg: the first load's ready line names
+     lesson 1, and the link's names lesson 3 at 49:30 with the quoted
+     topology. Its comments lose at least as many lines as the leg adds,
+     so `tools/` gains none.
+   - README and SYNTAX link each of the eight quoted answers, with the
+     quoted argument as `at`. Two quotes name a line alone
+     (`02-line.mn:44`, `station.mn:190`); their links add the column that
+     gives the same answer, 44:42 and 190:7 (measured). README's `decide`
+     links to its declaration, 185:4, and its refusal to
+     station-leak.mn. ide/README.md and docs/MENTL_SPACE.md say what `at`
+     does and that the page opens on lesson 1.
+
+   Edge cases. A line past the end puts the caret on the last line, and a
+   column past a line's end at its end. `PATH:LINE` puts the caret on the
+   line's first character that is not a space, where the ring answers for
+   the node under the caret; `mentl PATH:LINE` answers for the widest node
+   that starts on the line, so the two can differ, and the documents' links
+   carry a column. `at=scratch` opens the scratch program. The page's other
+   parameters (`smoke`, `theme`, `dbg`) stay in the address. A browser
+   that limits how often the address may change throws, and the page
+   catches it and keeps working. A link to a lesson whose kept copy equals
+   the served text shows no note. The ready line is printed once the
+   projection at the link's caret has settled.
+
+   Left alone. Answers that are not at a caret (`mentl why`, `where`,
+   `teach`, `audit`), which the page has no view of yet; running the grid
+   controller in the page; and a link to a fixture under tests/, which the
+   page does not serve.
+
+   Proves it. `bash tools/ide-gate.sh` prints a link leg that passes, seen
+   red on the unchanged page first, and the other legs print what they
+   printed. `bash tools/doc-truth.sh` passes.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
