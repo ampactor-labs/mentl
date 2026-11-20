@@ -1046,9 +1046,9 @@ program and `mentl run` shows the break.
   list built inside it, `mentl check` accepts the program, and the run
   stops at the arena's own check, "a barrier journaled inside an extent
   the judgment proved root-free". None of the fourteen programs ran to a
-  wrong value. The scratch programs are in the build container's
-  `.build/out/f3a-break2/` and become the fixtures of the box that closes
-  each.
+  wrong value. Each shape is described below well enough to be written
+  again as the fixtures of the box that closes it, since the programs
+  themselves were kept only in the build container.
   1. A handler's arm that writes into memory its operation is handed, or
      into its own configuration, roots no arena opened under the install.
      With `handler keeper { put_in(h, v) => { let _ = list_set(h, 0, v)
@@ -1593,7 +1593,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1637,11 +1637,14 @@ leave, and the landing deletes them.
    constructors, and `mentl check src/lexer.mn` prints one open position
    claim where it printed twelve. The one left needs the bound a `let` has
    by its value inside the path's proof, which F8 brings.
-   Two false proofs found on 2026-11-20 come next, before stage 2 (§7): a
-   perform charges, inside the arenas open around it, what its handler's
-   arms write into what it hands them and into the install's
-   configuration; and a fanout branch charges the writes of the closures
-   it calls. Each is written as a box first, from probes, as F3a was.
+   Two false proofs were found on 2026-11-20 (§7). The fanout branch's
+   comes next, as Box 5 below: a closure called from a `><` or `<|` branch
+   inside an arena roots no arena, because one step of the ages walk writes
+   back a copy of its scope that is out of date. The handler arm's waits
+   for K4: a perform can be charged with what its arm writes only once the
+   judgment knows which install answers it, and a charge built before K4
+   would be a compensation K4 deletes. Its seven programs are K4's failing
+   tests.
 2. The gates tell the truth, because every receipt is judged by them. P3:
    what a command prints is a fixture's contract, and the frontier gate's
    legs move into fixtures with their 144 lines that pipe into `grep -q`.
@@ -1711,7 +1714,9 @@ leave, and the landing deletes them.
    already carried; Box 4's walk over the verdict column, its two filters
    and its read arenas leave with K2. K3: the lowering column (§11.2, its
    first part). K4: the index of the install that answers each operation
-   (§11.1(a)). K5: the face's row and the primitives' faces (§11.3). K6:
+   (§11.1(a)), whose failing tests are §7's seven programs in which a
+   handler's arm writes what its operation is handed or its configuration.
+   K5: the face's row and the primitives' faces (§11.3). K6:
    the whole-truth row (§11.1(b)). P2: the march is the compiler's own
    verb, and cost is counted, never timed.
 5. Readers of the mechanisms. T1b: a call that leaves open a claim its
@@ -2374,6 +2379,66 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 5 · A closure called from a fanout branch roots the arena its
+   write predates.** Written 2026-11-20 from probes on pin 67e006a75b26.
+
+   What a person sees. A program that makes a closure writing into a list
+   it captured, opens an arena, and calls the closure from a branch of a
+   `><` or a `<|` inside it now runs as written. On the pin, `mentl check`
+   accepts it and `mentl run` stops with "trap: a barrier journaled inside
+   an extent the judgment proved root-free". The same call made outside a
+   branch already runs.
+
+   Fails today, on the pin, each `mentl check` exiting 0 and `mentl run`
+   exiting 134 with that trap: the testers' seven programs (a lambda made
+   before the arena called from a `><` branch; the same through a `<|`; a
+   nested named function; a helper that applies the closure; the closure
+   in a pipe and in a block inside the branch; a closure made in an outer
+   arena called from a split in an inner one) and an eighth of the
+   builder's, the closure made inside the arena. The caret on the arena's
+   `~>` says "nothing the judgment sees can root the extent it opens". A
+   direct `list_set` in the branch, a named function that writes its
+   parameter called from the branch, and the closure called plainly, in an
+   `if` or in another lambda all run to 7.
+
+   The cause. `binder_mutation` (src/infer.mn) charges a closure's write
+   into a capture in three steps: the frame's settlement, the arenas the
+   capture predates (`root_arenas`), and each open fanout branch. It reads
+   the scope once, at its start, and the branch step writes that copy
+   back with the branch list updated. So while a branch is open, the
+   write-back erases the roots the arena step has just recorded and what
+   the frame step noted. `ages_mutation`, the same charge for a write
+   through a reference, takes the frame, then the branches read afresh
+   (`branch_mutation`), then the arenas, and is right.
+
+   The form. `binder_mutation` takes `ages_mutation`'s order, and its branch
+   step becomes `branch_binder_mutation(site, b)`, which reads the scope as
+   the frame step left it, in the form `branch_mutation` already has. No
+   other function changes.
+
+   What it reads. The closure's claim (its captures), the scope's lets,
+   arenas and branches: all carried since F3a, and `mentl query FILE "claim
+   of NAME"` shows a closure's captures on the pin.
+
+   Edge cases. A closure that writes a captured parameter of the function
+   it is made in, called from a branch, must leave that parameter written
+   in the function's claim, which the frame step notes and the write-back
+   erased. Two branches that both call it; an arena inside the branch,
+   which the branch step does not touch; a branch with no arena open
+   around it, where only the branch list changes, as the race check reads
+   it.
+
+   What pays for it. Nothing is added to the board: `MENTL_BOOT=<candidate>
+   mentl verify` holds all 37 bounds at the pin's counts (measured).
+
+   Left alone. The handler arm's false proof (§7), which is K4's.
+
+   Proves it. Five fixtures in tests/micros, each exiting 7 as its first
+   line states and 134 on the pin: the lambda through `><` and through
+   `<|`, the nested function, the helper, and the closure made inside the
+   arena. The testers' 313 programs are judged again on the pin and on the
+   candidate, and no answer that was right turns wrong. `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
