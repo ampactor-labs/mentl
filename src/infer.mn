@@ -10842,13 +10842,15 @@ fn index_in(ys, x) = any(handle_is(x, ??), ys)
 fn returns_of(targets, params) =
   targets |> fold(no_memory, returns_join(params, ??, ??)) |> returns_settled
 
+// The empty list of positions, shared by every claim that names none. It
+// stands above `no_memory`, which reads it: a module value is initialized in
+// the order written.
+let no_positions = []
+
 // No memory at all: no parameter and never fresh. One value, shared by every
 // claim of a function that answers a word, so such a claim keeps nothing of
 // its own in the graph.
 let no_memory = ReturnsParams(no_positions, false)
-
-// The empty list of positions, shared by every claim that names none.
-let no_positions = []
 
 fn returns_join(params, acc, t) = match t {
   TgFresh => returns_or_fresh(acc),
@@ -10890,11 +10892,59 @@ fn returns_with_static(acc, n) = match acc {
 
 // A join that named fresh memory and no parameter says the result is fresh.
 // One that named neither says the result is no memory at all, a word or a
-// record of words: no parameters, and never fresh.
+// record of words: no parameters, and never fresh. The commonest answers
+// after that name the first or the second parameter alone, whole or a part
+// of it, fresh or not, and each is one shared value, as `no_memory` is, so a
+// function that hands back one of its first two arguments or an element of
+// one keeps nothing of its own in the graph.
 fn returns_settled(r) = match r {
-  ReturnsParams(xs, fresh) => if fresh && len(xs) == 0 { ReturnsFresh } else { r },
-  ReturnsFresh | ReturnsPartOf(_, _) | ReturnsStatic(_) | ReturnsOlder => r,
+  ReturnsParams(xs, fresh) => if fresh && len(xs) == 0 { ReturnsFresh } else { lone_answer(xs, ReachValue, fresh, r) },
+  ReturnsPartOf(xs, fresh) => lone_answer(xs, ReachParts, fresh, r),
+  ReturnsFresh | ReturnsStatic(_) | ReturnsOlder => r,
 }
+
+fn lone_answer(xs, reach, fresh, r) = if len(xs) != 1 {
+  r
+} else if index_in(xs, 0) {
+  lone_at(lone_0, reach, fresh)
+} else if index_in(xs, 1) {
+  lone_at(lone_1, reach, fresh)
+} else if index_in(xs, 2) {
+  lone_at(lone_2, reach, fresh)
+} else if index_in(xs, 3) {
+  lone_at(lone_3, reach, fresh)
+} else {
+  r
+}
+
+// The four answers that name one parameter: whole, whole or fresh, a part,
+// and a part or fresh.
+type LoneAnswers = LoneAnswers(Returns, Returns, Returns, Returns)
+
+fn lone_answers(p) = {
+  let at = [p]
+  LoneAnswers(
+    ReturnsParams(at, false),
+    ReturnsParams(at, true),
+    ReturnsPartOf(at, false),
+    ReturnsPartOf(at, true)
+  )
+}
+
+fn lone_at(answers, reach, fresh) = match answers {
+  LoneAnswers(whole, whole_or_fresh, part, part_or_fresh) => match reach {
+    ReachValue => if fresh { whole_or_fresh } else { whole },
+    ReachParts => if fresh { part_or_fresh } else { part },
+  },
+}
+
+let lone_0 = lone_answers(0)
+
+let lone_1 = lone_answers(1)
+
+let lone_2 = lone_answers(2)
+
+let lone_3 = lone_answers(3)
 
 // Whether a target is memory that existed before the view's extent, and
 // whether any of a value's targets is.
@@ -12766,8 +12816,13 @@ fn read_step_of(n, recv) = match graph_node_body(n) {
 // install here answers it, every handler that provides the op is read the
 // same way, in its arm's own scope, and what its arm resumes is carried out
 // of sight by `arm_target_unseen`: a state field of some install around the
-// caller, or older memory. An op with no provider answers older memory.
-fn perform_targets(h, answered, scope, view) = match answered {
+// caller, or older memory. An op with no provider answers older memory. An
+// op that never returns answers nothing, so its perform adds no answer and
+// has no parts.
+fn perform_targets(h, answered, scope, view) =
+  if op_never_returns(performed_op(h)) { [] } else { answered_targets(h, answered, scope, view) }
+
+fn answered_targets(h, answered, scope, view) = match answered {
   Some(install) => match install_arm(install, h) {
     Some((kind, arm)) => {
       let resumed = collect_resumes(handler_arm_body(arm))

@@ -1,0 +1,26 @@
+$ mentl query tests/micros/mn-claim-element-is-part.mn claim of list_index
+  → claim of list_index
+    mutated: none
+    through parts: none
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: part of parameters 0
+    holds: older
+    stores: none
+    returned: 0 node(s)
+$ mentl query tests/micros/mn-claim-element-is-part.mn claim of first_of
+  → claim of first_of
+    mutated: none
+    through parts: none
+    captures: 0 binder(s)
+    record: no
+    beyond: no
+    opaque: no
+    applies: none
+    returns: part of parameters 0
+    holds: older
+    stores: none
+    returned: 0 node(s)

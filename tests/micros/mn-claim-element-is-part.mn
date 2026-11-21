@@ -1,0 +1,7 @@
+// transcript
+// `first_of` hands back an element of the list it is handed, through the
+// library's `list_index`. Its claim says its answer is a part of parameter
+// 0, because `list_index`'s claim says that of its own answer.
+fn first_of(xs) = list_index(xs, 0)
+
+fn main() = len(first_of([[1, 2], [3]]))

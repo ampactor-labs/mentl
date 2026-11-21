@@ -29,7 +29,7 @@ MENTL_MEMORY.md, the memory north star, takes precedence over this document.
 Every landing's commit keeps this screen current. A session that has lost
 its context reads it first, then the parts CLAUDE.md's "What to read" names.
 
-- The pin is `087e88858d71`, on wasmtime 36.0.17. `mentl land --quick`
+- The pin is `8a201af57d54`, on wasmtime 36.0.17. `mentl land --quick`
   says where the tree stands against it.
 - Sessions run in the build container and, since 2026-11-12, on Morgan's
   own machine, where the Daisy Seed and its probe are on the desk. §11.B's
@@ -142,6 +142,17 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   pin built, each declaring `!Mutate` or a race-free parallel fill over
   rows its own function built, until F3's column records what a store
   put there (§7).
+- F3b landed on 2026-11-21 (pin 8a201af57d54): an element read out of a list
+  is a part of the list. `mentl query src/main.mn "claim of list_index"`
+  answers `returns: part of parameters 0` where it answered `older`, and
+  the values the walk cannot place fell from 31,240 to 30,404. An answer
+  that names one of the first four parameters is a shared value, which
+  keeps the claims' memory under the line ratchet. The testers' 313
+  programs answer as before. `fold`, `flat_map`, `find`,
+  `wmap_get` and `pt_get` still answer `older` until F3c, the column of
+  what a store puts into a list. Building F3b also met a false proof: a
+  module value read before it is set (§7), which is the next wheel box,
+  before F3c.
 - Box 5 landed on 2026-11-20 (pin 087e88858d71): a closure called from a `><`
   or `<|` branch inside an arena roots the arena its write predates. On the
   pin before it, `mentl check` accepted such a program and `mentl run`
@@ -1065,6 +1076,16 @@ program and `mentl run` shows the break.
   tests/micros/mn-sum-that-wraps-stays-open.mn prints its claim as
   pending, builds, and `mentl run` exits 4 after reading its list at the
   index -2147483648.
+- A module value that reads a module value written after it reads it
+  before it is set, and `mentl check` says nothing. `let first =
+  len(later)`, then `let later = [1, 2, 3]` and `fn main() = first`: the
+  check exits 0 and `mentl run` exits 0, where the answer is 3 (measured
+  2026-11-21 on pin 087e88858d71). The compiler's own source met it while
+  F3b was built: two shared answers read a later list, the probe read them
+  as no memory, and it refused fourteen of its own functions as mutating.
+  F3a's `no_memory` read `no_positions` the same way and was right only
+  because an unset list reads as empty; F3b moved it below (§11.4, a module
+  is a scope, whose values are read in the order their reads require).
 - The judgment's proof that an arena's exit needs no journal is still
   wrong in one shape, found on 2026-11-20 by programs written to break
   F3a's probe, and older than F3a: it fails the same way on pin
@@ -1608,7 +1629,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Four
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1652,6 +1673,10 @@ leave, and the landing deletes them.
    constructors, and `mentl check src/lexer.mn` prints one open position
    claim where it printed twelve. The one left needs the bound a `let` has
    by its value inside the path's proof, which F8 brings.
+   A false proof that a real program hits comes next, after the host
+   turn F3b's landing owes: a module value read before it is set (§7),
+   which the compiler's own source met on 2026-11-21. It is written as a
+   box from probes before F3c.
    Two false proofs were found on 2026-11-20 (§7). The fanout branch's
    landed the same day as Box 5 (pin 087e88858d71): a closure called from a `><`
    or `<|` branch inside an arena roots the arena its write predates, since
@@ -1711,12 +1736,15 @@ leave, and the landing deletes them.
    targets, a claim says which parameters a function writes through their
    parts and whether its answer may also be fresh, a `let` an arena does
    not own is also its value's memory, and a closure's write into a
-   capture roots the arenas the capture predates. F3b then says that a
-   load answers a part of the memory its address names and that a branch
-   which never returns adds no answer. A probe compiler measured it at
-   31,998 unplaced values to 30,818 on the pin before F3a, and it is
-   measured again on F3a's pin before it is written as a box. F5: a module
-   is a scope (§11.4's first part).
+   capture roots the arenas the capture predates. F3b landed on
+   2026-11-21 (pin 8a201af57d54): a load answers a part of the memory its address
+   names, so `list_index` answers a part of its list, and a perform of an
+   operation that never returns adds no answer; the unplaced values fell
+   from 31,240 to 30,404. F3c is the column itself, written as a box from
+   probes: whether its memory stays under the line-peak ratchet without
+   F2, how an allocation keeps its identity across a call, which of the
+   programs F3a refuses it accepts again, and what the count falls to. F5:
+   a module is a scope (§11.4's first part).
    F8, after F2: what a `let` or a destructured part can be is a fact at
    its binder, held in a column and read by the path's proof, which
    closes T1a's twelfth claim. Box 2, the second half of L1, reads only
@@ -2480,59 +2508,6 @@ first two.
 
    Proves it. tests/frontier/mcp.transcript gains the three requests above,
    each red on the pin, and `mentl land`.
-
-4. **Box F3b · An element read out of a list is a part of the list.**
-   Written 2026-11-21 from a probe of pin 087e88858d71. It is the first
-   step of F3 in §11.B's order, re-measured on F3a's pin as the order
-   asks.
-
-   What a person sees. `mentl query src/main.mn "claim of list_index"`
-   answers `returns: part of parameters 0`, where the pin answers
-   `returns: older`. `drop_last`'s claim answers `part of parameters 0, or
-   fresh`, where the pin answers `older`. So a function that hands back an
-   element of a list it was handed says so in its own claim, and every
-   caller places that answer.
-
-   Fails today, on the pin: the two claims above, and `mentl verify`
-   counts 31,240 values whose memory the walk cannot place.
-
-   The form.
-   - src/graph.mn: `memory_read_stop` reads `load_addr`'s argument. The
-     address a load reads was stored in the memory its argument names, so
-     the answer is a part of that memory (`address_read_stop`, a
-     `StopPartOf`). Today it is memory nothing in sight names
-     (`StopBeyond`).
-   - src/infer.mn: `perform_targets` answers nothing for a perform of an
-     operation that never returns (`op_never_returns`), where it answered
-     older memory. Its old body becomes `answered_targets`.
-   - Measured on a probe: the first part alone places 146 values, and the
-     two together place 855.
-
-   What it reads. The load's argument node, which the call carries. Whether
-   the performed operation returns, which `op_never_returns` reads from the
-   operation's published scheme; `mentl where FILE OP` prints it on the pin.
-
-   Edge cases.
-   - A `load_addr` with no argument stays older memory.
-   - An operation that never returns, in one arm of a match, adds nothing
-     to the join of the arms.
-   - An operation that returns keeps what its arm resumes.
-
-   Soundness. The step exposed a false proof on 2026-11-20, a store through
-   a part of a parameter reached through `list_index`, which F3a closed.
-   The testers' 313 programs give the same answer on the pin and on the
-   probe, 272 right on both.
-
-   What pays for it. The unplaced count falls from 31,240 to 30,385, and
-   its limit falls with it. No other count moves.
-
-   Left alone. The store column (F3c), which places what a store puts into
-   a list, so that `fold`, `flat_map`, `find`, `wmap_get` and `pt_get`
-   still answer `older`.
-
-   Proves it. A fixture in tests/micros whose transcript holds the claims
-   of `list_index` and of a helper that returns an element, red on the
-   pin, and `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order

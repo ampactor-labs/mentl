@@ -532,7 +532,17 @@ fn board_bounds() = [
   // in modules whose code did not change: derive 172, the emitter 159, the
   // verify module 121 and the lowering 99. The infer module's new code is
   // net of it.
-  Bound({ceiling: 31240, question: QCensus(CsUnplaced)}),
+  // 31,240 -> 30,404 (2026-11-21): the walk places values it could not
+  // place before. An address `load_addr` reads was stored in the memory its
+  // argument names, so the load answers a part of that memory: `list_index`
+  // says it answers a part of its list, and `drop_last` a part of its list or
+  // memory it allocated. A perform of an op that never returns adds no
+  // answer. That placed 855, spread over the link: the wasm backend 166, the
+  // infer module 161, derive 102, the assembler 81, the lowering 79, imap 57,
+  // effects 43 and strings 42. The answers that name one of the first four
+  // parameters became shared values, which keeps the claims' memory under
+  // the line ratchet, and their code adds 19 of its own.
+  Bound({ceiling: 30404, question: QCensus(CsUnplaced)}),
   // THE OPS OF A READ EFFECT READ (PLAN §11.1(b)): a resume that writes a
   // handler's state in the arm of an op whose effect's name says it reads
   // is a write a `!...Write` clause cannot see. Born 2026-10-30 at 4 and

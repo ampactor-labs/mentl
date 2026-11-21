@@ -607,7 +607,7 @@ fn stops_of(h) = match value_tails(h) {
     // whose arms all abandon, such as `fail`, never answers its perform: as a
     // word, it is no memory and has no parts (`callee_abandons`).
     NExpr(CallExpr(callee, args)) => if is_memory_read(callee) {
-      [memory_read_stop(h, callee)]
+      [memory_read_stop(h, callee, args)]
     } else if is_address_op(callee) {
       match args {
         [a, ..._] => if is_word_addr(callee) { stops_of(a) |> map(word_as_address(h, ??)) } else { stops_of(a) },
@@ -731,12 +731,19 @@ fn is_memory_read(callee) = match graph_ref_decl(callee) {
 }
 
 // A memory read's stop: a Memory read answers a word, which is no memory,
-// except load_addr, whose answer is an address naming an allocation nothing
-// in sight names.
-fn memory_read_stop(h, callee) = match graph_node_body(callee) {
-  NExpr(VarRef(cname)) => if cname == "load_addr" { StopBeyond(h) } else { StopWord(h) },
+// except load_addr, whose answer is an address read out of the memory its
+// argument names (`address_read_stop`).
+fn memory_read_stop(h, callee, args) = match graph_node_body(callee) {
+  NExpr(VarRef(cname)) => if cname == "load_addr" { address_read_stop(h, args) } else { StopWord(h) },
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NRow(_) | NParam(_) => StopWord(h),
+}
+
+// The address a load reads was stored in the memory its argument names, so
+// the answer is a part of that memory, as an element is a part of its list.
+fn address_read_stop(h, args) = match args {
+  [a, ..._] => StopPartOf(h, a),
+  [] => StopBeyond(h),
 }
 
 // Whether a reference names an op whose answer is its first argument's
