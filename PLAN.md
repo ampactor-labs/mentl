@@ -142,6 +142,16 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   pin built, each declaring `!Mutate` or a race-free parallel fill over
   rows its own function built, until F3's column records what a store
   put there (§7).
+- H3, a host box, landed on 2026-11-21: one convention for versions and
+  names. The medium's version is its pin, `pin 674 · 8a201af57d54`, and the
+  page's header shows it for the compiler it loaded, or `candidate ·
+  <hash>` for one no pin names (`bash tools/ide-gate.sh`, its pin leg). A
+  landing has one name, its letter and number, and the letters are listed
+  at the top of §11.B: Box 1 is T3, Box 2 is L1b, Box 6 is P8, and the
+  module-value fix is F5a. A thread is a projection of the schedule (§4㉒),
+  so P5 moves the gates to the newest engine with lesson 10 unchanged.
+  Every command README quotes was run again on the pin; one answer had
+  gained a line and is updated.
 - F3b landed on 2026-11-21 (pin 8a201af57d54): an element read out of a list
   is a part of the list. `mentl query src/main.mn "claim of list_index"`
   answers `returns: part of parameters 0` where it answered `older`, and
@@ -153,7 +163,7 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   what a store puts into a list. Building F3b also met a false proof: a
   module value read before it is set (§7), which is the next wheel box,
   before F3c.
-- Box 5 landed on 2026-11-20 (pin 087e88858d71): a closure called from a `><`
+- The fanout branch's fix landed on 2026-11-20 (pin 087e88858d71): a closure called from a `><`
   or `<|` branch inside an arena roots the arena its write predates. On the
   pin before it, `mentl check` accepted such a program and `mentl run`
   stopped at the arena's own check, and a function whose closure wrote its
@@ -179,11 +189,12 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   design and implement the medium; main follows every green pin; the
   engine is the newest stable release; work that serves none of the five
   properties of §4⑭ waits.
+- Decided by Morgan on 2026-11-21: a thread is a projection of the
+  schedule, read from what the target offers (§4㉒), so wasmtime 47's
+  removal of wasi-threads changes no program; and the medium's version is
+  its pin, written `pin 674 · 8a201af57d54` (§4㉓).
 - Open decisions of Morgan's: the one-line license statement, whether
-  `??` in a constructor's field is a value hole (§11.B, Box 2), how a fork
-  reaches a second core now that wasmtime 47 and later have no
-  wasi-threads, which lesson 10 imports (§11.B, P5), what the medium's
-  version is called in its two servers (§11.B, Box 6), and
+  `??` in a constructor's field is a value hole (§11.B, L1b), and
   whether an alias that names itself, `type Tree = [Tree]`, means a
   recursive type. It is refused as an infinite type since 2026-11-15
   (tests/micros/mn-alias-names-itself.mn), and stays refused until he
@@ -697,7 +708,7 @@ environment, the console) is one library module that holds its effect and
 up to four kinds of handler: the host's own, a recorder that keeps every
 answer, a replayer that answers from a recording, and models that say they
 are models. No handler answers from a hand-written table in place of the
-host. The host target is ordered by what it unlocks: WASI preview 1's
+host. The host target is ordered by what it unlocks: WASI 0.1's (preview 1's)
 clock, randomness and sleep first (§11.11), then the WASI 0.3 component
 target with a real network (§11.14). Continuations the engine owns are left
 out, because a continuation the engine holds cannot be saved into the
@@ -826,6 +837,27 @@ built). The first such count is the values the judgment cannot place:
 while a list's element has no place, a record, an option, a pattern and a
 pipeline each raise a limit that may not rise. The opening screen holds
 the measurement.
+
+**㉒ A thread is a projection of the schedule** (Morgan, 2026-11-21). A
+program says which work is independent with `><` and which schedule runs
+it with `~> parallel_compose` or `~> sequential_compose`, and never names a
+thread. The compiler projects the schedule onto what the target offers:
+WebAssembly threads where the engine provides them, the page's workers,
+the cores of a chip, or the branches in sequence where nothing else is
+offered, with the same answers since each branch owns its input. The way
+to every core is MENTL_MEMORY's M5 and M7 and §11.8. So an engine that
+removes a thread facility, as wasmtime 47 removed wasi-threads, changes a
+projection and no program.
+
+**㉓ The medium's version is its pin** (Morgan, 2026-11-21). A pin is
+written `pin N · <hash>`: N its place in boot/PROVENANCE.md's chain since
+first light, the hash the first 12 hex digits of the boot's sha256. It is
+the only version the medium states: the page's header, the verb P8 adds
+to the command line, and both servers, and nothing is bumped by hand. A compiler no pin names is
+`candidate · <hash>`. Outside versions keep their owners' numbers: WASI
+0.1 (preview 1), 0.2 and 0.3, wasmtime 36.0.17, and the Model Context
+Protocol by its revision date. `first-light` names the bootstrap tag, never
+a version.
 
 **㉑ Boxes that change no compiler source take turns with the wheel's
 boxes** (Morgan, 2026-11-19). A host box changes `ide/`, `examples/`,
@@ -1632,12 +1664,24 @@ and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
 review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
+**How a landing is named.** A landing has one name, its letter and
+number, and a lowercase letter names one part of it (F3a, F3b). A box is a
+landing written out below, so it carries the landing's name. The letters:
+P, the gates, the pass and the agent gate; T, what is called proven is
+true; F, the foundations the mechanisms stand on; K, the five mechanisms of
+§4⑧; M, MENTL_MEMORY.md's landings, by its numbers; R, the language's
+surface and its real host; L, the loop at the keyboard (proposals,
+refusals, teaching); C, receipts; O, the oracle at scale; N, the native
+projection; H, host boxes, which change no compiler source. A pin is named
+`pin N · <hash>` (§4㉓), and a design by its §11 number inside PLAN and by
+its title outside it.
+
 **The order from 2026-11-13.** This is the only order. Every landing in it
 reads only facts that earlier landings carry, so no landing is built to
 make up for a foundation that does not exist yet. It replaces three lists
 that disagreed: the order of 2026-11-12, its "first stretch", and a list of
 what came next. All three ran readers before the mechanisms they read.
-Box 4 showed the cost on 2026-11-13: its whole-program read of claims walks
+The verdict-column landing showed the cost on 2026-11-13: its whole-program read of claims walks
 every cell the verdict column wrote and filters out the stale ones
 (`current_at`, then a set of the link's modules), with an arena at each
 caller, because neither the reach (§11.1(c)) nor the face's contract part
@@ -1674,11 +1718,11 @@ leave, and the landing deletes them.
    claim where it printed twelve. The one left needs the bound a `let` has
    by its value inside the path's proof, which F8 brings.
    A false proof that a real program hits comes next, after the host
-   turn F3b's landing owes: a module value read before it is set (§7),
-   which the compiler's own source met on 2026-11-21. It is written as a
-   box from probes before F3c.
+   turn F3b's landing owes: F5a, a module value read before it is set
+   (§7), which the compiler's own source met on 2026-11-21. It is written
+   as a box from probes before F3c.
    Two false proofs were found on 2026-11-20 (§7). The fanout branch's
-   landed the same day as Box 5 (pin 087e88858d71): a closure called from a `><`
+   landed the same day (pin 087e88858d71): a closure called from a `><`
    or `<|` branch inside an arena roots the arena its write predates, since
    one step of the ages walk no longer writes back a copy of its scope that
    is out of date. The handler arm's waits for K4: a perform can be charged with what its arm writes only once the
@@ -1747,14 +1791,14 @@ leave, and the landing deletes them.
    a module is a scope (§11.4's first part).
    F8, after F2: what a `let` or a destructured part can be is a fact at
    its binder, held in a column and read by the path's proof, which
-   closes T1a's twelfth claim. Box 2, the second half of L1, reads only
+   closes T1a's twelfth claim. L1b, the second half of L1, reads only
    carried facts and goes here; it leaves alone the case Morgan has yet to
    decide.
 4. The mechanisms. Each lands first with the answers that today's separate
    walks give, then deletes those walks. K1: the reach (§11.1(c)). K2: the
    face's contract part, in which each declaration publishes the claim
    nodes its body raised, beside its parameters' guard rows, which are
-   already carried; Box 4's walk over the verdict column, its two filters
+   already carried; the verdict-column landing's walk over the column, its two filters
    and its read arenas leave with K2. K3: the lowering column (§11.2, its
    first part). K4: the index of the install that answers each operation
    (§11.1(a)), whose failing tests are §7's seven programs in which a
@@ -1776,7 +1820,8 @@ leave, and the landing deletes them.
    MENTL_MEMORY's M11.
 
 The landings are described once below, by letter. A letter names a landing
-in this list alone. Box 1 is T3, and Box 2 is the second half of L1.
+in this list alone. T3, L1b and P8 are written out as boxes after the
+three checks that failed at random.
 
 The P landings make the pass truthful, then fast. A cold
 pass took 12 to 16 minutes on 2026-11-11, read from file times, since no
@@ -1937,21 +1982,24 @@ minute, and no expectation kept by hand.
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
   2026-11-12, where exception handling and multiple memories are on by
   default), and the compiler compiles itself to the same bytes under a
-  second engine (§4⑯). Measured first, on 2026-11-21, and in the way:
-  wasmtime 47 (released 2026-07-20) removed wasi-threads, as the Bytecode
-  Alliance's accepted RFC "Remove wasi-threads and wasi-common from
-  Wasmtime" set out, and the newest stable release is 51.0.0 (2026-11-20).
-  The gates run 36.0.17 (tools/wasmtime-get.sh), a long-term-support
-  release that keeps wasi-threads and is supported until 2027-08-20.
-  Lesson 10 imports `wasi.thread-spawn` (`mentl compile
-  examples/pulse/course/10-voices.mn`), and from wasmtime 47 no engine
-  release provides that import, so the lesson cannot be instantiated there
-  (not yet run). The RFC names WASI 0.3's cooperative threads, which run
-  one at a time, for now, and the shared-everything-threads proposal for
-  parallel threads later. So the gates cannot move while a program they
-  run spawns threads. How a fork reaches a second core (§11.8) is decided
-  before P5 is written as a box, and the decision is Morgan's, since §4⑯
-  is his word.
+  second engine (§4⑯). Measured first, on 2026-11-21: wasmtime 47
+  (released 2026-07-20) removed wasi-threads, as the Bytecode Alliance's
+  accepted RFC "Remove wasi-threads and wasi-common from Wasmtime" set out,
+  and the newest stable release is 51.0.0 (2026-11-20). The gates run
+  36.0.17 (tools/wasmtime-get.sh), a long-term-support release that keeps
+  wasi-threads and is supported until 2027-08-20. Lesson 10 imports
+  `wasi.thread-spawn` (`mentl compile examples/pulse/course/10-voices.mn`),
+  and no engine release from 47 provides it. The program does not change
+  for this (§4㉒): lesson 10 says its voices are independent with `><`,
+  and `~> parallel_compose` asks for them to run side by side. P5's box
+  makes the schedule read what the target offers. Where the engine offers
+  threads, `parallel_compose` runs on them; where it offers none, it runs
+  the branches in sequence, which gives the same answers since each branch
+  owns its input, and the module and `mentl audit` say which ran. The
+  gates move to the newest engine, and one leg stays on 36.0.17 until an
+  engine ships the shared-everything-threads proposal, the RFC's named
+  successor, so a real second thread stays measured. The page runs
+  threads on its own workers, and a chip runs them on its cores (N).
 - P7. `mentl land` prints the census of the five operators, index walks,
   let-chains and rosters for the modules a landing touched, against the
   pin's. A landing adds no index walk, let-chain or roster.
@@ -2009,7 +2057,7 @@ minute, and no expectation kept by hand.
   that adds one.
 - T2. An effect no longer slips past a negation through a recursive group
   (§11.1(a)).
-- T3. Every battery runs each `// expect` fixture both ways (Box 1).
+- T3. Every battery runs each `// expect` fixture both ways (written out below).
 - T4. An extent can end early. A handler answers the operation that a
   guard's other arm performs, or a `Trap` its row admits; the extent's
   memory is reclaimed, its stores into older memory are undone, and the
@@ -2229,7 +2277,7 @@ march run alone before any code changes.
 
 The third is settled, and its cause is open in 144 more lines. On
 2026-11-13 the frontier leg for the decls facet
-(tests/frontier/mn-decls-facet.mn) marked Box 4's landing pass red, while
+(tests/frontier/mn-decls-facet.mn) marked the verdict-column landing's pass red, while
 the pin and the candidate wrote the same 19,583-byte answer. The leg piped
 that answer into `grep -q`, which exits at its first match. The shell
 writes the answer in several chunks, so a later chunk can meet a closed
@@ -2247,7 +2295,7 @@ that should fail.
 They leave when the gate's legs are read by the medium instead of the
 shell, as transcripts (P3, §11.9).
 
-1. **Box 1 · Every battery runs each `// expect` fixture both ways.**
+1. **T3 · Every battery runs each `// expect` fixture both ways.**
    Written 2026-11-10; it is T3, in stage 6 of the order, because its
    single-judgment form needs the lowering column and the evaluator
    (below), and built before them it would write into the `LowExpr`
@@ -2291,7 +2339,7 @@ shell, as transcripts (P3, §11.9).
    box: it needs the lowering to be a column of the graph (§11.2).
 
    What pays for its code on the board. For the gate: the join, which this
-   box first named as its payment, pays for Box 2, which is built first.
+   box first named as its payment, pays for L1b, which is built first.
    This box adds one compile and one printed line. Its candidate's `mentl
    verify` says what that raises, and the payment is named here before the
    box is built.
@@ -2349,7 +2397,7 @@ answer says, then the same search under a refusal, then forks on every
 core. `written-back` on lesson 8 and on the proposals fixture measures the
 first two.
 
-2. **Box 2 · A proposal is a whole expression, and a hole is filled only
+2. **L1b · A proposal is a whole expression, and a hole is filled only
    where the program decides the answer.** Written under the reins of
    2026-11-10 and not built; it stands in stage 3 of the order. It leaves
    alone `??` in a constructor's field until Morgan says whether that is a
@@ -2437,7 +2485,7 @@ first two.
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
 
-3. **Box 6 · `mentl mcp` speaks the current protocol, and claims only the
+3. **P8 · `mentl mcp` speaks the current protocol, and claims only the
    versions it serves.** Written 2026-11-21 from a probe of pin
    087e88858d71 and the Model Context Protocol's revision of 2026-07-28,
    the current one (modelcontextprotocol.io, "Versioning"; the released
@@ -2503,8 +2551,13 @@ first two.
    needs to ask the client anything. Tasks, roots, sampling and logging,
    which the revision moved out or deprecated.
 
-   One question is Morgan's: what the medium's version is called, which
-   both servers will print.
+   The version both servers print is the pin, `pin 674 · 8a201af57d54`
+   (§4㉓). The compiler cannot hold its own hash, so the `mentl` launcher
+   passes it: it hashes the boot it runs, finds that hash's place in
+   boot/PROVENANCE.md, and passes `candidate · <hash>` for a compiler no
+   block names. A `version` verb prints the same, with the pin's line from
+   boot/PROVENANCE.md, and the launcher's added lines are paid by shorter
+   comments under tools/.
 
    Proves it. tests/frontier/mcp.transcript gains the three requests above,
    each red on the pin, and `mentl land`.
@@ -2514,7 +2567,7 @@ what came next, in an order of its own. Each item now stands in the order
 above under the letter at its start, and is cut into boxes when its turn
 comes.
 
-- Box 2. A proposal is a whole expression, and it is the text that means what was
+- L1b. A proposal is a whole expression, and it is the text that means what was
   proven. At a position that wants a value, a call or a construction is
   offered complete, each argument found by asking at that argument as at
   any hole, and a call that still holds `??` is offered only where a
@@ -2995,7 +3048,7 @@ says "mentl accept: no proposal at this position"
 address says the tie is a question: the session's `apply_suggestion` and
 the address form's `accept_at` decide one accept twice (2026-11-16). The gate's server names its version
 "first-light", agrees to any protocol version a client asks for, and has
-no `server/discover` (§11.B, Box 6). A session answers `where` and `query` and misses on
+no `server/discover` (§11.B, P8). A session answers `where` and `query` and misses on
 `why`. The prelude imports `threading` and uses nothing from it, which
 `query imports` marks DEAD.
 A dropped value

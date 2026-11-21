@@ -2,7 +2,7 @@
 
 Mentl closes the gap between what a person means and what they are forced to write. You usually know what a piece of code must never do: the frame that renders each block of audio must never allocate memory, and the decision a grid controller makes must never wait on the network. Most languages give you no way to write that down, and make you write everything else instead: types, borrows, lifetimes and error plumbing that a compiler could work out for itself. In Mentl you write three things: the shape of each flow, with five operators named for what they do (pipe, share, split, install and feedback); the rules each part keeps, such as `with !Alloc` or the range a number stays in; and the handlers that say what each effect does. The compiler works out the rest, every type, effect, ownership and width. It checks each rule through every function the code calls, on every build, and a version that breaks a rule does not build. So nobody reviews the code for that rule again, whoever or whatever edits it next.
 
-The programs in this repository show it working today: a course of twelve audio lessons that build one signal chain, two complete pieces rendered from code, a controller for a model flywheel and battery on the power grid, and the compiler itself, which is written in Mentl and compiles itself to the same bytes. Every output on this page is what the pinned compiler, `boot/mentl.wasm` (pin `11389157fa42`, recorded in `boot/PROVENANCE.md`), printed when the command was run for this page.
+The programs in this repository show it working today: a course of twelve audio lessons that build one signal chain, two complete pieces rendered from code, a controller for a model flywheel and battery on the power grid, and the compiler itself, which is written in Mentl and compiles itself to the same bytes. Every output on this page is what the pinned compiler, `boot/mentl.wasm` (pin 674 · `8a201af57d54`, recorded in `boot/PROVENANCE.md`), printed when each command was run again on 2026-11-21.
 
 ## Start with nothing
 
@@ -47,6 +47,7 @@ Propose: 2 proven survivors — a tie:
   1  — inferred from the type's integer inhabitants
   the survivors differ in VALUE — 0 or 1 — and the type admits 0 through 1: which one does this position mean?
 Effects: whatever its position permits — a hole states no row
+Verify: pending conjunction 0 <= self && self <= 1 at bit:8:14-8:17
 Why: returned from pick, at bit:8
      body
      its type: declared pick, at bit:8
@@ -87,7 +88,7 @@ effects: E_EffectUnhandled error: nothing handles Network either: it reaches the
 
 [Open the refused program in Mentl Space](https://mentl.ampactor.dev/?at=examples/grid/station-leak.mn), where the two errors are listed under the editor.
 
-Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI preview 1, the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.3 component target, and a real network").
+Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI 0.1 (preview 1), the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.3 component target, and a real network").
 
 On the controller itself, `mentl check` prints nothing. `main` declares `!Trap`, so the same check covers the whole program on every build, from reading a line to printing its decision, through every function `main` calls and every arm of the handlers it installs: `station`, and `wasi_stdin`, which reads each line from the program's input. A version in which any of them could fail a check does not build:
 
@@ -220,7 +221,7 @@ Never claimed: that a program does what its author meant. What the compiler cann
 
 ## Quick start
 
-The compiler is one WebAssembly module, `boot/mentl.wasm`. It imports WASI preview 1 and nothing else, and it needs an engine with tail calls.
+The compiler is one WebAssembly module, `boot/mentl.wasm`. It imports WASI 0.1 (preview 1) and nothing else, and it needs an engine with tail calls.
 
 ```sh
 git clone https://github.com/ampactor-labs/mentl.git && cd mentl

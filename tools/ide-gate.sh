@@ -30,16 +30,11 @@ browser=$(find_browser)
 
 if [ -n "$browser" ]; then
   echo "── ide gate · leg 2: the browser (the STAGED site + headless chrome) ──"
-  # The site the gate drives is the site the deploy ships: ide/space.manifest
-  # staged by tools/space-stage.sh and served with the two isolation headers
-  # by tools/space-serve.py — never the repo root, so a file the page needs
-  # and the manifest lacks is red here before it is a 404 in production.
+  # The gate drives the site the deploy ships, staged and served as the deploy serves it.
   port="${MENTL_IDE_GATE_PORT:-7397}"
   stage=".build/space"
   bash tools/space-stage.sh "$stage" >/dev/null || { echo "  staging FAILED"; fail=1; }
-  # A candidate compiler (MENTL_IDE_WASM — the twin's seam too) replaces the
-  # staged boot, so a wheel landing's page is judged against the wheel it
-  # carries before the repin makes that wheel the boot.
+  # A candidate (MENTL_IDE_WASM) replaces the staged boot, so a landing's page is judged before its repin.
   if [ -n "${MENTL_IDE_WASM:-}" ]; then cp "$MENTL_IDE_WASM" "$stage/boot/mentl.wasm" && echo "  candidate: $MENTL_IDE_WASM"; fi
   python3 tools/space-serve.py "$stage" "$port" &
   sp=$!
@@ -137,6 +132,9 @@ if [ -n "$browser" ]; then
       echo "  link leg: PASS — lesson 1 opens first, and the link opens lesson 3 at 49:30 with the answer mentl gives there" ;;
     *) echo "  link leg: FAIL — the page did not open lesson 1 first, or the link did not open lesson 3 at 49:30 with that answer"; fail=1 ;;
   esac
+  # The pin leg: the page names the compiler it loaded as boot/PROVENANCE.md does, or as a candidate (PLAN §4㉓).
+  h=$(sha256sum "$stage/boot/mentl.wasm" | cut -c1-12); read -r _ pn ps < <(grep '^pin ' "$stage/space.manifest"); want=$([ "${ps:0:12}" = "$h" ] && [ "$pn" != - ] && echo "$pn:$h" || echo "candidate:$h")
+  case "$lines" in *"SPACE-READY "*"pin=$want "*) echo "  pin leg: PASS — the page names the compiler it loaded, $want" ;; *) echo "  pin leg: FAIL — the page did not print pin=$want"; fail=1 ;; esac
 else
   echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME) ──"
 fi

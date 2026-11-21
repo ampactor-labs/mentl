@@ -54,12 +54,21 @@ back what changed and why after one reading, rewrite it.
 ### Glossary
 
 - **Box:** one bounded piece of work, written out in PLAN §11.B before
-  anyone builds it ("Boxes", below).
+  anyone builds it ("Boxes", below). It carries the name of the landing it
+  is, never a number of its own.
+- **A landing's name:** its letter and number in PLAN §11.B's order, with a
+  lowercase letter for one part (F3a, F3b). The top of §11.B says what each
+  letter covers.
 - **Landing:** one complete, committed piece of work: a box that passed
   `mentl land`.
 - **The wheel:** the compiler's own source, `src/` and `lib/`.
 - **The boot, a pin:** the pinned compiler binary, `boot/mentl.wasm`. Each
-  pin is one entry in its chain, recorded in `boot/PROVENANCE.md`.
+  pin is one entry in its chain, recorded in `boot/PROVENANCE.md`, and is
+  written `pin N · <hash>`: its place in the chain since first light, and
+  the first 12 hex digits of its sha256.
+- **The version:** the pin. It is the only version the medium states, and
+  nothing is bumped by hand (PLAN §4㉓). A compiler no pin names is
+  `candidate · <hash>`.
 - **The candidate:** the compiler built from the source in your working tree.
 - **The march:** the self-compile check. The boot compiles the wheel into m2,
   m2 compiles it into m3, and m2 must equal m3 byte for byte.
@@ -321,8 +330,8 @@ order they run.
   A read with no such command means the box is not ready: the box that
   carries the fact is written and built first. A read through none of the
   five is refused here. Walking a whole store and filtering out what is
-  stale is the shape that fails: Box 4's whole-program read of claims did
-  it because no face listed a declaration's claims and no reach walked the
+  stale is the shape that fails: the verdict-column landing's whole-program
+  read of claims did it because no face listed a declaration's claims and no reach walked the
   program, and three compensations followed in one landing (2026-11-13).
 - A box names the compensations its landing lets leave, and the landing
   deletes them.
@@ -626,7 +635,8 @@ Each rule here was paid for by a stop or a wrong answer.
   of them can answer, the question is a verb gap: record it and build it
   ("Mentl builds Mentl", above).
 - When a fact moves into the graph, the store it lived in leaves in the
-  same landing, with every reader of that store. Box 4's first form wrote
+  same landing, with every reader of that store. The verdict-column
+  landing's first form wrote
   each claim's verdict at its node and kept the ledger's lists beside the
   column, so every open claim was stored twice and six readers still
   scanned the lists for a matching position. Morgan asked whether it was a

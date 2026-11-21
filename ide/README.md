@@ -48,6 +48,11 @@ the grid controller, measured on 2026-11-20 in headless Chromium. The page rende
 WebAssembly text only on demand, in the Module tab, and never on each
 keystroke.
 
+The header names the compiler the page runs, as `pin 674 · 8a201af57d54`: its
+place in `boot/PROVENANCE.md`'s chain since first light and the first 12 hex
+digits of its sha256, read from the bytes the page loaded. A compiler no pin
+names shows as `candidate · <hash>` (PLAN §4㉓).
+
 The page has these surfaces, and each one is a projection of the compiler's
 own answer (docs/MENTL_SPACE.md describes the interaction architecture, and
 docs/DESIGN_SYSTEM.md the tokens, which live in `ide/tokens.css`):

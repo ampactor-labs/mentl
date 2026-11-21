@@ -24,6 +24,7 @@
 
   /* ── header ─────────────────────────────────────────────────────────────── */
   header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--abyss); }
+  #pin { font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
   .mark { display: flex; align-items: center; gap: 10px; }
   .mark svg { width: 28px; height: 28px; display: block; }
   .wordmark { font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: .03em; color: var(--bright); }
@@ -209,6 +210,7 @@
     </svg>
     <div class="wordmark">mentl<span>space</span></div>
   </div>
+  <span id="pin" title="the compiler this page runs: its pin in boot/PROVENANCE.md, or a candidate no pin names"></span>
   <select id="program" title="the program — a lesson, or your own"></select>
   <input id="find" spellcheck="false" autocomplete="off" placeholder="find by edge — a name, then ⏎" title="the references the graph noted under a name, and the string literals holding it">
   <div class="grow"></div>
@@ -279,6 +281,8 @@ async function ensureIsolated(){
 
 /* ── the manifest — one home of what the page fetches ───────────────────── */
 let BASE = "../", WASM_PATH = "boot/mentl.wasm", LIBS = [], PROGRAMS = [], PROJECTS = [];
+// The staged boot's pin, as staging read it from boot/PROVENANCE.md: [number, sha256], number "-" where no block names it.
+let PIN = null, PIN_KEY = "unpinned";
 let WHEEL_ENTRY = null, WHEEL_FILES = [];
 async function readManifest(){
   const r = await fetch("./space.manifest", { cache: "no-store" });
@@ -288,6 +292,7 @@ async function readManifest(){
     const [kind, path] = line.split(/\s+/, 2);
     if (kind === "root") BASE = path.replace(/\/?$/, "/");
     else if (kind === "wasm") WASM_PATH = path;
+    else if (kind === "pin") PIN = line.split(/\s+/).slice(1);
     else if (kind === "wheel") WHEEL_ENTRY = path;
     else if (kind === "wheel-member") WHEEL_FILES.push(path);
     else if (kind === "lib") LIBS.push(path);
@@ -1073,6 +1078,11 @@ async function boot(){
     PROGRAMS.forEach((k, i) => { VFS_TEXT[k] = texts[SOURCE_FILES.length + i]; });
     MEMBERS.forEach((k, i) => { VFS_TEXT[k] = texts[SOURCE_FILES.length + PROGRAMS.length + i]; });
     MODULE = await WebAssembly.compile(wasm);
+    // The compiler's version is its pin (PLAN §4㉓): the bytes this page loaded, named as boot/PROVENANCE.md names them.
+    const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", wasm))].map(b => b.toString(16).padStart(2, "0")).join("");
+    const pinned = PIN && PIN[1] === hash && PIN[0] !== "-";
+    PIN_KEY = (pinned ? PIN[0] : "candidate") + ":" + hash.slice(0, 12);
+    $("pin").textContent = pinned ? `pin ${PIN[0]} · ${hash.slice(0, 12)}` : `candidate · ${hash.slice(0, 12)}`;
     const sel = $("program");
     const offer = (e, parent) => { ENTRIES.push(e); const o = document.createElement("option"); o.value = e.key; o.textContent = e.label; parent.appendChild(o); };
     for (const p of PROGRAMS) offer({ key: p, label: programName(p), dir: null, path: p, file: "main.mn" }, sel);
@@ -1089,7 +1099,7 @@ async function boot(){
     // the one line the page prints on every open: a headless driver (ide/browser-leg.mjs) waits on it
     await settled();
     const topology = VIEW ? (VIEW.ring.find(f => f.kind === "topology") || {}).text || "" : "";
-    console.log(`SPACE-READY boot=${(performance.now() - T_BOOT).toFixed(0)}ms program=${PROGRAM} at=${new URLSearchParams(location.search).get("at")} theme=${document.documentElement.dataset.theme || "system"} topology=${JSON.stringify(topology)}`);
+    console.log(`SPACE-READY boot=${(performance.now() - T_BOOT).toFixed(0)}ms program=${PROGRAM} at=${new URLSearchParams(location.search).get("at")} theme=${document.documentElement.dataset.theme || "system"} pin=${PIN_KEY} topology=${JSON.stringify(topology)}`);
     if (location.search.includes("smoke")) smoke();
   } catch (e) {
     const b = $("err-banner"); b.style.display = "block"; b.textContent = "boot failed: " + e.message;

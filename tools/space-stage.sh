@@ -3,13 +3,10 @@
 #
 #   bash tools/space-stage.sh [out=.build/space] [project-dir...]
 #
-# ide/space.manifest is the ONE home of what the site is: the page reads it
-# to know what to fetch, this script copies exactly those files beside the
-# page, and the deploy workflow and the IDE gate both serve THIS directory —
-# so a file the page needs and the deploy lacks is a red gate, never a 404
-# found in production. The manifest's `root` line names where the page finds
-# its files: `..` in the repo (the page lives in ide/), `.` once staged (the
-# files are copied beside it).
+# ide/space.manifest names everything the site holds. The page reads it, this
+# script copies those files beside the page, and the deploy and the IDE gate
+# serve this directory, so a file the deploy lacks fails the gate first. Its
+# `root` line is `..` in the repo and `.` once staged.
 #
 # A `project <dir>` line names a folder of modules — a program of several
 # files (examples/pulse/render), the session's entry its main.mn and the
@@ -67,5 +64,7 @@ stage_wheel() {  # stage_wheel <entry> — compiler source available to the page
     esac
   done < ide/space.manifest
   for d in "$@"; do stage_project "project/$(basename "$d")" "$d"; done
+  # the staged boot's pin as boot/PROVENANCE.md names it (PLAN §4㉓): its place in the chain, or - for none, and its sha256
+  sha=$(sha256sum boot/mentl.wasm | cut -d' ' -f1); pins=$(grep '^- boot/mentl.wasm  sha256 ' boot/PROVENANCE.md || true); at=$(grep -n "$sha" <<<"$pins" | cut -d: -f1 || true); echo "pin $([ -n "$at" ] && echo $(( $(wc -l <<<"$pins") - at + 1 )) || echo -) $sha"
 } > "$out/space.manifest"
 echo "space-stage: $out ← ide/ + $(grep -cE '^(wasm|lib|program|member|wheel-member) ' "$out/space.manifest") files"
