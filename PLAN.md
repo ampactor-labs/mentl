@@ -2586,23 +2586,31 @@ first two.
    initializers in that order (`__init_lets`, src/backends/wasm.mn). Each
    value is a global that reads 0 until its initializer runs.
 
-   The form, made exact on a probe before it is built.
-   - The reads of an initializer are the module values reachable from its
-     node along the reference edges the judgment drew, through the bodies
-     of the functions it calls, by the walk `mentl query FILE unreachable`
-     already makes from every module value (`ur_walk`, src/query.mn). They
-     are read once per initializer, never per caller.
-   - The seed constructs the module value lets of a module in an order where
-     each follows every value its initializer reads. Two values whose
-     initializers read each other are refused at the judgment's end, with
-     the path, so `mentl check` refuses what the build would order wrongly.
-   - A value of an imported module is set before the importing module's
-     values, as today.
+   The form, made exact on 2026-11-21.
+   - The reads of an initializer are the module values reachable from it
+     along the reference edges the judgment drew, through the bodies of the
+     functions it calls. One walk already follows those edges:
+     `ur_walk`, `ur_decl_edges` and `ur_targets` in src/query.mn, which
+     `mentl query FILE unreachable` runs from `main` and from every module
+     value. Only that verb can read it there, since neither the judgment
+     nor the lowering imports src/query.mn, and a second walk beside it
+     would be drift. So F5a's first step moves the walk, unchanged, into
+     src/graph.mn, and `unreachable` reads it from there. That is the first
+     part of K1, the reach as one walk.
+   - At the judgment's end, each module's value lets are put in an order
+     where each follows every value its initializer reaches, ties kept in
+     source order, and the order is written into the graph as the module's
+     fact. The lowering's seed (`reach_seed`) and the start read it.
+   - Two initializers that reach each other are refused at the judgment's
+     end with `E_ModuleValueCycle`, a class of its own in the pattern of
+     `E_RowAliasCycle`, naming each step of the path, so `mentl check`
+     refuses what no order can run.
 
-   Measured before the build: how many module values the wheel declares and
-   what the walk costs at the self-compile's line peak; whether any of the
-   wheel's own initializers read a later value today; which error class
-   the cycle's refusal belongs to.
+   Measured on 2026-11-21: the wheel declares 43 module values, so the walk
+   runs 43 times on a self-compile, most of them over a literal; and on the
+   pin no initializer of the wheel reaches a value set after it (each
+   initializer in the self-compile's `__init_lets`, followed through the
+   functions it calls).
 
    Edge cases. An initializer that only names a function, a closure kept
    for later, reads nothing until it is called, so it adds no order. A
