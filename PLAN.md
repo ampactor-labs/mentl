@@ -1661,7 +1661,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Four
 boxes are written out below the order.
 
 **How a landing is named.** A landing has one name, its letter and
@@ -2561,6 +2561,57 @@ first two.
 
    Proves it. tests/frontier/mcp.transcript gains the three requests above,
    each red on the pin, and `mentl land`.
+
+4. **F5a · A module value is set before anything reads it.** Written
+   2026-11-21 from probes on pin 674 · 8a201af57d54.
+
+   What a person sees. Module values may be declared in any order, as
+   functions and aliases already may (F6): each initializer runs after
+   every module value it reads, directly or through the functions it calls.
+   Two initializers that read each other are refused, and the refusal names
+   the path from one to the other.
+
+   Fails today, each `mentl check` exiting 0:
+   - `let first = len(later)`, then `let later = [1, 2, 3]` and `fn main()
+     = first`: `mentl run` exits 0, where the answer is 3.
+   - The same read through a function, `fn count_later() = len(later)` and
+     `let first = count_later()`: exit 0.
+   - `let a = b + 1` above `let b = 5`: exit 1, where the answer is 6. A
+     word is read as 0 before it is set, so the fault is not only lists.
+   - The compiler's own source met it on 2026-11-21 (§7), and F3a's
+     `no_memory` was right only because an unset list reads as empty.
+
+   Where it happens. The lowering seeds module value lets in source order
+   (`reach_seed`, src/lower.mn), and the emitted start runs their
+   initializers in that order (`__init_lets`, src/backends/wasm.mn). Each
+   value is a global that reads 0 until its initializer runs.
+
+   The form, made exact on a probe before it is built.
+   - The reads of an initializer are the module values reachable from its
+     node along the reference edges the judgment drew, through the bodies
+     of the functions it calls, by the walk `mentl query FILE unreachable`
+     already makes from every module value (`ur_walk`, src/query.mn). They
+     are read once per initializer, never per caller.
+   - The seed constructs the module value lets of a module in an order where
+     each follows every value its initializer reads. Two values whose
+     initializers read each other are refused at the judgment's end, with
+     the path, so `mentl check` refuses what the build would order wrongly.
+   - A value of an imported module is set before the importing module's
+     values, as today.
+
+   Measured before the build: how many module values the wheel declares and
+   what the walk costs at the self-compile's line peak; whether any of the
+   wheel's own initializers read a later value today; which error class
+   the cycle's refusal belongs to.
+
+   Edge cases. An initializer that only names a function, a closure kept
+   for later, reads nothing until it is called, so it adds no order. A
+   value read only inside a function that no initializer calls adds none.
+   A handler or a type declaration is not a value.
+
+   Proves it. The three programs above as fixtures in tests/micros, each
+   exiting as its first line states, red on the pin; a cycle fixture that
+   must refuse; and `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
