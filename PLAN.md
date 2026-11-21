@@ -1608,7 +1608,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Three
+review, and a landing he did not mean is reverted on his word. Four
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -2480,6 +2480,59 @@ first two.
 
    Proves it. tests/frontier/mcp.transcript gains the three requests above,
    each red on the pin, and `mentl land`.
+
+4. **Box F3b · An element read out of a list is a part of the list.**
+   Written 2026-11-21 from a probe of pin 087e88858d71. It is the first
+   step of F3 in §11.B's order, re-measured on F3a's pin as the order
+   asks.
+
+   What a person sees. `mentl query src/main.mn "claim of list_index"`
+   answers `returns: part of parameters 0`, where the pin answers
+   `returns: older`. `drop_last`'s claim answers `part of parameters 0, or
+   fresh`, where the pin answers `older`. So a function that hands back an
+   element of a list it was handed says so in its own claim, and every
+   caller places that answer.
+
+   Fails today, on the pin: the two claims above, and `mentl verify`
+   counts 31,240 values whose memory the walk cannot place.
+
+   The form.
+   - src/graph.mn: `memory_read_stop` reads `load_addr`'s argument. The
+     address a load reads was stored in the memory its argument names, so
+     the answer is a part of that memory (`address_read_stop`, a
+     `StopPartOf`). Today it is memory nothing in sight names
+     (`StopBeyond`).
+   - src/infer.mn: `perform_targets` answers nothing for a perform of an
+     operation that never returns (`op_never_returns`), where it answered
+     older memory. Its old body becomes `answered_targets`.
+   - Measured on a probe: the first part alone places 146 values, and the
+     two together place 855.
+
+   What it reads. The load's argument node, which the call carries. Whether
+   the performed operation returns, which `op_never_returns` reads from the
+   operation's published scheme; `mentl where FILE OP` prints it on the pin.
+
+   Edge cases.
+   - A `load_addr` with no argument stays older memory.
+   - An operation that never returns, in one arm of a match, adds nothing
+     to the join of the arms.
+   - An operation that returns keeps what its arm resumes.
+
+   Soundness. The step exposed a false proof on 2026-11-20, a store through
+   a part of a parameter reached through `list_index`, which F3a closed.
+   The testers' 313 programs give the same answer on the pin and on the
+   probe, 272 right on both.
+
+   What pays for it. The unplaced count falls from 31,240 to 30,385, and
+   its limit falls with it. No other count moves.
+
+   Left alone. The store column (F3c), which places what a store puts into
+   a list, so that `fold`, `flat_map`, `find`, `wmap_get` and `pt_get`
+   still answer `older`.
+
+   Proves it. A fixture in tests/micros whose transcript holds the claims
+   of `list_index` and of a helper that returns an element, red on the
+   pin, and `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
