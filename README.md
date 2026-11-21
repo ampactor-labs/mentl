@@ -58,7 +58,7 @@ HUM's grid controller, `examples/grid/station.mn`, decides twenty times a second
 
 ```
 $ mentl where examples/grid/station.mn decide
-→ decide(ref valid: Int, ref hz: Int, own rocof: Int, ref level: Int, ref hour: Int, ref rush: Int, ref clean: Int) -> Mode with Mutate + Station  at examples/grid/station:185
+→ decide(ref valid: Int, ref hz: Int, own rocof: Int, ref level: Int, ref hour: Int, ref rush: Int, ref clean: Int) -> Mode with Mutate + Station  at examples/grid/station:183
   with !Alloc + !Network + !Filesystem + !WASI + !Trap (declared)
   valid : Int @ i32 (inferred)
   hz : Int @ i32 (inferred)
@@ -70,7 +70,7 @@ $ mentl where examples/grid/station.mn decide
   -> Mode @ i32 (inferred)
 ```
 
-The source writes the five rules and `hz: Int`. The compiler worked out the other parameters' types, the ownership of each (`own` or `ref`), and the first line's row, `Mutate + Station`, which is everything `decide` does: it keeps its own memory from one reading to the next, and it commands the two machines through the operations of the `Station` effect. [Open `decide` in Mentl Space](https://mentl.ampactor.dev/?at=examples/grid/station.mn:185:4) to see the same row with the caret on its name. Ask where the network enters, and the compiler answers that it does not:
+The source writes the five rules and `hz: Int`. The compiler worked out the other parameters' types, the ownership of each (`own` or `ref`), and the first line's row, `Mutate + Station`, which is everything `decide` does: it keeps its own memory from one reading to the next, and it commands the two machines through the operations of the `Station` effect. [Open `decide` in Mentl Space](https://mentl.ampactor.dev/?at=examples/grid/station.mn:183:4) to see the same row with the caret on its name. Ask where the network enters, and the compiler answers that it does not:
 
 ```
 $ mentl why examples/grid/station.mn decide Network
@@ -81,13 +81,13 @@ decide never uses Network: nothing in decide, and nothing it calls, performs an 
 
 ```
 $ mentl check examples/grid/station-leak.mn
-effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI + !Trap`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:221:5 → price_m calls `fetch` at examples/grid/station-leak:113:14 → `fetch` is an operation of Network, declared at net:11:1 at examples/grid/station-leak:153:1-258:2
-effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:452:1-455:27
+effects: E_EffectMismatch error: decide is declared `with !Alloc + !Network + !Filesystem + !WASI + !Trap`, which does not allow Network, and decide uses Network: decide calls `price_m` at examples/grid/station-leak:219:5 → price_m calls `fetch` at examples/grid/station-leak:111:14 → `fetch` is an operation of Network, declared at net:11:1 at examples/grid/station-leak:151:1-256:2
+effects: E_EffectUnhandled error: nothing handles Network either: it reaches the top of the program through `decide`, whose error above names the path. Declare a handler for Network and install it with `~>` around the code that uses it. at examples/grid/station-leak:450:1-453:27
 ```
 
 [Open the refused program in Mentl Space](https://mentl.ampactor.dev/?at=examples/grid/station-leak.mn), where the two errors are listed under the editor.
 
-Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI preview 1, the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.2 component target, and a real network").
+Part of this guarantee belongs to WebAssembly and to the engine. The compiled controller can call only the functions it imports, and it imports three, all from WASI: `proc_exit`, `fd_write` and `fd_read`. wasmtime's sandbox enforces that list. The rule on `decide` is a statement about the code itself, and it would hold just the same in a program that reaches the network elsewhere. No Mentl program can reach a network yet, because WASI preview 1, the target the compiler emits, has no outbound connection (PLAN §11, "The WASI 0.3 component target, and a real network").
 
 On the controller itself, `mentl check` prints nothing. `main` declares `!Trap`, so the same check covers the whole program on every build, from reading a line to printing its decision, through every function `main` calls and every arm of the handlers it installs: `station`, and `wasi_stdin`, which reads each line from the program's input. A version in which any of them could fail a check does not build:
 
@@ -214,7 +214,7 @@ Never claimed: that a program does what its author meant. What the compiler cann
 - A function that says `!Trap` can still run out of stack when it recurses deeply enough, because no effect row shows running out of stack yet. `fn depth(n) with !Trap = if n == 0 { 0 } else { 1 + depth(n - 1) }` checks clean and stops with "call stack exhausted" a million calls deep ("The keystone: lowering is a column, and the graph gains its evaluator").
 - An effect can slip past a negation through a function of the caller's own recursive group when that function is first used where its row meets a pure one: such a program checks clean while the effect runs ("The soundness core: the crown modal, the row whole, the reach one walk").
 - A program's own handler of `trap` takes `Trap` out of its row while a failed check still stops the machine, so `main with !Trap` is accepted and the run stops ("An extent can end early, and leaves older memory as it found it").
-- No program can reach a network or read the host's clock or randomness yet ("The WASI 0.2 component target, and a real network"; "The host's clock, randomness and sleep are real").
+- No program can reach a network or read the host's clock or randomness yet ("The WASI 0.3 component target, and a real network"; "The host's clock, randomness and sleep are real").
 - A program shares one namespace with everything it links, so it cannot declare a name the library declares: `fn count(x) = x + 1` is refused with `E_DuplicateFnName` ("A module is a scope, and a package carries its judgment").
 - The browser page plays a lesson's sound only after the run has ended, and it cannot run lesson 12's second process; the compile runs on one core, and there is no native backend ("Edits cost what they change, and the page plays the course"; "Forks on every core"; "`!Outside` closes").
 

@@ -20,8 +20,6 @@
 // compiler refuses.
 import arena
 
-import dsp/signal
-
 import fs
 
 import io

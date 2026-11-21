@@ -112,9 +112,7 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   hold 2,087 leaves, about 0.55 MB. That is what F2 buys today, so F2
   comes before F3 only if F3's own column measures over the line-peak
   limit on a probe compiler. It also printed 56,868 arena exits, 0 kept,
-  302,606 KB moved at exits and a journal high of 13,707 entries. Owed to
-  the documents and not yet written: §11.14 names WASI 0.2 where §4⑯
-  names 0.3, ratified 2026-06-11.
+  302,606 KB moved at exits and a journal high of 13,707 entries.
 - H1, the first host box, landed on 2026-11-19: a lesson plays in the
   page. Run on lesson 1 compiles, assembles and runs it in the browser,
   then plays the WAV file it wrote and draws its wave, with play, stop and
@@ -171,7 +169,10 @@ its context reads it first, then the parts CLAUDE.md's "What to read" names.
   engine is the newest stable release; work that serves none of the five
   properties of §4⑭ waits.
 - Open decisions of Morgan's: the one-line license statement, whether
-  `??` in a constructor's field is a value hole (§11.B, Box 2), and
+  `??` in a constructor's field is a value hole (§11.B, Box 2), how a fork
+  reaches a second core now that wasmtime 47 and later have no
+  wasi-threads, which lesson 10 imports (§11.B, P5), what the medium's
+  version is called in its two servers (§11.B, Box 6), and
   whether an alias that names itself, `type Tree = [Tree]`, means a
   recursive type. It is refused as an infinite type since 2026-11-15
   (tests/micros/mn-alias-names-itself.mn), and stays refused until he
@@ -350,6 +351,22 @@ its documents.
   model types capabilities as declared, at the host boundary, for a whole
   module. `!E` proves absence under polymorphism, transitively and per
   instance, which neither of them can do.
+- **Two systems already check a negation, and Mentl's credit to them**
+  (read 2026-11-21). Flix's effect exclusion lets a higher-order function
+  accept an argument with any effect except the ones it names, written
+  `listener: KeyEvent -> Unit \ (ef - Block)`, and the paper that
+  introduced it proves, for its core calculus, that an excluded effect is
+  never performed (Lutze, Madsen, Schuster and Brachthäuser, "With or
+  Without You: Programming with Effect Exclusion", ICFP 2023). That is the
+  promise a negation on a Mentl parameter makes. Clang 20 checks
+  `[[clang::nonallocating]]` and `[[clang::nonblocking]]` through calls
+  when `-Wfunction-effects` is passed, which neither the default nor
+  `-Wall` does: a marked function warns when it calls one Clang cannot
+  verify, the check stays inside one translation unit, and a call through
+  a pointer, a virtual call or a call to a function defined elsewhere must
+  be marked by hand. That is the promise `with !Alloc` makes. Mentl checks
+  it on every build through every function the program calls, closures and
+  handler arms included, since the compiler holds the whole program.
 
 ---
 
@@ -670,7 +687,7 @@ up to four kinds of handler: the host's own, a recorder that keeps every
 answer, a replayer that answers from a recording, and models that say they
 are models. No handler answers from a hand-written table in place of the
 host. The host target is ordered by what it unlocks: WASI preview 1's
-clock, randomness and sleep first (§11.11), then the WASI 0.2 component
+clock, randomness and sleep first (§11.11), then the WASI 0.3 component
 target with a real network (§11.14). Continuations the engine owns are left
 out, because a continuation the engine holds cannot be saved into the
 image.
@@ -1591,7 +1608,7 @@ the last three.
 On 2026-11-12 Morgan gave the builder full permission to shape, design and
 implement the medium from the bottom up, and asked for a faster process
 and the newest engine (§4⑭ to ⑯). Each landing's receipt is his to
-review, and a landing he did not mean is reverted on his word. Two
+review, and a landing he did not mean is reverted on his word. Three
 boxes are written out below the order.
 
 **The order from 2026-11-13.** This is the only order. Every landing in it
@@ -1892,7 +1909,21 @@ minute, and no expectation kept by hand.
 - P5. The gates move to the newest stable engine (wasmtime 50.0.1 on
   2026-11-12, where exception handling and multiple memories are on by
   default), and the compiler compiles itself to the same bytes under a
-  second engine (§4⑯).
+  second engine (§4⑯). Measured first, on 2026-11-21, and in the way:
+  wasmtime 47 (released 2026-07-20) removed wasi-threads, as the Bytecode
+  Alliance's accepted RFC "Remove wasi-threads and wasi-common from
+  Wasmtime" set out, and the newest stable release is 51.0.0 (2026-11-20).
+  The gates run 36.0.17 (tools/wasmtime-get.sh), a long-term-support
+  release that keeps wasi-threads and is supported until 2027-08-20.
+  Lesson 10 imports `wasi.thread-spawn` (`mentl compile
+  examples/pulse/course/10-voices.mn`), and from wasmtime 47 no engine
+  release provides that import, so the lesson cannot be instantiated there
+  (not yet run). The RFC names WASI 0.3's cooperative threads, which run
+  one at a time, for now, and the shared-everything-threads proposal for
+  parallel threads later. So the gates cannot move while a program they
+  run spawns threads. How a fork reaches a second core (§11.8) is decided
+  before P5 is written as a box, and the decision is Morgan's, since §4⑯
+  is his word.
 - P7. `mentl land` prints the census of the five operators, index walks,
   let-chains and rosters for the modules a landing touched, against the
   pin's. A landing adds no index walk, let-chain or roster.
@@ -2377,6 +2408,78 @@ first two.
    `Seconds(??)`, where the author wrote a number. On both, no expression
    that was written back, first or among moves to a worse answer. Each of the 35 fixtures of tests/proposals whose first line
    changes is worked out by hand and named in the receipt.
+
+3. **Box 6 · `mentl mcp` speaks the current protocol, and claims only the
+   versions it serves.** Written 2026-11-21 from a probe of pin
+   087e88858d71 and the Model Context Protocol's revision of 2026-07-28,
+   the current one (modelcontextprotocol.io, "Versioning"; the released
+   revisions are 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25 and
+   2026-07-28).
+
+   What a person sees. An agent whose client speaks the 2026-07-28 revision
+   can find the gate with `server/discover` and call `propose` on it. A
+   client of the handshake revisions keeps working. A client that asks for
+   a version the gate does not serve is told which versions it serves,
+   instead of being told yes.
+
+   Fails today, measured with `mentl mcp` on stdio:
+   - `initialize` with `"protocolVersion":"2099-01-01"` answers
+     `"protocolVersion":"2099-01-01"`. `mcp_initialize_result`
+     (src/mcp.mn) echoes whatever the client asks.
+   - `server/discover` answers `-32601` "method not found:
+     server/discover". The revision says a server must implement it.
+   - `tools/list` carrying the revision's `_meta` fields answers without
+     `resultType`, `ttlMs` or `cacheScope`, which the revision requires of
+     every result and of a tool list.
+   - The server names itself `"version":"first-light"`, the name of a tag
+     (§6), while the language server names itself `"0.1.0"` (src/lsp.mn).
+     That is one fact stored twice, differently.
+
+   What the revision asks of a server that serves only tools over stdio:
+   - `server/discover`, answering the supported versions, the
+     capabilities, the server's identity in `_meta`, `ttlMs` and
+     `cacheScope`.
+   - Every request carries `io.modelcontextprotocol/protocolVersion` and
+     `io.modelcontextprotocol/clientCapabilities` in `params._meta`. A
+     request missing one is refused with `-32602`, and a version the
+     server does not serve with `-32022`, whose data names the supported
+     versions and the one requested.
+   - Every result carries `resultType`, here always `"complete"`. A tool
+     list also carries `ttlMs` and `cacheScope`, in an order that does not
+     change, the same for every connection.
+   - The server writes no request to stdout. A server may still answer
+     `initialize` with the handshake revisions' meaning.
+
+   The form, in src/mcp.mn. One list of the versions the gate serves, read
+   by every answer that names a version: `2025-06-18`, which
+   tests/frontier/mcp.transcript exercises today, and `2026-07-28`. A
+   version joins the list only with a transcript that exercises it.
+   - `initialize` answers the requested version when it is on the list and
+     the newest handshake version on it otherwise, as the handshake
+     revisions specify.
+   - A request in the 2026-07-28 form is read by its `_meta`, and
+     `server/discover` answers from the list.
+   - The results gain the fields the revision requires.
+   - Both servers read the server's version from one value.
+
+   What it reads. Nothing from the graph. The JSON reader and writer
+   (lib/json.mn) and the session the gate already holds.
+
+   Edge cases. A request whose `_meta` names a version not on the list. A
+   request with no `_meta` after an `initialize`, which keeps the handshake
+   meaning for that process. An unknown method keeps `-32601`. A `propose`
+   that is refused still answers its refusal as today, now with
+   `resultType`.
+
+   Left alone. `InputRequiredResult` and retries, since `propose` never
+   needs to ask the client anything. Tasks, roots, sampling and logging,
+   which the revision moved out or deprecated.
+
+   One question is Morgan's: what the medium's version is called, which
+   both servers will print.
+
+   Proves it. tests/frontier/mcp.transcript gains the three requests above,
+   each red on the pin, and `mentl land`.
 
 **What some landings must make true.** Until 2026-11-13 this was a list of
 what came next, in an order of its own. Each item now stands in the order
@@ -2863,7 +2966,8 @@ says "mentl accept: no proposal at this position"
 (tests/frontier/edit.transcript), where `mentl accept` at the same
 address says the tie is a question: the session's `apply_suggestion` and
 the address form's `accept_at` decide one accept twice (2026-11-16). The gate's server names its version
-"first-light". A session answers `where` and `query` and misses on
+"first-light", agrees to any protocol version a client asks for, and has
+no `server/discover` (§11.B, Box 6). A session answers `where` and `query` and misses on
 `why`. The prelude imports `threading` and uses nothing from it, which
 `query imports` marks DEAD.
 A dropped value
@@ -3361,9 +3465,14 @@ from 6,123 on 2026-10-27 to 6,748, against 1,044 `|>`, 5 `><`, 2 `<|`
 and 1 `<~`; the board bounds rosters and costumes, and nothing bounds
 the total.
 
-### §11.14 · The WASI 0.2 component target, and a real network
+### §11.14 · The WASI 0.3 component target, and a real network
 
-Mentl emits the
+WASI 0.3.0 was released on 2026-06-11, after the WASI Subgroup voted to
+ratify it, and the Bytecode Alliance calls it stable (bytecodealliance.org,
+"WASI 0.3"; wasi.dev, "WASI P3"). It rebases WASI on the component model's
+own async types, and it holds the outbound network: `wasi:sockets` connects
+a TCP socket, and `wasi:http`'s client sends a request. Wasmtime 46 is the
+first release that implements it. Mentl emits the
 component itself, the canonical ABI's lifting and lowering included, one
 effect per WASI interface, and imports exactly what `main`'s row
 reaches. `fetch` is answered over `wasi:http`, so a program can reach the

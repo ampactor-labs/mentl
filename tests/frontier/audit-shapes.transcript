@@ -40,7 +40,7 @@ $ mentl audit tests/frontier/mn-audit-severance-honest.mn
   main uses Trap + Alloc + MemoryWrite + Address + Memory
 $ mentl audit examples/grid/station.mn
   Nothing in this module uses Trap, Network, so it is trap-free (nothing it reaches can stop with an error; that it always finishes is not proven) and sandboxed (it never reaches the network)
-    It also never uses 13 other effect(s) that the program declares.
+    It also never uses 12 other effect(s) that the program declares.
   clamp_spin performs no effect (Pure)
     never uses Alloc, so it is real-time safe (it never allocates memory)
     mentioned in comments: droop
@@ -109,6 +109,7 @@ $ mentl audit examples/grid/station.mn
   field_or uses Alloc + Memory + MemoryWrite + Address + Diverge
   stamp uses Alloc + Memory + MemoryWrite + Address + Diverge
   reading uses Alloc + MemoryWrite + Stdin + Memory + Address + Diverge + Mutate + Station
+    mentioned in comments: the comment at line 1
   step uses Memory + Arena + Mutate + Alloc + MemoryWrite + Stdin + Address + Diverge + Station
   main uses Alloc + Mutate + Memory + Arena + MemoryWrite + Address + Diverge + WASI
     mentioned in comments: the comment at line 1
